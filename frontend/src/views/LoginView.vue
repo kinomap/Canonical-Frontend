@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -13,6 +13,8 @@ const rememberMe = ref(true)
 
 const loading = ref(false)
 const error = ref<string | null>(null)
+// Show an informational notice when redirected after session expiry
+const sessionExpired = computed(() => route.query.reason === 'session_expired')
 
 async function handleSubmit() {
   if (!usernameOrEmail.value || !password.value) {
@@ -40,6 +42,10 @@ async function handleSubmit() {
       <div class="auth-header">
         <h1 class="auth-title">Sign In</h1>
         <p class="auth-subtitle">Access your KINOSOTA account</p>
+      </div>
+
+      <div v-if="sessionExpired" class="auth-session-alert">
+        🔒 Your session has expired. Please sign in again.
       </div>
 
       <div v-if="error" class="auth-error-alert">
@@ -128,6 +134,17 @@ async function handleSubmit() {
   font-size: 0.9rem;
   color: #9ca3af;
   margin: 0;
+}
+
+.auth-session-alert {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+  text-align: center;
 }
 
 .auth-error-alert {

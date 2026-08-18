@@ -29,6 +29,8 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const isNotFound = ref(false)
 const descriptionExpanded = ref(false)
+const playError = ref<string | null>(null)   // inline error under the player
+const commentError = ref<string | null>(null) // inline error in comments section
 
 
 const formattedFileSize = computed(() => {
@@ -102,13 +104,17 @@ async function handlePlay() {
     router.push('/login')
     return
   }
+  playError.value = null
   shouldPlay.value = true
   if (!streamUrl.value) {
     try {
       const res = await apiClient.startPlayback(movieId.value)
       streamUrl.value = `http://localhost:8000/api/v1/playback/stream/${movieId.value}?token=${res.playback_token}`
     } catch (err: any) {
-      alert(err.message || 'Failed to start playback')
+      // 401 is handled globally by auth:expired → no duplicate message
+      if (err?.status !== 401) {
+        playError.value = err?.message || 'Failed to start playback'
+      }
       shouldPlay.value = false
     }
   }
@@ -116,12 +122,15 @@ async function handlePlay() {
 
 async function postComment() {
   if (!newComment.value.trim()) return
+  commentError.value = null
   try {
     const comment = await apiClient.postComment(movieId.value, newComment.value)
     comments.value.unshift(comment)
     newComment.value = ''
   } catch (err: any) {
-    alert(err.message || 'Failed to post comment')
+    if (err?.status !== 401) {
+      commentError.value = err?.message || 'Failed to post comment'
+    }
   }
 }
 
@@ -131,7 +140,9 @@ async function deleteComment(id: string) {
     await apiClient.deleteComment(id)
     comments.value = comments.value.filter(c => c.id !== id)
   } catch (err: any) {
-    alert(err.message || 'Failed to delete comment')
+    if (err?.status !== 401) {
+      commentError.value = err?.message || 'Failed to delete comment'
+    }
   }
 }
 
@@ -155,7 +166,9 @@ async function saveEditComment(id: string) {
     }
     editingCommentId.value = null
   } catch (err: any) {
-    alert(err.message || 'Failed to update comment')
+    if (err?.status !== 401) {
+      commentError.value = err?.message || 'Failed to update comment'
+    }
   }
 }
 
@@ -251,6 +264,11 @@ onMounted(() => {
         </div>
       </div>
       <VideoPlayer v-else-if="streamUrl" :src="streamUrl" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" />
+      <!-- Inline player error (non-auth failures only) -->
+      <div v-if="playError" class="inline-error" role="alert">
+        <span>{{ playError }}</span>
+        <button class="inline-error-close" @click="playError = null" aria-label="Dismiss">&times;</button>
+      </div>
 
       <!-- Main Content Area -->
       <div class="main-content">
@@ -316,6 +334,11 @@ onMounted(() => {
                 <button class="post-btn" @click="postComment">Comment</button>
               </div>
             </div>
+          </div>
+          <!-- Inline comment error (non-auth failures only) -->
+          <div v-if="commentError" class="inline-error" role="alert">
+            <span>{{ commentError }}</span>
+            <button class="inline-error-close" @click="commentError = null" aria-label="Dismiss">&times;</button>
           </div>
           <div v-else class="login-prompt">
             <router-link to="/login" class="login-link">Log in</router-link> to add a comment.
@@ -886,5 +909,41 @@ onMounted(() => {
 .edit-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
+}
+
+/* Inline error banner (replaces raw alert dialogs) */
+.inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  margin-top: 10px;
+  animation: fadeIn 0.2s ease;
+}
+
+.inline-error-close {
+  background: transparent;
+  border: none;
+  color: #f87171;
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.inline-error-close:hover {
+  color: #fff;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 </style>

@@ -42,6 +42,21 @@ export class ApiError extends Error {
 
 const BASE_URL = '/api/v1'
 
+// ── JWT client-side expiry check ──────────────────────────────────────────────
+// Decodes the payload without signature verification (backend still validates).
+// Lets us skip the network round-trip when the token is already expired.
+function isTokenExpired(token: string): boolean {
+  try {
+    const payloadB64 = token.split('.')[1]
+    if (!payloadB64) return true
+    const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')))
+    // exp is Unix seconds; add 10s clock-skew buffer
+    return typeof payload.exp === 'number' && Date.now() >= (payload.exp - 10) * 1000
+  } catch {
+    return true
+  }
+}
+
 const memoryCache = new Map<string, { data: any; expiresAt: number }>()
 
 function getCached<T>(key: string): T | null {
@@ -64,7 +79,7 @@ export function clearClientCache(): void {
 async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 0): Promise<T> {
   const url = `${BASE_URL}${endpoint}`
   const isGet = !options || !options.method || options.method.toUpperCase() === 'GET'
-  
+
   if (isGet && cacheTtlMs > 0) {
     const cached = getCached<T>(endpoint)
     if (cached !== null) {
@@ -78,6 +93,11 @@ async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 
     ...(options?.headers as Record<string, string>),
   }
   if (token && !headers['Authorization']) {
+    // Check expiry before attaching — avoids pointless network round-trip
+    if (isTokenExpired(token)) {
+      window.dispatchEvent(new CustomEvent('auth:expired'))
+      throw new ApiError(401, 'Session expired. Please sign in again.')
+    }
     headers['Authorization'] = `Bearer ${token}`
   }
 
@@ -95,6 +115,12 @@ async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 
       }
     } catch {
       // Body is not JSON
+    }
+    // ── Centralized 401 handler ────────────────────────────────────────────
+    // Expired / invalid tokens → clear session and redirect to login.
+    // Do NOT expose the raw backend error message via alert().
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('auth:expired'))
     }
     throw new ApiError(response.status, errorDetail)
   }

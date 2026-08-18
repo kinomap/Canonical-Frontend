@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MovieSummary } from '@/types/movie'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = withDefaults(defineProps<{
   movie: MovieSummary
@@ -8,6 +8,12 @@ const props = withDefaults(defineProps<{
 }>(), {
   eager: false
 })
+
+const posterError = ref(false)
+
+const handlePosterError = () => {
+  posterError.value = true
+}
 
 // Clean display title — strip emoji prefixes and MSX/technical storage suffixes
 const displayTitle = computed(() => {
@@ -18,6 +24,12 @@ const displayTitle = computed(() => {
   t = t.replace(/\s*\/\s*\d{4}\s*\/.*$/u, '')
   t = t.replace(/\s*\/\s*MSX\s+\w+.*/iu, '')
   return t.trim() || props.movie.title
+})
+
+const displayYear = computed(() => {
+  if (props.movie.year) return props.movie.year
+  const match = props.movie.title.match(/\/\s*(\d{4})\s*\//)
+  return match ? match[1] : null
 })
 </script>
 
@@ -30,20 +42,20 @@ const displayTitle = computed(() => {
   >
     <div class="poster-wrapper">
       <img
-        v-if="movie.poster"
+        v-if="movie.poster && !posterError"
         :src="movie.poster"
         :alt="movie.title"
         class="poster-img"
         :loading="eager ? 'eager' : 'lazy'"
         :fetchpriority="eager ? 'high' : 'auto'"
+        @error="handlePosterError"
       />
-      <div v-else class="poster-fallback">
-        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
-          <polyline points="11 3 11 11 14 8 17 11 17 3"/>
-          <circle cx="8.5" cy="8.5" r="1.5"/>
-          <path d="M20.4 14.5 16 10 4 20"/>
-        </svg>
+      <div v-else class="poster-fallback branded-fallback">
+        <div class="fallback-content">
+          <div class="brand-text">KINOSOTA</div>
+          <h4 class="fallback-title">{{ displayTitle }}</h4>
+          <span class="fallback-year" v-if="displayYear">{{ displayYear }}</span>
+        </div>
       </div>
 
       <div class="badges-overlay" v-if="movie.rating">
@@ -102,13 +114,70 @@ const displayTitle = computed(() => {
   transform: scale(1.05);
 }
 
-.poster-fallback {
+.poster-fallback.branded-fallback {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #4b5563;
+  background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 50%, #000000 100%);
+  color: #fff;
+  text-align: center;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.poster-fallback.branded-fallback::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.05), transparent);
+  transform: skewX(-20deg);
+  animation: shine 6s infinite;
+}
+
+@keyframes shine {
+  0% { left: -100%; }
+  20% { left: 200%; }
+  100% { left: 200%; }
+}
+
+.fallback-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1;
+}
+
+.brand-text {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+}
+
+.fallback-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+  color: #f3f4f6;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.fallback-year {
+  font-size: 0.85rem;
+  color: #9ca3af;
+  font-weight: 500;
 }
 
 .badges-overlay {
