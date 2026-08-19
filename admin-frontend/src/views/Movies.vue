@@ -143,40 +143,60 @@ onMounted(() => {
             <th>Sources</th>
             <th>Poster Status</th>
             <th>Status</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading && movies.length === 0">
-            <td colspan="7" class="loading-cell">Loading...</td>
+            <td colspan="8" class="loading-cell">Loading...</td>
           </tr>
           <tr v-else-if="movies.length === 0">
-            <td colspan="7" class="empty-cell">No movies found matching criteria.</td>
+            <td colspan="8" class="empty-cell">No movies found matching criteria.</td>
           </tr>
           <tr v-else v-for="movie in movies" :key="movie.id" @click="goToDetail(movie.id)" class="movie-row">
-            <td>
-              <div class="mini-poster-fallback">
+            <td class="poster-col">
+              <img v-if="movie.poster_url" :src="movie.poster_url" class="mini-real-poster" />
+              <div v-else class="mini-poster-fallback">
                 <div class="fallback-title">{{ movie.title }}</div>
                 <div class="fallback-year">{{ movie.year || 'N/A' }}</div>
               </div>
             </td>
-            <td>
+            <td class="title-col">
               <div class="title-main">{{ movie.title }}</div>
               <div class="title-sub">{{ movie.original_title }}</div>
             </td>
             <td>{{ movie.year || '-' }}</td>
             <td>{{ movie.tmdb_id || '-' }}</td>
             <td>{{ movie.telegram_sources_count }}</td>
-            <td>
+            <td class="compact-col">
               <span class="badge" :class="{'badge-green': movie.poster_status === 'Available', 'badge-yellow': movie.poster_status === 'Missing'}">
-                <span v-if="movie.poster_status === 'Available'">✓</span>
-                <span v-else>⚠</span>
-                {{ movie.poster_status }}
+                {{ movie.poster_status === 'Available' ? '✓ Present' : '⚠ Missing' }}
               </span>
             </td>
             <td>
               <span class="badge" :class="movie.status === 'available' ? 'badge-green' : 'badge-red'">
                 {{ movie.status }}
               </span>
+            </td>
+            <td class="actions-col">
+              <div class="actions-cell">
+                <a 
+                  v-if="movie.poster_status === 'Available' && movie.poster_url"
+                  :href="movie.poster_url"
+                  target="_blank"
+                  class="btn-action btn-poster"
+                  title="View Poster"
+                  @click.stop
+                >👁 Poster</a>
+                <a 
+                  v-if="movie.status === 'available' && movie.telegram_sources_count > 0 && movie.public_url"
+                  :href="movie.public_url"
+                  target="_blank"
+                  class="btn-action btn-movie"
+                  title="View Movie"
+                  @click.stop
+                >🎬 Movie</a>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -283,10 +303,10 @@ select {
 }
 
 .table-container {
-  overflow-x: auto;
   background: #1e293b;
   border-radius: 8px;
   border: 1px solid #334155;
+  overflow: hidden;
 }
 
 .movies-table {
@@ -295,9 +315,28 @@ select {
 }
 
 .movies-table th, .movies-table td {
-  padding: 12px 16px;
+  padding: 10px 12px;
   text-align: left;
   border-bottom: 1px solid #334155;
+  vertical-align: middle;
+}
+
+.poster-col {
+  width: 50px;
+}
+
+.title-col {
+  width: 100%;
+  max-width: 250px;
+}
+
+.compact-col {
+  white-space: nowrap;
+}
+
+.actions-col {
+  white-space: nowrap;
+  width: 150px;
 }
 
 .movies-table th {
@@ -322,11 +361,20 @@ select {
 .title-main {
   font-weight: 600;
   color: #f8fafc;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .title-sub {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #94a3b8;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .loading-cell, .empty-cell {
@@ -371,6 +419,15 @@ select {
   color: #94a3b8;
 }
 
+/* Mini Real Poster */
+.mini-real-poster {
+  width: 40px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+
 /* Mini Branded Poster Fallback */
 .mini-poster-fallback {
   width: 40px;
@@ -405,5 +462,48 @@ select {
   font-size: 0.45rem;
   color: #94a3b8;
   margin-top: 4px;
+}
+.btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-right: 6px;
+}
+
+.btn-action:last-child {
+  margin-right: 0;
+}
+
+.btn-poster {
+  background-color: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.2);
+}
+
+.btn-poster:hover {
+  background-color: rgba(74, 222, 128, 0.2);
+}
+
+.btn-movie {
+  background-color: rgba(56, 189, 248, 0.1);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.btn-movie:hover {
+  background-color: rgba(56, 189, 248, 0.2);
+}
+
+.actions-cell {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
 }
 </style>

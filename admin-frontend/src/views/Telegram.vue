@@ -107,8 +107,8 @@ const addChannel = async (cid: string) => {
   if (!cid) return addToast('Channel ID is required', 'error')
   adding.value = cid
   try {
-    const res = await axios.post('/api/v1/admin/telegram/channels', { channel_id: cid }, auth())
-    channels.value.push(res.data)
+    await axios.post('/api/v1/admin/telegram/channels', { channel_id: cid }, auth())
+    await fetchChannels()
     if (addMode.value === 'manual') newChannelId.value = ''
     addToast(`Channel connected`, 'success')
   } catch (err: any) {
@@ -123,7 +123,7 @@ const toggleChannelStatus = async (channel: any) => {
   const newStatus = channel.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'
   try {
     await axios.put(`/api/v1/admin/telegram/channels/${encodeURIComponent(channel.channel_id)}`, { status: newStatus }, auth())
-    channel.status = newStatus
+    await fetchChannels()
     addToast(`Channel ${newStatus === 'ACTIVE' ? 'enabled' : 'disabled'}`, 'success')
   } catch (err: any) {
     addToast(err.response?.data?.detail || 'Failed to update channel', 'error')
@@ -136,7 +136,8 @@ const syncChannel = async (channel: any) => {
   syncing.value = channel.channel_id
   try {
     await axios.post(`/api/v1/admin/telegram/channels/${encodeURIComponent(channel.channel_id)}/sync`, {}, auth())
-    addToast(`Sync started for ${channel.channel_id}`, 'success')
+    await fetchChannels()
+    addToast(`Sync completed for ${channel.channel_id}`, 'success')
   } catch (err: any) {
     addToast(err.response?.data?.detail || 'Failed to start sync', 'error')
   } finally {
@@ -163,7 +164,7 @@ const testConnection = async (channel: any) => {
 const deleteChannel = async (channelId: string) => {
   try {
     await axios.delete(`/api/v1/admin/telegram/channels/${encodeURIComponent(channelId)}`, auth())
-    channels.value = channels.value.filter(c => c.channel_id !== channelId)
+    await fetchChannels()
     confirmDeleteId.value = null
     addToast(`Channel "${channelId}" removed`, 'success')
   } catch (err: any) {

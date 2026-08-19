@@ -35,6 +35,9 @@ const posterUrl = ref('')
 const posterFile = ref<File | null>(null)
 const uploadingPoster = ref(false)
 
+// Lightbox
+const showLightbox = ref(false)
+
 const fetchMovieDetail = async () => {
   const token = localStorage.getItem('admin_token')
   if (!token) {
@@ -221,6 +224,8 @@ const handleAdminDelete = async () => {
     
     <div v-else-if="movie" class="detail-container">
       <div class="main-info">
+        
+        <!-- LEFT COLUMN: POSTER -->
         <div class="poster-section">
           <img v-if="movie.poster_url" :src="movie.poster_url" alt="Poster" class="real-poster" />
           <div v-else class="poster-fallback">
@@ -228,22 +233,31 @@ const handleAdminDelete = async () => {
             <div class="fallback-year">{{ movie.year || 'N/A' }}</div>
           </div>
           <div class="poster-status-badge" :class="{'badge-green': movie.poster_status === 'Available', 'badge-yellow': movie.poster_status === 'Missing'}">
-            Poster: {{ movie.poster_status }}
+            Poster: {{ movie.poster_status === 'Available' ? 'Present' : 'Missing' }}
           </div>
           <div class="provider-info" v-if="movie.artwork_provider">
             Provider: <span :class="{'manual-badge': movie.artwork_provider === 'Manual'}">{{ movie.artwork_provider }}</span>
           </div>
-          <button class="action-btn" @click="showPosterModal = true">Change Poster</button>
-          <button
-            v-if="movie.artwork_provider === 'Manual'"
-            class="action-btn restore-btn"
-            @click="handleRestorePoster"
-            title="Remove manual override and allow artwork pipeline to re-resolve"
-          >Restore Automatic</button>
+
+          <div class="poster-actions-group">
+            <button 
+              v-if="movie.poster_status === 'Available' && movie.poster_url" 
+              class="action-btn view-poster-btn" 
+              @click="showLightbox = true"
+            >View Poster</button>
+            <button class="action-btn" @click="showPosterModal = true">Change Poster</button>
+            <button
+              v-if="movie.artwork_provider === 'Manual'"
+              class="action-btn restore-btn"
+              @click="handleRestorePoster"
+              title="Remove manual override and allow artwork pipeline to re-resolve"
+            >Restore Automatic</button>
+          </div>
         </div>
 
+        <!-- RIGHT COLUMN: METADATA -->
         <div class="info-section">
-          <div class="title-row">
+          <div class="title-header-block">
             <div class="title-main">
               <!-- Title display/edit -->
               <div v-if="!editingTitle" class="title-display">
@@ -268,23 +282,32 @@ const handleAdminDelete = async () => {
                 <button class="btn-cancel" @click="editingTitle = false">Cancel</button>
               </div>
             </div>
-            <div class="title-actions">
-              <button v-if="movie.status !== 'blocked'" class="action-btn block-btn" @click="showBlockModal = true">Block Movie</button>
-              <button v-else class="action-btn unblock-btn" @click="handleUnblockMovie">Unblock Movie</button>
-              <button
-                v-if="movie.status !== 'blocked'"
-                class="action-btn admin-delete-btn"
-                @click="showAdminDeleteModal = true"
-                title="Soft-delete: deactivates sources, preserves metadata"
-              >Delete / Deactivate</button>
+            
+            <div class="movie-primary-actions">
+              <a 
+                v-if="movie.status === 'available' && movie.telegram_sources_count > 0 && movie.public_url" 
+                :href="movie.public_url" 
+                target="_blank" 
+                class="action-btn view-movie-btn"
+              >View Movie ↗</a>
+              <div v-else class="unavailable-status-text">
+                Movie unavailable — no active source
+              </div>
             </div>
           </div>
           
+          <div class="title-actions">
+            <button v-if="movie.status !== 'blocked'" class="action-btn block-btn" @click="showBlockModal = true">Block Movie</button>
+            <button v-else class="action-btn unblock-btn" @click="handleUnblockMovie">Unblock Movie</button>
+            <button
+              v-if="movie.status !== 'blocked'"
+              class="action-btn admin-delete-btn"
+              @click="showAdminDeleteModal = true"
+              title="Soft-delete: deactivates sources, preserves metadata"
+            >Delete / Deactivate</button>
+          </div>
+          
           <div class="metadata-grid">
-            <div class="meta-item">
-              <span class="meta-label">ID</span>
-              <span class="meta-value">{{ movie.id }}</span>
-            </div>
             <div class="meta-item">
               <span class="meta-label">Year</span>
               <span class="meta-value">{{ movie.year || '-' }}</span>
@@ -299,11 +322,19 @@ const handleAdminDelete = async () => {
             </div>
             <div class="meta-item">
               <span class="meta-label">Status</span>
-              <span class="badge" :class="movie.status === 'available' ? 'badge-green' : 'badge-red'">
+              <span class="badge meta-value-badge" :class="movie.status === 'available' ? 'badge-green' : 'badge-red'">
                 {{ movie.status }}
               </span>
             </div>
-            <div class="meta-item" v-if="movie.status === 'blocked'">
+            <div class="meta-item">
+              <span class="meta-label">Sources</span>
+              <span class="meta-value">{{ movie.telegram_sources_count }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Provider</span>
+              <span class="meta-value">{{ movie.artwork_provider || 'N/A' }}</span>
+            </div>
+            <div class="meta-item" v-if="movie.status === 'blocked'" style="grid-column: 1 / -1;">
               <span class="meta-label">Block Reason</span>
               <span class="meta-value blocked-reason">{{ movie.block_reason }}</span>
             </div>
@@ -328,29 +359,33 @@ const handleAdminDelete = async () => {
       </div>
 
       <div class="sources-section">
-        <h3>Telegram Sources ({{ movie.telegram_sources_count }})</h3>
-        <table class="sources-table" v-if="movie.telegram_sources_count > 0">
-          <thead>
-            <tr>
-              <th>Channel</th>
-              <th>Message ID</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="source in movie.telegram_sources" :key="source.channel_id + source.message_id">
-              <td>{{ source.channel_id }}</td>
-              <td>{{ source.message_id }}</td>
-              <td>
-                <span class="badge" :class="source.status === 'ACTIVE' ? 'badge-blue' : 'badge-red'">
-                  {{ source.status }}
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-else class="no-sources">
-          No telegram sources attached to this movie.
+        <div class="sources-header">
+          <h3>Telegram Sources ({{ movie.telegram_sources_count }})</h3>
+        </div>
+        <div class="sources-content" v-if="movie.telegram_sources_count > 0">
+          <table class="sources-table">
+            <thead>
+              <tr>
+                <th>Channel</th>
+                <th>Message ID</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="source in movie.telegram_sources" :key="source.channel_id + source.message_id">
+                <td>{{ source.channel_id }}</td>
+                <td>{{ source.message_id }}</td>
+                <td>
+                  <span class="badge" :class="source.status === 'ACTIVE' ? 'badge-blue' : 'badge-red'">
+                    {{ source.status }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="no-sources-box">
+          No active Telegram sources.
         </div>
       </div>
     </div>
@@ -418,6 +453,14 @@ const handleAdminDelete = async () => {
         </div>
       </div>
     </div>
+
+    <!-- Lightbox Modal for Poster -->
+    <div v-if="showLightbox && movie?.poster_url" class="lightbox-overlay" @click.self="showLightbox = false">
+      <div class="lightbox-container">
+        <button class="lightbox-close" @click="showLightbox = false">✕</button>
+        <img :src="movie.poster_url" alt="Full Poster" class="lightbox-image" />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -452,7 +495,8 @@ const handleAdminDelete = async () => {
 }
 
 .main-info {
-  display: flex;
+  display: grid;
+  grid-template-columns: 260px 1fr;
   gap: 32px;
   background: #1e293b;
   padding: 32px;
@@ -460,44 +504,64 @@ const handleAdminDelete = async () => {
   border: 1px solid #334155;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .main-info {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
   .poster-section {
-    width: 100%;
-    max-width: 250px;
+    max-width: 260px;
     margin: 0 auto;
   }
 }
 
 .poster-section {
-  width: 250px;
-  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+}
+
+.poster-actions-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.view-poster-btn {
+  background: #0f172a;
+  border: 1px solid #38bdf8;
+  color: #38bdf8;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px;
+}
+
+.view-poster-btn:hover {
+  background: #38bdf8;
+  color: #0f172a;
 }
 
 .poster-fallback {
   width: 100%;
   aspect-ratio: 2/3;
   background: radial-gradient(circle at top left, #334155, #0f172a);
-  border-radius: 8px;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 16px;
+  padding: 24px;
   border: 1px solid #475569;
 }
 
 .real-poster {
   width: 100%;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
   object-fit: cover;
+  display: block;
 }
 
 .fallback-title {
@@ -515,15 +579,16 @@ const handleAdminDelete = async () => {
 
 .poster-status-badge {
   text-align: center;
-  padding: 8px;
+  padding: 6px;
   border-radius: 6px;
   font-weight: bold;
+  font-size: 0.8rem;
   background: #334155;
 }
 
 .provider-info {
   text-align: center;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #94a3b8;
 }
 
@@ -532,24 +597,76 @@ const handleAdminDelete = async () => {
   min-width: 0;
 }
 
+.title-header-block {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.movie-primary-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.view-movie-btn {
+  background: #3b82f6;
+  color: #fff;
+  font-size: 0.95rem;
+  padding: 10px 20px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.4);
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.view-movie-btn:hover {
+  background: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 10px -2px rgba(59, 130, 246, 0.5);
+}
+
+.unavailable-status-text {
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  text-align: center;
+}
+
 .movie-title {
-  margin: 0 0 8px 0;
-  font-size: 2.5rem;
+  margin: 0 0 6px 0;
+  font-size: 1.8rem;
   color: #f8fafc;
+  line-height: 1.2;
 }
 
 .movie-original-title {
-  margin: 0 0 24px 0;
-  font-size: 1.2rem;
+  margin: 0 0 12px 0;
+  font-size: 1rem;
   color: #94a3b8;
   font-weight: 400;
 }
 
+.title-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
 .metadata-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 24px;
-  margin-bottom: 32px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
 .meta-item {
@@ -559,38 +676,41 @@ const handleAdminDelete = async () => {
 }
 
 .meta-label {
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .meta-value {
-  font-size: 1.1rem;
+  font-size: 0.95rem;
   font-weight: 600;
   color: #f1f5f9;
 }
 
 .overview-section h3 {
   color: #f8fafc;
+  font-size: 1.15rem;
   margin-bottom: 12px;
 }
 
 .overview-section p {
   color: #cbd5e1;
-  line-height: 1.6;
+  line-height: 1.5;
+  font-size: 0.95rem;
 }
 
 .sources-section {
   background: #1e293b;
-  padding: 32px;
+  padding: 24px;
   border-radius: 12px;
   border: 1px solid #334155;
 }
 
-.sources-section h3 {
-  margin: 0 0 24px 0;
+.sources-header h3 {
+  margin: 0 0 16px 0;
   color: #f8fafc;
+  font-size: 1.15rem;
 }
 
 .sources-table {
@@ -599,20 +719,24 @@ const handleAdminDelete = async () => {
 }
 
 .sources-table th, .sources-table td {
-  padding: 12px 16px;
+  padding: 10px 12px;
   text-align: left;
   border-bottom: 1px solid #334155;
+  font-size: 0.9rem;
 }
 
 .sources-table th {
   color: #94a3b8;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
 }
 
-.no-sources {
+.no-sources-box {
   color: #94a3b8;
-  padding: 16px 0;
+  padding: 12px 16px;
+  background: #0f172a;
+  border-radius: 6px;
+  font-size: 0.9rem;
 }
 
 .badge {
@@ -650,10 +774,9 @@ const handleAdminDelete = async () => {
   cursor: not-allowed;
 }
 
-.title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .block-btn {
@@ -948,6 +1071,59 @@ const handleAdminDelete = async () => {
 .admin-delete-btn-solid:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Lightbox */
+.lightbox-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+  padding: 40px;
+}
+
+.lightbox-container {
+  position: relative;
+  max-width: 90%;
+  max-height: 90vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.lightbox-image {
+  max-width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 2rem;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.lightbox-close:hover {
+  transform: scale(1.1);
+}
+
+@media (max-width: 768px) {
+  .lightbox-close {
+    top: -30px;
+    right: 0;
+  }
 }
 </style>
 
