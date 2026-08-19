@@ -1,19 +1,327 @@
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import axios from 'axios'
+import { useRouter } from 'vue-router'
+import { addToast } from '../toast'
+
+const router = useRouter()
+const movies = ref<any[]>([])
+const total = ref(0)
+const page = ref(1)
+const limit = 20
+const search = ref('')
+const loading = ref(true)
+const unblocking = ref<string | null>(null)
+
+const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } })
+
+const fetchBlocked = async () => {
+  loading.value = true
+  try {
+    const params: any = { status: 'blocked', page: page.value, limit }
+    if (search.value.trim()) params.search = search.value.trim()
+    const res = await axios.get('/api/v1/admin/movies', { ...auth(), params })
+    movies.value = res.data.items
+    total.value = res.data.total
+  } catch (err: any) {
+    if (err.response?.status === 401 || err.response?.status === 403) {
+      localStorage.removeItem('admin_token')
+      router.push('/login')
+    } else {
+      addToast('Failed to load blocked movies', 'error')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+const unblock = async (movie: any) => {
+  unblocking.value = movie.id
+  try {
+    await axios.post(`/api/v1/admin/movies/${movie.id}/unblock`, {}, auth())
+    movies.value = movies.value.filter(m => m.id !== movie.id)
+    total.value = Math.max(0, total.value - 1)
+    addToast(`"${movie.title}" unblocked`, 'success')
+  } catch (err: any) {
+    addToast(err.response?.data?.detail || 'Failed to unblock', 'error')
+  } finally {
+    unblocking.value = null
+  }
+}
+
+const totalPages = () => Math.max(1, Math.ceil(total.value / limit))
+
+const changePage = (p: number) => {
+  page.value = p
+  fetchBlocked()
+}
+
+let searchTimer: ReturnType<typeof setTimeout>
+const onSearch = () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { page.value = 1; fetchBlocked() }, 350)
+}
+
+const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString() : 'Unknown'
+
+onMounted(fetchBlocked)
+</script>
+
 <template>
-  <div class="placeholder-page">
-    <h1>Blocked Movies</h1>
-    <p>Blocked movies management will be available in future updates.</p>
+  <div class="blocked-page">
+    <div class="page-header">
+      <div>
+        <h1>Blocked Movies</h1>
+        <p class="page-subtitle">{{ total.toLocaleString() }} blocked movie{{ total !== 1 ? 's' : '' }}</p>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input v-model="search" @input="onSearch" class="search-input" placeholder="Search blocked movies..." />
+      </div>
+    </div>
+
+    <div v-if="loading" class="loading-state">
+      <div class="loading-spinner"></div>
+      <span>Loading...</span>
+    </div>
+
+    <div v-else-if="movies.length === 0" class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+        <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+      </svg>
+      <h3>No blocked movies</h3>
+      <p>All movies are currently accessible.</p>
+    </div>
+
+    <div v-else>
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Year</th>
+              <th>Block Reason</th>
+              <th>Blocked At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="movie in movies" :key="movie.id" class="table-row">
+              <td class="cell-title">
+                <span class="title-text">{{ movie.title }}</span>
+                <span v-if="movie.original_title !== movie.title" class="title-orig">{{ movie.original_title }}</span>
+              </td>
+              <td class="cell-narrow">{{ movie.year || '—' }}</td>
+              <td class="cell-reason">{{ movie.block_reason || '—' }}</td>
+              <td class="cell-narrow">{{ formatDate(movie.blocked_at) }}</td>
+              <td class="cell-actions">
+                <button
+                  class="btn-unblock"
+                  @click="unblock(movie)"
+                  :disabled="unblocking === movie.id"
+                >
+                  {{ unblocking === movie.id ? 'Unblocking...' : 'Unblock' }}
+                </button>
+                <button class="btn-view" @click="router.push(`/movies/${movie.id}`)">View</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div v-if="totalPages() > 1" class="pagination">
+        <button class="page-btn" :disabled="page === 1" @click="changePage(page - 1)">← Prev</button>
+        <span class="page-info">Page {{ page }} of {{ totalPages() }}</span>
+        <button class="page-btn" :disabled="page >= totalPages()" @click="changePage(page + 1)">Next →</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.placeholder-page {
-  padding: 24px;
+.blocked-page { max-width: 1200px; }
+
+.page-header {
+  margin-bottom: 24px;
 }
-h1 {
+
+.page-header h1 {
+  margin: 0 0 4px;
+  font-size: 1.75rem;
+  font-weight: 800;
   color: #f8fafc;
-  margin-bottom: 16px;
 }
-p {
+
+.page-subtitle { margin: 0; color: #64748b; font-size: 0.875rem; }
+
+.toolbar {
+  margin-bottom: 20px;
+}
+
+.search-wrap {
+  position: relative;
+  max-width: 340px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 9px 12px 9px 36px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.search-input:focus { border-color: #38bdf8; }
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px;
+  color: #64748b;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #334155;
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px;
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  color: #64748b;
+  text-align: center;
+}
+
+.empty-state h3 { margin: 0; font-size: 1.1rem; color: #94a3b8; }
+.empty-state p { margin: 0; font-size: 0.875rem; }
+
+.table-container {
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table thead th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #64748b;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.table-row {
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.1s;
+}
+
+.table-row:last-child { border-bottom: none; }
+.table-row:hover { background: rgba(255,255,255,0.03); }
+
+.data-table td { padding: 14px 16px; }
+
+.cell-title { max-width: 300px; }
+.title-text { font-weight: 600; color: #f1f5f9; display: block; }
+.title-orig { font-size: 0.8rem; color: #64748b; }
+
+.cell-narrow { color: #94a3b8; font-size: 0.85rem; white-space: nowrap; }
+.cell-reason { color: #f87171; font-size: 0.85rem; max-width: 240px; }
+
+.cell-actions { white-space: nowrap; }
+
+.btn-unblock {
+  padding: 6px 14px;
+  background: rgba(74, 222, 128, 0.15);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  color: #4ade80;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.15s;
+  margin-right: 6px;
+}
+
+.btn-unblock:hover:not(:disabled) {
+  background: rgba(74, 222, 128, 0.25);
+}
+
+.btn-unblock:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-view {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid #334155;
   color: #94a3b8;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition: all 0.15s;
 }
+
+.btn-view:hover { background: #334155; color: #f1f5f9; }
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.page-btn {
+  padding: 7px 16px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.15s;
+}
+
+.page-btn:hover:not(:disabled) { background: #334155; color: #f1f5f9; }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-info { color: #64748b; font-size: 0.85rem; }
 </style>

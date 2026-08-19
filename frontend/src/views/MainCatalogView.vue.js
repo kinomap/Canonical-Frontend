@@ -1,5 +1,5 @@
 /// <reference types="../../node_modules/.vue-global-types/vue_3.5_0_0_0.d.ts" />
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { apiClient } from '@/api/client';
 import MovieRail from '@/components/MovieRail.vue';
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -11,6 +11,17 @@ const newMovieCount = ref(0);
 const knownTotal = ref(null);
 const knownLatest = ref(null);
 const showNewBanner = ref(false);
+const hasAnyMovies = computed(() => {
+    if (!collections.value)
+        return false;
+    const c = collections.value;
+    return ((c.newest && c.newest.length > 0) ||
+        (c.popular && c.popular.length > 0) ||
+        (c.top_rated && c.top_rated.length > 0) ||
+        (c.by_year && c.by_year.some(y => y.movies.length > 0)) ||
+        (c.by_genre && c.by_genre.some(g => g.movies.length > 0)) ||
+        !!c.hero);
+});
 // ── Load movies ───────────────────────────────────────────────────────────────
 async function loadHome(silent = false) {
     if (!silent && !collections.value) {
@@ -316,7 +327,7 @@ else if (__VLS_ctx.error) {
         ...{ class: "retry-btn" },
     });
 }
-else if (__VLS_ctx.collections && __VLS_ctx.collections.newest.length === 0) {
+else if (__VLS_ctx.collections && !__VLS_ctx.hasAnyMovies) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "state-panel empty-panel" },
     });
@@ -423,6 +434,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             error: error,
             newMovieCount: newMovieCount,
             showNewBanner: showNewBanner,
+            hasAnyMovies: hasAnyMovies,
             loadHome: loadHome,
             showNewMovies: showNewMovies,
             dismissBanner: dismissBanner,

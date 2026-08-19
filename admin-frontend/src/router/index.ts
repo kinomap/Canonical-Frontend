@@ -39,21 +39,27 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/descriptions',
-      name: 'descriptions',
-      component: () => import('../views/Descriptions.vue'),
+      path: '/orphaned',
+      name: 'orphaned',
+      component: () => import('../views/Orphaned.vue'),
       meta: { requiresAuth: true }
     },
     {
-      path: '/system',
-      name: 'system',
-      component: () => import('../views/System.vue'),
+      path: '/comments',
+      name: 'comments',
+      component: () => import('../views/Comments.vue'),
       meta: { requiresAuth: true }
     },
     {
       path: '/telegram',
       name: 'telegram',
       component: () => import('../views/Telegram.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/system',
+      name: 'system',
+      component: () => import('../views/System.vue'),
       meta: { requiresAuth: true }
     }
   ]

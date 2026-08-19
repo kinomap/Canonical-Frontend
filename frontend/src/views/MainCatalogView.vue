@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { apiClient } from '@/api/client'
 import type { HomeCollections } from '@/types/movie'
 import MovieRail from '@/components/MovieRail.vue'
@@ -14,6 +14,19 @@ const newMovieCount = ref(0)
 const knownTotal = ref<number | null>(null)
 const knownLatest = ref<string | null>(null)
 const showNewBanner = ref(false)
+
+const hasAnyMovies = computed(() => {
+  if (!collections.value) return false
+  const c = collections.value
+  return (
+    (c.newest && c.newest.length > 0) ||
+    (c.popular && c.popular.length > 0) ||
+    (c.top_rated && c.top_rated.length > 0) ||
+    (c.by_year && c.by_year.some(y => y.movies.length > 0)) ||
+    (c.by_genre && c.by_genre.some(g => g.movies.length > 0)) ||
+    !!c.hero
+  )
+})
 
 // ── Load movies ───────────────────────────────────────────────────────────────
 async function loadHome(silent = false) {
@@ -165,7 +178,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="collections && collections.newest.length === 0" class="state-panel empty-panel">
+    <div v-else-if="collections && !hasAnyMovies" class="state-panel empty-panel">
       <div class="state-icon">
         <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
       </div>
