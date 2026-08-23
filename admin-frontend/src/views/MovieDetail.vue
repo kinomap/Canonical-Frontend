@@ -232,7 +232,10 @@ const handleAdminDelete = async () => {
             <div class="fallback-title">{{ movie.title }}</div>
             <div class="fallback-year">{{ movie.year || 'N/A' }}</div>
           </div>
-          <div class="poster-status-badge" :class="{'badge-green': movie.poster_status === 'Available', 'badge-yellow': movie.poster_status === 'Missing'}">
+          <div v-if="movie.artwork_type === 'frame'" class="poster-status-badge badge-purple">
+            🖼️ Artwork: Frame
+          </div>
+          <div v-else class="poster-status-badge" :class="{'badge-green': movie.poster_status === 'Available', 'badge-yellow': movie.poster_status === 'Missing'}">
             Poster: {{ movie.poster_status === 'Available' ? 'Present' : 'Missing' }}
           </div>
           <div class="provider-info" v-if="movie.artwork_provider">
@@ -241,7 +244,7 @@ const handleAdminDelete = async () => {
 
           <div class="poster-actions-group">
             <button 
-              v-if="movie.poster_status === 'Available' && movie.poster_url" 
+              v-if="movie.poster_url" 
               class="action-btn view-poster-btn" 
               @click="showLightbox = true"
             >View Poster</button>
@@ -319,6 +322,25 @@ const handleAdminDelete = async () => {
             <div class="meta-item">
               <span class="meta-label">Rating</span>
               <span class="meta-value">{{ movie.rating || '-' }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Kinopoisk ID</span>
+              <span class="meta-value">{{ movie.kinopoisk_id || 'N/A' }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">IMDb ID</span>
+              <span class="meta-value">{{ movie.imdb_id || 'N/A' }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Genres</span>
+              <span class="meta-value">{{ movie.genres || 'N/A' }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Backdrop</span>
+              <span class="meta-value">
+                <a v-if="movie.backdrop" :href="movie.backdrop" target="_blank">View ↗</a>
+                <span v-else>None</span>
+              </span>
             </div>
             <div class="meta-item">
               <span class="meta-label">Status</span>
@@ -750,6 +772,7 @@ const handleAdminDelete = async () => {
 .badge-green { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
 .badge-red { background: rgba(239, 68, 68, 0.2); color: #f87171; }
 .badge-yellow { background: rgba(250, 204, 21, 0.2); color: #facc15; }
+.badge-purple { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
 .badge-blue { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
 .error-msg { color: #ef4444; }
 .loading-state { color: #94a3b8; }

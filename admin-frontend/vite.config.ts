@@ -14,11 +14,11 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8888',
         changeOrigin: true
       },
       '/media': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8888',
         changeOrigin: true
       }
     }

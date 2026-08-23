@@ -25,7 +25,7 @@ const fetchWithoutPoster = async () => {
   try {
     const res = await axios.get('/api/v1/admin/movies', {
       ...auth(),
-      params: { without_poster: true, page: page.value, limit }
+      params: { without_poster: true, include_unavailable: true, page: page.value, limit }
     })
     movies.value = res.data.items
     total.value = res.data.total
@@ -120,30 +120,38 @@ onMounted(fetchWithoutPoster)
         <table class="data-table">
           <thead>
             <tr>
-              <th>Title</th>
-              <th>Year</th>
-              <th>TMDB</th>
-              <th>Status</th>
-              <th>Sources</th>
-              <th>Actions</th>
+              <th class="poster-col">Poster</th>
+              <th class="title-col">Title</th>
+              <th class="year-col">Year</th>
+              <th class="tmdb-col">TMDB ID</th>
+              <th class="status-col">Status</th>
+              <th class="sources-col">Sources</th>
+              <th class="actions-col">Actions</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="movie in movies" :key="movie.id" class="table-row">
-              <td class="cell-title">
-                <span class="title-text">{{ movie.title }}</span>
-                <span v-if="movie.original_title !== movie.title" class="title-orig">{{ movie.original_title }}</span>
+              <td class="poster-col">
+                <img v-if="movie.poster_url" :src="movie.poster_url" class="mini-real-poster" />
+                <div v-else class="mini-poster-fallback">
+                  <div class="fallback-title">NO</div>
+                  <div class="fallback-title">POSTER</div>
+                </div>
               </td>
-              <td class="cell-narrow">{{ movie.year || '—' }}</td>
-              <td class="cell-narrow">
+              <td class="title-col">
+                <div class="title-main" :title="movie.title">{{ movie.title }}</div>
+                <div class="title-sub" :title="movie.original_title">{{ movie.original_title }}</div>
+              </td>
+              <td class="year-col">{{ movie.year || '—' }}</td>
+              <td class="tmdb-col">
                 <span v-if="movie.tmdb_id" class="tmdb-badge">{{ movie.tmdb_id }}</span>
                 <span v-else class="missing-badge">No TMDB</span>
               </td>
-              <td class="cell-narrow">
+              <td class="status-col">
                 <span class="status-pill" :class="'status-' + movie.status">{{ movie.status }}</span>
               </td>
-              <td class="cell-narrow">{{ movie.telegram_sources_count }}</td>
-              <td class="cell-actions">
+              <td class="sources-col">{{ movie.telegram_sources_count }}</td>
+              <td class="actions-col">
                 <button class="btn-poster" @click="openPosterModal(movie.id)">Set Poster</button>
                 <button class="btn-view" @click="router.push(`/movies/${movie.id}`)">View</button>
               </td>
@@ -239,7 +247,7 @@ onMounted(fetchWithoutPoster)
   overflow: hidden;
 }
 
-.data-table { width: 100%; border-collapse: collapse; }
+.data-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 
 .data-table thead th {
   padding: 12px 16px;
@@ -253,16 +261,70 @@ onMounted(fetchWithoutPoster)
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
+.poster-col { width: 60px; }
+.title-col { width: auto; min-width: 0; }
+.year-col { width: 60px; }
+.tmdb-col { width: 90px; }
+.sources-col { width: 80px; }
+.status-col { width: 100px; }
+.actions-col { width: 160px; }
+
 .table-row { border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.1s; }
 .table-row:last-child { border-bottom: none; }
 .table-row:hover { background: rgba(255,255,255,0.03); }
 
-.data-table td { padding: 14px 16px; }
-.cell-title { max-width: 280px; }
-.title-text { font-weight: 600; color: #f1f5f9; display: block; }
-.title-orig { font-size: 0.8rem; color: #64748b; }
-.cell-narrow { color: #94a3b8; font-size: 0.85rem; white-space: nowrap; }
-.cell-actions { white-space: nowrap; }
+.data-table td { padding: 14px 16px; vertical-align: middle; }
+
+.title-main {
+  font-weight: 600;
+  color: #f8fafc;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title-sub {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Mini Branded Poster Fallback */
+.mini-real-poster {
+  width: 48px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mini-poster-fallback {
+  width: 40px;
+  height: 60px;
+  background: radial-gradient(circle at top left, #334155, #0f172a);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 4px;
+  border: 1px solid #475569;
+  position: relative;
+  overflow: hidden;
+}
+.fallback-title {
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #e2e8f0;
+  line-height: 1.1;
+  word-break: break-word;
+}
 
 .tmdb-badge {
   background: rgba(56, 189, 248, 0.15);

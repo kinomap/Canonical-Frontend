@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
+import { addToast } from '../toast'
 
 const router = useRouter()
 const catalogStats = ref<any>(null)
@@ -63,6 +64,25 @@ const formatDate = (d: string | null) => {
   return new Date(d).toLocaleString()
 }
 
+const isResetting = ref(false)
+
+const resetTotal = async () => {
+  if (!confirm('Reset the Total (Unique Physical Resources) counter? Existing Telegram Sources will not be deleted or modified.')) return
+
+  isResetting.value = true
+  const token = localStorage.getItem('admin_token')
+  try {
+    const res = await axios.post('/api/v1/admin/telegram-sources/metrics/reset', {}, { headers: { Authorization: `Bearer ${token}` } })
+    if (catalogStats.value) {
+      catalogStats.value.telegram_sources_total = res.data.total_unique_physical_resources
+    }
+  } catch (err: any) {
+    addToast(err.response?.data?.detail || 'Failed to reset metric.', 'error')
+  } finally {
+    isResetting.value = false
+  }
+}
+
 const statusClass = (s: string) => {
   if (!s) return 'badge-unknown'
   if (s === 'ok' || s === 'running') return 'badge-ok'
@@ -111,7 +131,7 @@ onMounted(() => { fetchDashboardData() })
           <button class="retry-btn-sm" @click="fetchCatalogData">Try Again</button>
         </div>
         <div v-else-if="catalogStats" class="stats-grid">
-          <div class="stat-card">
+          <div class="stat-card clickable" @click="$router.push('/movies')">
             <div class="stat-icon total">
               <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
                 <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/>
@@ -119,7 +139,7 @@ onMounted(() => { fetchDashboardData() })
             </div>
             <div>
               <div class="stat-value">{{ catalogStats.movies_total.toLocaleString() }}</div>
-              <div class="stat-label">Total Movies</div>
+              <div class="stat-label">Canonical Movies / Metadata</div>
             </div>
           </div>
           <div class="stat-card clickable" @click="$router.push('/movies')">
@@ -167,15 +187,15 @@ onMounted(() => { fetchDashboardData() })
               <div class="stat-label">Without Metadata</div>
             </div>
           </div>
-          <div class="stat-card clickable" @click="$router.push('/orphaned')">
+          <div class="stat-card clickable" @click="$router.push('/garbage')">
             <div class="stat-icon blocked">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
                 <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
               </svg>
             </div>
             <div>
-              <div class="stat-value text-red">{{ catalogStats.movies_orphaned?.toLocaleString() || '0' }}</div>
-              <div class="stat-label">Orphaned</div>
+              <div class="stat-value text-red">{{ catalogStats.sources_garbage?.toLocaleString() || '0' }}</div>
+              <div class="stat-label">Garbage</div>
             </div>
           </div>
         </div>
@@ -183,12 +203,22 @@ onMounted(() => { fetchDashboardData() })
 
       <!-- TELEGRAM SECTION -->
       <section class="dashboard-section">
-        <h2 class="section-title">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.04 9.613c-.153.682-.555.849-1.124.528l-3.104-2.286-1.497 1.44c-.166.166-.305.305-.625.305l.222-3.16 5.77-5.21c.25-.222-.055-.345-.388-.123L6.237 14.12l-3.054-.952c-.664-.208-.677-.664.138-.984l11.93-4.601c.554-.199 1.038.136.311.665z"/>
-          </svg>
-          Telegram Sources
-        </h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h2 class="section-title" style="margin-bottom: 0;">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.04 9.613c-.153.682-.555.849-1.124.528l-3.104-2.286-1.497 1.44c-.166.166-.305.305-.625.305l.222-3.16 5.77-5.21c.25-.222-.055-.345-.388-.123L6.237 14.12l-3.054-.952c-.664-.208-.677-.664.138-.984l11.93-4.601c.554-.199 1.038.136.311.665z"/>
+            </svg>
+            Telegram Sources
+          </h2>
+          <button 
+            class="reset-action-btn" 
+            @click="resetTotal" 
+            :disabled="isResetting"
+            title="Reset metric to zero for new resources"
+          >
+            Reset Total
+          </button>
+        </div>
         
         <div v-if="loadingCatalog && !catalogStats" class="loading-state-sm">
           <div class="loading-spinner"></div>
@@ -206,7 +236,20 @@ onMounted(() => { fetchDashboardData() })
             </div>
             <div>
               <div class="stat-value text-green">{{ catalogStats.telegram_sources_active }}</div>
-              <div class="stat-label">Active Sources</div>
+              <div class="stat-label">Active (Unique Movies)</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="color: #6366f1; background: #e0e7ff;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <line x1="12" y1="8" x2="12" y2="16"/>
+                <line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stat-value text-blue">{{ catalogStats.recurring_telegram_sources }}</div>
+              <div class="stat-label">Recurring (Additional Sources)</div>
             </div>
           </div>
           <div class="stat-card">
@@ -219,7 +262,7 @@ onMounted(() => { fetchDashboardData() })
             </div>
             <div>
               <div class="stat-value">{{ catalogStats.telegram_sources_total }}</div>
-              <div class="stat-label">Total Sources</div>
+              <div class="stat-label" title="Counts unique Telegram resources registered after the last reset.">Total (Unique Physical Resources)</div>
             </div>
           </div>
           <div class="stat-card">
@@ -233,17 +276,7 @@ onMounted(() => { fetchDashboardData() })
               <div class="stat-label">Last Sync</div>
             </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-icon available">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-            </div>
-            <div>
-              <div class="stat-value text-blue">{{ catalogStats.telegram_movies_ingested.toLocaleString() }}</div>
-              <div class="stat-label">Movies from Telegram</div>
-            </div>
-          </div>
+
         </div>
       </section>
 
@@ -416,6 +449,27 @@ onMounted(() => { fetchDashboardData() })
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 12px;
   padding: 24px;
+}
+
+.reset-action-btn {
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reset-action-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.reset-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .section-title {

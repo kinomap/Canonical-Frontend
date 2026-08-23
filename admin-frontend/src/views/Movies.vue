@@ -169,7 +169,10 @@ onMounted(() => {
             <td>{{ movie.tmdb_id || '-' }}</td>
             <td>{{ movie.telegram_sources_count }}</td>
             <td class="compact-col">
-              <span class="badge" :class="{'badge-green': movie.poster_status === 'Available', 'badge-yellow': movie.poster_status === 'Missing'}">
+              <span v-if="movie.artwork_type === 'frame'" class="badge badge-purple">
+                🖼️ Artwork: Frame
+              </span>
+              <span v-else class="badge" :class="{'badge-green': movie.poster_status === 'Available', 'badge-yellow': movie.poster_status === 'Missing'}">
                 {{ movie.poster_status === 'Available' ? '✓ Present' : '⚠ Missing' }}
               </span>
             </td>
@@ -181,7 +184,7 @@ onMounted(() => {
             <td class="actions-col">
               <div class="actions-cell">
                 <a 
-                  v-if="movie.poster_status === 'Available' && movie.poster_url"
+                  v-if="movie.poster_url"
                   :href="movie.poster_url"
                   target="_blank"
                   class="btn-action btn-poster"
@@ -407,7 +410,8 @@ select {
 }
 
 .badge-green { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
-.badge-red { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.badge-red { background: rgba(220, 38, 38, 0.15); color: #fca5a5; }
+.badge-purple { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
 .badge-yellow { background: rgba(250, 204, 21, 0.2); color: #facc15; }
 
 .pagination {

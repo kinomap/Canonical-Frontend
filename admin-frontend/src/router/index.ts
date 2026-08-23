@@ -27,6 +27,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/metadata',
+      name: 'metadata',
+      component: () => import('../views/Metadata.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/blocked',
       name: 'blocked',
       component: () => import('../views/Blocked.vue'),
@@ -39,9 +45,9 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/orphaned',
-      name: 'orphaned',
-      component: () => import('../views/Orphaned.vue'),
+      path: '/garbage',
+      name: 'garbage',
+      component: () => import('../views/Garbage.vue'),
       meta: { requiresAuth: true }
     },
     {
