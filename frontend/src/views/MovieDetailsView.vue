@@ -84,7 +84,8 @@ async function fetchData() {
     // Pre-fetch playback token in the background so it's ready instantly when user clicks Play
     if (isAuthenticated.value) {
       apiClient.startPlayback(movieId.value).then(res => {
-         streamUrl.value = `http://localhost:8000/api/v1/playback/stream/${movieId.value}?token=${res.playback_token}`
+         const base = res.media_endpoint || ""
+         streamUrl.value = `${base}/api/v1/playback/stream/${movieId.value}?token=${res.playback_token}`
       }).catch(err => console.error("Prefetch playback failed", err))
     }
 
@@ -109,7 +110,8 @@ async function handlePlay() {
   if (!streamUrl.value) {
     try {
       const res = await apiClient.startPlayback(movieId.value)
-      streamUrl.value = `http://localhost:8000/api/v1/playback/stream/${movieId.value}?token=${res.playback_token}`
+      const base = res.media_endpoint || ""
+      streamUrl.value = `${base}/api/v1/playback/stream/${movieId.value}?token=${res.playback_token}`
     } catch (err: any) {
       // 401 is handled globally by auth:expired → no duplicate message
       if (err?.status !== 401) {
