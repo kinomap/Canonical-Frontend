@@ -6,6 +6,14 @@ import axios from 'axios'
 const route = useRoute()
 const router = useRouter()
 
+const goBack = () => {
+  if (window.history.length > 2) {
+    router.back()
+  } else {
+    router.push('/movies')
+  }
+}
+
 const movie = ref<any>(null)
 const loading = ref(true)
 const error = ref('')
@@ -216,7 +224,7 @@ const handleAdminDelete = async () => {
 <template>
   <div class="movie-detail-page">
     <div class="header-actions">
-      <button @click="router.push('/movies')" class="back-btn">← Back to Movies</button>
+      <button @click="goBack" class="back-btn">← Back</button>
     </div>
 
     <div v-if="loading" class="loading-state">Loading details...</div>
