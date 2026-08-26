@@ -133,7 +133,7 @@ async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 
 }
 
 export const apiClient = {
-  async listMovies(filters: MovieFilters = {}): Promise<PaginatedMovies> {
+  async listMovies(filters: MovieFilters = {}, signal?: AbortSignal): Promise<PaginatedMovies> {
     const params = new URLSearchParams()
     if (filters.page) params.append('page', filters.page.toString())
     if (filters.page_size) params.append('page_size', filters.page_size.toString())
@@ -144,7 +144,7 @@ export const apiClient = {
     if (filters.sort) params.append('sort', filters.sort)
 
     const queryStr = params.toString() ? `?${params.toString()}` : ''
-    return request<PaginatedMovies>(`/movies${queryStr}`, undefined, 15_000)
+    return request<PaginatedMovies>(`/movies${queryStr}`, { signal }, 15_000)
   },
 
   async getHomeCollections(): Promise<HomeCollections> {
@@ -155,22 +155,22 @@ export const apiClient = {
     return request<MovieDetail>(`/movies/${id}`, undefined, 60_000)
   },
 
-  async searchMovies(query: string, page = 1, pageSize = 20): Promise<PaginatedMovies> {
+  async searchMovies(query: string, page = 1, pageSize = 20, signal?: AbortSignal): Promise<PaginatedMovies> {
     const params = new URLSearchParams({
       q: query,
       page: page.toString(),
       page_size: pageSize.toString(),
     })
-    return request<PaginatedMovies>(`/search?${params.toString()}`)
+    return request<PaginatedMovies>(`/search?${params.toString()}`, { signal })
   },
 
-  async searchMoviesQuick(query: string, limit = 5): Promise<PaginatedMovies> {
+  async searchMoviesQuick(query: string, limit = 5, signal?: AbortSignal): Promise<PaginatedMovies> {
     const params = new URLSearchParams({
       q: query,
       page: '1',
       page_size: limit.toString(),
     })
-    return request<PaginatedMovies>(`/search?${params.toString()}`)
+    return request<PaginatedMovies>(`/search?${params.toString()}`, { signal })
   },
 
   async listGenres(): Promise<Genre[]> {

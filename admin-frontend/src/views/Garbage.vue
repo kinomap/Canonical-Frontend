@@ -10,6 +10,7 @@ const total = ref(0)
 const page = ref(1)
 const limit = 20
 const loading = ref(true)
+const search = ref('')
 
 const adminToken = computed(() => localStorage.getItem('admin_token') || '')
 
@@ -45,17 +46,31 @@ const toggleSelectAll = (e: Event) => {
 
 const auth = () => ({ headers: { Authorization: `Bearer ${adminToken.value}` } })
 
+let abortController: AbortController | null = null
+
 const fetchGarbage = async () => {
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
+  const signal = abortController.signal
+
   loading.value = true
   selectedIds.value = []
   try {
+    const params: any = { page: page.value, limit }
+    if (search.value.trim()) {
+      params.search = search.value.trim()
+    }
     const res = await axios.get('/api/v1/admin/garbage', {
       ...auth(),
-      params: { page: page.value, limit }
+      params,
+      signal
     })
     sources.value = res.data.items
     total.value = res.data.total
   } catch (err: any) {
+    if (axios.isCancel(err)) return
     if (err.response?.status === 401 || err.response?.status === 403) {
       localStorage.removeItem('admin_token')
       router.push('/login')
@@ -63,8 +78,25 @@ const fetchGarbage = async () => {
       addToast('Failed to load garbage sources', 'error')
     }
   } finally {
-    loading.value = false
+    if (!abortController?.signal.aborted) {
+      loading.value = false
+    }
   }
+}
+
+let searchTimer: any = null
+const onSearchInput = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    page.value = 1
+    fetchGarbage()
+  }, 250)
+}
+
+const handleSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  page.value = 1
+  fetchGarbage()
 }
 
 const openDeleteModal = (sourceId: string) => {
@@ -187,6 +219,16 @@ onMounted(fetchGarbage)
       <div>
         <h1>Garbage</h1>
         <p class="page-subtitle">{{ total.toLocaleString() }} unresolved Telegram videos</p>
+      </div>
+      <div class="search-box">
+        <input 
+          type="text" 
+          v-model="search" 
+          @input="onSearchInput"
+          @keyup.enter="handleSearch" 
+          placeholder="Search by caption, title or year..." 
+        />
+        <button @click="handleSearch">Search</button>
       </div>
     </div>
 
@@ -389,6 +431,40 @@ onMounted(fetchGarbage)
 .page-header { margin-bottom: 24px; }
 .page-header h1 { margin: 0 0 4px; font-size: 1.75rem; font-weight: 800; color: #f8fafc; }
 .page-subtitle { margin: 0; color: #64748b; font-size: 0.875rem; }
+
+.search-box {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.search-box input {
+  flex: 1;
+  padding: 10px 16px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: white;
+  outline: none;
+}
+
+.search-box input:focus {
+  border-color: #38bdf8;
+}
+
+.search-box button {
+  padding: 8px 16px;
+  background: #38bdf8;
+  color: #0f172a;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.search-box button:hover:not(:disabled) {
+  background: #7dd3fc;
+}
 
 /* INSPECT VIEW STYLES */
 .inspect-view {

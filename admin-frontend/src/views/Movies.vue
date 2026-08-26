@@ -17,7 +17,15 @@ const statusFilter = ref('all')
 const withoutPoster = ref(false)
 const withoutTmdb = ref(false)
 
+let abortController: AbortController | null = null
+
 const fetchMovies = async () => {
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
+  const signal = abortController.signal
+
   loading.value = true
   error.value = ''
   
@@ -46,12 +54,14 @@ const fetchMovies = async () => {
     }
 
     const res = await axios.get(`/api/v1/admin/movies?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      signal
     })
     
     movies.value = res.data.items
     total.value = res.data.total
   } catch (err: any) {
+    if (axios.isCancel(err)) return
     if (err.response?.status === 401 || err.response?.status === 403) {
       localStorage.removeItem('admin_token')
       router.push('/login')
@@ -59,7 +69,9 @@ const fetchMovies = async () => {
       error.value = 'Failed to load movies.'
     }
   } finally {
-    loading.value = false
+    if (!abortController?.signal.aborted) {
+      loading.value = false
+    }
   }
 }
 
@@ -67,7 +79,18 @@ watch([page, limit, statusFilter, withoutPoster, withoutTmdb], () => {
   fetchMovies()
 })
 
+let searchTimer: any = null
+
+const onSearchInput = () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    page.value = 1
+    fetchMovies()
+  }, 250)
+}
+
 const handleSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer)
   page.value = 1
   fetchMovies()
 }
@@ -101,6 +124,7 @@ onMounted(() => {
         <input 
           type="text" 
           v-model="search" 
+          @input="onSearchInput"
           @keyup.enter="handleSearch" 
           placeholder="Search by title, original title or year..." 
         />

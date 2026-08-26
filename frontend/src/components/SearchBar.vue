@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { Search, X, Loader2 } from 'lucide-vue-next'
 import { apiClient } from '@/api/client'
 import type { MovieSummary } from '@/types/movie'
@@ -17,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const route = useRoute()
 const query = ref(props.modelValue || '')
 const suggestions = ref<MovieSummary[]>([])
 const loading = ref(false)
@@ -59,8 +60,20 @@ function onInput() {
   
   if (timer) clearTimeout(timer)
   timer = setTimeout(() => {
-    fetchSuggestions(query.value)
-  }, props.debounceMs ?? 300)
+    const q = query.value.trim()
+    if (route.path === '/movies') {
+      const newQuery = { ...route.query }
+      if (q.length > 0) {
+        newQuery.q = q
+      } else {
+        delete newQuery.q
+      }
+      newQuery.page = '1'
+      router.replace({ path: '/movies', query: newQuery })
+    } else {
+      fetchSuggestions(query.value)
+    }
+  }, props.debounceMs ?? 250)
 }
 
 function clear() {
@@ -69,7 +82,15 @@ function clear() {
   suggestions.value = []
   showDropdown.value = false
   if (timer) clearTimeout(timer)
-  emit('search', '')
+  
+  if (route.path === '/movies') {
+    const newQuery = { ...route.query }
+    delete newQuery.q
+    newQuery.page = '1'
+    router.replace({ path: '/movies', query: newQuery })
+  } else {
+    emit('search', '')
+  }
 }
 
 function onEnter() {

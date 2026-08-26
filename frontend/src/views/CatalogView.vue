@@ -39,12 +39,20 @@ async function fetchGenres() {
   }
 }
 
+let abortController: AbortController | null = null
+
 async function loadMovies() {
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
+  const signal = abortController.signal
+
   loading.value = true
   error.value = null
   try {
     if (searchQuery.value.trim().length > 0) {
-      const res = await apiClient.searchMovies(searchQuery.value.trim(), page.value, pageSize.value)
+      const res = await apiClient.searchMovies(searchQuery.value.trim(), page.value, pageSize.value, signal)
       movies.value = res.items
       total.value = res.total
     } else {
@@ -57,15 +65,18 @@ async function loadMovies() {
         min_rating: selectedMinRating.value ? parseFloat(selectedMinRating.value) : undefined,
         sort: selectedSort.value || undefined,
       }
-      const res = await apiClient.listMovies(filters)
+      const res = await apiClient.listMovies(filters, signal)
       movies.value = res.items
       total.value = res.total
     }
   } catch (err: any) {
+    if (err.name === 'AbortError') return
     console.error('Catalog API Error:', err)
     error.value = 'Не удалось загрузить каталог'
   } finally {
-    loading.value = false
+    if (!abortController?.signal.aborted) {
+      loading.value = false
+    }
   }
 }
 
