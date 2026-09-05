@@ -7,6 +7,7 @@ import { addToast } from '../toast'
 const router = useRouter()
 const catalogStats = ref<any>(null)
 const healthStats = ref<any>(null)
+const seriesStats = ref<any>(null)
 
 const loadingCatalog = ref(true)
 const errorCatalog = ref('')
@@ -17,6 +18,18 @@ const errorHealth = ref('')
 const fetchDashboardData = () => {
   fetchCatalogData()
   fetchHealthData()
+  fetchSeriesStats()
+}
+
+const fetchSeriesStats = async () => {
+  const token = localStorage.getItem('admin_token')
+  if (!token) return
+  try {
+    const res = await axios.get('/api/v1/admin/series/stats', { headers: { Authorization: `Bearer ${token}` } })
+    seriesStats.value = res.data
+  } catch (err: any) {
+    console.error('Failed to load series stats', err)
+  }
 }
 
 const fetchCatalogData = async () => {
@@ -130,7 +143,8 @@ onMounted(() => { fetchDashboardData() })
           <p>{{ errorCatalog }}</p>
           <button class="retry-btn-sm" @click="fetchCatalogData">Try Again</button>
         </div>
-        <div v-else-if="catalogStats" class="stats-grid">
+        <div v-else-if="catalogStats" class="stats-grid-content">
+          <!-- ROW 1 — MOVIES -->
           <div class="stat-card clickable" @click="$router.push('/movies')">
             <div class="stat-icon total">
               <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
@@ -142,6 +156,7 @@ onMounted(() => { fetchDashboardData() })
               <div class="stat-label">Canonical Movies / Metadata</div>
             </div>
           </div>
+
           <div class="stat-card clickable" @click="$router.push('/movies')">
             <div class="stat-icon available">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20">
@@ -150,20 +165,83 @@ onMounted(() => { fetchDashboardData() })
             </div>
             <div>
               <div class="stat-value text-green">{{ catalogStats.movies_available.toLocaleString() }}</div>
-              <div class="stat-label">Available</div>
+              <div class="stat-label">Available Movies</div>
             </div>
           </div>
-          <div class="stat-card clickable" @click="$router.push('/blocked')">
+
+          <div class="stat-card clickable" @click="$router.push('/garbage')">
             <div class="stat-icon blocked">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20">
-                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
               </svg>
             </div>
             <div>
-              <div class="stat-value text-red">{{ catalogStats.movies_blocked.toLocaleString() }}</div>
-              <div class="stat-label">Blocked</div>
+              <div class="stat-value text-red">{{ catalogStats.sources_garbage?.toLocaleString() || '0' }}</div>
+              <div class="stat-label">Garbage</div>
             </div>
           </div>
+
+          <!-- SECTION TILE 1 — MOVIES -->
+          <div class="stat-card section-tile">
+            <div class="section-tile-icon movies">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+                <rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/>
+                <line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/>
+              </svg>
+            </div>
+            <div class="section-tile-title">MOVIES</div>
+          </div>
+
+          <!-- ROW 2 — SERIES -->
+          <div class="stat-card clickable" @click="$router.push('/series')">
+            <div class="stat-icon series" style="background-color: rgba(139, 92, 246, 0.2); color: #8b5cf6;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+                <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+                <polyline points="17 2 12 7 7 2"></polyline>
+              </svg>
+            </div>
+            <div>
+              <div class="stat-value" style="color: #8b5cf6;">{{ seriesStats?.total_series?.toLocaleString() || '0' }}</div>
+              <div class="stat-label">Canonical Series</div>
+            </div>
+          </div>
+
+          <div class="stat-card clickable" @click="$router.push('/series')">
+            <div class="stat-icon available" style="background-color: rgba(16, 185, 129, 0.2); color: #10b981;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stat-value text-green">{{ seriesStats?.available_series?.toLocaleString() || '0' }}</div>
+              <div class="stat-label">Available Series</div>
+            </div>
+          </div>
+
+          <div class="stat-card clickable" @click="$router.push('/series-garbage')">
+            <div class="stat-icon blocked" style="background-color: rgba(239, 68, 68, 0.2); color: #ef4444;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+              </svg>
+            </div>
+            <div>
+              <div class="stat-value text-red">{{ seriesStats?.garbage_series?.toLocaleString() || '0' }}</div>
+              <div class="stat-label">Series Garbage</div>
+            </div>
+          </div>
+
+          <!-- SECTION TILE 2 — SERIES -->
+          <div class="stat-card section-tile">
+            <div class="section-tile-icon series">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+                <rect x="2" y="7" width="20" height="15" rx="2" ry="2"/>
+                <polyline points="17 2 12 7 7 2"/>
+              </svg>
+            </div>
+            <div class="section-tile-title">SERIES</div>
+          </div>
+
+          <!-- ROW 3 — GENERAL METRICS -->
           <div class="stat-card clickable" @click="$router.push('/without-poster')">
             <div class="stat-icon poster">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
@@ -176,27 +254,38 @@ onMounted(() => { fetchDashboardData() })
               <div class="stat-label">Without Poster</div>
             </div>
           </div>
-          <div class="stat-card clickable" @click="$router.push('/without-metadata')">
-            <div class="stat-icon tmdb">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+
+          <div class="stat-card clickable" @click="$router.push('/blocked')">
+            <div class="stat-icon blocked">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20">
+                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
               </svg>
             </div>
             <div>
-              <div class="stat-value text-blue">{{ catalogStats.movies_without_tmdb.toLocaleString() }}</div>
-              <div class="stat-label">Without Metadata</div>
+              <div class="stat-value text-red">{{ catalogStats.movies_blocked.toLocaleString() }}</div>
+              <div class="stat-label">Blocked</div>
             </div>
           </div>
-          <div class="stat-card clickable" @click="$router.push('/garbage')">
-            <div class="stat-icon blocked">
+
+          <!-- DECORATIVE TILE (Row 3, position 3) -->
+          <div class="stat-card decorative-tile">
+            <div class="decorative-tile-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
               </svg>
             </div>
-            <div>
-              <div class="stat-value text-red">{{ catalogStats.sources_garbage?.toLocaleString() || '0' }}</div>
-              <div class="stat-label">Garbage</div>
+            <div class="decorative-tile-title">KINOSOTA</div>
+          </div>
+
+          <!-- SECTION TILE 3 — GENERAL -->
+          <div class="stat-card section-tile">
+            <div class="section-tile-icon general">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
             </div>
+            <div class="section-tile-title">GENERAL</div>
           </div>
         </div>
       </section>
@@ -484,21 +573,89 @@ onMounted(() => { fetchDashboardData() })
   color: #64748b;
 }
 
+.stats-grid-content {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+  width: 100%;
 }
 
 .stat-card {
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(255,255,255,0.05);
   border-radius: 10px;
-  padding: 16px;
+  padding: 14px 16px;
+  width: 100%;
+  min-height: 84px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   transition: all 0.15s;
+}
+
+.stat-card.section-tile {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  justify-content: flex-start;
+  padding-left: 20px;
+  cursor: default;
+}
+
+.section-tile-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.section-tile-icon.movies { color: #38bdf8; background: rgba(56, 189, 248, 0.15); }
+.section-tile-icon.series { color: #8b5cf6; background: rgba(139, 92, 246, 0.15); }
+.section-tile-icon.general { color: #94a3b8; background: rgba(148, 163, 184, 0.15); }
+
+.section-tile-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #cbd5e1;
+  text-transform: uppercase;
+}
+
+.stat-card.decorative-tile {
+  background: rgba(30, 41, 59, 0.3);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  justify-content: flex-start;
+  padding-left: 20px;
+  cursor: default;
+}
+
+.decorative-tile-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.decorative-tile-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #475569;
+  text-transform: uppercase;
 }
 
 .stat-card.clickable {
@@ -546,6 +703,7 @@ onMounted(() => { fetchDashboardData() })
   font-size: 0.75rem;
   color: #64748b;
   font-weight: 500;
+  line-height: 1.25;
 }
 
 .text-green { color: #4ade80; }
@@ -559,8 +717,16 @@ onMounted(() => { fetchDashboardData() })
   gap: 24px;
 }
 
+@media (max-width: 1024px) {
+  .stats-grid-content { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 768px) {
   .bottom-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .stats-grid-content { grid-template-columns: 1fr; }
 }
 
 .health-list {
