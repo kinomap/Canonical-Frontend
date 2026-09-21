@@ -117,7 +117,6 @@ const timeAgo = (iso: string | null) => {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-const utilPct = (s: Session) => s.max_streams > 0 ? Math.round((s.active_streams / s.max_streams) * 100) : 0
 
 const resetAddForm = () => { addForm.value = { name: '', account_identifier: '', session_identifier: '', api_id: '', api_hash: '', max_streams: 25 } }
 const submitAddSession = async () => {
@@ -186,52 +185,53 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 
     <div v-else-if="sessions.length === 0" class="ms-empty">No Telegram sessions registered.</div>
 
-    <!-- ── Table ── -->
-    <div v-else class="ms-table-wrap">
-      <table class="ms-table">
-        <thead>
-          <tr>
-            <th>Session</th><th>Telegram</th><th>Node</th><th>Status</th><th>Health</th>
-            <th>Streams</th><th>Util</th><th>Errors</th><th>Heartbeat</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="s in sessions" :key="s.id" class="ms-row" @click="router.push(`/media-sessions/${s.id}`)">
-            <td>
-              <div class="ms-session-name">{{ s.name || s.account_identifier }}</div>
-              <div class="ms-session-id">{{ s.session_identifier }}</div>
-            </td>
-            <td>
-              <div v-if="s.telegram_display_name" class="ms-tg-name">{{ s.telegram_display_name }}</div>
-              <span v-if="s.telegram_username">@{{ s.telegram_username }}</span>
-              <span v-else-if="s.telegram_phone">{{ s.telegram_phone }}</span>
-              <span v-else class="ms-na">N/A</span>
-            </td>
-            <td>
-              <span v-if="s.node_name" class="ms-node-badge">{{ s.node_name }}</span>
-              <span v-else class="ms-badge-unassigned">UNASSIGNED</span>
-            </td>
-            <td><span class="ms-badge" :class="statusClass(s.status)">{{ s.status }}</span></td>
-            <td><span class="ms-badge" :class="statusClass(s.health_status)">{{ s.health_status }}</span></td>
-            <td>{{ s.active_streams }} / {{ s.max_streams }}</td>
-            <td>
-              <div class="ms-util-bar"><div class="ms-util-fill" :style="{ width: utilPct(s) + '%' }"></div></div>
-              <span class="ms-util-pct">{{ utilPct(s) }}%</span>
-            </td>
-            <td :class="s.error_count > 0 ? 'ms-err-val' : ''">{{ s.error_count }}</td>
-            <td class="ms-hb">{{ timeAgo(s.last_heartbeat_at) }}</td>
-            <td @click.stop>
-              <div class="ms-actions">
-                <button v-if="!s.enabled" class="ms-act ms-act-en" @click="confirmAction = { type: 'enable', session: s }">Enable</button>
-                <button v-if="s.enabled && s.status !== 'DRAINING'" class="ms-act ms-act-dr" @click="confirmAction = { type: 'drain', session: s }">Drain</button>
-                <button v-if="s.active_streams === 0" class="ms-act ms-act-mv" @click="openMove(s)">Move</button>
-                <button v-if="s.enabled" class="ms-act ms-act-dis" @click="confirmAction = { type: 'disable', session: s }">Disable</button>
-                <button class="ms-act ms-act-del" @click="confirmAction = { type: 'delete', session: s }">Del</button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- ── Session Cards ── -->
+    <div v-else class="ms-cards">
+      <div v-for="s in sessions" :key="s.id" class="ms-card" @click="router.push(`/media-sessions/${s.id}`)">
+        <!-- Row 1: identity + badges -->
+        <div class="ms-card-top">
+          <div class="ms-card-identity">
+            <div class="ms-session-name">{{ s.name || s.account_identifier }}</div>
+            <div class="ms-session-meta">
+              <span class="ms-session-id">{{ s.session_identifier }}</span>
+              <span v-if="s.telegram_username" class="ms-tg-tag">💬 @{{ s.telegram_username }}</span>
+              <span v-else-if="s.telegram_phone" class="ms-tg-tag">📱 {{ s.telegram_phone }}</span>
+            </div>
+          </div>
+          <div class="ms-card-badges">
+            <span class="ms-badge" :class="statusClass(s.status)">{{ s.status }}</span>
+            <span class="ms-badge" :class="statusClass(s.health_status)">{{ s.health_status }}</span>
+          </div>
+        </div>
+        <!-- Row 2: metrics -->
+        <div class="ms-card-metrics">
+          <div class="ms-metric">
+            <span class="ms-metric-label">Node</span>
+            <span v-if="s.node_name" class="ms-node-badge">{{ s.node_name }}</span>
+            <span v-else class="ms-badge-unassigned">UNASSIGNED</span>
+          </div>
+          <div class="ms-metric">
+            <span class="ms-metric-label">Streams</span>
+            <span class="ms-metric-val">{{ s.active_streams }}<span class="ms-metric-dim"> / {{ s.max_streams }}</span></span>
+          </div>
+          <div class="ms-metric">
+            <span class="ms-metric-label">Heartbeat</span>
+            <span class="ms-metric-val ms-hb-val">{{ timeAgo(s.last_heartbeat_at) }}</span>
+          </div>
+          <div class="ms-metric" v-if="s.error_count > 0">
+            <span class="ms-metric-label">Errors</span>
+            <span class="ms-metric-val ms-err-val">{{ s.error_count }}</span>
+          </div>
+        </div>
+        <!-- Row 3: actions -->
+        <div class="ms-card-actions" @click.stop>
+          <button v-if="!s.enabled" class="ms-act ms-act-en" @click="confirmAction = { type: 'enable', session: s }">Enable</button>
+          <button v-if="s.enabled && s.status !== 'DRAINING'" class="ms-act ms-act-dr" @click="confirmAction = { type: 'drain', session: s }">Drain</button>
+          <button v-if="s.active_streams === 0" class="ms-act ms-act-mv" @click="openMove(s)">Move</button>
+          <button v-if="s.enabled" class="ms-act ms-act-dis" @click="confirmAction = { type: 'disable', session: s }">Disable</button>
+          <button class="ms-act ms-act-del" @click="confirmAction = { type: 'delete', session: s }">Del</button>
+        </div>
+      </div>
     </div>
 
     <!-- ── Confirm Modal ── -->
@@ -332,40 +332,44 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 @keyframes spin { to { transform: rotate(360deg); } }
 .ms-empty { text-align: center; padding: 3rem; color: #64748b; }
 
-/* ── Table ── */
-.ms-table-wrap { overflow-x: auto; }
-.ms-table { width: 100%; border-collapse: collapse; }
-.ms-table th {
-  text-align: left; font-size: 0.7rem; color: #64748b; text-transform: uppercase;
-  letter-spacing: 0.03em; padding: 0.6rem 0.5rem;
-  border-bottom: 1px solid rgba(100,116,139,0.15); white-space: nowrap;
+/* ── Card Layout ── */
+.ms-cards { display: flex; flex-direction: column; gap: 0.6rem; }
+.ms-card {
+  background: rgba(30,41,59,0.45); border: 1px solid rgba(100,116,139,0.12);
+  border-radius: 10px; padding: 0.8rem 1rem; cursor: pointer; transition: border-color 0.15s;
 }
-.ms-table td { padding: 0.55rem 0.5rem; font-size: 0.82rem; color: #cbd5e1; border-bottom: 1px solid rgba(100,116,139,0.06); }
-.ms-row { cursor: pointer; transition: background 0.15s; }
-.ms-row:hover { background: rgba(99,102,241,0.04); }
+.ms-card:hover { border-color: rgba(99,102,241,0.35); }
 
-.ms-session-name { font-weight: 600; color: #e2e8f0; }
+.ms-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+.ms-card-identity { min-width: 0; flex: 1; }
+.ms-session-name { font-weight: 600; color: #e2e8f0; font-size: 0.9rem; }
+.ms-session-meta { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.15rem; flex-wrap: wrap; }
 .ms-session-id { font-size: 0.72rem; color: #475569; font-family: monospace; }
-.ms-na { color: #475569; font-style: italic; }
+.ms-tg-tag { font-size: 0.75rem; color: #94a3b8; }
+.ms-card-badges { display: flex; gap: 0.35rem; flex-shrink: 0; }
+
+.ms-card-metrics { display: flex; gap: 1.2rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.ms-metric { display: flex; flex-direction: column; gap: 0.1rem; }
+.ms-metric-label { font-size: 0.62rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+.ms-metric-val { font-size: 0.82rem; color: #cbd5e1; }
+.ms-metric-dim { color: #64748b; }
+.ms-hb-val { color: #94a3b8; }
+
+.ms-card-actions { display: flex; gap: 0.35rem; flex-wrap: wrap; padding-top: 0.4rem; border-top: 1px solid rgba(100,116,139,0.08); }
+
 .ms-node-badge { background: rgba(99,102,241,0.12); color: #a5b4fc; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75rem; }
 .ms-err-val { color: #f87171; font-weight: 600; }
-.ms-hb { font-size: 0.78rem; color: #64748b; white-space: nowrap; }
 .ms-title-sub { font-size: 0.7rem; color: #64748b; font-weight: 400; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 0.5rem; padding: 0.15rem 0.5rem; border-radius: 4px; background: rgba(100,116,139,0.12); }
 .ms-badge-unassigned { background: rgba(249,115,22,0.15); color: #fb923c; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em; }
 
-.ms-badge { padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; }
+.ms-badge { padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
 .st-h { background: rgba(16,185,129,0.15); color: #34d399; }
 .st-w { background: rgba(249,115,22,0.15); color: #fb923c; }
 .st-off { background: rgba(100,116,139,0.15); color: #94a3b8; }
 .st-c { background: rgba(239,68,68,0.15); color: #f87171; }
 .st-u { background: rgba(100,116,139,0.1); color: #64748b; }
 
-.ms-util-bar { width: 50px; height: 4px; background: rgba(100,116,139,0.2); border-radius: 2px; display: inline-block; vertical-align: middle; }
-.ms-util-fill { height: 100%; border-radius: 2px; background: #818cf8; }
-.ms-util-pct { font-size: 0.72rem; color: #94a3b8; margin-left: 0.3rem; }
-
-.ms-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; }
-.ms-act { padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.68rem; font-weight: 500; cursor: pointer; border: 1px solid; background: transparent; }
+.ms-act { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 500; cursor: pointer; border: 1px solid; background: transparent; }
 .ms-act-en { color: #34d399; border-color: rgba(16,185,129,0.3); }
 .ms-act-dr { color: #fbbf24; border-color: rgba(251,191,36,0.3); }
 .ms-act-mv { color: #818cf8; border-color: rgba(129,140,248,0.3); }
