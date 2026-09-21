@@ -6,6 +6,7 @@ export interface Genre {
 
 export interface MovieSummary {
   id: string
+  type?: 'movie' | 'series'
   title: string
   original_title: string
   year: number | null
@@ -92,3 +93,54 @@ export interface AuthTokenResponse {
   token_type: string
   user: User
 }
+
+export interface SeriesSummary {
+  id: string
+  title: string
+  original_title: string
+  year: number | null
+  poster_url: string | null
+  rating: number | null
+  genres: Genre[]
+}
+
+export interface SeriesGenreCollection {
+  genre: Genre
+  series: SeriesSummary[]
+}
+
+export interface SeriesHomeCollections {
+  new_releases: SeriesSummary[]
+  genres: SeriesGenreCollection[]
+}
+
+export interface SeriesEpisode {
+  id: string
+  episode_number: number
+  title: string | null
+  overview: string | null
+  file_size: number | null
+  mime_type: string | null
+  is_playable?: boolean
+}
+
+export interface SeriesSeason {
+  id: string
+  season_number: number
+  episodes: SeriesEpisode[]
+}
+
+export interface SeriesDetail extends SeriesSummary {
+  overview: string | null
+  backdrop_url: string | null
+  seasons: SeriesSeason[]
+}
+
+export interface PaginatedSeries {
+  items: SeriesSummary[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+

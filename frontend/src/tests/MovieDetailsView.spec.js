@@ -11,7 +11,8 @@ vi.mock('@/api/client', () => ({
         getReactions: vi.fn(),
         listMovies: vi.fn(),
         listGenres: vi.fn(),
-        searchMovies: vi.fn()
+        searchMovies: vi.fn(),
+        startPlayback: vi.fn(),
     },
     ApiError: class ApiError extends Error {
         status;
@@ -132,7 +133,7 @@ describe('MovieDetailsView.vue', () => {
         await flushPromises();
         expect(wrapper.text()).toContain('Audio tracks unavailable');
     });
-    it('shows "Playback integration pending" modal when Play button clicked', async () => {
+    it('starts playback when Play button clicked', async () => {
         const mockMovie = {
             id: 'movie-123',
             title: 'Playable Movie',
@@ -152,6 +153,12 @@ describe('MovieDetailsView.vue', () => {
         };
         vi.mocked(apiClient.getMovie).mockResolvedValueOnce(mockMovie);
         vi.mocked(apiClient.getAudioTracks).mockResolvedValueOnce([]);
+        vi.mocked(apiClient.startPlayback).mockResolvedValueOnce({
+            session_id: 's1',
+            media_endpoint: '/api/v1/playback/stream/movie-123',
+            playback_token: 'token123',
+            node_id: 'node1'
+        });
         const wrapper = mount(MovieDetailsView, {
             global: { plugins: [router] },
             attachTo: document.body
@@ -161,8 +168,7 @@ describe('MovieDetailsView.vue', () => {
         expect(playBtn.exists()).toBe(true);
         await playBtn.trigger('click');
         await flushPromises();
-        // Teleported modal content exists in document.body
-        expect(document.body.innerHTML).toContain('Playback integration pending');
+        expect(wrapper.findComponent({ name: 'VideoPlayer' }).exists()).toBe(true);
         wrapper.unmount();
     });
     it('renders 404 state when getMovie returns 404 ApiError', async () => {

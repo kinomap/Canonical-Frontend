@@ -150,8 +150,8 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="catalog-header">
       <h1 class="catalog-title">
-        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="title-icon"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg>
-        Фильмы
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="title-icon"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Главная
       </h1>
     </div>
 
@@ -183,7 +183,7 @@ onUnmounted(() => {
         <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
       </div>
       <h2 class="state-title">Каталог пуст</h2>
-      <p class="state-desc">Фильмы ещё не добавлены. Запустите ingest pipeline.</p>
+      <p class="state-desc">Контент ещё не добавлен. Запустите ingest pipeline.</p>
     </div>
 
     <!-- Rails -->
@@ -201,7 +201,7 @@ onUnmounted(() => {
           :key="genreItem.genre.id"
           :title="genreItem.genre.name"
           :movies="genreItem.movies"
-          :view-all-link="`/movies?genre=${genreItem.genre.slug}`"
+          :view-all-link="`/genres?genre=${genreItem.genre.slug}`"
         />
       </template>
     </div>

@@ -103,7 +103,11 @@ function selectSuggestion(movie: MovieSummary) {
   showDropdown.value = false
   query.value = movie.title
   emit('update:modelValue', movie.title)
-  router.push(`/movies/${movie.id}`)
+  if (movie.type === 'series') {
+    router.push(`/series/${movie.id}`)
+  } else {
+    router.push(`/movies/${movie.id}`)
+  }
 }
 
 // Handle click outside to close dropdown
@@ -130,7 +134,7 @@ onUnmounted(() => {
     <input
       v-model="query"
       type="text"
-      :placeholder="placeholder || 'Search movies...'"
+      :placeholder="placeholder || 'Search catalog...'"
       class="search-input"
       @input="onInput"
       @keydown.enter="onEnter"
@@ -161,7 +165,10 @@ onUnmounted(() => {
         >
           <img :src="movie.poster" alt="" class="suggestion-poster" v-if="movie.poster" />
           <div class="suggestion-info">
-            <h4 class="suggestion-title">{{ movie.title }}</h4>
+            <h4 class="suggestion-title">
+              {{ movie.title }}
+              <span v-if="movie.type === 'series'" class="type-badge">Сериал</span>
+            </h4>
             <span class="suggestion-meta" v-if="movie.year">{{ movie.year }} <span v-if="movie.rating">★ {{ movie.rating.toFixed(1) }}</span></span>
           </div>
         </li>
@@ -310,6 +317,19 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.type-badge {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  font-weight: 500;
 }
 
 .suggestion-meta {

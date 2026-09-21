@@ -127,17 +127,32 @@ const __VLS_18 = {}.RouterLink;
 /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
 // @ts-ignore
 const __VLS_19 = __VLS_asFunctionalComponent(__VLS_18, new __VLS_18({
+    to: "/series",
+    ...{ class: "nav-link" },
+    ...{ class: ({ active: __VLS_ctx.route.path.startsWith('/series') }) },
+}));
+const __VLS_20 = __VLS_19({
+    to: "/series",
+    ...{ class: "nav-link" },
+    ...{ class: ({ active: __VLS_ctx.route.path.startsWith('/series') }) },
+}, ...__VLS_functionalComponentArgsRest(__VLS_19));
+__VLS_21.slots.default;
+var __VLS_21;
+const __VLS_22 = {}.RouterLink;
+/** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
+// @ts-ignore
+const __VLS_23 = __VLS_asFunctionalComponent(__VLS_22, new __VLS_22({
     to: "/genres",
     ...{ class: "nav-link" },
     ...{ class: ({ active: __VLS_ctx.route.path === '/genres' }) },
 }));
-const __VLS_20 = __VLS_19({
+const __VLS_24 = __VLS_23({
     to: "/genres",
     ...{ class: "nav-link" },
     ...{ class: ({ active: __VLS_ctx.route.path === '/genres' }) },
-}, ...__VLS_functionalComponentArgsRest(__VLS_19));
-__VLS_21.slots.default;
-var __VLS_21;
+}, ...__VLS_functionalComponentArgsRest(__VLS_23));
+__VLS_25.slots.default;
+var __VLS_25;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "header-right" },
 });
@@ -146,41 +161,41 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 });
 /** @type {[typeof SearchBar, ]} */ ;
 // @ts-ignore
-const __VLS_22 = __VLS_asFunctionalComponent(SearchBar, new SearchBar({
+const __VLS_26 = __VLS_asFunctionalComponent(SearchBar, new SearchBar({
     ...{ 'onSearch': {} },
     modelValue: (__VLS_ctx.searchQuery),
     placeholder: "Search movies...",
 }));
-const __VLS_23 = __VLS_22({
+const __VLS_27 = __VLS_26({
     ...{ 'onSearch': {} },
     modelValue: (__VLS_ctx.searchQuery),
     placeholder: "Search movies...",
-}, ...__VLS_functionalComponentArgsRest(__VLS_22));
-let __VLS_25;
-let __VLS_26;
-let __VLS_27;
-const __VLS_28 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_26));
+let __VLS_29;
+let __VLS_30;
+let __VLS_31;
+const __VLS_32 = {
     onSearch: (__VLS_ctx.handleSearch)
 };
-var __VLS_24;
+var __VLS_28;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "auth-controls" },
 });
 if (__VLS_ctx.authStore.isAuthenticated.value) {
-    const __VLS_29 = {}.RouterLink;
+    const __VLS_33 = {}.RouterLink;
     /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
     // @ts-ignore
-    const __VLS_30 = __VLS_asFunctionalComponent(__VLS_29, new __VLS_29({
+    const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
         to: "/profile",
         ...{ class: "profile-btn" },
         title: "User Profile",
     }));
-    const __VLS_31 = __VLS_30({
+    const __VLS_35 = __VLS_34({
         to: "/profile",
         ...{ class: "profile-btn" },
         title: "User Profile",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_30));
-    __VLS_32.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_34));
+    __VLS_36.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "avatar-circle" },
     });
@@ -189,35 +204,35 @@ if (__VLS_ctx.authStore.isAuthenticated.value) {
         ...{ class: "user-name" },
     });
     (__VLS_ctx.authStore.user.value?.username || 'Profile');
-    var __VLS_32;
+    var __VLS_36;
 }
 else {
-    const __VLS_33 = {}.RouterLink;
-    /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
-    // @ts-ignore
-    const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
-        to: "/login",
-        ...{ class: "login-btn" },
-    }));
-    const __VLS_35 = __VLS_34({
-        to: "/login",
-        ...{ class: "login-btn" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_34));
-    __VLS_36.slots.default;
-    var __VLS_36;
     const __VLS_37 = {}.RouterLink;
     /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
     // @ts-ignore
     const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
-        to: "/register",
-        ...{ class: "register-btn" },
+        to: "/login",
+        ...{ class: "login-btn" },
     }));
     const __VLS_39 = __VLS_38({
-        to: "/register",
-        ...{ class: "register-btn" },
+        to: "/login",
+        ...{ class: "login-btn" },
     }, ...__VLS_functionalComponentArgsRest(__VLS_38));
     __VLS_40.slots.default;
     var __VLS_40;
+    const __VLS_41 = {}.RouterLink;
+    /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
+    // @ts-ignore
+    const __VLS_42 = __VLS_asFunctionalComponent(__VLS_41, new __VLS_41({
+        to: "/register",
+        ...{ class: "register-btn" },
+    }));
+    const __VLS_43 = __VLS_42({
+        to: "/register",
+        ...{ class: "register-btn" },
+    }, ...__VLS_functionalComponentArgsRest(__VLS_42));
+    __VLS_44.slots.default;
+    var __VLS_44;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
     ...{ onClick: (__VLS_ctx.toggleMobileMenu) },
@@ -290,115 +305,136 @@ if (__VLS_ctx.mobileMenuOpen) {
     });
     /** @type {[typeof SearchBar, ]} */ ;
     // @ts-ignore
-    const __VLS_41 = __VLS_asFunctionalComponent(SearchBar, new SearchBar({
+    const __VLS_45 = __VLS_asFunctionalComponent(SearchBar, new SearchBar({
         ...{ 'onSearch': {} },
         modelValue: (__VLS_ctx.searchQuery),
         placeholder: "Search movies...",
     }));
-    const __VLS_42 = __VLS_41({
+    const __VLS_46 = __VLS_45({
         ...{ 'onSearch': {} },
         modelValue: (__VLS_ctx.searchQuery),
         placeholder: "Search movies...",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_41));
-    let __VLS_44;
-    let __VLS_45;
-    let __VLS_46;
-    const __VLS_47 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_45));
+    let __VLS_48;
+    let __VLS_49;
+    let __VLS_50;
+    const __VLS_51 = {
         onSearch: (__VLS_ctx.handleSearch)
     };
-    var __VLS_43;
+    var __VLS_47;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.nav, __VLS_intrinsicElements.nav)({
         ...{ class: "mobile-nav" },
     });
-    const __VLS_48 = {}.RouterLink;
+    const __VLS_52 = {}.RouterLink;
     /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
     // @ts-ignore
-    const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
+    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
         ...{ 'onClick': {} },
         to: "/",
         ...{ class: "mobile-nav-link" },
     }));
-    const __VLS_50 = __VLS_49({
+    const __VLS_54 = __VLS_53({
         ...{ 'onClick': {} },
         to: "/",
         ...{ class: "mobile-nav-link" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_49));
-    let __VLS_52;
-    let __VLS_53;
-    let __VLS_54;
-    const __VLS_55 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+    let __VLS_56;
+    let __VLS_57;
+    let __VLS_58;
+    const __VLS_59 = {
         onClick: (__VLS_ctx.closeMobileMenu)
     };
-    __VLS_51.slots.default;
-    var __VLS_51;
-    const __VLS_56 = {}.RouterLink;
+    __VLS_55.slots.default;
+    var __VLS_55;
+    const __VLS_60 = {}.RouterLink;
     /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
     // @ts-ignore
-    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
         ...{ 'onClick': {} },
         to: "/movies",
         ...{ class: "mobile-nav-link" },
     }));
-    const __VLS_58 = __VLS_57({
+    const __VLS_62 = __VLS_61({
         ...{ 'onClick': {} },
         to: "/movies",
         ...{ class: "mobile-nav-link" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
-    let __VLS_60;
-    let __VLS_61;
-    let __VLS_62;
-    const __VLS_63 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+    let __VLS_64;
+    let __VLS_65;
+    let __VLS_66;
+    const __VLS_67 = {
         onClick: (__VLS_ctx.closeMobileMenu)
     };
-    __VLS_59.slots.default;
-    var __VLS_59;
-    const __VLS_64 = {}.RouterLink;
+    __VLS_63.slots.default;
+    var __VLS_63;
+    const __VLS_68 = {}.RouterLink;
     /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
     // @ts-ignore
-    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+    const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
+        ...{ 'onClick': {} },
+        to: "/series",
+        ...{ class: "mobile-nav-link" },
+    }));
+    const __VLS_70 = __VLS_69({
+        ...{ 'onClick': {} },
+        to: "/series",
+        ...{ class: "mobile-nav-link" },
+    }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+    let __VLS_72;
+    let __VLS_73;
+    let __VLS_74;
+    const __VLS_75 = {
+        onClick: (__VLS_ctx.closeMobileMenu)
+    };
+    __VLS_71.slots.default;
+    var __VLS_71;
+    const __VLS_76 = {}.RouterLink;
+    /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
+    // @ts-ignore
+    const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
         ...{ 'onClick': {} },
         to: "/genres",
         ...{ class: "mobile-nav-link" },
     }));
-    const __VLS_66 = __VLS_65({
+    const __VLS_78 = __VLS_77({
         ...{ 'onClick': {} },
         to: "/genres",
         ...{ class: "mobile-nav-link" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
-    let __VLS_68;
-    let __VLS_69;
-    let __VLS_70;
-    const __VLS_71 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_77));
+    let __VLS_80;
+    let __VLS_81;
+    let __VLS_82;
+    const __VLS_83 = {
         onClick: (__VLS_ctx.closeMobileMenu)
     };
-    __VLS_67.slots.default;
-    var __VLS_67;
+    __VLS_79.slots.default;
+    var __VLS_79;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "mobile-auth-divider" },
     });
     if (__VLS_ctx.authStore.isAuthenticated.value) {
-        const __VLS_72 = {}.RouterLink;
+        const __VLS_84 = {}.RouterLink;
         /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
         // @ts-ignore
-        const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
+        const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
             ...{ 'onClick': {} },
             to: "/profile",
             ...{ class: "mobile-nav-link" },
         }));
-        const __VLS_74 = __VLS_73({
+        const __VLS_86 = __VLS_85({
             ...{ 'onClick': {} },
             to: "/profile",
             ...{ class: "mobile-nav-link" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_73));
-        let __VLS_76;
-        let __VLS_77;
-        let __VLS_78;
-        const __VLS_79 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_85));
+        let __VLS_88;
+        let __VLS_89;
+        let __VLS_90;
+        const __VLS_91 = {
             onClick: (__VLS_ctx.closeMobileMenu)
         };
-        __VLS_75.slots.default;
+        __VLS_87.slots.default;
         (__VLS_ctx.authStore.user.value?.username);
-        var __VLS_75;
+        var __VLS_87;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!(__VLS_ctx.mobileMenuOpen))
@@ -412,48 +448,48 @@ if (__VLS_ctx.mobileMenuOpen) {
         });
     }
     else {
-        const __VLS_80 = {}.RouterLink;
+        const __VLS_92 = {}.RouterLink;
         /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
         // @ts-ignore
-        const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
+        const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
             ...{ 'onClick': {} },
             to: "/login",
             ...{ class: "mobile-nav-link" },
         }));
-        const __VLS_82 = __VLS_81({
+        const __VLS_94 = __VLS_93({
             ...{ 'onClick': {} },
             to: "/login",
             ...{ class: "mobile-nav-link" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_81));
-        let __VLS_84;
-        let __VLS_85;
-        let __VLS_86;
-        const __VLS_87 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_93));
+        let __VLS_96;
+        let __VLS_97;
+        let __VLS_98;
+        const __VLS_99 = {
             onClick: (__VLS_ctx.closeMobileMenu)
         };
-        __VLS_83.slots.default;
-        var __VLS_83;
-        const __VLS_88 = {}.RouterLink;
+        __VLS_95.slots.default;
+        var __VLS_95;
+        const __VLS_100 = {}.RouterLink;
         /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, typeof __VLS_components.RouterLink, typeof __VLS_components.routerLink, ]} */ ;
         // @ts-ignore
-        const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
+        const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
             ...{ 'onClick': {} },
             to: "/register",
             ...{ class: "mobile-nav-link register" },
         }));
-        const __VLS_90 = __VLS_89({
+        const __VLS_102 = __VLS_101({
             ...{ 'onClick': {} },
             to: "/register",
             ...{ class: "mobile-nav-link register" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_89));
-        let __VLS_92;
-        let __VLS_93;
-        let __VLS_94;
-        const __VLS_95 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_101));
+        let __VLS_104;
+        let __VLS_105;
+        let __VLS_106;
+        const __VLS_107 = {
             onClick: (__VLS_ctx.closeMobileMenu)
         };
-        __VLS_91.slots.default;
-        var __VLS_91;
+        __VLS_103.slots.default;
+        var __VLS_103;
     }
 }
 /** @type {__VLS_StyleScopedClasses['app-header']} */ ;
@@ -463,6 +499,8 @@ if (__VLS_ctx.mobileMenuOpen) {
 /** @type {__VLS_StyleScopedClasses['desktop-logo']} */ ;
 /** @type {__VLS_StyleScopedClasses['mobile-logo']} */ ;
 /** @type {__VLS_StyleScopedClasses['desktop-nav']} */ ;
+/** @type {__VLS_StyleScopedClasses['nav-link']} */ ;
+/** @type {__VLS_StyleScopedClasses['active']} */ ;
 /** @type {__VLS_StyleScopedClasses['nav-link']} */ ;
 /** @type {__VLS_StyleScopedClasses['active']} */ ;
 /** @type {__VLS_StyleScopedClasses['nav-link']} */ ;
@@ -481,6 +519,7 @@ if (__VLS_ctx.mobileMenuOpen) {
 /** @type {__VLS_StyleScopedClasses['mobile-menu-drawer']} */ ;
 /** @type {__VLS_StyleScopedClasses['mobile-search-wrapper']} */ ;
 /** @type {__VLS_StyleScopedClasses['mobile-nav']} */ ;
+/** @type {__VLS_StyleScopedClasses['mobile-nav-link']} */ ;
 /** @type {__VLS_StyleScopedClasses['mobile-nav-link']} */ ;
 /** @type {__VLS_StyleScopedClasses['mobile-nav-link']} */ ;
 /** @type {__VLS_StyleScopedClasses['mobile-nav-link']} */ ;

@@ -27,6 +27,16 @@ const router = createRouter({
             component: CatalogView,
         },
         {
+            path: '/series',
+            name: 'series-catalog',
+            component: () => import('@/views/SeriesCatalogView.vue'),
+        },
+        {
+            path: '/series/:id',
+            name: 'series-details',
+            component: () => import('@/views/SeriesDetailsView.vue'),
+        },
+        {
             path: '/genres',
             name: 'genres',
             component: GenresView

@@ -1,0 +1,389 @@
+<script setup lang="ts">
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { apiClient } from '@/api/client'
+import type { Genre, MovieFilters, MovieSummary, SeriesSummary } from '@/types/movie'
+import MovieCard from '@/components/MovieCard.vue'
+import PlayNoticeModal from '@/components/PlayNoticeModal.vue'
+import { AlertCircle, SearchX } from 'lucide-vue-next'
+
+const route = useRoute()
+const router = useRouter()
+
+const seriesList = ref<MovieSummary[]>([])
+const genres = ref<Genre[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
+
+const selectedGenre = ref<string>((route.query.genre as string) || '')
+const selectedYear = ref<string>((route.query.year as string) || '')
+const selectedMinRating = ref<string>((route.query.min_rating as string) || '')
+const selectedSort = ref<string>((route.query.sort as string) || 'newest')
+const searchQuery = ref<string>((route.query.q as string) || '')
+
+const loading = ref(true)
+const error = ref<string | null>(null)
+const showPlayNotice = ref(false)
+
+const totalPages = computed(() => {
+  return Math.ceil(total.value / pageSize.value) || 1
+})
+
+async function fetchGenres() {
+  try {
+    genres.value = await apiClient.listGenres()
+  } catch (err) {
+    console.error('Failed to load genres', err)
+  }
+}
+
+let abortController: AbortController | null = null
+
+async function loadSeries() {
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
+  const signal = abortController.signal
+
+  loading.value = true
+  error.value = null
+  try {
+    if (searchQuery.value.trim().length > 0) {
+      const items = await apiClient.searchSeries(searchQuery.value.trim(), pageSize.value, signal)
+      seriesList.value = items.map((s: SeriesSummary) => ({
+        id: s.id,
+        type: 'series',
+        title: s.title,
+        original_title: s.original_title || '',
+        year: s.year,
+        poster: s.poster_url,
+        rating: s.rating,
+        runtime: null,
+        quality: null,
+        status: 'available',
+        genres: s.genres || [],
+      }))
+      total.value = items.length
+    } else {
+      const filters: MovieFilters = {
+        page: page.value,
+        page_size: pageSize.value,
+        genre: selectedGenre.value || undefined,
+        year: selectedYear.value ? parseInt(selectedYear.value, 10) : undefined,
+        min_rating: selectedMinRating.value ? parseFloat(selectedMinRating.value) : undefined,
+        sort: selectedSort.value || undefined,
+      }
+      const res = await apiClient.listSeries(filters, signal)
+      seriesList.value = res.items.map((s: SeriesSummary) => ({
+        id: s.id,
+        type: 'series',
+        title: s.title,
+        original_title: s.original_title || '',
+        year: s.year,
+        poster: s.poster_url,
+        rating: s.rating,
+        runtime: null,
+        quality: null,
+        status: 'available',
+        genres: s.genres || [],
+      }))
+      total.value = res.total
+    }
+  } catch (err: any) {
+    if (err.name === 'AbortError') return
+    console.error('Series Catalog API Error:', err)
+    error.value = 'Не удалось загрузить каталог сериалов'
+  } finally {
+    if (!abortController?.signal.aborted) {
+      loading.value = false
+    }
+  }
+}
+
+function updateQueryParams() {
+  const query: Record<string, string> = {}
+  if (searchQuery.value) query.q = searchQuery.value
+  if (selectedGenre.value) query.genre = selectedGenre.value
+  if (selectedYear.value) query.year = selectedYear.value
+  if (selectedMinRating.value) query.min_rating = selectedMinRating.value
+  if (selectedSort.value && selectedSort.value !== 'newest') query.sort = selectedSort.value
+  if (page.value > 1) query.page = page.value.toString()
+
+  router.replace({ query })
+}
+
+function clearAllFilters() {
+  selectedGenre.value = ''
+  selectedYear.value = ''
+  selectedMinRating.value = ''
+  selectedSort.value = 'newest'
+  searchQuery.value = ''
+  page.value = 1
+  router.replace({ query: {} })
+  loadSeries()
+}
+
+function changePage(newPage: number) {
+  if (newPage >= 1 && newPage <= totalPages.value) {
+    page.value = newPage
+    updateQueryParams()
+    loadSeries()
+    try {
+      if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+    } catch {}
+  }
+}
+
+function handlePlayNotice() {
+  showPlayNotice.value = true
+}
+
+watch(
+  () => route.query,
+  (newQuery) => {
+    selectedGenre.value = (newQuery.genre as string) || ''
+    selectedYear.value = (newQuery.year as string) || ''
+    selectedMinRating.value = (newQuery.min_rating as string) || ''
+    selectedSort.value = (newQuery.sort as string) || 'newest'
+    searchQuery.value = (newQuery.q as string) || ''
+    if (newQuery.page) page.value = parseInt(newQuery.page as string, 10) || 1
+    loadSeries()
+  }
+)
+
+onMounted(() => {
+  fetchGenres()
+  loadSeries()
+})
+</script>
+
+<template>
+  <div class="catalog-page">
+    <div class="catalog-title-bar">
+      <h1 class="page-title">
+        <span v-if="searchQuery">Поиск по сериалам "{{ searchQuery }}"</span>
+        <span v-else-if="selectedGenre">Сериалы: {{ selectedGenre }}</span>
+        <span v-else>Каталог сериалов</span>
+      </h1>
+      <span class="catalog-count">{{ total }} доступно</span>
+    </div>
+
+    <!-- Main Content -->
+    <main class="catalog-content">
+      <!-- Loading Skeletons -->
+      <div v-if="loading" class="movie-grid skeleton-grid">
+        <div v-for="i in 8" :key="i" class="skeleton-card">
+          <div class="skeleton-poster"></div>
+          <div class="skeleton-text line-1"></div>
+          <div class="skeleton-text line-2"></div>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div v-else-if="error" class="state-container error-state">
+        <div class="state-icon text-red">
+          <AlertCircle :size="48" stroke-width="2" />
+        </div>
+        <h2>Не удалось загрузить каталог сериалов</h2>
+        <p>Пожалуйста, проверьте подключение к сети и попробуйте снова.</p>
+        <button class="retry-btn" @click="loadSeries">Повторить попытку</button>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else-if="seriesList.length === 0" class="state-container empty-state">
+        <div class="state-icon">
+          <SearchX :size="48" stroke-width="1.5" />
+        </div>
+        <h2>Сериалы не найдены</h2>
+        <p v-if="searchQuery">По запросу "{{ searchQuery }}" сериалов не найдено.</p>
+        <p v-else>Нет сериалов, соответствующих выбранным фильтрам.</p>
+        <button class="retry-btn" @click="clearAllFilters">Сбросить фильтры</button>
+      </div>
+
+      <!-- Series Grid -->
+      <div v-else class="movie-grid">
+        <MovieCard
+          v-for="series in seriesList"
+          :key="series.id"
+          :movie="series"
+          @play="handlePlayNotice"
+        />
+      </div>
+
+      <!-- Pagination Controls -->
+      <div v-if="!loading && !error && seriesList.length > 0 && totalPages > 1" class="pagination">
+        <button
+          class="page-btn"
+          :disabled="page <= 1"
+          @click="changePage(page - 1)"
+        >
+          Назад
+        </button>
+        <span class="page-info">Страница {{ page }} из {{ totalPages }}</span>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          @click="changePage(page + 1)"
+        >
+          Вперёд
+        </button>
+      </div>
+    </main>
+
+    <!-- Play Notice Modal -->
+    <PlayNoticeModal :show="showPlayNotice" @close="showPlayNotice = false" />
+  </div>
+</template>
+
+<style scoped>
+.catalog-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 16px 64px 16px;
+  width: 100%;
+}
+
+.catalog-title-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #f3f4f6;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.catalog-count {
+  font-size: 0.9rem;
+  color: #9ca3af;
+}
+
+.movie-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 20px;
+}
+
+@media (min-width: 640px) {
+  .movie-grid {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .movie-grid {
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  }
+}
+
+.state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 16px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 24px 0;
+}
+
+.state-icon {
+  color: #6b7280;
+  margin-bottom: 16px;
+}
+
+.text-red {
+  color: #ef4444;
+}
+
+.state-container h2 {
+  font-size: 1.25rem;
+  color: #f3f4f6;
+  margin: 0 0 8px 0;
+}
+
+.state-container p {
+  color: #9ca3af;
+  font-size: 0.95rem;
+  margin: 0 0 16px 0;
+}
+
+.retry-btn {
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.skeleton-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-poster {
+  aspect-ratio: 2 / 3;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.skeleton-text {
+  height: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+.skeleton-text.line-1 {
+  width: 80%;
+}
+
+.skeleton-text.line-2 {
+  width: 50%;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 40px;
+}
+
+.page-btn {
+  padding: 8px 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f3f4f6;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 0.9rem;
+  color: #9ca3af;
+}
+</style>

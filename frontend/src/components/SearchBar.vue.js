@@ -1,11 +1,12 @@
 /// <reference types="../../node_modules/.vue-global-types/vue_3.5_0_0_0.d.ts" />
 import { ref, watch, onUnmounted, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { Search, X, Loader2 } from 'lucide-vue-next';
 import { apiClient } from '@/api/client';
 const props = defineProps();
 const emit = defineEmits();
 const router = useRouter();
+const route = useRoute();
 const query = ref(props.modelValue || '');
 const suggestions = ref([]);
 const loading = ref(false);
@@ -42,8 +43,22 @@ function onInput() {
     if (timer)
         clearTimeout(timer);
     timer = setTimeout(() => {
-        fetchSuggestions(query.value);
-    }, props.debounceMs ?? 300);
+        const q = query.value.trim();
+        if (route.path === '/movies') {
+            const newQuery = { ...route.query };
+            if (q.length > 0) {
+                newQuery.q = q;
+            }
+            else {
+                delete newQuery.q;
+            }
+            newQuery.page = '1';
+            router.replace({ path: '/movies', query: newQuery });
+        }
+        else {
+            fetchSuggestions(query.value);
+        }
+    }, props.debounceMs ?? 250);
 }
 function clear() {
     query.value = '';
@@ -52,7 +67,15 @@ function clear() {
     showDropdown.value = false;
     if (timer)
         clearTimeout(timer);
-    emit('search', '');
+    if (route.path === '/movies') {
+        const newQuery = { ...route.query };
+        delete newQuery.q;
+        newQuery.page = '1';
+        router.replace({ path: '/movies', query: newQuery });
+    }
+    else {
+        emit('search', '');
+    }
 }
 function onEnter() {
     if (timer)
@@ -64,7 +87,12 @@ function selectSuggestion(movie) {
     showDropdown.value = false;
     query.value = movie.title;
     emit('update:modelValue', movie.title);
-    router.push(`/movies/${movie.id}`);
+    if (movie.type === 'series') {
+        router.push(`/series/${movie.id}`);
+    }
+    else {
+        router.push(`/movies/${movie.id}`);
+    }
 }
 // Handle click outside to close dropdown
 function handleClickOutside(event) {
@@ -116,7 +144,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
         } },
     value: (__VLS_ctx.query),
     type: "text",
-    placeholder: (__VLS_ctx.placeholder || 'Search movies...'),
+    placeholder: (__VLS_ctx.placeholder || 'Search catalog...'),
     ...{ class: "search-input" },
 });
 if (__VLS_ctx.query) {
@@ -198,6 +226,11 @@ if (__VLS_ctx.showDropdown && (__VLS_ctx.loading || __VLS_ctx.suggestions.length
                 ...{ class: "suggestion-title" },
             });
             (movie.title);
+            if (movie.type === 'series') {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "type-badge" },
+                });
+            }
             if (movie.year) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                     ...{ class: "suggestion-meta" },
@@ -232,6 +265,7 @@ if (__VLS_ctx.showDropdown && (__VLS_ctx.loading || __VLS_ctx.suggestions.length
 /** @type {__VLS_StyleScopedClasses['suggestion-poster']} */ ;
 /** @type {__VLS_StyleScopedClasses['suggestion-info']} */ ;
 /** @type {__VLS_StyleScopedClasses['suggestion-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['type-badge']} */ ;
 /** @type {__VLS_StyleScopedClasses['suggestion-meta']} */ ;
 /** @type {__VLS_StyleScopedClasses['dropdown-footer']} */ ;
 var __VLS_dollars;

@@ -7,7 +7,11 @@ import type {
   MovieDetail,
   MovieFilters,
   PaginatedMovies,
+  PaginatedSeries,
+  SeriesSummary,
   User,
+  SeriesHomeCollections,
+  SeriesDetail,
 } from '@/types/movie'
 
 export interface CommentUser {
@@ -151,6 +155,14 @@ export const apiClient = {
     return request<HomeCollections>('/movies/home', undefined, 30_000)
   },
 
+  async getSeriesHomeCollections(): Promise<SeriesHomeCollections> {
+    return request<SeriesHomeCollections>('/series/home', undefined, 30_000)
+  },
+
+  async getSeriesDetail(id: string): Promise<SeriesDetail> {
+    return request<SeriesDetail>(`/series/${id}`, undefined, 60_000)
+  },
+
   async getMovie(id: string): Promise<MovieDetail> {
     return request<MovieDetail>(`/movies/${id}`, undefined, 60_000)
   },
@@ -173,6 +185,35 @@ export const apiClient = {
     return request<PaginatedMovies>(`/search?${params.toString()}`, { signal })
   },
 
+  async listSeries(filters: MovieFilters = {}, signal?: AbortSignal): Promise<PaginatedSeries> {
+    const params = new URLSearchParams()
+    if (filters.page) params.append('page', filters.page.toString())
+    if (filters.page_size) params.append('page_size', filters.page_size.toString())
+    if (filters.genre) params.append('genre', filters.genre)
+    if (filters.year) params.append('year', filters.year.toString())
+    if (filters.min_rating) params.append('min_rating', filters.min_rating.toString())
+    if (filters.sort) params.append('sort', filters.sort)
+
+    const queryStr = params.toString() ? `?${params.toString()}` : ''
+    return request<PaginatedSeries>(`/series${queryStr}`, { signal }, 15_000)
+  },
+
+  async searchSeries(query: string, limit = 20, signal?: AbortSignal): Promise<SeriesSummary[]> {
+    const params = new URLSearchParams({
+      q: query,
+    })
+    return request<SeriesSummary[]>(`/series/search?${params.toString()}`, { signal })
+  },
+
+  async getGenreContent(slug: string, page = 1, pageSize = 20, sort?: string, signal?: AbortSignal): Promise<PaginatedMovies> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      page_size: pageSize.toString(),
+    })
+    if (sort) params.append('sort', sort)
+    return request<PaginatedMovies>(`/genres/${slug}?${params.toString()}`, { signal }, 15_000)
+  },
+
   async listGenres(): Promise<Genre[]> {
     return request<Genre[]>('/genres', undefined, 3600_000)
   },
@@ -185,12 +226,14 @@ export const apiClient = {
     return request<AudioTrack[]>(`/movies/${movieId}/audio`)
   },
 
-  async getComments(movieId: string): Promise<Comment[]> {
-    return request<Comment[]>(`/movies/${movieId}/comments`)
+  async getComments(targetId: string, targetType: 'movie' | 'series' = 'movie'): Promise<Comment[]> {
+    const prefix = targetType === 'series' ? 'series' : 'movies'
+    return request<Comment[]>(`/${prefix}/${targetId}/comments`)
   },
 
-  async postComment(movieId: string, text: string): Promise<Comment> {
-    return request<Comment>(`/movies/${movieId}/comments`, {
+  async postComment(targetId: string, targetType: 'movie' | 'series' = 'movie', text: string): Promise<Comment> {
+    const prefix = targetType === 'series' ? 'series' : 'movies'
+    return request<Comment>(`/${prefix}/${targetId}/comments`, {
       method: 'POST',
       body: JSON.stringify({ text }),
     })
@@ -209,21 +252,30 @@ export const apiClient = {
     })
   },
 
-  async getReactions(movieId: string): Promise<MovieReaction[]> {
-    return request<MovieReaction[]>(`/movies/${movieId}/reactions`)
+  async getReactions(targetId: string, targetType: 'movie' | 'series' = 'movie'): Promise<MovieReaction[]> {
+    const prefix = targetType === 'series' ? 'series' : 'movies'
+    return request<MovieReaction[]>(`/${prefix}/${targetId}/reactions`)
   },
 
-  async toggleReaction(movieId: string, reaction_type: string): Promise<{status: string, action: string}> {
-    return request<{status: string, action: string}>(`/movies/${movieId}/reactions`, {
+  async toggleReaction(targetId: string, targetType: 'movie' | 'series' = 'movie', reaction_type: string): Promise<{status: string, action: string}> {
+    const prefix = targetType === 'series' ? 'series' : 'movies'
+    return request<{status: string, action: string}>(`/${prefix}/${targetId}/reactions`, {
       method: 'POST',
       body: JSON.stringify({ reaction_type }),
     })
   },
 
-  async startPlayback(movieId: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string }> {
-    return request<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string }>(`/playback/start`, {
+  async startPlayback(movieId: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string }> {
+    return request<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string }>(`/playback/start`, {
       method: 'POST',
       body: JSON.stringify({ movie_id: movieId }),
+    })
+  },
+
+  async startSeriesPlayback(episodeId: string): Promise<{ media_endpoint: string, playback_token: string, media_url?: string }> {
+    return request<{ media_endpoint: string, playback_token: string, media_url?: string }>(`/series_playback/start`, {
+      method: 'POST',
+      body: JSON.stringify({ episode_id: episodeId }),
     })
   },
 

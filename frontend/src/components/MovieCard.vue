@@ -35,7 +35,7 @@ const displayYear = computed(() => {
 
 <template>
   <router-link
-    :to="`/movies/${movie.id}`"
+    :to="movie.type === 'series' ? `/series/${movie.id}` : `/movies/${movie.id}`"
     class="movie-card"
     :data-id="movie.id"
     tabindex="0"
@@ -58,8 +58,9 @@ const displayYear = computed(() => {
         </div>
       </div>
 
-      <div class="badges-overlay" v-if="movie.rating">
-        <span class="badge rating-badge">{{ movie.rating.toFixed(1) }}</span>
+      <div class="badges-overlay">
+        <span class="badge series-badge" v-if="movie.type === 'series'">СЕРИАЛ</span>
+        <span class="badge rating-badge" v-if="movie.rating">{{ movie.rating.toFixed(1) }}</span>
       </div>
     </div>
 
@@ -200,6 +201,13 @@ const displayYear = computed(() => {
   background: rgba(0, 0, 0, 0.75);
   color: #fbbf24;
   border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.series-badge {
+  background: rgba(59, 130, 246, 0.85);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  margin-right: 4px;
 }
 
 .card-content {

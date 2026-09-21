@@ -55,6 +55,7 @@ watch(route, () => {
         <nav class="desktop-nav">
           <router-link to="/" class="nav-link" :class="{ active: route.path === '/' }">Home</router-link>
           <router-link to="/movies" class="nav-link" :class="{ active: route.path.startsWith('/movies') }">Movies</router-link>
+          <router-link to="/series" class="nav-link" :class="{ active: route.path.startsWith('/series') }">Series</router-link>
           <router-link to="/genres" class="nav-link" :class="{ active: route.path === '/genres' }">Genres</router-link>
         </nav>
       </div>
@@ -117,7 +118,8 @@ watch(route, () => {
 
       <nav class="mobile-nav">
         <router-link to="/" class="mobile-nav-link" @click="closeMobileMenu">Home</router-link>
-        <router-link to="/movies" class="mobile-nav-link" @click="closeMobileMenu">Catalog</router-link>
+        <router-link to="/movies" class="mobile-nav-link" @click="closeMobileMenu">Movies</router-link>
+        <router-link to="/series" class="mobile-nav-link" @click="closeMobileMenu">Series</router-link>
         <router-link to="/genres" class="mobile-nav-link" @click="closeMobileMenu">Genres</router-link>
 
         <div class="mobile-auth-divider"></div>

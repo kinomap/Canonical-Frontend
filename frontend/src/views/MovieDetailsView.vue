@@ -7,7 +7,9 @@ import type { Comment, MovieReaction } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import AudioTracksList from '@/components/AudioTracksList.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
-import { Trash2, Play, Edit2, Check, X } from 'lucide-vue-next'
+import ReactionsBlock from '@/components/ReactionsBlock.vue'
+import CommentsBlock from '@/components/CommentsBlock.vue'
+import { Play } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,11 +19,6 @@ const movieId = computed(() => route.params.id as string)
 
 const movie = ref<MovieDetail | null>(null)
 const audioTracks = ref<AudioTrack[] | null>(null)
-const comments = ref<Comment[]>([])
-const reactions = ref<MovieReaction[]>([])
-const newComment = ref('')
-const editingCommentId = ref<string | null>(null)
-const editCommentText = ref('')
 const streamUrl = ref<string | null>(null)
 const shouldPlay = ref(false)
 
@@ -64,28 +61,22 @@ async function fetchData() {
     const movieData = await apiClient.getMovie(movieId.value)
     movie.value = movieData
 
-    // Fetch parallel data
-    const [audioData, commentsData, reactionsData] = await Promise.allSettled([
-      apiClient.getAudioTracks(movieId.value),
-      apiClient.getComments(movieId.value),
-      apiClient.getReactions(movieId.value)
-    ])
-
-    audioTracks.value = audioData.status === 'fulfilled' ? (audioData.value || []) : []
-    comments.value = commentsData.status === 'fulfilled' ? (commentsData.value || []) : []
-    
-    // Sort reactions nicely
-    const defaultOrder = ["🔥", "👍", "💩", "❤️", "😂"]
-    let rData = (reactionsData as any).status === 'fulfilled' ? (reactionsData as any).value : []
-    if (!rData) rData = []
-    rData.sort((a: MovieReaction, b: MovieReaction) => defaultOrder.indexOf(a.reaction_type) - defaultOrder.indexOf(b.reaction_type))
-    reactions.value = rData
+    // Fetch audio tracks
+    try {
+      audioTracks.value = await apiClient.getAudioTracks(movieId.value)
+    } catch (e) {
+      console.warn("Could not load audio tracks", e)
+    }
 
     // Pre-fetch playback token in the background so it's ready instantly when user clicks Play
     if (isAuthenticated.value) {
       apiClient.startPlayback(movieId.value).then(res => {
-         const base = res.media_endpoint || ""
-         streamUrl.value = `${base}/api/v1/playback/stream/${movieId.value}?token=${res.playback_token}`
+         // Use media_url directly (points to Media Worker)
+         if (res.media_url) {
+           streamUrl.value = res.media_url
+         } else {
+           throw new Error('No media_url returned from backend')
+         }
       }).catch(err => console.error("Prefetch playback failed", err))
     }
 
@@ -110,8 +101,12 @@ async function handlePlay() {
   if (!streamUrl.value) {
     try {
       const res = await apiClient.startPlayback(movieId.value)
-      const base = res.media_endpoint || ""
-      streamUrl.value = `${base}/api/v1/playback/stream/${movieId.value}?token=${res.playback_token}`
+      // Use media_url directly (points to Media Worker)
+      if (res.media_url) {
+        streamUrl.value = res.media_url
+      } else {
+        throw new Error('No media_url returned from backend')
+      }
     } catch (err: any) {
       // 401 is handled globally by auth:expired → no duplicate message
       if (err?.status !== 401) {
@@ -122,80 +117,7 @@ async function handlePlay() {
   }
 }
 
-async function postComment() {
-  if (!newComment.value.trim()) return
-  commentError.value = null
-  try {
-    const comment = await apiClient.postComment(movieId.value, newComment.value)
-    comments.value.unshift(comment)
-    newComment.value = ''
-  } catch (err: any) {
-    if (err?.status !== 401) {
-      commentError.value = err?.message || 'Failed to post comment'
-    }
-  }
-}
-
-async function deleteComment(id: string) {
-  if (!confirm('Are you sure you want to delete this comment?')) return
-  try {
-    await apiClient.deleteComment(id)
-    comments.value = comments.value.filter(c => c.id !== id)
-  } catch (err: any) {
-    if (err?.status !== 401) {
-      commentError.value = err?.message || 'Failed to delete comment'
-    }
-  }
-}
-
-function startEditComment(comment: Comment) {
-  editingCommentId.value = comment.id
-  editCommentText.value = comment.text
-}
-
-function cancelEditComment() {
-  editingCommentId.value = null
-  editCommentText.value = ''
-}
-
-async function saveEditComment(id: string) {
-  if (!editCommentText.value.trim()) return
-  try {
-    const updated = await apiClient.updateComment(id, editCommentText.value)
-    const idx = comments.value.findIndex(c => c.id === id)
-    if (idx !== -1) {
-      comments.value[idx] = updated
-    }
-    editingCommentId.value = null
-  } catch (err: any) {
-    if (err?.status !== 401) {
-      commentError.value = err?.message || 'Failed to update comment'
-    }
-  }
-}
-
-async function toggleReaction(reaction_type: string) {
-  if (!isAuthenticated.value) {
-    router.push('/login')
-    return
-  }
-  try {
-    const res = await apiClient.toggleReaction(movieId.value, reaction_type)
-    const r = reactions.value.find(x => x.reaction_type === reaction_type)
-    if (r) {
-      if (res.action === 'added') {
-        r.count++
-        r.user_reacted = true
-      } else {
-        r.count--
-        r.user_reacted = false
-      }
-    }
-  } catch (err: any) {
-    console.error('Failed to toggle reaction', err)
-  }
-}
-
+// Reactions and comments logic is now handled by components
 onMounted(() => {
   if (!currentUser.value && token.value) {
     fetchCurrentUser()
@@ -275,21 +197,9 @@ onMounted(() => {
       <!-- Main Content Area -->
       <div class="main-content">
         <!-- Title & Reactions -->
-        <h1 class="movie-title">{{ movie.title }}</h1>
-        <div class="actions-row">
-          <div class="reactions-bar">
-            <button 
-              v-for="r in reactions" 
-              :key="r.reaction_type" 
-              class="reaction-btn" 
-              :class="{ active: r.user_reacted }"
-              @click="toggleReaction(r.reaction_type)"
-              :title="!isAuthenticated ? 'Log in to react' : ''"
-            >
-              <span class="reaction-emoji">{{ r.reaction_type }}</span>
-              <span class="reaction-count" v-if="r.count > 0">{{ r.count }}</span>
-            </button>
-          </div>
+        <div class="header-content">
+          <h1 class="movie-title">{{ movie.title }}</h1>
+          <ReactionsBlock :target-id="movieId" target-type="movie" />
         </div>
 
         <!-- Collapsible Description -->
@@ -318,64 +228,9 @@ onMounted(() => {
         </div>
 
         <!-- Comments Section -->
-        <div class="comments-section">
-          <h3 class="comments-title">{{ comments?.length || 0 }} Comments</h3>
-          
-          <!-- Add Comment Box -->
-          <div class="comment-input-area" v-if="isAuthenticated">
-            <div class="comment-avatar me">{{ currentUser?.username[0].toUpperCase() }}</div>
-            <div class="comment-form">
-              <input 
-                type="text" 
-                v-model="newComment" 
-                placeholder="Add a comment... (emojis supported 😊)" 
-                class="comment-input"
-                @keyup.enter="postComment"
-              />
-              <div class="comment-actions" v-if="newComment.trim()">
-                <button class="post-btn" @click="postComment">Comment</button>
-              </div>
-            </div>
-          </div>
-          <!-- Inline comment error (non-auth failures only) -->
-          <div v-if="commentError" class="inline-error" role="alert">
-            <span>{{ commentError }}</span>
-            <button class="inline-error-close" @click="commentError = null" aria-label="Dismiss">&times;</button>
-          </div>
-          <div v-else class="login-prompt">
-            <router-link to="/login" class="login-link">Log in</router-link> to add a comment.
-          </div>
-
-          <!-- Comments List -->
-          <div class="comments-list">
-            <div v-for="comment in comments" :key="comment.id" class="comment-item">
-              <div class="comment-avatar">{{ comment.user.username[0].toUpperCase() }}</div>
-              <div class="comment-body" v-if="editingCommentId !== comment.id">
-                <div class="comment-header">
-                  <span class="comment-author">@{{ comment.user.username }}</span>
-                  <span class="comment-date">{{ new Date(comment.created_at).toLocaleDateString() }}</span>
-                </div>
-                <div class="comment-text">{{ comment.text }}</div>
-              </div>
-              <div class="comment-body edit-mode" v-else>
-                <input type="text" v-model="editCommentText" class="comment-input edit-input" @keyup.enter="saveEditComment(comment.id)" />
-                <div class="edit-actions">
-                  <button class="edit-save-btn" @click="saveEditComment(comment.id)"><Check :size="14" /> Save</button>
-                  <button class="edit-cancel-btn" @click="cancelEditComment"><X :size="14" /> Cancel</button>
-                </div>
-              </div>
-              <div class="comment-admin" v-if="currentUser?.role === 'admin' || currentUser?.id === comment.user.id">
-                <button v-if="editingCommentId !== comment.id" class="edit-btn" @click="startEditComment(comment)" title="Edit comment">
-                  <Edit2 :size="16" />
-                </button>
-                <button class="delete-btn" @click="deleteComment(comment.id)" title="Delete comment">
-                  <Trash2 :size="16" />
-                </button>
-              </div>
-            </div>
-            <div v-if="!comments?.length" class="no-comments">
-              No comments yet. Be the first to share your thoughts!
-            </div>
+        <div class="content-row comments-row" v-if="movie">
+          <div class="main-column">
+            <CommentsBlock :target-id="movieId" target-type="movie" />
           </div>
         </div>
 

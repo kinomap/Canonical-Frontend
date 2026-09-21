@@ -11,6 +11,8 @@ const loading = ref(true)
 // Add channel modal
 const showAddModal = ref(false)
 const confirmDeleteId = ref<string | null>(null)
+const editingChannel = ref<any | null>(null)
+const editingIsSeries = ref(false)
 
 // Per-channel states
 const syncing = ref<string | null>(null)
@@ -50,6 +52,7 @@ const typeFilter = ref('All') // All, Channels, Groups
 const statusFilter = ref('All') // All, Connected, Not connected
 const addMode = ref('search') // search, manual
 const newChannelId = ref('')
+const newChannelIsSeries = ref(false)
 const adding = ref<string | null>(null) // Stores telegram_id being added
 
 const fetchEntities = async () => {
@@ -78,19 +81,40 @@ watch(showAddModal, (val) => {
   if (!val) {
     searchEntity.value = ''
     newChannelId.value = ''
+    newChannelIsSeries.value = false
     addMode.value = 'search'
   }
 })
 
-const isChannelConnected = (tid: string) => channels.value.some(c => c.channel_id === tid)
+const normalizeId = (id: string | null | undefined) => {
+  if (!id) return ''
+  let s = String(id).trim().toLowerCase()
+  if (s.startsWith('@')) s = s.slice(1)
+  if (s.startsWith('-100')) s = s.slice(4)
+  if (s.startsWith('-')) s = s.slice(1)
+  return s
+}
+
+const isChannelConnected = (tid: string, username?: string) => {
+  const normTid = normalizeId(tid)
+  const normUsername = normalizeId(username)
+  return channels.value.some(c => {
+    if (c.status !== 'ACTIVE') return false
+    const normCid = normalizeId(c.channel_id)
+    const normCName = normalizeId(c.name)
+    if (normTid && normCid === normTid) return true
+    if (normUsername && (normCid === normUsername || normCName === normUsername)) return true
+    return false
+  })
+}
 
 const filteredEntities = computed(() => {
   let list = entities.value
   
   if (typeFilter.value === 'Channels') list = list.filter(e => e.entity_type === 'CHANNEL')
   if (typeFilter.value === 'Groups') list = list.filter(e => e.entity_type === 'GROUP')
-  if (statusFilter.value === 'Connected') list = list.filter(e => isChannelConnected(e.telegram_id))
-  if (statusFilter.value === 'Not connected') list = list.filter(e => !isChannelConnected(e.telegram_id))
+  if (statusFilter.value === 'Connected') list = list.filter(e => isChannelConnected(e.telegram_id, e.username))
+  if (statusFilter.value === 'Not connected') list = list.filter(e => !isChannelConnected(e.telegram_id, e.username))
   
   const q = searchEntity.value.toLowerCase().trim()
   if (q) {
@@ -107,9 +131,16 @@ const addChannel = async (cid: string) => {
   if (!cid) return addToast('Channel ID is required', 'error')
   adding.value = cid
   try {
-    await axios.post('/api/v1/admin/telegram/channels', { channel_id: cid }, auth())
+    await axios.post('/api/v1/admin/telegram/channels', { 
+      channel_id: cid,
+      is_series_channel: newChannelIsSeries.value
+    }, auth())
     await fetchChannels()
-    if (addMode.value === 'manual') newChannelId.value = ''
+    if (addMode.value === 'manual') {
+      newChannelId.value = ''
+      newChannelIsSeries.value = false
+    }
+    showAddModal.value = false
     addToast(`Channel connected`, 'success')
   } catch (err: any) {
     addToast(err.response?.data?.detail || 'Failed to add channel', 'error')
@@ -129,6 +160,24 @@ const toggleChannelStatus = async (channel: any) => {
     addToast(err.response?.data?.detail || 'Failed to update channel', 'error')
   } finally {
     toggling.value = null
+  }
+}
+
+const openEditModal = (channel: any) => {
+  editingChannel.value = channel
+  editingIsSeries.value = channel.is_series_channel
+}
+
+const updateChannelSettings = async () => {
+  if (!editingChannel.value) return
+  const cid = editingChannel.value.channel_id
+  try {
+    await axios.put(`/api/v1/admin/telegram/channels/${encodeURIComponent(cid)}`, { is_series_channel: editingIsSeries.value }, auth())
+    await fetchChannels()
+    addToast(`Channel settings updated`, 'success')
+    editingChannel.value = null
+  } catch (err: any) {
+    addToast(err.response?.data?.detail || 'Failed to update settings', 'error')
   }
 }
 
@@ -224,8 +273,20 @@ onMounted(() => {
               </svg>
             </div>
             <div>
-              <div class="channel-name">{{ channel.name || channel.channel_id }}</div>
-              <div class="channel-id">@{{ channel.channel_id }}</div>
+              <div class="channel-name" style="display: flex; align-items: center; gap: 8px;">
+                {{ channel.name || channel.channel_id }}
+                <span class="type-badge" :class="channel.is_series_channel ? 'type-series' : 'type-movie'">
+                  {{ channel.is_series_channel ? 'SERIES' : 'MOVIE' }}
+                </span>
+              </div>
+              <div class="channel-id">
+                <template v-if="channel.username">
+                  @{{ channel.username }} <span style="opacity: 0.65; margin-left: 6px; font-weight: normal;">(ID: {{ channel.channel_id }})</span>
+                </template>
+                <template v-else>
+                  ID: {{ channel.channel_id }}
+                </template>
+              </div>
             </div>
           </div>
           <span class="status-badge" :class="channel.status === 'ACTIVE' ? 'badge-active' : 'badge-disabled'">
@@ -286,6 +347,9 @@ onMounted(() => {
               <button class="menu-item" @click="testConnection(channel); openMenuId = null">
                 {{ testing === channel.channel_id ? 'Testing...' : 'Test Connection' }}
               </button>
+              <button class="menu-item" @click="openEditModal(channel); openMenuId = null">
+                Edit Settings
+              </button>
               <div class="menu-divider"></div>
               <button class="menu-item text-danger" @click="confirmDeleteId = channel.channel_id; openMenuId = null">
                 Remove
@@ -302,6 +366,13 @@ onMounted(() => {
         <div class="modal-header">
           <h3>Add Telegram Source</h3>
           <button class="modal-close" @click="showAddModal = false">&times;</button>
+        </div>
+
+        <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #cbd5e1; font-weight: 500;">
+            <input type="checkbox" v-model="newChannelIsSeries" style="width: 16px; height: 16px;" />
+            <span>Series channel</span>
+          </label>
         </div>
         
         <div class="modal-tabs">
@@ -347,7 +418,7 @@ onMounted(() => {
                 </div>
               </div>
               <div class="entity-action">
-                <button v-if="!isChannelConnected(entity.telegram_id)" class="btn-connect" :disabled="adding === entity.telegram_id" @click="addChannel(entity.telegram_id)">
+                <button v-if="!isChannelConnected(entity.telegram_id, entity.username)" class="btn-connect" :disabled="adding === entity.telegram_id" @click="addChannel(entity.telegram_id)">
                   {{ adding === entity.telegram_id ? 'Connecting...' : 'Connect' }}
                 </button>
                 <div v-else class="connected-badge">Connected</div>
@@ -378,7 +449,32 @@ onMounted(() => {
         <p>This removes <strong>{{ confirmDeleteId }}</strong> from sync. Existing movies are <strong>preserved</strong>.</p>
         <div class="confirm-actions">
           <button class="btn-cancel-confirm" @click="confirmDeleteId = null">Cancel</button>
-          <button class="btn-delete-confirm" @click="deleteChannel(confirmDeleteId!)">Remove</button>
+          <button class="btn-confirm-danger" @click="deleteChannel(confirmDeleteId)">Remove Channel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit modal -->
+    <div v-if="editingChannel" class="modal-overlay" @click.self="editingChannel = null">
+      <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+          <h3>Edit Settings: {{ editingChannel.name || editingChannel.channel_id }}</h3>
+          <button class="modal-close" @click="editingChannel = null">&times;</button>
+        </div>
+        
+        <div class="modal-body" style="padding: 24px 20px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #cbd5e1; font-weight: 500;">
+            <input type="checkbox" v-model="editingIsSeries" style="width: 16px; height: 16px;" />
+            <span>Series channel</span>
+          </label>
+          <p style="margin-top: 12px; color: #94a3b8; font-size: 0.85rem; line-height: 1.4;">
+            Check this if the channel is dedicated to TV Shows/Series. If unchecked, the channel will be processed as a standard Movie source.
+          </p>
+        </div>
+
+        <div class="modal-footer" style="padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: flex-end; gap: 12px;">
+          <button class="btn-cancel-confirm" @click="editingChannel = null">Cancel</button>
+          <button class="btn-resolve" @click="updateChannelSettings">Save Settings</button>
         </div>
       </div>
     </div>
@@ -408,6 +504,10 @@ onMounted(() => {
 .status-badge { font-size: 0.7rem; font-weight: 700; padding: 3px 8px; border-radius: 12px; text-transform: uppercase; }
 .badge-active { background: rgba(52, 211, 153, 0.15); color: #34d399; }
 .badge-disabled { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+
+.type-badge { font-size: 0.6rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.5px; }
+.type-movie { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+.type-series { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
 
 .channel-stats { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .stat-item { display: flex; justify-content: space-between; font-size: 0.85rem; }

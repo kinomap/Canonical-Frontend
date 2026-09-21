@@ -28,6 +28,7 @@ const bulkDeleting = ref(false)
 // Inspect view
 const inspectingSource = ref<any | null>(null)
 const streamToken = ref('')
+const mediaUrl = ref('')
 const identifyTitle = ref('')
 const identifyYear = ref<number | null>(null)
 const identifying = ref(false)
@@ -125,10 +126,12 @@ const openInspect = async (source: any) => {
   identifyTitle.value = source.identification_title || ''
   identifyYear.value = source.identification_year || null
   streamToken.value = ''
+  mediaUrl.value = ''
   
   try {
     const res = await axios.get(`/api/v1/admin/garbage/${source.id}/stream-token`, auth())
     streamToken.value = res.data.stream_token
+    mediaUrl.value = res.data.media_url || ''
   } catch (err: any) {
     addToast('Failed to get video stream token', 'error')
   }
@@ -250,7 +253,7 @@ onMounted(fetchGarbage)
           <video 
             controls 
             preload="metadata"
-            :src="`/api/v1/admin/garbage/${inspectingSource.id}/stream?token=${streamToken}`"
+            :src="mediaUrl"
             class="admin-video-player"
           ></video>
         </div>

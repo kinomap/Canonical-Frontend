@@ -3,11 +3,13 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import { addToast } from '../toast'
+import MasterSession from '../components/MasterSession.vue'
 
 const router = useRouter()
 const catalogStats = ref<any>(null)
 const healthStats = ref<any>(null)
 const seriesStats = ref<any>(null)
+const mediaStats = ref<any>(null)
 
 const loadingCatalog = ref(true)
 const errorCatalog = ref('')
@@ -19,6 +21,18 @@ const fetchDashboardData = () => {
   fetchCatalogData()
   fetchHealthData()
   fetchSeriesStats()
+  fetchMediaStats()
+}
+
+const fetchMediaStats = async () => {
+  const token = localStorage.getItem('admin_token')
+  if (!token) return
+  try {
+    const res = await axios.get('/api/v1/admin/telemetry/observability', { headers: { Authorization: `Bearer ${token}` } })
+    mediaStats.value = res.data
+  } catch (err: any) {
+    console.error('Failed to load media stats', err)
+  }
 }
 
 const fetchSeriesStats = async () => {
@@ -126,6 +140,9 @@ onMounted(() => { fetchDashboardData() })
     </div>
 
     <div class="dashboard-content">
+      <!-- MASTER TELEGRAM SESSION -->
+      <MasterSession />
+
       <!-- CONTENT SECTION -->
       <section class="dashboard-section">
         <h2 class="section-title">
@@ -193,7 +210,7 @@ onMounted(() => { fetchDashboardData() })
           </div>
 
           <!-- ROW 2 — SERIES -->
-          <div class="stat-card clickable" @click="$router.push('/series')">
+          <div class="stat-card clickable" @click="$router.push('/series-management')">
             <div class="stat-icon series" style="background-color: rgba(139, 92, 246, 0.2); color: #8b5cf6;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
                 <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
@@ -442,6 +459,70 @@ onMounted(() => { fetchDashboardData() })
           </div>
         </section>
       </div>
+
+      <!-- MEDIA INFRASTRUCTURE -->
+      <section class="dashboard-section" v-if="mediaStats">
+        <h2 class="section-title" style="margin-bottom: 0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          Media Infrastructure
+        </h2>
+        <div class="stats-grid" style="margin-top: 16px;">
+          <div class="stat-card clickable" @click="$router.push('/media-nodes')">
+            <div class="stat-icon" style="background: rgba(99,102,241,0.15); color: #818cf8;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stat-value" style="color: #818cf8;">{{ mediaStats.overview?.healthy_nodes || 0 }} / {{ mediaStats.overview?.total_nodes || 0 }}</div>
+              <div class="stat-label">Nodes (healthy / total)</div>
+            </div>
+          </div>
+          <div class="stat-card clickable" @click="$router.push('/media-sessions')">
+            <div class="stat-icon" :style="{
+              background: mediaStats.media_sessions_additional > 0 ? 'rgba(251,191,36,0.15)' : 'rgba(16,185,129,0.15)',
+              color: mediaStats.media_sessions_additional > 0 ? '#fbbf24' : '#10b981'
+            }">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.04 9.613c-.153.682-.555.849-1.124.528l-3.104-2.286-1.497 1.44c-.166.166-.305.305-.625.305l.222-3.16 5.77-5.21c.25-.222-.055-.345-.388-.123L6.237 14.12l-3.054-.952c-.664-.208-.677-.664.138-.984l11.93-4.601c.554-.199 1.038.136.311.665z"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stat-value" :style="{ color: mediaStats.media_sessions_additional > 0 ? '#fbbf24' : '#10b981' }">
+                {{ mediaStats.media_sessions_connected }} / {{ mediaStats.media_sessions_required }}
+              </div>
+              <div class="stat-label">Sessions (connected / required)</div>
+            </div>
+          </div>
+          <div class="stat-card clickable" @click="$router.push('/media-infrastructure')">
+            <div class="stat-icon" style="background: rgba(56,189,248,0.15); color: #38bdf8;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stat-value" style="color: #38bdf8;">{{ mediaStats.overview?.total_streams || 0 }}</div>
+              <div class="stat-label">Active Streams</div>
+            </div>
+          </div>
+          <div class="stat-card" v-if="mediaStats.media_sessions_additional > 0">
+            <div class="stat-icon" style="background: rgba(249,115,22,0.15); color: #f97316;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stat-value" style="color: #f97316;">+{{ mediaStats.media_sessions_additional }}</div>
+              <div class="stat-label">Sessions Needed</div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 </template>

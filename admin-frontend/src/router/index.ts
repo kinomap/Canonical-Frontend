@@ -63,11 +63,66 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/series',
+      name: 'series',
+      component: () => import('../views/Series.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/series-management',
+      name: 'series-management',
+      component: () => import('../views/Series.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/series/:id',
+      name: 'series-detail',
+      component: () => import('../views/SeriesDetail.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/series-garbage',
+      name: 'series-garbage',
+      component: () => import('../views/SeriesGarbage.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/media-nodes',
+      name: 'media-nodes',
+      component: () => import('../views/MediaNodes.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/media-nodes/:id',
+      name: 'media-node-detail',
+      component: () => import('../views/MediaNodeDetail.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/media-sessions',
+      name: 'media-sessions',
+      component: () => import('../views/MediaSessions.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/media-sessions/:id',
+      name: 'media-session-detail',
+      component: () => import('../views/MediaSessionDetail.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/media-infrastructure',
+      name: 'media-infrastructure',
+      component: () => import('../views/MediaInfrastructure.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/system',
       name: 'system',
       component: () => import('../views/System.vue'),
       meta: { requiresAuth: true }
     }
+
   ]
 })
 
