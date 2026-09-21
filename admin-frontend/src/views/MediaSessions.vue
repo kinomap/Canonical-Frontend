@@ -28,6 +28,9 @@ const loading = ref(true)
 const confirmAction = ref<{ type: string; session: Session } | null>(null)
 const moveTarget = ref<{ session: Session; target_node_id: string } | null>(null)
 const showMoveModal = ref(false)
+const showAddModal = ref(false)
+const addForm = ref({ name: '', account_identifier: '', session_identifier: '', api_id: '', api_hash: '', max_streams: 25 })
+const addSubmitting = ref(false)
 let refreshInterval: number | null = null
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } })
@@ -116,6 +119,28 @@ const timeAgo = (iso: string | null) => {
 
 const utilPct = (s: Session) => s.max_streams > 0 ? Math.round((s.active_streams / s.max_streams) * 100) : 0
 
+const resetAddForm = () => { addForm.value = { name: '', account_identifier: '', session_identifier: '', api_id: '', api_hash: '', max_streams: 25 } }
+const submitAddSession = async () => {
+  addSubmitting.value = true
+  try {
+    const payload = {
+      name: addForm.value.name || null,
+      account_identifier: addForm.value.account_identifier,
+      session_identifier: addForm.value.session_identifier,
+      api_id: parseInt(addForm.value.api_id as any) || 0,
+      api_hash: addForm.value.api_hash,
+      max_streams: addForm.value.max_streams,
+    }
+    await axios.post('/api/v1/admin/media/sessions', payload, auth())
+    addToast('Session registered. Authorize it via the session detail page.', 'success')
+    showAddModal.value = false
+    resetAddForm()
+    await fetchAll()
+  } catch (err: any) {
+    addToast(err.response?.data?.detail || 'Failed to create session', 'error')
+  } finally { addSubmitting.value = false }
+}
+
 const rebalancing = ref(false)
 const rebalanceAll = async () => {
   rebalancing.value = true
@@ -143,7 +168,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         <button class="ms-rebalance-btn" @click="rebalanceAll" :disabled="rebalancing">
           {{ rebalancing ? '⟳ Rebalancing...' : '⚖ Rebalance' }}
         </button>
-        <button class="ms-add-btn" @click="router.push('/media-sessions')">+ Add Session</button>
+        <button class="ms-add-btn" @click="showAddModal = true">+ Add Session</button>
       </div>
     </div>
 
@@ -219,6 +244,42 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         <div class="ms-modal-btns">
           <button class="ms-btn-sec" @click="confirmAction = null">Cancel</button>
           <button :class="confirmAction.type === 'delete' ? 'ms-btn-danger' : 'ms-btn-pri'" @click="performAction">{{ confirmAction.type }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Add Session Modal ── -->
+    <div v-if="showAddModal" class="ms-overlay" @click.self="showAddModal = false">
+      <div class="ms-modal ms-modal-wide">
+        <h3>Register New Telegram Session</h3>
+        <p class="ms-info">After registration, authorize the session via the session detail page (OTP flow).</p>
+        <div class="ms-form">
+          <label class="ms-label">Display Name (optional)
+            <input v-model="addForm.name" class="ms-input" placeholder="e.g. Media Account 2" />
+          </label>
+          <label class="ms-label">Account Identifier *
+            <input v-model="addForm.account_identifier" class="ms-input" placeholder="e.g. @myaccount" required />
+          </label>
+          <label class="ms-label">Session Identifier *
+            <input v-model="addForm.session_identifier" class="ms-input" placeholder="e.g. my_session_file" required />
+          </label>
+          <div class="ms-form-row">
+            <label class="ms-label">Telegram API ID *
+              <input v-model="addForm.api_id" class="ms-input" type="number" placeholder="12345678" required />
+            </label>
+            <label class="ms-label">Telegram API Hash *
+              <input v-model="addForm.api_hash" class="ms-input" placeholder="32-char hex" required />
+            </label>
+          </div>
+          <label class="ms-label">Max Streams per Session
+            <input v-model.number="addForm.max_streams" class="ms-input" type="number" min="1" max="100" />
+          </label>
+        </div>
+        <div class="ms-modal-btns">
+          <button class="ms-btn-sec" @click="showAddModal = false; resetAddForm()">Cancel</button>
+          <button class="ms-btn-pri" @click="submitAddSession" :disabled="addSubmitting || !addForm.account_identifier || !addForm.session_identifier || !addForm.api_id || !addForm.api_hash">
+            {{ addSubmitting ? 'Registering...' : 'Register Session' }}
+          </button>
         </div>
       </div>
     </div>
@@ -328,6 +389,12 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .ms-btn-pri { padding: 0.4rem 1rem; border-radius: 6px; background: #6366f1; color: #fff; border: none; cursor: pointer; }
 .ms-btn-pri:disabled { opacity: 0.5; cursor: not-allowed; }
 .ms-btn-danger { padding: 0.4rem 1rem; border-radius: 6px; background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); cursor: pointer; }
+.ms-modal-wide { max-width: 540px; }
+.ms-form { display: flex; flex-direction: column; gap: 0.7rem; margin: 0.8rem 0; }
+.ms-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+.ms-label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.78rem; color: #94a3b8; font-weight: 500; }
+.ms-input { padding: 0.45rem 0.6rem; border-radius: 6px; font-size: 0.85rem; background: rgba(15,23,42,0.8); border: 1px solid rgba(100,116,139,0.3); color: #e2e8f0; outline: none; }
+.ms-input:focus { border-color: #6366f1; }
 
 /* ── Header Actions ── */
 .ms-header-actions { display: flex; gap: 0.5rem; align-items: center; }
