@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { addToast } from '../toast'
+import SessionAuthWizard from '../components/SessionAuthWizard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,6 +28,7 @@ const loading = ref(true)
 const confirmAction = ref<string | null>(null)
 const showMoveModal = ref(false)
 const moveNodeId = ref('')
+const showAuthWizard = ref(false)
 let refreshInterval: number | null = null
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } })
@@ -94,6 +96,7 @@ const statusClass = (s: string) => {
     HEALTHY: 'st-h', ACTIVE: 'st-h', DEGRADED: 'st-w', DRAINING: 'st-w',
     COOLDOWN: 'st-w', STALE: 'st-w', WARNING: 'st-w',
     OFFLINE: 'st-off', CRITICAL: 'st-c', UNHEALTHY: 'st-c', UNKNOWN: 'st-u',
+    AUTH_REQUIRED: 'st-auth', AUTHORIZING: 'st-w', PENDING: 'st-u',
   }
   return map[s] || 'st-u'
 }
@@ -120,8 +123,8 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
     <template v-else-if="session">
       <div class="sd-header">
         <div>
-          <h1 class="sd-title">{{ session.name || session.account_identifier }}</h1>
-          <div class="sd-subtitle">{{ session.session_identifier }}</div>
+          <h1 class="sd-title">📱 {{ session.telegram_phone || session.name || session.account_identifier }}</h1>
+          <div class="sd-subtitle">{{ session.session_identifier }}<span v-if="session.telegram_username" class="sd-tg-user"> · @{{ session.telegram_username }}</span></div>
         </div>
         <div class="sd-badges">
           <span class="sd-badge" :class="statusClass(session.status)">{{ session.status }}</span>
@@ -133,20 +136,14 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
       <section class="sd-section">
         <h2 class="sd-section-title">Identity</h2>
         <div class="sd-grid">
+          <div class="sd-field"><span class="sd-label">Phone</span><span class="sd-val">{{ session.telegram_phone || 'N/A' }}</span></div>
+          <div class="sd-field"><span class="sd-label">Telegram ID</span><span class="sd-val">{{ session.telegram_user_id || 'N/A' }}</span></div>
+          <div class="sd-field"><span class="sd-label">Username</span><span class="sd-val">{{ session.telegram_username ? '@' + session.telegram_username : 'N/A' }}</span></div>
+          <div class="sd-field"><span class="sd-label">Role</span><span class="sd-val sd-role">Media</span></div>
           <div class="sd-field"><span class="sd-label">Session ID</span><span class="sd-val sd-mono">{{ session.id }}</span></div>
           <div class="sd-field"><span class="sd-label">Account</span><span class="sd-val">{{ session.account_identifier }}</span></div>
           <div class="sd-field"><span class="sd-label">Session File</span><span class="sd-val sd-mono">{{ session.session_identifier }}</span></div>
           <div class="sd-field"><span class="sd-label">Credentials</span><span class="sd-val">{{ session.credentials_configured ? '✓ Configured' : '✕ Missing' }}</span></div>
-        </div>
-      </section>
-
-      <!-- ── Telegram ── -->
-      <section class="sd-section">
-        <h2 class="sd-section-title">Telegram</h2>
-        <div class="sd-grid">
-          <div class="sd-field"><span class="sd-label">User ID</span><span class="sd-val">{{ session.telegram_user_id || 'N/A' }}</span></div>
-          <div class="sd-field"><span class="sd-label">Username</span><span class="sd-val">{{ session.telegram_username ? '@' + session.telegram_username : 'N/A' }}</span></div>
-          <div class="sd-field"><span class="sd-label">Phone</span><span class="sd-val">{{ session.telegram_phone || 'N/A' }}</span></div>
         </div>
       </section>
 
@@ -203,12 +200,23 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
       <section class="sd-section">
         <h2 class="sd-section-title">Actions</h2>
         <div class="sd-actions">
+          <button v-if="session.status === 'AUTH_REQUIRED' || session.status === 'PENDING' || session.status === 'AUTHORIZING'" class="sd-act sd-act-auth" @click="showAuthWizard = true">Authorize</button>
           <button v-if="!session.enabled" class="sd-act sd-act-en" @click="confirmAction = 'enable'">Enable</button>
           <button v-if="session.enabled && session.status !== 'DRAINING'" class="sd-act sd-act-dr" @click="confirmAction = 'drain'">Drain</button>
           <button v-if="session.enabled" class="sd-act sd-act-dis" @click="confirmAction = 'disable'">Disable</button>
           <button class="sd-act sd-act-del" @click="confirmAction = 'delete'">Delete</button>
         </div>
       </section>
+
+      <!-- ── Authorization Wizard ── -->
+      <SessionAuthWizard
+        v-if="showAuthWizard"
+        mode="authorize"
+        :session-id="sessionId"
+        :session-name="session.name || session.account_identifier"
+        @success="showAuthWizard = false; fetchAll()"
+        @cancel="showAuthWizard = false"
+      />
     </template>
 
     <!-- ── Confirm ── -->
@@ -266,6 +274,8 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .sd-label { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
 .sd-val { font-size: 0.85rem; color: #cbd5e1; }
 .sd-mono { font-family: monospace; font-size: 0.78rem; word-break: break-all; }
+.sd-tg-user { color: #818cf8; font-size: 0.72rem; margin-left: 0.3rem; }
+.sd-role { background: rgba(99,102,241,0.12); color: #a5b4fc; padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
 .sd-big { font-size: 1.2rem; font-weight: 700; }
 .sd-na { color: #475569; font-style: italic; }
 .sd-err { color: #f87171; font-weight: 600; }
@@ -300,6 +310,9 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .sd-act-dis:hover { background: rgba(148,163,184,0.1); }
 .sd-act-del { color: #f87171; border-color: rgba(248,113,113,0.3); }
 .sd-act-del:hover { background: rgba(248,113,113,0.1); }
+.sd-act-auth { color: #fbbf24; border-color: rgba(251,191,36,0.3); font-weight: 600; }
+.sd-act-auth:hover { background: rgba(251,191,36,0.1); }
+.st-auth { background: rgba(251,191,36,0.15); color: #fbbf24; }
 
 .sd-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
 .sd-modal { background: #1e293b; border: 1px solid rgba(99,102,241,0.2); border-radius: 14px; padding: 1.5rem; max-width: 420px; width: 90%; }

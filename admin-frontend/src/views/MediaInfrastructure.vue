@@ -61,6 +61,8 @@ interface ObservabilityData {
   media_sessions_required: number
   media_sessions_additional: number
   media_sessions_healthy: number
+  node_bandwidth_mbps: number
+  target_utilization: number
   target_node_egress_mbps: number
   streams_per_session: number
   planning_bitrate_mbps: number
@@ -288,8 +290,20 @@ onUnmounted(() => {
             <span class="obs-cap-value obs-cap-dim">{{ data.streams_per_session }}</span>
           </div>
           <div class="obs-cap-row">
-            <span class="obs-cap-label">Target Egress</span>
+            <span class="obs-cap-label">Node Bandwidth</span>
+            <span class="obs-cap-value obs-cap-dim">{{ data.node_bandwidth_mbps }} Mbps</span>
+          </div>
+          <div class="obs-cap-row">
+            <span class="obs-cap-label">Target Egress ({{ (data.target_utilization * 100).toFixed(0) }}%)</span>
             <span class="obs-cap-value obs-cap-dim">{{ data.target_node_egress_mbps }} Mbps</span>
+          </div>
+          <div class="obs-formula">
+            <span class="obs-formula-label">Formula</span>
+            <code class="obs-formula-code">
+              ceil(({{ data.node_bandwidth_mbps }} × {{ data.target_utilization }}) / {{ data.planning_bitrate_mbps }} / {{ data.streams_per_session }})
+              = ceil({{ ((data.node_bandwidth_mbps * data.target_utilization) / data.planning_bitrate_mbps / data.streams_per_session).toFixed(1) }})
+              = {{ data.media_sessions_required }} sessions
+            </code>
           </div>
           <div v-if="data.media_sessions_additional > 0" class="obs-scale-alert">
             ⚠ Scale Required — Add {{ data.media_sessions_additional }} more session{{ data.media_sessions_additional > 1 ? 's' : '' }} to meet capacity targets
@@ -527,5 +541,17 @@ onUnmounted(() => {
   margin-top: 0.75rem; padding: 0.5rem 0.8rem; border-radius: 6px;
   background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.25);
   font-size: 0.78rem; color: #fb923c; font-weight: 500;
+}
+.obs-formula {
+  margin-top: 0.5rem; padding: 0.6rem 0.8rem; border-radius: 6px;
+  background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.12);
+}
+.obs-formula-label {
+  font-size: 0.68rem; color: #64748b; text-transform: uppercase;
+  letter-spacing: 0.04em; display: block; margin-bottom: 0.3rem;
+}
+.obs-formula-code {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+  color: #a5b4fc; line-height: 1.6; white-space: pre-wrap;
 }
 </style>

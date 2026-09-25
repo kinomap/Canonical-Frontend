@@ -28,6 +28,7 @@ interface MediaNode {
   network_egress_mbps: number | null
   session_count: number
   sessions_connected: number
+  sessions_healthy: number
   sessions_required: number
   sessions_additional: number
   stream_capacity: number
@@ -196,8 +197,8 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
             <span class="mn-metric-val" :class="{ 'mn-no-data': node.network_egress_mbps === null }">{{ node.network_egress_mbps !== null ? node.network_egress_mbps.toFixed(1) + ' Mbps' : '—' }}</span>
           </div>
           <div class="mn-metric">
-            <span class="mn-metric-label">Sessions</span>
-            <span class="mn-metric-val" :class="{ 'mn-sess-warn': node.sessions_additional > 0 }">{{ node.sessions_connected }} / {{ node.sessions_required }}</span>
+            <span class="mn-metric-label">Sessions <span class="mn-dim">(H/A/R)</span></span>
+            <span class="mn-metric-val" :class="{ 'mn-sess-warn': node.sessions_additional > 0 }">{{ node.sessions_healthy }} / {{ node.sessions_connected }} / {{ node.sessions_required }}</span>
           </div>
           <div class="mn-metric">
             <span class="mn-metric-label">Heartbeat</span>
@@ -409,6 +410,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
   font-size: 0.75rem; color: #fb923c; font-weight: 500;
 }
 .mn-no-data { color: #475569 !important; font-weight: 400 !important; }
+.mn-dim { color: #64748b; font-weight: 400; font-size: 0.75em; }
 .mn-hb-never { color: #fb923c !important; }
 .mn-sess-warn { color: #fbbf24 !important; font-weight: 600 !important; }
 </style>

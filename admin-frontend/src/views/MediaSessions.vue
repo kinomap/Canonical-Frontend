@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { addToast } from '../toast'
+import SessionAuthWizard from '../components/SessionAuthWizard.vue'
 
 const router = useRouter()
 
@@ -28,9 +29,10 @@ const loading = ref(true)
 const confirmAction = ref<{ type: string; session: Session } | null>(null)
 const moveTarget = ref<{ session: Session; target_node_id: string } | null>(null)
 const showMoveModal = ref(false)
-const showAddModal = ref(false)
-const addForm = ref({ name: '', account_identifier: '', session_identifier: '', api_id: '', api_hash: '', max_streams: 25 })
-const addSubmitting = ref(false)
+const showWizard = ref(false)
+const wizardMode = ref<'create' | 'authorize'>('create')
+const authSessionId = ref('')
+const authSessionName = ref('')
 let refreshInterval: number | null = null
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } })
@@ -104,6 +106,7 @@ const statusClass = (s: string) => {
     HEALTHY: 'st-h', ACTIVE: 'st-h', DEGRADED: 'st-w', WARNING: 'st-w',
     DRAINING: 'st-w', COOLDOWN: 'st-w', OFFLINE: 'st-off',
     CRITICAL: 'st-c', UNHEALTHY: 'st-c', STALE: 'st-w', UNKNOWN: 'st-u',
+    AUTH_REQUIRED: 'st-auth', AUTHORIZING: 'st-w', PENDING: 'st-u',
   }
   return map[s] || 'st-u'
 }
@@ -118,26 +121,15 @@ const timeAgo = (iso: string | null) => {
 }
 
 
-const resetAddForm = () => { addForm.value = { name: '', account_identifier: '', session_identifier: '', api_id: '', api_hash: '', max_streams: 25 } }
-const submitAddSession = async () => {
-  addSubmitting.value = true
-  try {
-    const payload = {
-      name: addForm.value.name || null,
-      account_identifier: addForm.value.account_identifier,
-      session_identifier: addForm.value.session_identifier,
-      api_id: parseInt(addForm.value.api_id as any) || 0,
-      api_hash: addForm.value.api_hash,
-      max_streams: addForm.value.max_streams,
-    }
-    await axios.post('/api/v1/admin/media/sessions', payload, auth())
-    addToast('Session registered. Authorize it via the session detail page.', 'success')
-    showAddModal.value = false
-    resetAddForm()
-    await fetchAll()
-  } catch (err: any) {
-    addToast(err.response?.data?.detail || 'Failed to create session', 'error')
-  } finally { addSubmitting.value = false }
+const onWizardSuccess = () => {
+  showWizard.value = false
+  fetchAll()
+}
+const openAuthWizard = (s: Session) => {
+  authSessionId.value = s.id
+  authSessionName.value = s.name || s.account_identifier
+  wizardMode.value = 'authorize'
+  showWizard.value = true
 }
 
 const rebalancing = ref(false)
@@ -167,7 +159,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         <button class="ms-rebalance-btn" @click="rebalanceAll" :disabled="rebalancing">
           {{ rebalancing ? '⟳ Rebalancing...' : '⚖ Rebalance' }}
         </button>
-        <button class="ms-add-btn" @click="showAddModal = true">+ Add Session</button>
+        <button class="ms-add-btn" @click="wizardMode = 'create'; showWizard = true">+ Add Session</button>
       </div>
     </div>
 
@@ -191,11 +183,11 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         <!-- Row 1: identity + badges -->
         <div class="ms-card-top">
           <div class="ms-card-identity">
-            <div class="ms-session-name">{{ s.name || s.account_identifier }}</div>
+            <div class="ms-session-name">📱 {{ s.telegram_phone || s.name || s.account_identifier }}</div>
             <div class="ms-session-meta">
               <span class="ms-session-id">{{ s.session_identifier }}</span>
-              <span v-if="s.telegram_username" class="ms-tg-tag">💬 @{{ s.telegram_username }}</span>
-              <span v-else-if="s.telegram_phone" class="ms-tg-tag">📱 {{ s.telegram_phone }}</span>
+              <span v-if="s.telegram_username" class="ms-tg-tag">@{{ s.telegram_username }}</span>
+              <span v-if="s.name && s.telegram_phone" class="ms-tg-tag">{{ s.name }}</span>
             </div>
           </div>
           <div class="ms-card-badges">
@@ -225,6 +217,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         </div>
         <!-- Row 3: actions -->
         <div class="ms-card-actions" @click.stop>
+          <button v-if="s.status === 'AUTH_REQUIRED' || s.status === 'PENDING' || s.status === 'AUTHORIZING'" class="ms-act ms-act-auth" @click="openAuthWizard(s)">Authorize</button>
           <button v-if="!s.enabled" class="ms-act ms-act-en" @click="confirmAction = { type: 'enable', session: s }">Enable</button>
           <button v-if="s.enabled && s.status !== 'DRAINING'" class="ms-act ms-act-dr" @click="confirmAction = { type: 'drain', session: s }">Drain</button>
           <button v-if="s.active_streams === 0" class="ms-act ms-act-mv" @click="openMove(s)">Move</button>
@@ -248,41 +241,15 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
       </div>
     </div>
 
-    <!-- ── Add Session Modal ── -->
-    <div v-if="showAddModal" class="ms-overlay" @click.self="showAddModal = false">
-      <div class="ms-modal ms-modal-wide">
-        <h3>Register New Telegram Session</h3>
-        <p class="ms-info">After registration, authorize the session via the session detail page (OTP flow).</p>
-        <div class="ms-form">
-          <label class="ms-label">Display Name (optional)
-            <input v-model="addForm.name" class="ms-input" placeholder="e.g. Media Account 2" />
-          </label>
-          <label class="ms-label">Account Identifier *
-            <input v-model="addForm.account_identifier" class="ms-input" placeholder="e.g. @myaccount" required />
-          </label>
-          <label class="ms-label">Session Identifier *
-            <input v-model="addForm.session_identifier" class="ms-input" placeholder="e.g. my_session_file" required />
-          </label>
-          <div class="ms-form-row">
-            <label class="ms-label">Telegram API ID *
-              <input v-model="addForm.api_id" class="ms-input" type="number" placeholder="12345678" required />
-            </label>
-            <label class="ms-label">Telegram API Hash *
-              <input v-model="addForm.api_hash" class="ms-input" placeholder="32-char hex" required />
-            </label>
-          </div>
-          <label class="ms-label">Max Streams per Session
-            <input v-model.number="addForm.max_streams" class="ms-input" type="number" min="1" max="100" />
-          </label>
-        </div>
-        <div class="ms-modal-btns">
-          <button class="ms-btn-sec" @click="showAddModal = false; resetAddForm()">Cancel</button>
-          <button class="ms-btn-pri" @click="submitAddSession" :disabled="addSubmitting || !addForm.account_identifier || !addForm.session_identifier || !addForm.api_id || !addForm.api_hash">
-            {{ addSubmitting ? 'Registering...' : 'Register Session' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- ── Authorization Wizard ── -->
+    <SessionAuthWizard
+      v-if="showWizard"
+      :mode="wizardMode"
+      :session-id="authSessionId"
+      :session-name="authSessionName"
+      @success="onWizardSuccess"
+      @cancel="showWizard = false"
+    />
 
     <!-- ── Move Modal ── -->
     <div v-if="showMoveModal && moveTarget" class="ms-overlay" @click.self="showMoveModal = false">
@@ -305,8 +272,8 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 </template>
 
 <style scoped>
-.ms-page { padding: 1.5rem 2rem; max-width: 1600px; }
-.ms-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.2rem; }
+.ms-page { padding: 1.5rem 2rem; max-width: 1600px; width: 100%; box-sizing: border-box; overflow-x: hidden; }
+.ms-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
 .ms-title { display: flex; align-items: center; gap: 0.6rem; font-size: 1.5rem; font-weight: 700; color: #e2e8f0; margin: 0; }
 .ms-title-icon { width: 22px; height: 22px; color: #818cf8; }
 .ms-add-btn {
@@ -375,6 +342,8 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .ms-act-mv { color: #818cf8; border-color: rgba(129,140,248,0.3); }
 .ms-act-dis { color: #94a3b8; border-color: rgba(148,163,184,0.3); }
 .ms-act-del { color: #f87171; border-color: rgba(248,113,113,0.3); }
+.ms-act-auth { color: #fbbf24; border-color: rgba(251,191,36,0.3); font-weight: 600; }
+.st-auth { background: rgba(251,191,36,0.15); color: #fbbf24; }
 
 /* ── Modals ── */
 .ms-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
@@ -410,4 +379,32 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .ms-rebalance-btn:hover:not(:disabled) { background: rgba(99,102,241,0.25); }
 .ms-rebalance-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .ms-tg-name { font-size: 0.78rem; color: #94a3b8; margin-bottom: 2px; }
+
+/* ── Overflow / truncation guards (no horizontal scroll) ── */
+.ms-cards { width: 100%; }
+.ms-card { box-sizing: border-box; max-width: 100%; }
+.ms-session-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.ms-session-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; display: inline-block; vertical-align: bottom; }
+.ms-node-badge { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; display: inline-block; vertical-align: bottom; }
+.ms-counters { width: 100%; box-sizing: border-box; }
+.ms-counter { flex: 1 1 auto; }
+
+/* ── Responsive: tablet / narrow admin viewport ── */
+@media (max-width: 900px) {
+  .ms-page { padding: 1rem 1rem; }
+  .ms-card-metrics { gap: 0.9rem; }
+}
+
+/* ── Responsive: mobile — stack badges under identity ── */
+@media (max-width: 560px) {
+  .ms-page { padding: 0.85rem 0.75rem; }
+  .ms-card-top { flex-direction: column; align-items: stretch; }
+  .ms-card-badges { align-self: flex-start; }
+  .ms-card-metrics { gap: 0.75rem 1rem; }
+  .ms-metric { flex: 1 1 40%; }
+  .ms-card-actions .ms-act { flex: 1 1 auto; text-align: center; }
+  .ms-title { font-size: 1.25rem; }
+  .ms-header-actions { width: 100%; }
+  .ms-header-actions button { flex: 1 1 auto; }
+}
 </style>

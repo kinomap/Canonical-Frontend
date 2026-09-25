@@ -17,7 +17,7 @@ interface NodeDetail {
   max_configured_streams: number | null; enrollment_token: string | null
   cpu_percent: number | null; ram_percent: number | null
   network_egress_mbps: number | null; session_count: number
-  sessions_connected: number; sessions_required: number; sessions_additional: number
+  sessions_connected: number; sessions_healthy: number; sessions_required: number; sessions_additional: number
   stream_capacity: number; stream_capacity_max: number; target_egress_mbps: number | null
   worker_health: string | null; uptime_seconds: number | null
   last_heartbeat: string | null; last_health_check_at: string | null
@@ -37,7 +37,7 @@ interface TelemetryNode {
 }
 
 interface SessionItem {
-  id: string; account_identifier: string; status: string; health_status: string
+  id: string; account_identifier: string; telegram_phone: string | null; status: string; health_status: string
   active_streams: number; max_streams: number; node_id: string | null; node_name: string | null
 }
 
@@ -197,10 +197,18 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         <h2 class="nd-section-title">Session Capacity</h2>
         <div class="nd-info-grid">
           <div class="nd-info">
-            <span class="nd-info-label">Sessions</span>
-            <span class="nd-info-val" :class="{ 'nd-sess-warn': node.sessions_additional > 0 }">
-              {{ node.sessions_connected }} / {{ node.sessions_required }}
+            <span class="nd-info-label">Assigned Sessions</span>
+            <span class="nd-info-val">{{ node.sessions_connected }}</span>
+          </div>
+          <div class="nd-info">
+            <span class="nd-info-label">Healthy Sessions</span>
+            <span class="nd-info-val" :class="{ 'nd-sess-warn': node.sessions_healthy === 0 && node.sessions_connected > 0 }">
+              {{ node.sessions_healthy }}
             </span>
+          </div>
+          <div class="nd-info">
+            <span class="nd-info-label">Required Sessions</span>
+            <span class="nd-info-val">{{ node.sessions_required }}</span>
           </div>
           <div class="nd-info">
             <span class="nd-info-label">Stream Capacity</span>
@@ -225,10 +233,10 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         <h2 class="nd-section-title">Assigned Sessions ({{ sessions.length }})</h2>
         <div v-if="sessions.length === 0" class="nd-empty">No sessions assigned to this node.</div>
         <table v-else class="nd-table">
-          <thead><tr><th>Account</th><th>Status</th><th>Health</th><th>Streams</th></tr></thead>
+          <thead><tr><th>Phone / Account</th><th>Status</th><th>Health</th><th>Streams</th></tr></thead>
           <tbody>
             <tr v-for="s in sessions" :key="s.id" @click="router.push(`/media-sessions/${s.id}`)" class="nd-table-row">
-              <td>{{ s.account_identifier }}</td>
+              <td>{{ s.telegram_phone || s.account_identifier }}</td>
               <td><span class="nd-badge-sm" :class="statusClass(s.status)">{{ s.status }}</span></td>
               <td><span class="nd-badge-sm" :class="statusClass(s.health_status)">{{ s.health_status }}</span></td>
               <td>{{ s.active_streams }} / {{ s.max_streams }}</td>
