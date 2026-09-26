@@ -3,6 +3,9 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { addToast } from '../toast'
+import AddMediaNodeWizard from '../components/AddMediaNodeWizard.vue'
+
+const showDeployWizard = ref(false)
 
 const router = useRouter()
 
@@ -156,14 +159,21 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         <svg class="mn-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
         Media Nodes
       </h1>
-      <button class="mn-add-btn" @click="showCreateModal = true">+ Register Node</button>
+      <div style="display:flex;gap:8px">
+        <button class="mn-add-btn" @click="showCreateModal = true">+ Register Node</button>
+        <button class="mn-add-btn" style="background:#22c55e" @click="showDeployWizard = true">🚀 Add Media Node</button>
+      </div>
     </div>
+
+    <AddMediaNodeWizard v-if="showDeployWizard"
+      @close="showDeployWizard = false; fetchNodes()"
+      @deployed="fetchNodes()" />
 
     <div v-if="loading" class="mn-loading"><div class="mn-spinner"></div> Loading nodes...</div>
 
     <div v-else-if="nodes.length === 0" class="mn-empty">
       <p>No Media Nodes registered.</p>
-      <button @click="showCreateModal = true" class="mn-add-btn">+ Register First Node</button>
+      <button @click="showDeployWizard = true" class="mn-add-btn" style="background:#22c55e">🚀 Add Media Node</button>
     </div>
 
     <div v-else class="mn-nodes-grid">
