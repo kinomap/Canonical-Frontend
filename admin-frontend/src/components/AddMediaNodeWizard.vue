@@ -19,6 +19,7 @@ const nodeName = ref('')
 const host = ref('')
 const sshPort = ref(22)
 const sshUsername = ref('ubuntu')
+const hostError = ref('')
 
 // Step 2 — Canonical Node
 const releases = ref<any[]>([])
@@ -31,7 +32,36 @@ const sshPrivateKey = ref('')
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } })
 
-const canGoStep2 = computed(() => nodeName.value.trim() && host.value.trim())
+/**
+ * Canonicalize hostname for UX: trim whitespace, strip trailing dot.
+ * Backend is the source of truth for full validation.
+ */
+function canonicalizeHost(raw: string): string {
+  let h = raw.trim()
+  if (h.endsWith('.')) h = h.replace(/\.+$/, '')
+  return h
+}
+
+/**
+ * Client-side hostname validation — UX guard, not source of truth.
+ * Returns error message or empty string if valid.
+ */
+function validateHost(raw: string): string {
+  const h = raw.trim()
+  if (!h) return 'Hostname or IP address is required.'
+  if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//.test(h)) return 'Enter a hostname or IP, not a URL.'
+  if (/\s/.test(h)) return 'Hostname must not contain spaces.'
+  if (h.includes('/')) return 'Enter a hostname or IP, not a path.'
+  // Simple port detection for non-IPv6
+  if (!h.startsWith('[') && /^.+:\d+$/.test(h) && (h.match(/:/g) || []).length === 1) {
+    return 'Enter hostname without port. Specify SSH port separately.'
+  }
+  return ''
+}
+
+const canGoStep2 = computed(() => {
+  return nodeName.value.trim() && host.value.trim() && !validateHost(host.value)
+})
 const canGoStep3 = computed(() => selectedVersion.value)
 const canDeploy = computed(() => sshPrivateKey.value.trim().length > 50)
 
@@ -51,6 +81,14 @@ async function loadReleases() {
 }
 
 async function goToStep2() {
+  // Canonicalize host before proceeding
+  const err = validateHost(host.value)
+  if (err) {
+    hostError.value = err
+    return
+  }
+  host.value = canonicalizeHost(host.value)
+  hostError.value = ''
   step.value = 2
   await loadReleases()
 }
@@ -63,17 +101,18 @@ async function startDeploy() {
     // 1. Create or find node
     let nodeId = ''
     try {
+      const canonicalHost = canonicalizeHost(host.value)
       const createResp = await axios.post('/api/v1/admin/media/nodes', {
         name: nodeName.value,
-        hostname: host.value,
-        media_endpoint: mediaPublicUrl.value || `http://${host.value}`,
+        hostname: canonicalHost,
+        media_endpoint: mediaPublicUrl.value || `http://${canonicalHost}`,
         control_endpoint: '',
       }, auth())
       nodeId = createResp.data.id
 
       // Update SSH info
       await axios.patch(`/api/v1/admin/media/nodes/${nodeId}`, {
-        hostname: host.value,
+        hostname: canonicalHost,
       }, auth())
     } catch (err: any) {
       if (err.response?.status === 409) {
@@ -199,7 +238,9 @@ function stageClass(stage: string): string {
           <input v-model="nodeName" placeholder="media-02" />
         </label>
         <label>Host / IP
-          <input v-model="host" placeholder="203.0.113.12" />
+          <input v-model="host" placeholder="203.0.113.12"
+                 @blur="hostError = validateHost(host)" />
+          <span v-if="hostError" class="field-error">{{ hostError }}</span>
         </label>
         <label>SSH Port
           <input v-model.number="sshPort" type="number" />
@@ -368,4 +409,5 @@ function stageClass(stage: string): string {
   display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;
 }
 .success-status { color: #22c55e; font-weight: bold; font-size: 1rem; }
+.field-error { display: block; color: #ef4444; font-size: 0.8rem; margin-top: 4px; }
 </style>
