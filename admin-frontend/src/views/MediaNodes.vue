@@ -4,8 +4,10 @@ import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { addToast } from '../toast'
 import AddMediaNodeWizard from '../components/AddMediaNodeWizard.vue'
+import RemoveMediaNodeModal from '../components/RemoveMediaNodeModal.vue'
 
 const showDeployWizard = ref(false)
+const removeTarget = ref<MediaNode | null>(null)
 
 const router = useRouter()
 
@@ -67,6 +69,18 @@ const fetchNodes = async () => {
   try {
     const resp = await axios.get('/api/v1/admin/media/nodes', auth())
     nodes.value = resp.data
+    if (!removeTarget.value) {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (!key?.startsWith('node-removal-target:')) continue
+        const nodeId = key.slice('node-removal-target:'.length)
+        if (!localStorage.getItem(`node-removal:${nodeId}`) || nodes.value.some(n => n.id === nodeId)) continue
+        try {
+          const saved = JSON.parse(localStorage.getItem(key) || 'null') as MediaNode | null
+          if (saved?.id === nodeId) { removeTarget.value = saved; break }
+        } catch { /* Invalid local state is not a reason to alter the backend operation. */ }
+      }
+    }
   } catch (err: any) {
     addToast('Failed to load nodes', 'error')
   } finally {
@@ -103,7 +117,6 @@ const performAction = async () => {
     if (type === 'enable') await axios.post(`/api/v1/admin/media/nodes/${node.id}/enable`, {}, auth())
     else if (type === 'disable') await axios.post(`/api/v1/admin/media/nodes/${node.id}/disable`, {}, auth())
     else if (type === 'drain') await axios.post(`/api/v1/admin/media/nodes/${node.id}/drain`, {}, auth())
-    else if (type === 'delete') await axios.delete(`/api/v1/admin/media/nodes/${node.id}`, auth())
     addToast(`Node ${type}d successfully`, 'success')
     confirmAction.value = null
     await fetchNodes()
@@ -118,7 +131,9 @@ const statusClass = (s: string) => {
     HEALTHY: 'st-healthy', ONLINE: 'st-healthy', ACTIVE: 'st-healthy',
     REGISTERING: 'st-registering', REGISTERED: 'st-registering',
     DEGRADED: 'st-warning', WARNING: 'st-warning',
-    DRAINING: 'st-warning', OFFLINE: 'st-offline', CRITICAL: 'st-critical',
+    DRAINING: 'st-warning', DECOMMISSIONING: 'st-warning',
+    OFFLINE: 'st-offline', REMOVED: 'st-offline',
+    CRITICAL: 'st-critical', DECOMMISSION_FAILED: 'st-critical',
     UNKNOWN: 'st-unknown', UNHEALTHY: 'st-critical',
   }
   return map[s] || 'st-unknown'
@@ -226,7 +241,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
           <button v-if="!node.enabled" class="mn-action-btn mn-action-enable" @click="confirmAction = { type: 'enable', node }">Enable</button>
           <button v-if="node.enabled && node.status !== 'DRAINING'" class="mn-action-btn mn-action-drain" @click="confirmAction = { type: 'drain', node }">Drain</button>
           <button v-if="node.enabled" class="mn-action-btn mn-action-disable" @click="confirmAction = { type: 'disable', node }">Disable</button>
-          <button class="mn-action-btn mn-action-delete" @click="confirmAction = { type: 'delete', node }">Delete</button>
+          <button class="mn-action-btn mn-action-delete" @click.stop="removeTarget = node">Remove</button>
         </div>
       </div>
     </div>
@@ -270,7 +285,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
       </div>
     </div>
 
-    <!-- ── Confirm Modal ── -->
+    <!-- ── Confirm Modal (enable/disable/drain) ── -->
     <div v-if="confirmAction" class="mn-modal-overlay" @click.self="confirmAction = null">
       <div class="mn-modal mn-modal-sm">
         <h2 class="mn-modal-title">Confirm {{ confirmAction.type }}</h2>
@@ -278,17 +293,23 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
           Are you sure you want to <strong>{{ confirmAction.type }}</strong> node
           <strong>{{ confirmAction.node.name }}</strong>?
         </p>
-        <p v-if="confirmAction.type === 'delete'" class="mn-confirm-warn">⚠ This action cannot be undone.</p>
         <p v-if="confirmAction.type === 'drain'" class="mn-confirm-info">
           Node will stop accepting new streams. Existing streams will continue until completion.
         </p>
         <div class="mn-modal-actions">
           <button class="mn-btn-secondary" @click="confirmAction = null">Cancel</button>
-          <button class="mn-btn-danger" v-if="confirmAction.type === 'delete'" @click="performAction">Delete</button>
-          <button class="mn-btn-primary" v-else @click="performAction">{{ confirmAction.type }}</button>
+          <button class="mn-btn-primary" @click="performAction">{{ confirmAction.type }}</button>
         </div>
       </div>
     </div>
+
+    <!-- ── Remove Node Modal ── -->
+    <RemoveMediaNodeModal
+      v-if="removeTarget"
+      :node="removeTarget"
+      @close="removeTarget = null"
+      @removed="removeTarget = null; fetchNodes()"
+    />
   </div>
 </template>
 

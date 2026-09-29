@@ -106,7 +106,6 @@ async function startDeploy() {
         name: nodeName.value,
         hostname: canonicalHost,
         media_endpoint: mediaPublicUrl.value || `http://${canonicalHost}`,
-        control_endpoint: '',
       }, auth())
       nodeId = createResp.data.id
 
@@ -184,6 +183,10 @@ const stageLabels: Record<string, string> = {
   connect: 'SSH Connection',
   preflight: 'System Preflight',
   install_docker: 'Docker Installation',
+  prepare_control_connection: 'Control Connection Setup',
+  configure_wireguard_remote: 'WireGuard — Remote',
+  configure_wireguard_local: 'WireGuard — Local',
+  verify_wireguard: 'WireGuard Verification',
   upload_release: 'Canonical Node Upload',
   configure_node: 'Node Configuration',
   start_node: 'Start Containers',
@@ -192,8 +195,13 @@ const stageLabels: Record<string, string> = {
   finalize: 'Finalize',
 }
 
-const allStages = ['connect', 'preflight', 'install_docker', 'upload_release',
-  'configure_node', 'start_node', 'register_node', 'verify_health', 'finalize']
+const allStages = [
+  'connect', 'preflight', 'install_docker',
+  'prepare_control_connection', 'configure_wireguard_remote',
+  'configure_wireguard_local', 'verify_wireguard',
+  'upload_release', 'configure_node', 'start_node',
+  'register_node', 'verify_health', 'finalize',
+]
 
 function stageIcon(stage: string): string {
   const stages = deploymentStatus.value?.stages || {}
@@ -321,6 +329,7 @@ function stageClass(stage: string): string {
         <div class="success-icon">✓</div>
         <h3>{{ nodeName }}</h3>
         <p class="success-status">ACTIVE · HEALTHY</p>
+        <p class="success-wg">✓ Control Connection: WireGuard</p>
         <p>Node version: {{ deploymentStatus?.target_version }}</p>
         <p>Commit: {{ deploymentStatus?.target_commit?.slice(0, 12) }}</p>
         <div class="wizard-actions">
@@ -409,5 +418,6 @@ function stageClass(stage: string): string {
   display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;
 }
 .success-status { color: #22c55e; font-weight: bold; font-size: 1rem; }
+.success-wg { color: #6366f1; font-size: 0.9rem; margin-top: 4px; }
 .field-error { display: block; color: #ef4444; font-size: 0.8rem; margin-top: 4px; }
 </style>

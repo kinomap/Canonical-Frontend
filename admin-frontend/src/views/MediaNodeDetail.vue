@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { addToast } from '../toast'
+import RemoveMediaNodeModal from '../components/RemoveMediaNodeModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,6 +47,7 @@ const telemetry = ref<TelemetryNode | null>(null)
 const sessions = ref<SessionItem[]>([])
 const loading = ref(true)
 const confirmAction = ref<string | null>(null)
+const showRemoveModal = ref(false)
 let refreshInterval: number | null = null
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } })
@@ -79,8 +81,7 @@ const performAction = async (action: string) => {
     else if (action === 'disable') await axios.post(`/api/v1/admin/media/nodes/${nodeId}/disable`, {}, auth())
     else if (action === 'drain') await axios.post(`/api/v1/admin/media/nodes/${nodeId}/drain`, {}, auth())
     else if (action === 'delete') {
-      await axios.delete(`/api/v1/admin/media/nodes/${nodeId}`, auth())
-      router.push('/media-nodes')
+      // Delete is now handled by RemoveMediaNodeModal
       return
     }
     addToast(`Node ${action}d`, 'success')
@@ -97,7 +98,10 @@ const statusClass = (s: string) => {
     HEALTHY: 'st-healthy', ONLINE: 'st-healthy', ACTIVE: 'st-healthy',
     REGISTERING: 'st-reg', REGISTERED: 'st-reg',
     DEGRADED: 'st-warn', DRAINING: 'st-warn', WARNING: 'st-warn',
-    OFFLINE: 'st-off', CRITICAL: 'st-crit', UNKNOWN: 'st-unk', UNHEALTHY: 'st-crit',
+    DECOMMISSIONING: 'st-warn',
+    OFFLINE: 'st-off', REMOVED: 'st-off',
+    CRITICAL: 'st-crit', DECOMMISSION_FAILED: 'st-crit',
+    UNKNOWN: 'st-unk', UNHEALTHY: 'st-crit',
   }
   return map[s] || 'st-unk'
 }
@@ -252,22 +256,30 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
           <button v-if="!node.enabled" class="nd-act-btn nd-act-enable" @click="confirmAction = 'enable'">Enable</button>
           <button v-if="node.enabled && node.status !== 'DRAINING'" class="nd-act-btn nd-act-drain" @click="confirmAction = 'drain'">Drain</button>
           <button v-if="node.enabled" class="nd-act-btn nd-act-disable" @click="confirmAction = 'disable'">Disable</button>
-          <button class="nd-act-btn nd-act-delete" @click="confirmAction = 'delete'">Delete</button>
+          <button class="nd-act-btn nd-act-delete" @click="showRemoveModal = true">Remove</button>
         </div>
       </section>
     </template>
 
-    <!-- ── Confirm Modal ── -->
+    <!-- ── Confirm Modal (enable/disable/drain) ── -->
     <div v-if="confirmAction" class="nd-overlay" @click.self="confirmAction = null">
       <div class="nd-modal">
         <h3>Confirm {{ confirmAction }}</h3>
         <p>Are you sure you want to <strong>{{ confirmAction }}</strong> this node?</p>
         <div class="nd-modal-btns">
           <button class="nd-btn-sec" @click="confirmAction = null">Cancel</button>
-          <button :class="confirmAction === 'delete' ? 'nd-btn-danger' : 'nd-btn-pri'" @click="performAction(confirmAction!)">{{ confirmAction }}</button>
+          <button class="nd-btn-pri" @click="performAction(confirmAction!)">{{ confirmAction }}</button>
         </div>
       </div>
     </div>
+
+    <!-- ── Remove Node Modal ── -->
+    <RemoveMediaNodeModal
+      v-if="showRemoveModal && node"
+      :node="node"
+      @close="showRemoveModal = false"
+      @removed="showRemoveModal = false; router.push('/media-nodes')"
+    />
   </div>
 </template>
 
