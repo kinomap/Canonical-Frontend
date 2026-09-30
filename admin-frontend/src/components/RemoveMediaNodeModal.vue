@@ -87,6 +87,7 @@ const stageLabels: Record<string, string> = {
   remove_containers: '🗑 Remove Containers',
   remove_volumes: '💾 Remove Volumes',
   remove_images: '🖼 Remove Images',
+  remove_docker: '🐳 Remove Provisioned Docker',
   remove_wireguard: '🔒 Remove WireGuard',
   remove_config: '📁 Remove Config',
   verify_clean: '✅ Verify Clean',
@@ -95,7 +96,7 @@ const stageLabels: Record<string, string> = {
 
 const orderedStages = [
   'connect', 'verify_identity', 'stop_services', 'remove_containers',
-  'remove_volumes', 'remove_images', 'remove_wireguard', 'remove_config',
+  'remove_volumes', 'remove_images', 'remove_wireguard', 'remove_config', 'remove_docker',
   'verify_clean', 'control_plane_cleanup',
 ]
 
@@ -330,8 +331,8 @@ onUnmounted(() => {
         </div>
 
         <div class="rm-destructive-warn" v-if="needsSsh">
-          <strong>⚠ This will permanently decommission the Media Node runtime on {{ node.hostname }}.</strong>
-          <p>KINOSOTA containers, volumes, images, and configuration will be removed from the VPS.</p>
+          <strong>⚠ This will clean the Media Node provisioning resources on {{ node.hostname }}.</strong>
+          <p>Node-owned resources will be removed from the VPS. For pre-release deployments this includes Docker installed during provisioning.</p>
           <p>Telegram sessions, movies, sources, and user data will NOT be affected.</p>
         </div>
         <div class="rm-info-box" v-else>
