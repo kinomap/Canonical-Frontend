@@ -36,6 +36,9 @@ interface PrecheckResult {
 const precheck = ref<PrecheckResult | null>(null)
 const precheckLoading = ref(true)
 const precheckError = ref<string | null>(null)
+const recheckKey = ref('')
+const recheckingIdentity = ref(false)
+const identityRecheck = ref<{ status: string; reason: string; lifecycle_state: string; remote_state: Record<string, unknown> } | null>(null)
 
 // The backend classification, not the provisioned flag, determines SSH access.
 const needsSsh = computed(() => precheck.value?.requires_ssh === true)
@@ -55,6 +58,41 @@ const runPrecheck = async () => {
     precheckError.value = err.response?.data?.detail || 'Precheck failed'
   } finally {
     precheckLoading.value = false
+  }
+}
+
+// This is deliberately not another DB-only precheck.  It asks the backend to
+// open SSH and inspect the host key plus NODE_ID, without changing the VPS.
+const runIdentityRecheck = async () => {
+  if (!recheckKey.value.trim()) {
+    addToast('Provide the SSH private key to perform remote identity Re-check.', 'error')
+    return
+  }
+  recheckingIdentity.value = true
+  identityRecheck.value = null
+  try {
+    const resp = await axios.post(
+      `/api/v1/admin/media/nodes/${props.node.id}/identity/recheck`,
+      { ssh_private_key: recheckKey.value }, auth(),
+    )
+    identityRecheck.value = resp.data
+    // Do not retain credential after the request.  A verified identity is
+    // persisted by the backend only after NODE_ID proof, so the next precheck
+    // can select the normal protected removal path.
+    recheckKey.value = ''
+    if (resp.data.status === 'verified') {
+      addToast('Remote identity verified. Refreshing the cleanup precheck…', 'success')
+      await runPrecheck()
+    } else {
+      addToast(`Remote identity result: ${resp.data.status}`, 'error')
+    }
+  } catch (err: any) {
+    identityRecheck.value = {
+      status: 'unreachable', lifecycle_state: 'unknown', remote_state: {},
+      reason: err.response?.data?.detail || 'Remote identity Re-check failed',
+    }
+  } finally {
+    recheckingIdentity.value = false
   }
 }
 
@@ -90,14 +128,16 @@ const stageLabels: Record<string, string> = {
   remove_docker: '🐳 Remove Provisioned Docker',
   remove_wireguard: '🔒 Remove WireGuard',
   remove_config: '📁 Remove Config',
+  remove_tls: '🔒 Remove TLS Certificate and Renewal Hooks',
+  remove_dns: 'Remove Media DNS Records',
   verify_clean: '✅ Verify Clean',
   control_plane_cleanup: '🧹 Control Plane Cleanup',
 }
 
 const orderedStages = [
   'connect', 'verify_identity', 'stop_services', 'remove_containers',
-  'remove_volumes', 'remove_images', 'remove_wireguard', 'remove_config', 'remove_docker',
-  'verify_clean', 'control_plane_cleanup',
+  'remove_volumes', 'remove_images', 'remove_wireguard', 'remove_config', 'remove_tls', 'remove_docker',
+  'verify_clean', 'remove_dns', 'control_plane_cleanup',
 ]
 
 const stageIcon = (stage: string): string => {
@@ -230,6 +270,7 @@ const goToConfirm = () => {
 
 const handleClose = () => {
   sshKey.value = ''
+  recheckKey.value = ''
   stopPolling()
   if (phase.value === 'completed') {
     localStorage.removeItem(`node-removal:${props.node.id}`)
@@ -300,6 +341,18 @@ onUnmounted(() => {
           <ul>
             <li v-for="w in precheck.warnings" :key="w">{{ w }}</li>
           </ul>
+        </div>
+        <div class="rm-identity-recheck">
+          <h3 class="rm-section-title">Remote identity Re-check</h3>
+          <p>Uses SSH to verify the host key and KINOSOTA NODE_ID, then reports containers, WireGuard, TLS and deployment residue. It does not modify the VPS.</p>
+          <textarea v-model="recheckKey" class="rm-ssh-input" rows="5"
+            placeholder="SSH private key (used once; never stored)"></textarea>
+          <p v-if="identityRecheck" :class="identityRecheck.status === 'verified' ? 'rm-success' : 'rm-danger'">
+            <strong>{{ identityRecheck.status }}</strong>: {{ identityRecheck.reason }}
+          </p>
+          <button class="rm-btn-sec" :disabled="recheckingIdentity || !recheckKey.trim()" @click="runIdentityRecheck">
+            {{ recheckingIdentity ? 'Checking remote identity…' : 'Re-check remote identity' }}
+          </button>
         </div>
         <div class="rm-actions">
           <button class="rm-btn-sec" @click="handleClose">Close</button>
@@ -558,6 +611,11 @@ onUnmounted(() => {
   border: 1px solid rgba(100,116,139,0.3); resize: vertical;
 }
 .rm-ssh-input:focus { border-color: #818cf8; outline: none; }
+.rm-identity-recheck {
+  margin-top: 1rem; padding: .85rem; border: 1px solid rgba(148,163,184,.25);
+  border-radius: 8px; color: #cbd5e1; font-size: .82rem;
+}
+.rm-identity-recheck .rm-ssh-input { margin: .65rem 0; }
 
 .rm-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.2rem; }
 .rm-btn-sec {

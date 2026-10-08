@@ -24,7 +24,6 @@ const hostError = ref('')
 // Step 2 — Canonical Node
 const releases = ref<any[]>([])
 const selectedVersion = ref('')
-const mediaPublicUrl = ref('')
 const loadingReleases = ref(false)
 
 // Step 3 — Deploy
@@ -62,7 +61,7 @@ function validateHost(raw: string): string {
 const canGoStep2 = computed(() => {
   return nodeName.value.trim() && host.value.trim() && !validateHost(host.value)
 })
-const canGoStep3 = computed(() => selectedVersion.value)
+const canGoStep3 = computed(() => Boolean(selectedVersion.value))
 const canDeploy = computed(() => sshPrivateKey.value.trim().length > 50)
 
 async function loadReleases() {
@@ -104,8 +103,9 @@ async function startDeploy() {
       const canonicalHost = canonicalizeHost(host.value)
       const createResp = await axios.post('/api/v1/admin/media/nodes', {
         name: nodeName.value,
+        for_provisioning: true,
         hostname: canonicalHost,
-        media_endpoint: mediaPublicUrl.value || `http://${canonicalHost}`,
+        // The backend derives the DNS name from the stable node slug + MEDIA_DOMAIN.
       }, auth())
       nodeId = createResp.data.id
 
@@ -135,7 +135,6 @@ async function startDeploy() {
       ssh_private_key: sshPrivateKey.value,
       target_version: selected?.version || '',
       target_commit: selected?.commit || '',
-      media_public_url: mediaPublicUrl.value || `http://${host.value}`,
     }, auth())
 
     deploymentId.value = resp.data.deployment_id
@@ -183,6 +182,10 @@ const stageLabels: Record<string, string> = {
   connect: 'SSH Connection',
   preflight: 'System Preflight',
   install_docker: 'Docker Installation',
+  provision_dns: 'Cloudflare DNS (DNS Only)',
+  issue_tls: 'TLS Certificate (DNS-01)',
+  configure_tls: 'Automatic TLS Renewal',
+  verify_media_endpoint: 'Public HTTPS / TLS / Health',
   prepare_control_connection: 'Control Connection Setup',
   configure_wireguard_remote: 'WireGuard — Remote',
   configure_wireguard_local: 'WireGuard — Local',
@@ -196,11 +199,11 @@ const stageLabels: Record<string, string> = {
 }
 
 const allStages = [
-  'connect', 'preflight', 'install_docker',
+  'provision_dns', 'connect', 'preflight', 'install_docker',
   'prepare_control_connection', 'configure_wireguard_remote',
   'configure_wireguard_local', 'verify_wireguard',
-  'upload_release', 'configure_node', 'start_node',
-  'register_node', 'verify_health', 'finalize',
+  'upload_release', 'configure_node', 'issue_tls', 'start_node', 'configure_tls',
+  'register_node', 'verify_health', 'verify_media_endpoint', 'finalize',
 ]
 
 function stageIcon(stage: string): string {
@@ -278,9 +281,7 @@ function stageClass(stage: string): string {
             </select>
           </label>
         </div>
-        <label>Media Public URL (optional)
-          <input v-model="mediaPublicUrl" :placeholder="`http://${host}`" />
-        </label>
+        <p class="wiz-hint">Media URL is derived by the backend from the node ID and MEDIA_DOMAIN.</p>
         <div class="wizard-actions">
           <button @click="step = 1">← Back</button>
           <button :disabled="!canGoStep3" class="btn-primary" @click="step = 3">Next →</button>
