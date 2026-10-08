@@ -35,11 +35,18 @@ const loading = ref(true)
 const showReplaceModal = ref(false)
 const replacing = ref(false)
 
-// Auth flow
-const authStep = ref<'idle' | 'code_sent' | 'code_submit'>('idle')
+// Auth flow: phone -> code -> (optional 2FA password) -> authorized.
+// The challenge ({phone, phone_code_hash}) returned by request-code lives only in
+// component memory for the current flow: never persisted, rendered or logged.
+type AuthStep = 'idle' | 'phone' | 'code' | 'password'
+interface AuthChallenge { phone: string; phone_code_hash: string }
+const authStep = ref<AuthStep>('idle')
 const authPhone = ref('')
 const authCode = ref('')
+const authPassword = ref('')
+const authError = ref('')
 const authSending = ref(false)
+let authChallenge: AuthChallenge | null = null
 
 const newSession = ref({
   name: '',
@@ -71,7 +78,7 @@ const fetchMasterSession = async () => {
 const displayStatus = computed(() => {
   if (!session.value) return { label: 'NOT CONFIGURED', cls: 'st-err' }
   const s = session.value
-  if (s.status === 'ACTIVE' && s.health_status === 'HEALTHY') return { label: 'CONNECTED', cls: 'st-ok' }
+  if (s.status === 'ACTIVE' && s.health_status === 'HEALTHY') return { label: 'AUTHORIZED · HEALTHY', cls: 'st-ok' }
   if (s.health_status === 'STALE') return { label: 'STALE', cls: 'st-warn' }
   if (s.status === 'UNAUTHORIZED' || s.health_status === 'UNHEALTHY') return { label: 'UNAUTHORIZED', cls: 'st-err' }
   if (s.health_status === 'UNKNOWN') return { label: 'UNKNOWN', cls: 'st-warn' }
@@ -125,36 +132,109 @@ const replaceSession = async () => {
   }
 }
 
+// Real backend/Telegram error text (FastAPI string detail or 422 validation list).
+const apiErrorMessage = (err: any, fallback: string): string => {
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string' && detail) return detail
+  if (Array.isArray(detail) && detail.length) {
+    return detail
+      .map((d: any) => `${Array.isArray(d?.loc) ? d.loc.filter((x: any) => x !== 'body').join('.') : ''}: ${d?.msg ?? ''}`)
+      .join('; ')
+  }
+  if (err?.response?.status) return `${fallback} (HTTP ${err.response.status})`
+  return err?.message || fallback
+}
+
+const resetAuth = () => {
+  authChallenge = null
+  authCode.value = ''
+  authPassword.value = ''
+  authError.value = ''
+  authStep.value = 'idle'
+}
+
+const startAuth = () => {
+  resetAuth()
+  authPhone.value = ''
+  authStep.value = 'phone'
+}
+
+const failAuth = async (err: any, fallback: string) => {
+  const message = apiErrorMessage(err, fallback)
+  addToast(message, 'error')
+  if (message.startsWith('SESSION_ALREADY_AUTHORIZED')) {
+    resetAuth()
+    await fetchMasterSession()
+    return
+  }
+  if (message.startsWith('AUTH_FLOW_NOT_STARTED') || message.startsWith('PHONE_CODE_EXPIRED')
+      || message.startsWith('PHONE_CODE_HASH')) {
+    // The challenge is no longer valid: start again from the phone step.
+    authChallenge = null
+    authCode.value = ''
+    authPassword.value = ''
+    authStep.value = 'phone'
+  }
+  authError.value = message
+}
+
 const requestCode = async () => {
   authSending.value = true
+  authError.value = ''
   try {
-    await axios.post('/api/v1/admin/media/master-session/auth/request-code', {
+    const resp = await axios.post('/api/v1/admin/media/master-session/auth/request-code', {
       phone: authPhone.value,
     }, auth())
-    authStep.value = 'code_submit'
+    authChallenge = {
+      phone: resp.data.phone || authPhone.value,
+      phone_code_hash: resp.data.phone_code_hash,
+    }
+    authCode.value = ''
+    authStep.value = 'code'
     addToast('OTP code sent to Telegram', 'success')
   } catch (err: any) {
-    addToast(err.response?.data?.detail || 'Failed to request code', 'error')
+    await failAuth(err, 'Failed to request code')
   } finally {
     authSending.value = false
   }
 }
 
-const submitCode = async () => {
+const finishAuth = async () => {
+  resetAuth()
+  addToast('Session authorized successfully', 'success')
+  await fetchMasterSession()
+}
+
+const submitAuth = async (withPassword: boolean) => {
+  if (!authChallenge) {
+    await failAuth({ message: 'AUTH_FLOW_NOT_STARTED: request a new code' }, 'Request a new code')
+    return
+  }
   authSending.value = true
+  authError.value = ''
   try {
-    await axios.post('/api/v1/admin/media/master-session/auth/submit-code', {
+    const payload: Record<string, string> = {
+      phone: authChallenge.phone,
+      phone_code_hash: authChallenge.phone_code_hash,
       code: authCode.value,
-    }, auth())
-    addToast('Session authorized successfully', 'success')
-    authStep.value = 'idle'
-    await fetchMasterSession()
+    }
+    if (withPassword) payload.password = authPassword.value
+    const resp = await axios.post('/api/v1/admin/media/master-session/auth/submit-code', payload, auth())
+    if (resp.data?.requires_password) {
+      authPassword.value = ''
+      authStep.value = 'password'
+      return
+    }
+    await finishAuth()
   } catch (err: any) {
-    addToast(err.response?.data?.detail || 'Failed to submit code', 'error')
+    await failAuth(err, withPassword ? 'Failed to submit 2FA password' : 'Failed to submit code')
   } finally {
     authSending.value = false
   }
 }
+
+const submitCode = () => submitAuth(false)
+const submitPassword = () => submitAuth(true)
 
 let refreshInterval: number | null = null
 
@@ -241,7 +321,7 @@ onUnmounted(() => {
         <button
           v-if="session.health_status !== 'HEALTHY'"
           class="ms-btn ms-btn--warn"
-          @click="authStep = 'code_sent'; authPhone = ''"
+          @click="startAuth"
         >Authorize</button>
       </div>
     </div>
@@ -282,28 +362,40 @@ onUnmounted(() => {
 
     <!-- Authorize Modal -->
     <Teleport to="body">
-      <div v-if="authStep !== 'idle'" class="ms-overlay" @click.self="authStep = 'idle'">
+      <div v-if="authStep !== 'idle'" class="ms-overlay" @click.self="resetAuth">
         <div class="ms-modal">
           <h3>Authorize Master Session</h3>
 
-          <div v-if="authStep === 'code_sent'" class="ms-form">
+          <div v-if="authStep === 'phone'" class="ms-form">
             <label>Phone Number</label>
-            <input v-model="authPhone" placeholder="+1234567890" />
-            <button class="ms-btn ms-btn--primary" @click="requestCode" :disabled="authSending" style="margin-top: 12px">
+            <input v-model="authPhone" placeholder="+1234567890" autocomplete="tel" />
+            <button class="ms-btn ms-btn--primary" @click="requestCode" :disabled="authSending || !authPhone" style="margin-top: 12px">
               {{ authSending ? 'Sending...' : 'Request Code' }}
             </button>
           </div>
 
-          <div v-else-if="authStep === 'code_submit'" class="ms-form">
+          <div v-else-if="authStep === 'code'" class="ms-form">
             <label>OTP Code</label>
-            <input v-model="authCode" placeholder="12345" />
-            <button class="ms-btn ms-btn--primary" @click="submitCode" :disabled="authSending" style="margin-top: 12px">
+            <input v-model="authCode" placeholder="12345" autocomplete="one-time-code" inputmode="numeric" @keyup.enter="authCode && submitCode()" />
+            <button class="ms-btn ms-btn--primary" @click="submitCode" :disabled="authSending || !authCode" style="margin-top: 12px">
               {{ authSending ? 'Verifying...' : 'Submit Code' }}
             </button>
           </div>
 
+          <div v-else-if="authStep === 'password'" class="ms-form">
+            <label>Two-Step Verification Password</label>
+            <input v-model="authPassword" type="password" autocomplete="current-password" @keyup.enter="authPassword && submitPassword()" />
+            <button class="ms-btn ms-btn--primary" @click="submitPassword" :disabled="authSending || !authPassword" style="margin-top: 12px">
+              {{ authSending ? 'Verifying...' : 'Submit Password' }}
+            </button>
+          </div>
+
+          <div v-if="authError" class="ms-error" role="alert">
+            <span class="ms-error-label">Error:</span> {{ authError }}
+          </div>
+
           <div class="ms-modal-actions">
-            <button class="ms-btn ms-btn--outline" @click="authStep = 'idle'">Cancel</button>
+            <button class="ms-btn ms-btn--outline" @click="resetAuth">Cancel</button>
           </div>
         </div>
       </div>
