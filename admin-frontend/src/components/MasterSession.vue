@@ -79,6 +79,7 @@ const displayStatus = computed(() => {
   if (!session.value) return { label: 'NOT CONFIGURED', cls: 'st-err' }
   const s = session.value
   if (s.status === 'ACTIVE' && s.health_status === 'HEALTHY') return { label: 'AUTHORIZED · HEALTHY', cls: 'st-ok' }
+  if (s.health_status === 'ERROR') return { label: 'CHECK FAILED', cls: 'st-err' }
   if (s.health_status === 'STALE') return { label: 'STALE', cls: 'st-warn' }
   if (s.status === 'UNAUTHORIZED' || s.health_status === 'UNHEALTHY') return { label: 'UNAUTHORIZED', cls: 'st-err' }
   if (s.health_status === 'UNKNOWN') return { label: 'UNKNOWN', cls: 'st-warn' }
