@@ -117,6 +117,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/security',
+      name: 'security-center',
+      component: () => import('../views/SecurityCenter.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/system',
       name: 'system',
       component: () => import('../views/System.vue'),
