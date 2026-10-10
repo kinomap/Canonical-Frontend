@@ -1,7 +1,8 @@
+// Global base styles/tokens first, so component and App.vue styles always win.
+import './style.css'
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
-import './style.css'
 
 const app = createApp(App)
 

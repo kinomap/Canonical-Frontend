@@ -348,15 +348,16 @@ function stageClass(stage: string): string {
   display: flex; align-items: center; justify-content: center;
 }
 .wizard-modal {
-  background: #1a1a2e; border-radius: 12px; width: 520px; max-width: 95vw;
-  max-height: 90vh; overflow-y: auto; color: #e0e0e0;
+  background: var(--k-surface, #1e293b); border: 1px solid var(--k-border-strong, rgba(148,163,184,0.32));
+  border-radius: 12px; width: 520px; max-width: 95vw; text-align: left;
+  max-height: 90vh; overflow-y: auto; color: var(--k-text-secondary, #e2e8f0);
   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 }
 .wizard-header {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 20px 24px 12px; border-bottom: 1px solid #2a2a4a;
+  padding: 20px 24px 12px; border-bottom: 1px solid var(--k-border, rgba(148,163,184,0.18));
 }
-.wizard-header h2 { margin: 0; font-size: 1.2rem; }
+.wizard-header h2 { margin: 0; font-size: 1.2rem; font-weight: 700; color: var(--k-text, #f1f5f9); }
 .wizard-close {
   background: none; border: none; color: #888; font-size: 1.5rem;
   cursor: pointer; padding: 0 4px;
@@ -367,18 +368,18 @@ function stageClass(stage: string): string {
 .wstep {
   width: 28px; height: 28px; border-radius: 50%; display: flex;
   align-items: center; justify-content: center; font-size: 0.8rem;
-  background: #2a2a4a; color: #888;
+  background: rgba(148,163,184,0.12); color: var(--k-text-muted, #94a3b8);
 }
 .wstep.active { background: #6366f1; color: white; }
 .wstep.done { background: #22c55e; color: white; }
 .wizard-body { padding: 0 24px 24px; }
-.wizard-body h3 { margin: 0 0 16px; font-size: 1rem; }
+.wizard-body h3 { margin: 0 0 16px; font-size: 1rem; font-weight: 600; color: var(--k-text, #f1f5f9); }
 .wizard-body label {
-  display: block; margin-bottom: 12px; font-size: 0.85rem; color: #aaa;
+  display: block; margin-bottom: 12px; font-size: 0.85rem; color: var(--k-text-muted, #94a3b8); text-align: left;
 }
 .wizard-body input, .wizard-body select, .wizard-body textarea {
   width: 100%; margin-top: 4px; padding: 8px 12px; border-radius: 6px;
-  border: 1px solid #3a3a5a; background: #0d0d1a; color: #e0e0e0;
+  border: 1px solid var(--k-border-strong, rgba(148,163,184,0.32)); background: var(--k-surface-sunken, #0b1222); color: var(--k-text, #f1f5f9);
   font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
 }
 .wizard-body textarea { font-family: monospace; font-size: 0.8rem; resize: vertical; }
@@ -386,8 +387,9 @@ function stageClass(stage: string): string {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
 }
 .wizard-actions button {
-  padding: 8px 20px; border-radius: 6px; border: 1px solid #3a3a5a;
-  background: #2a2a4a; color: #e0e0e0; cursor: pointer; font-size: 0.85rem;
+  padding: 8px 20px; border-radius: 8px; border: 1px solid var(--k-border-strong, rgba(148,163,184,0.32));
+  background: rgba(148,163,184,0.08); color: var(--k-text-secondary, #e2e8f0); cursor: pointer;
+  font-size: 0.85rem; font-weight: 600; font-family: inherit;
 }
 .btn-primary { background: #6366f1 !important; border-color: #6366f1 !important; color: white !important; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -397,7 +399,7 @@ function stageClass(stage: string): string {
 .deploy-stages { display: flex; flex-direction: column; gap: 8px; }
 .deploy-stage {
   display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-  border-radius: 6px; background: #0d0d1a; font-size: 0.9rem;
+  border-radius: 6px; background: var(--k-surface-sunken, #0b1222); font-size: 0.9rem;
 }
 .stage-icon { font-size: 1rem; width: 20px; text-align: center; }
 .stage-ok { color: #22c55e; }
