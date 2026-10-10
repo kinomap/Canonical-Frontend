@@ -43,6 +43,7 @@ export const ROUTING_REASON_TEXT: Record<string, string> = {
   HEALTH_NOT_HEALTHY: 'Worker reports it is not HEALTHY',
   NO_CAPACITY_CONFIGURED: 'Stream capacity is 0',
   CAPACITY_FULL: 'All stream slots are in use',
+  MEDIA_ENDPOINT_INVALID: 'No https:// media endpoint configured',
 }
 
 export function reasonText(code: string, freshnessSeconds?: number): string {
