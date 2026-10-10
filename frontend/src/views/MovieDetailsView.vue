@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { apiClient, ApiError } from '@/api/client'
 import type { AudioTrack, MovieDetail } from '@/types/movie'
 import type { Comment, MovieReaction } from '@/api/client'
@@ -68,17 +68,11 @@ async function fetchData() {
       console.warn("Could not load audio tracks", e)
     }
 
-    // Pre-fetch playback token in the background so it's ready instantly when user clicks Play
-    if (isAuthenticated.value) {
-      apiClient.startPlayback(movieId.value).then(res => {
-         // Use media_url directly (points to Media Worker)
-         if (res.media_url) {
-           streamUrl.value = res.media_url
-         } else {
-           throw new Error('No media_url returned from backend')
-         }
-      }).catch(err => console.error("Prefetch playback failed", err))
-    }
+    // NOTE: playback is deliberately NOT pre-started here.
+    // POST /playback/start opens a session that holds Media Node capacity, so
+    // starting it on page load created a live session for every visitor who
+    // never pressed Play - sessions nobody could ever stop. The session is now
+    // opened only in handlePlay(), when the user actually starts watching.
 
   } catch (err: any) {
     if (err instanceof ApiError && err.status === 404) {
@@ -102,11 +96,11 @@ async function handlePlay() {
     try {
       const res = await apiClient.startPlayback(movieId.value)
       // Use media_url directly (points to Media Worker)
-      if (res.media_url) {
-        streamUrl.value = res.media_url
-      } else {
+      if (!res.media_url) {
         throw new Error('No media_url returned from backend')
       }
+      streamUrl.value = res.media_url
+      beginSessionLease(res.session_id, res.heartbeat_interval_seconds)
     } catch (err: any) {
       // 401 is handled globally by auth:expired → no duplicate message
       if (err?.status !== 401) {
@@ -116,6 +110,68 @@ async function handlePlay() {
     }
   }
 }
+
+// ── Playback session lease ────────────────────────────────────────────
+// A live session occupies Media Node capacity and blocks node removal, so the
+// player must renew it while watching and release it the moment watching ends.
+// Every exit path is covered: finished video, leaving the page, closing the
+// tab. If all of them fail (crash, network loss) the backend lease simply
+// lapses - the backend never depends on this goodbye message.
+
+const playbackSessionId = ref<string | null>(null)
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+function beginSessionLease(sessionId: string, intervalSeconds?: number) {
+  endSessionLease()
+  playbackSessionId.value = sessionId
+  const periodMs = Math.max((intervalSeconds ?? 30), 5) * 1000
+  heartbeatTimer = setInterval(() => {
+    const id = playbackSessionId.value
+    if (!id) return
+    apiClient.heartbeatPlayback(id)
+      .then(res => { if (!res.ok) endSessionLease() })
+      .catch(() => { /* transient failure: the lease window absorbs it */ })
+  }, periodMs)
+}
+
+function endSessionLease() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+}
+
+/** Release the session. Idempotent on the backend, so duplicates are safe. */
+function releasePlaybackSession(opts: { keepalive?: boolean } = {}) {
+  const id = playbackSessionId.value
+  endSessionLease()
+  if (!id) return
+  playbackSessionId.value = null
+  apiClient.stopPlayback(id, opts).catch(() => { /* lease expiry is the fallback */ })
+}
+
+function handlePlaybackEnded() {
+  releasePlaybackSession()
+}
+
+// Tab closed, navigated away or backgrounded by a mobile OS. `pagehide` fires
+// in cases where `beforeunload` does not (notably iOS Safari / bfcache).
+function handlePageHide() {
+  releasePlaybackSession({ keepalive: true })
+}
+
+onMounted(() => {
+  window.addEventListener('pagehide', handlePageHide)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', handlePageHide)
+  releasePlaybackSession({ keepalive: true })
+})
+
+onBeforeRouteLeave(() => {
+  releasePlaybackSession()
+})
 
 // Reactions and comments logic is now handled by components
 onMounted(() => {
@@ -187,7 +243,7 @@ onMounted(() => {
           </div>
         </div>
       </div>
-      <VideoPlayer v-else-if="streamUrl" :src="streamUrl" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" />
+      <VideoPlayer v-else-if="streamUrl" :src="streamUrl" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" />
       <!-- Inline player error (non-auth failures only) -->
       <div v-if="playError" class="inline-error" role="alert">
         <span>{{ playError }}</span>

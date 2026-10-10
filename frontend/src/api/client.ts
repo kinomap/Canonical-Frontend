@@ -265,10 +265,38 @@ export const apiClient = {
     })
   },
 
-  async startPlayback(movieId: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string }> {
-    return request<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string }>(`/playback/start`, {
+  async startPlayback(movieId: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number }> {
+    return request<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number }>(`/playback/start`, {
       method: 'POST',
       body: JSON.stringify({ movie_id: movieId }),
+    })
+  },
+
+  // ── Playback session lease ─────────────────────────────────────────
+  // A started session holds Media Node capacity until it is stopped or its
+  // lease lapses. Renew it while the user is actually watching, and release it
+  // as soon as watching stops.
+
+  async heartbeatPlayback(sessionId: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/playback/heartbeat`, {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId }),
+    })
+  },
+
+  /**
+   * End a playback session. Idempotent, so it is safe to call from several
+   * teardown paths (player stopped, component unmounted, tab hidden/closed).
+   *
+   * `keepalive` lets the request survive the document being torn down during
+   * `pagehide`. sendBeacon cannot be used here because it cannot carry the
+   * Authorization header this endpoint requires.
+   */
+  async stopPlayback(sessionId: string, opts: { keepalive?: boolean } = {}): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>(`/playback/stop`, {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId }),
+      keepalive: opts.keepalive === true,
     })
   },
 
