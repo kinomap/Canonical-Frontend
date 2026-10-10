@@ -7,7 +7,7 @@ const props = defineProps<{
   title?: string;
 }>()
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'ended'])
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 const isPlaying = ref(false)
@@ -113,6 +113,8 @@ function handlePause() {
 
 function handleEnded() {
   isPlaying.value = false
+  // Playback finished on its own: the owner can release the playback session.
+  emit('ended')
 }
 
 // Scrubbing
