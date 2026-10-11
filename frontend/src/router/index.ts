@@ -88,8 +88,23 @@ router.beforeEach((to, _from, next) => {
 
 // A lazy route chunk from a previous deploy cannot be loaded: reload the target URL
 // once instead of silently aborting the navigation (see chunkReload.ts).
+let pendingNavigation: string | null = null
+
+/** Target of the navigation currently resolving lazy route components, if any. */
+export function getPendingNavigation(): string | null {
+  return pendingNavigation
+}
+
+router.beforeEach((to) => {
+  pendingNavigation = to.fullPath
+})
+router.afterEach(() => {
+  pendingNavigation = null
+})
 router.onError((err, to) => {
-  if (!handleChunkLoadError(err, to?.fullPath ?? window.location.pathname)) {
+  const target = to?.fullPath ?? pendingNavigation ?? window.location.pathname + window.location.search
+  pendingNavigation = null
+  if (!handleChunkLoadError(err, target)) {
     console.error('Router navigation error:', err)
   }
 })
