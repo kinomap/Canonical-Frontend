@@ -137,8 +137,11 @@ describe('CatalogView.vue', () => {
     await nextBtn.trigger('click')
     await flushPromises()
 
+    // listMovies(filters, signal): the AbortSignal argument is part of the current client contract
     expect(apiClient.listMovies).toHaveBeenCalledWith(
-      expect.objectContaining({ page: 2, page_size: 20 })
+      expect.objectContaining({ page: 2, page_size: 20 }),
+      expect.any(AbortSignal)
     )
+    expect(wrapper.find('.page-info').text()).toContain('Page 2 of 2')
   })
 })
