@@ -1,0 +1,17 @@
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+coverage/
+# Local environment (never commit secrets)
+.env
+.env.*
+!.env.example
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+# Python test caches
+__pycache__/
+.pytest_cache/

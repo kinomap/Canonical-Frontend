@@ -212,7 +212,11 @@ test('helpers: view state, reasons and status classes', () => {
 })
 
 test('reason texts cover every backend reason code', () => {
-  const policy = readFileSync(fileURLToPath(new URL('../../src/telegram_stream/application/node_routing_policy.py', import.meta.url)), 'utf8')
+  // Cross-repo contract: reason codes are owned by Canonical-Backend.
+  // KINOSOTA_BACKEND_DIR points at a Canonical-Backend checkout (default: sibling directory).
+  const backendDir = process.env.KINOSOTA_BACKEND_DIR
+    || fileURLToPath(new URL('../../../Canonical-Backend/', import.meta.url))
+  const policy = readFileSync(`${backendDir.replace(/\/$/, '')}/src/telegram_stream/application/node_routing_policy.py`, 'utf8')
   const codes = [...policy.matchAll(/^REASON_[A-Z_]+ = "([A-Z_]+)"/gm)].map(m => m[1])
   assert.ok(codes.length >= 8)
   for (const code of codes) assert.ok(libExports.ROUTING_REASON_TEXT[code], code)

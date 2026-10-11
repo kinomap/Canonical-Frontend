@@ -16,6 +16,7 @@ let pollInterval: number | null = null
 
 // Step 1 — Target
 const nodeName = ref('')
+const region = ref('')
 const host = ref('')
 const sshPort = ref(22)
 const sshUsername = ref('ubuntu')
@@ -104,6 +105,7 @@ async function startDeploy() {
       const createResp = await axios.post('/api/v1/admin/media/nodes', {
         name: nodeName.value,
         for_provisioning: true,
+        region: region.value.trim() || null,
         hostname: canonicalHost,
         // The backend derives the DNS name from the stable node slug + MEDIA_DOMAIN.
       }, auth())
@@ -121,6 +123,9 @@ async function startDeploy() {
         )
         if (existing) {
           nodeId = existing.id
+          await axios.patch(`/api/v1/admin/media/nodes/${nodeId}`, {
+            ...(region.value.trim() ? { region: region.value.trim() } : {}),
+          }, auth())
         } else {
           throw err
         }
@@ -247,6 +252,9 @@ function stageClass(stage: string): string {
         <h3>Target VPS</h3>
         <label>Node Name
           <input v-model="nodeName" placeholder="media-02" />
+        </label>
+        <label>Region (optional)
+          <input v-model="region" placeholder="Configured node region" />
         </label>
         <label>Host / IP
           <input v-model="host" placeholder="203.0.113.12"
