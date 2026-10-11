@@ -1,0 +1,180 @@
+{
+  "genre": {
+    "id": 6,
+    "name": "драма",
+    "slug": "drama"
+  },
+  "items": [
+    {
+      "id": "fd7819ca-f9f1-4187-9480-98a4101df718",
+      "title": "🎬 Шёпот за окном / 2026 / MSX storage",
+      "original_title": "The Whisper Man",
+      "year": 2026,
+      "poster": "https://image.tmdb.org/t/p/w500/1hnX64v6HWSnAFAjG4GPL03DxKb.jpg",
+      "artwork_type": "provider",
+      "rating": 6.7,
+      "runtime": 114,
+      "quality": "SD",
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 5,
+          "name": "криминал",
+          "slug": "kriminal"
+        },
+        {
+          "id": 4,
+          "name": "триллер",
+          "slug": "triller"
+        }
+      ],
+      "type": "movie"
+    },
+    {
+      "id": "60f4f55b-aa1a-4df5-a351-a7f07dd0ff2c",
+      "title": "🎬 Выстрел в пустоту / 2017 / MSX storage",
+      "original_title": "Shot Caller",
+      "year": 2017,
+      "poster": "https://image.tmdb.org/t/p/w500/j8rSB5PhquNufrNwU6cepUmI6bV.jpg",
+      "artwork_type": "provider",
+      "rating": 7.0,
+      "runtime": 121,
+      "quality": "HD",
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 5,
+          "name": "криминал",
+          "slug": "kriminal"
+        },
+        {
+          "id": 4,
+          "name": "триллер",
+          "slug": "triller"
+        }
+      ],
+      "type": "movie"
+    },
+    {
+      "id": "a872cbed-92fc-42e2-81e3-5d41becd0ece",
+      "title": "Стерлинг Поинт",
+      "original_title": "Sterling Point",
+      "year": 2026,
+      "poster": "https://image.tmdb.org/t/p/w500/bR3FXJMbuK8esvyYEChb3AY9dJx.jpg",
+      "artwork_type": "provider",
+      "rating": 8.2,
+      "runtime": null,
+      "quality": null,
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        }
+      ],
+      "type": "series"
+    },
+    {
+      "id": "76ff2262-72da-4f28-9b2e-59555025a7df",
+      "title": "Shōgun",
+      "original_title": "Shōgun",
+      "year": 2024,
+      "poster": "https://image.tmdb.org/t/p/w500/cOKLRblbdBtcuf4TkAzsyJpZr23.jpg",
+      "artwork_type": "provider",
+      "rating": 8.4,
+      "runtime": null,
+      "quality": null,
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        }
+      ],
+      "type": "series"
+    },
+    {
+      "id": "6e7f3c76-124a-4067-89ac-a7646fff53e5",
+      "title": "Остров Пальма",
+      "original_title": "La Palma",
+      "year": 2024,
+      "poster": "https://image.tmdb.org/t/p/w500/9V580FU4MGkz184OCMgB8A4JzrN.jpg",
+      "artwork_type": "provider",
+      "rating": 6.8,
+      "runtime": null,
+      "quality": null,
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        }
+      ],
+      "type": "series"
+    },
+    {
+      "id": "cadec25f-5955-49aa-b57e-35c67505b248",
+      "title": "1899",
+      "original_title": "1899",
+      "year": 2022,
+      "poster": "https://image.tmdb.org/t/p/w500/4XCITizI20aXGlANonhs50sibU0.jpg",
+      "artwork_type": "provider",
+      "rating": 7.5,
+      "runtime": null,
+      "quality": null,
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 18,
+          "name": "Детектив",
+          "slug": "mystery"
+        }
+      ],
+      "type": "series"
+    },
+    {
+      "id": "2887cbcb-34aa-46ea-a9fa-b0f3f3a90ff0",
+      "title": "Табу",
+      "original_title": "Taboo",
+      "year": 2017,
+      "poster": "https://image.tmdb.org/t/p/w500/4hI8sGIMRwxJoKFHlYweoqo0FP8.jpg",
+      "artwork_type": "provider",
+      "rating": 7.9,
+      "runtime": null,
+      "quality": null,
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        }
+      ],
+      "type": "series"
+    }
+  ],
+  "total": 47,
+  "movies_total": 42,
+  "series_total": 5,
+  "page": 3,
+  "page_size": 20,
+  "total_pages": 3
+}

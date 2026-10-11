@@ -1,0 +1,200 @@
+{
+  "genre": {
+    "id": 10,
+    "name": "военный",
+    "slug": "voennyj"
+  },
+  "items": [
+    {
+      "id": "ef398794-dabf-4e8b-8c28-6670d8fc0de7",
+      "title": "🎬 Бесславные ублюдки / 2009 / MSX storage",
+      "original_title": "Inglourious Basterds",
+      "year": 2009,
+      "poster": "https://image.tmdb.org/t/p/w500/cUWnHMRFC1fVQDALtUaGmrJ6MqP.jpg",
+      "artwork_type": "provider",
+      "rating": 8.2,
+      "runtime": 153,
+      "quality": "HD",
+      "status": "available",
+      "genres": [
+        {
+          "id": 4,
+          "name": "триллер",
+          "slug": "triller"
+        },
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 10,
+          "name": "военный",
+          "slug": "voennyj"
+        }
+      ],
+      "type": "movie"
+    },
+    {
+      "id": "1d5ba8b8-c4c1-4295-9c1d-59abedd3a15a",
+      "title": "Царство небесное",
+      "original_title": "Kingdom of Heaven",
+      "year": 2005,
+      "poster": "https://image.tmdb.org/t/p/w500/b0TnQ4uVygCDu0h8pbKU2Xgektl.jpg",
+      "artwork_type": "provider",
+      "rating": 7.1,
+      "runtime": 190,
+      "quality": "HD",
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 7,
+          "name": "боевик",
+          "slug": "boevik"
+        },
+        {
+          "id": 8,
+          "name": "приключения",
+          "slug": "prikljuchenija"
+        },
+        {
+          "id": 9,
+          "name": "история",
+          "slug": "istorija"
+        },
+        {
+          "id": 10,
+          "name": "военный",
+          "slug": "voennyj"
+        }
+      ],
+      "type": "movie"
+    },
+    {
+      "id": "4b2ac5bb-f718-4f23-b4b5-b182d3a8580d",
+      "title": "🎬 На Западном фронте без перемен / 2022 / MSX storage",
+      "original_title": "Im Westen nichts Neues",
+      "year": 2022,
+      "poster": "https://image.tmdb.org/t/p/w500/yzn6vRTjTZZ9ySBPQojKtzWqHwX.jpg",
+      "artwork_type": "provider",
+      "rating": 7.7,
+      "runtime": 147,
+      "quality": "HD",
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 10,
+          "name": "военный",
+          "slug": "voennyj"
+        }
+      ],
+      "type": "movie"
+    },
+    {
+      "id": "c5d43cad-5607-4d12-bd8a-50ea2d91acd8",
+      "title": "🎬 Ярость / 2014 / MSX storage",
+      "original_title": "Fury",
+      "year": 2014,
+      "poster": "https://image.tmdb.org/t/p/w500/r5OOBgK3eDTjmNDzRN6flNenTCE.jpg",
+      "artwork_type": "provider",
+      "rating": 7.5,
+      "runtime": 135,
+      "quality": "HD",
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 10,
+          "name": "военный",
+          "slug": "voennyj"
+        },
+        {
+          "id": 7,
+          "name": "боевик",
+          "slug": "boevik"
+        }
+      ],
+      "type": "movie"
+    },
+    {
+      "id": "e291fdb5-6834-4a8d-afb1-81114da7fe0a",
+      "title": "🎬 Список Шиндлера / 1993 / MSX storage",
+      "original_title": "Schindler's List",
+      "year": 1993,
+      "poster": "https://image.tmdb.org/t/p/w500/dB7edCQIuExWErWXFVqR7ORnZRS.jpg",
+      "artwork_type": "provider",
+      "rating": 8.6,
+      "runtime": 195,
+      "quality": "HD",
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 9,
+          "name": "история",
+          "slug": "istorija"
+        },
+        {
+          "id": 10,
+          "name": "военный",
+          "slug": "voennyj"
+        }
+      ],
+      "type": "movie"
+    },
+    {
+      "id": "3680a577-d6c5-47dd-854a-fb994c946c59",
+      "title": "🎬 Братья / 2009 / MSX storage",
+      "original_title": "Brothers",
+      "year": 2009,
+      "poster": "https://image.tmdb.org/t/p/w500/nNeCNTSKToxuwWzo3dqKLEgXcBp.jpg",
+      "artwork_type": "provider",
+      "rating": 7.3,
+      "runtime": 105,
+      "quality": "HD",
+      "status": "available",
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 10,
+          "name": "военный",
+          "slug": "voennyj"
+        },
+        {
+          "id": 4,
+          "name": "триллер",
+          "slug": "triller"
+        }
+      ],
+      "type": "movie"
+    }
+  ],
+  "total": 6,
+  "movies_total": 6,
+  "series_total": 0,
+  "page": 1,
+  "page_size": 20,
+  "total_pages": 1
+}

@@ -1,0 +1,88 @@
+{
+  "items": [
+    {
+      "id": "a872cbed-92fc-42e2-81e3-5d41becd0ece",
+      "title": "Стерлинг Поинт",
+      "original_title": "Sterling Point",
+      "year": 2026,
+      "poster_url": "https://image.tmdb.org/t/p/w500/bR3FXJMbuK8esvyYEChb3AY9dJx.jpg",
+      "rating": 8.2,
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        }
+      ]
+    },
+    {
+      "id": "76ff2262-72da-4f28-9b2e-59555025a7df",
+      "title": "Shōgun",
+      "original_title": "Shōgun",
+      "year": 2024,
+      "poster_url": "https://image.tmdb.org/t/p/w500/cOKLRblbdBtcuf4TkAzsyJpZr23.jpg",
+      "rating": 8.4,
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        }
+      ]
+    },
+    {
+      "id": "6e7f3c76-124a-4067-89ac-a7646fff53e5",
+      "title": "Остров Пальма",
+      "original_title": "La Palma",
+      "year": 2024,
+      "poster_url": "https://image.tmdb.org/t/p/w500/9V580FU4MGkz184OCMgB8A4JzrN.jpg",
+      "rating": 6.8,
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        }
+      ]
+    },
+    {
+      "id": "cadec25f-5955-49aa-b57e-35c67505b248",
+      "title": "1899",
+      "original_title": "1899",
+      "year": 2022,
+      "poster_url": "https://image.tmdb.org/t/p/w500/4XCITizI20aXGlANonhs50sibU0.jpg",
+      "rating": 7.5,
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        },
+        {
+          "id": 18,
+          "name": "Детектив",
+          "slug": "mystery"
+        }
+      ]
+    },
+    {
+      "id": "2887cbcb-34aa-46ea-a9fa-b0f3f3a90ff0",
+      "title": "Табу",
+      "original_title": "Taboo",
+      "year": 2017,
+      "poster_url": "https://image.tmdb.org/t/p/w500/4hI8sGIMRwxJoKFHlYweoqo0FP8.jpg",
+      "rating": 7.9,
+      "genres": [
+        {
+          "id": 6,
+          "name": "драма",
+          "slug": "drama"
+        }
+      ]
+    }
+  ],
+  "total": 5,
+  "page": 1,
+  "page_size": 20,
+  "total_pages": 1
+}

@@ -1,0 +1,14 @@
+{
+  "genre": {
+    "id": 17,
+    "name": "семейный",
+    "slug": "semejnyj"
+  },
+  "items": [],
+  "total": 0,
+  "movies_total": 0,
+  "series_total": 0,
+  "page": 1,
+  "page_size": 20,
+  "total_pages": 1
+}

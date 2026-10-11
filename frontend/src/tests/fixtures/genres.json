@@ -1,0 +1,92 @@
+[
+  {
+    "id": 7,
+    "name": "боевик",
+    "slug": "boevik"
+  },
+  {
+    "id": 13,
+    "name": "вестерн",
+    "slug": "vestern"
+  },
+  {
+    "id": 10,
+    "name": "военный",
+    "slug": "voennyj"
+  },
+  {
+    "id": 2,
+    "name": "детектив",
+    "slug": "detektiv"
+  },
+  {
+    "id": 18,
+    "name": "Детектив",
+    "slug": "mystery"
+  },
+  {
+    "id": 6,
+    "name": "драма",
+    "slug": "drama"
+  },
+  {
+    "id": 9,
+    "name": "история",
+    "slug": "istorija"
+  },
+  {
+    "id": 11,
+    "name": "комедия",
+    "slug": "komedija"
+  },
+  {
+    "id": 5,
+    "name": "криминал",
+    "slug": "kriminal"
+  },
+  {
+    "id": 12,
+    "name": "мелодрама",
+    "slug": "melodrama"
+  },
+  {
+    "id": 16,
+    "name": "музыка",
+    "slug": "muzyka"
+  },
+  {
+    "id": 8,
+    "name": "приключения",
+    "slug": "prikljuchenija"
+  },
+  {
+    "id": 17,
+    "name": "семейный",
+    "slug": "semejnyj"
+  },
+  {
+    "id": 15,
+    "name": "телевизионный фильм",
+    "slug": "televizionnyj-fil-m"
+  },
+  {
+    "id": 4,
+    "name": "триллер",
+    "slug": "triller"
+  },
+  {
+    "id": 1,
+    "name": "ужасы",
+    "slug": "uzhasy"
+  },
+  {
+    "id": 3,
+    "name": "фантастика",
+    "slug": "fantastika"
+  },
+  {
+    "id": 14,
+    "name": "фэнтези",
+    "slug": "fentezi"
+  }
+]
