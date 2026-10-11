@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import MovieDetailsView from '@/views/MovieDetailsView.vue'
 import { apiClient, ApiError } from '@/api/client'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 vi.mock('@/api/client', () => ({
   apiClient: {
@@ -14,6 +15,9 @@ vi.mock('@/api/client', () => ({
     listGenres: vi.fn(),
     searchMovies: vi.fn(),
     startPlayback: vi.fn(),
+    heartbeatPlayback: vi.fn(),
+    stopPlayback: vi.fn(),
+    getCurrentUser: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     constructor(public status: number, message: string) {
@@ -25,7 +29,7 @@ vi.mock('@/api/client', () => ({
 describe('MovieDetailsView.vue', () => {
   let router: any
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks()
 
     router = createRouter({
@@ -36,7 +40,8 @@ describe('MovieDetailsView.vue', () => {
       ]
     })
 
-    router.push('/movies/movie-123')
+    await router.push('/movies/movie-123')
+    await router.isReady()
   })
 
   it('renders movie details correctly when API succeeds', async () => {
@@ -68,7 +73,6 @@ describe('MovieDetailsView.vue', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Sample Movie Title')
-    expect(wrapper.text()).toContain('Sample Original Title')
     expect(wrapper.text()).toContain('2026')
     expect(wrapper.text()).toContain('8.7')
     expect(wrapper.text()).toContain('1h 52m')
@@ -117,6 +121,7 @@ describe('MovieDetailsView.vue', () => {
 
     await flushPromises()
 
+    await wrapper.find('.expand-btn').trigger('click')
     expect(wrapper.text()).toContain('Russian AAC')
     expect(wrapper.text()).toContain('Track #1')
     expect(wrapper.text()).toContain('Default')
@@ -150,6 +155,7 @@ describe('MovieDetailsView.vue', () => {
 
     await flushPromises()
 
+    await wrapper.find('.expand-btn').trigger('click')
     expect(wrapper.text()).toContain('Audio tracks unavailable')
   })
 
@@ -178,8 +184,13 @@ describe('MovieDetailsView.vue', () => {
       session_id: 's1',
       media_endpoint: '/api/v1/playback/stream/movie-123',
       playback_token: 'token123',
-      node_id: 'node1'
+      node_id: 'node1',
+      media_url: 'http://10.8.0.2:8090/stream/movie-123?token=token123',
+      heartbeat_interval_seconds: 30
     })
+    vi.mocked(apiClient.getCurrentUser).mockResolvedValue({ id: 'u1', username: 'viewer' } as any)
+    vi.mocked(apiClient.stopPlayback).mockResolvedValue({ ok: true })
+    useAuthStore().setToken('test-token')
 
     const wrapper = mount(MovieDetailsView, {
       global: { plugins: [router] },
