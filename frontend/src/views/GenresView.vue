@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { apiClient } from '@/api/client'
+import { apiClient, ApiError } from '@/api/client'
 import type { Genre, MovieSummary } from '@/types/movie'
 import MovieCard from '@/components/MovieCard.vue'
 import PlayNoticeModal from '@/components/PlayNoticeModal.vue'
@@ -18,7 +18,7 @@ const error = ref<string | null>(null)
 const selectedGenreSlug = ref<string>((route.query.genre as string) || '')
 const genreItems = ref<MovieSummary[]>([])
 const total = ref(0)
-const page = ref(1)
+const page = ref(parseInt((route.query.page as string) || '1', 10) || 1)
 const pageSize = ref(20)
 const contentLoading = ref(false)
 const contentError = ref<string | null>(null)
@@ -47,27 +47,35 @@ async function loadGenres() {
   }
 }
 
+// Only the latest request may update the grid (fast genre/page switching).
+let contentRequestSeq = 0
+
 async function loadGenreContent() {
   if (!selectedGenreSlug.value) return
+  const seq = ++contentRequestSeq
   contentLoading.value = true
   contentError.value = null
   try {
     const res = await apiClient.getGenreContent(selectedGenreSlug.value, page.value, pageSize.value)
+    if (seq !== contentRequestSeq) return
     genreItems.value = res.items
     total.value = res.total
   } catch (err: any) {
+    if (seq !== contentRequestSeq) return
     console.error('Genre Content API Error:', err)
-    contentError.value = 'Не удалось загрузить контент жанра'
+    genreItems.value = []
+    total.value = 0
+    contentError.value = err instanceof ApiError && err.status === 404
+      ? 'Жанр не найден'
+      : 'Не удалось загрузить контент жанра'
   } finally {
-    contentLoading.value = false
+    if (seq === contentRequestSeq) contentLoading.value = false
   }
 }
 
+// Navigation only updates the URL; the route.query watcher performs the single load.
 function selectGenre(slug: string) {
-  selectedGenreSlug.value = slug
-  page.value = 1
   router.push({ query: { genre: slug } })
-  loadGenreContent()
 }
 
 function clearGenreSelection() {
@@ -79,9 +87,7 @@ function clearGenreSelection() {
 
 function changePage(newPage: number) {
   if (newPage >= 1 && newPage <= totalPages.value) {
-    page.value = newPage
     router.push({ query: { genre: selectedGenreSlug.value, page: newPage.toString() } })
-    loadGenreContent()
     try {
       if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -99,7 +105,7 @@ watch(
   () => route.query,
   (newQuery) => {
     selectedGenreSlug.value = (newQuery.genre as string) || ''
-    if (newQuery.page) page.value = parseInt(newQuery.page as string, 10) || 1
+    page.value = parseInt((newQuery.page as string) || '1', 10) || 1
     if (selectedGenreSlug.value) {
       loadGenreContent()
     }

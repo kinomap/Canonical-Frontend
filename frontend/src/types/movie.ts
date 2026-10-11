@@ -34,6 +34,18 @@ export interface PaginatedMovies {
   total_pages: number
 }
 
+// GET /api/v1/genres/{slug}: available movies first, then available series.
+export interface GenreContentPage {
+  genre: Genre
+  items: (MovieSummary & { type: 'movie' | 'series' })[]
+  total: number
+  movies_total: number
+  series_total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
 export interface LatestCheck {
   total: number
   latest_created_at: string | null

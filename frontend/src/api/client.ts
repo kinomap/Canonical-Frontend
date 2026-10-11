@@ -2,6 +2,7 @@ import type {
   AudioTrack,
   AuthTokenResponse,
   Genre,
+  GenreContentPage,
   HomeCollections,
   LatestCheck,
   MovieDetail,
@@ -208,13 +209,13 @@ export const apiClient = {
     return request<SeriesSummary[]>(`/series/search?${params.toString()}`, { signal })
   },
 
-  async getGenreContent(slug: string, page = 1, pageSize = 20, sort?: string, signal?: AbortSignal): Promise<PaginatedMovies> {
+  async getGenreContent(slug: string, page = 1, pageSize = 20, sort?: string, signal?: AbortSignal): Promise<GenreContentPage> {
     const params = new URLSearchParams({
       page: page.toString(),
       page_size: pageSize.toString(),
     })
     if (sort) params.append('sort', sort)
-    return request<PaginatedMovies>(`/genres/${slug}?${params.toString()}`, { signal }, 15_000)
+    return request<GenreContentPage>(`/genres/${encodeURIComponent(slug)}?${params.toString()}`, { signal }, 15_000)
   },
 
   async listGenres(): Promise<Genre[]> {

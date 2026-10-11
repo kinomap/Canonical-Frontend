@@ -8,6 +8,7 @@ import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
 import ProfileView from '@/views/ProfileView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
+import { handleChunkLoadError } from './chunkReload'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -82,6 +83,14 @@ router.beforeEach((to, _from, next) => {
     next({ path: '/login', query: { redirect: to.fullPath } })
   } else {
     next()
+  }
+})
+
+// A lazy route chunk from a previous deploy cannot be loaded: reload the target URL
+// once instead of silently aborting the navigation (see chunkReload.ts).
+router.onError((err, to) => {
+  if (!handleChunkLoadError(err, to?.fullPath ?? window.location.pathname)) {
+    console.error('Router navigation error:', err)
   }
 })
 
