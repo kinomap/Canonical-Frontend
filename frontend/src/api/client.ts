@@ -44,7 +44,10 @@ export class ApiError extends Error {
   }
 }
 
-const BASE_URL = '/api/v1'
+// Public API base. Default: same-origin '/api/v1' (frontend Nginx proxies it). On a separate
+// public frontend host set VITE_API_BASE_URL at build time (e.g. https://api.example.com/api/v1);
+// a trailing slash is stripped. Never point it at the Control Plane's private addresses.
+const BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1').replace(/\/+$/, '')
 
 // ── JWT client-side expiry check ──────────────────────────────────────────────
 // Decodes the payload without signature verification (backend still validates).
