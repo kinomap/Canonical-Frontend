@@ -276,7 +276,7 @@ onMounted(() => {
             {{ movie.overview || 'No description provided.' }}
           </div>
           
-          <AudioTracksList v-if="descriptionExpanded" :tracks="audioTracks" class="audio-tracks-mt" />
+          <AudioTracksList v-if="descriptionExpanded && audioTracks?.length" :tracks="audioTracks" class="audio-tracks-mt" />
 
           <button class="expand-btn" @click.stop="descriptionExpanded = !descriptionExpanded">
             {{ descriptionExpanded ? 'Show less' : 'Show more' }}
