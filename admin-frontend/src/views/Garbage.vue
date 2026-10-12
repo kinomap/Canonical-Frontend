@@ -31,6 +31,7 @@ const streamToken = ref('')
 const mediaUrl = ref('')
 const identifyTitle = ref('')
 const identifyYear = ref<number | null>(null)
+const identifyTmdbId = ref<number | null>(null)
 const identifying = ref(false)
 
 const isAllSelected = computed(() => {
@@ -125,6 +126,7 @@ const openInspect = async (source: any) => {
   inspectingSource.value = source
   identifyTitle.value = source.identification_title || ''
   identifyYear.value = source.identification_year || null
+  identifyTmdbId.value = null
   streamToken.value = ''
   mediaUrl.value = ''
   
@@ -143,8 +145,13 @@ const closeInspect = () => {
 
 const submitIdentify = async () => {
   if (!inspectingSource.value) return
-  if (!identifyTitle.value) {
-    addToast('Title is required for identification', 'error')
+  const tmdbId = identifyTmdbId.value ? Number(identifyTmdbId.value) : null
+  if (tmdbId !== null && (!Number.isInteger(tmdbId) || tmdbId <= 0)) {
+    addToast('TMDB ID must be a positive integer', 'error')
+    return
+  }
+  if (!identifyTitle.value.trim() && tmdbId === null) {
+    addToast('Title or TMDB ID is required for identification', 'error')
     return
   }
   
@@ -152,13 +159,14 @@ const submitIdentify = async () => {
   try {
     const res = await axios.put(`/api/v1/admin/garbage/${inspectingSource.value.id}/identify`, {
       identification_title: identifyTitle.value,
-      identification_year: identifyYear.value || null
+      identification_year: identifyYear.value || null,
+      tmdb_id: tmdbId
     }, auth())
     
-    if (res.data.ingest_status === 'garbage') {
+    if (res.data.status === 'garbage') {
       addToast('Provider did not confirm. Still Garbage.', 'info')
     } else {
-      addToast(`Success: movie ${res.data.ingest_status}`, 'success')
+      addToast(`Success: movie ${res.data.status}`, 'success')
     }
     inspectingSource.value = null
     fetchGarbage() // refresh list
@@ -281,13 +289,18 @@ onMounted(fetchGarbage)
             </div>
 
             <div class="form-group">
-              <label>Identification Title <span style="color:#ef4444">*</span></label>
+              <label>Identification Title</label>
               <input type="text" v-model="identifyTitle" class="form-input" placeholder="Movie title" />
             </div>
 
             <div class="form-group">
               <label>Identification Year</label>
               <input type="number" v-model="identifyYear" class="form-input" placeholder="e.g. 2011" />
+            </div>
+
+            <div class="form-group">
+              <label>TMDB ID (optional)</label>
+              <input type="number" min="1" v-model="identifyTmdbId" class="form-input" placeholder="e.g. 62" />
             </div>
 
             <button class="btn-submit" style="width: 100%; margin-top: 10px;" @click="submitIdentify" :disabled="identifying">
