@@ -468,6 +468,10 @@ onMounted(() => {
 }
 
 /* Main Content */
+.header-content {
+  margin-bottom: 12px;
+}
+
 .movie-title {
   font-size: 1.8rem;
   font-weight: 700;
