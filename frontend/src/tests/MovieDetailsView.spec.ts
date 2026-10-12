@@ -127,7 +127,7 @@ describe('MovieDetailsView.vue', () => {
     expect(wrapper.text()).toContain('Default')
   })
 
-  it('renders "Audio tracks unavailable" when audio tracks list is empty', async () => {
+  it('hides the audio tracks block when the movie has no audio tracks', async () => {
     const mockMovie = {
       id: 'movie-123',
       title: 'Movie without Audio Tracks',
@@ -156,7 +156,8 @@ describe('MovieDetailsView.vue', () => {
     await flushPromises()
 
     await wrapper.find('.expand-btn').trigger('click')
-    expect(wrapper.text()).toContain('Audio tracks unavailable')
+    expect(wrapper.find('.audio-tracks-section').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Audio tracks unavailable')
   })
 
   it('starts playback when Play button clicked', async () => {
