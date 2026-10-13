@@ -16,6 +16,9 @@ RUN npm run build
 
 # Stage 3: Serve both with Nginx
 FROM nginx:alpine
+ARG GIT_COMMIT_SHA=unknown
+LABEL org.opencontainers.image.revision=${GIT_COMMIT_SHA}
+ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=public-builder /app/dist /usr/share/nginx/html/public
 COPY --from=admin-builder /app/dist /usr/share/nginx/html/admin

@@ -23,6 +23,7 @@ import { addToast } from '../toast'
 // Edit states
 const editingDescription = ref(false)
 const editDescriptionText = ref('')
+const lockDescription = ref(false)
 const savingDescription = ref(false)
 
 // Title edit
@@ -80,12 +81,13 @@ const handleUpdateDescription = async () => {
   savingDescription.value = true
   try {
     await axios.put(`/api/v1/admin/movies/${movie.value.id}/description`, {
-      description: editDescriptionText.value
+      description: editDescriptionText.value,
+      manual_override: lockDescription.value
     }, {
       headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }
     })
     movie.value.overview = editDescriptionText.value
-    movie.value.overview_is_manual_override = true
+    movie.value.overview_is_manual_override = lockDescription.value
     editingDescription.value = false
     addToast('Description updated successfully', 'success')
   } catch (err: any) {
@@ -373,11 +375,12 @@ const handleAdminDelete = async () => {
           <div class="overview-section">
             <div class="overview-header">
               <h3>Overview <span v-if="movie.overview_is_manual_override" class="manual-badge">MANUAL</span></h3>
-              <button v-if="!editingDescription" class="icon-btn" @click="editingDescription = true; editDescriptionText = movie.overview">Edit</button>
+              <button v-if="!editingDescription" class="icon-btn" @click="editingDescription = true; editDescriptionText = movie.overview; lockDescription = !!movie.overview_is_manual_override">Edit</button>
             </div>
             
             <div v-if="editingDescription" class="edit-overview-form">
               <textarea v-model="editDescriptionText" rows="5"></textarea>
+              <label><input type="checkbox" v-model="lockDescription" /> Protect from provider updates (manual override)</label>
               <div class="edit-actions">
                 <button class="action-btn save-btn" @click="handleUpdateDescription" :disabled="savingDescription">Save</button>
                 <button class="action-btn cancel-btn" @click="editingDescription = false">Cancel</button>
