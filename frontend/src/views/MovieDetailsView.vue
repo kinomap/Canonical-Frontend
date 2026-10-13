@@ -21,6 +21,7 @@ const movie = ref<MovieDetail | null>(null)
 const audioTracks = ref<AudioTrack[] | null>(null)
 const streamUrl = ref<string | null>(null)
 const shouldPlay = ref(false)
+const playbackStarting = ref(false)
 
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -86,12 +87,17 @@ async function fetchData() {
 }
 
 async function handlePlay() {
+  if (playbackStarting.value) return
   if (!isAuthenticated.value) {
     router.push('/login')
     return
   }
   playError.value = null
-  shouldPlay.value = true
+  if (streamUrl.value) {
+    shouldPlay.value = true
+    return
+  }
+  playbackStarting.value = true
   if (!streamUrl.value) {
     try {
       const res = await apiClient.startPlayback(movieId.value)
@@ -101,12 +107,16 @@ async function handlePlay() {
       }
       streamUrl.value = res.media_url
       beginSessionLease(res.session_id, res.heartbeat_interval_seconds)
+      // Keep the splash mounted until a usable URL is ready: no empty player gap.
+      shouldPlay.value = true
     } catch (err: any) {
       // 401 is handled globally by auth:expired → no duplicate message
       if (err?.status !== 401) {
         playError.value = err?.message || 'Failed to start playback'
       }
       shouldPlay.value = false
+    } finally {
+      playbackStarting.value = false
     }
   }
 }
@@ -234,7 +244,7 @@ onMounted(() => {
     <!-- Details View (YouTube-style) -->
     <div v-else-if="movie" class="yt-layout">
       <!-- Player Area -->
-      <div v-if="!shouldPlay" class="player-container" @click="handlePlay">
+      <div v-if="!shouldPlay" class="player-container" :aria-busy="playbackStarting" @click="handlePlay">
         <div class="player-splash" :style="{ backgroundImage: `url(${movie.backdrop || movie.poster})` }">
           <div class="player-overlay">
             <div class="play-circle">
