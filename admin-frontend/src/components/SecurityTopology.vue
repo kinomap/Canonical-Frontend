@@ -27,7 +27,8 @@
                   :stroke-width="(TRAFFIC_STYLES[e.traffic]?.width || 2) + (hl.has(e.id) ? 1.5 : 0)"
                   :stroke-dasharray="TRAFFIC_STYLES[e.traffic]?.dash || ''" />
             <path :d="e.d" fill="none" stroke="transparent" stroke-width="12" />
-            <g :transform="`translate(${e.mx} ${e.my})`">
+            <title>{{ e.protocol }} {{ e.port }} — {{ e.purpose }} — {{ stateMeta(e.actual_state).label }}</title>
+            <g v-if="e.actual_state !== 'MISSING'" :transform="`translate(${e.mx} ${e.my})`">
               <circle r="8" :fill="stateMeta(e.actual_state).color" class="edge-badge" />
               <text text-anchor="middle" dy="3.5" class="edge-icon">{{ stateMeta(e.actual_state).icon }}</text>
               <title>{{ e.protocol }} {{ e.port }} — {{ e.purpose }} — {{ stateMeta(e.actual_state).label }}</title>
@@ -55,7 +56,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import {
-  edgePath, highlightSet, LAYER_LABELS, layoutTopology, stateMeta, TRAFFIC_STYLES,
+  edgePath, mediaEdgeRoute, highlightSet, LAYER_LABELS, layoutTopology, stateMeta, TRAFFIC_STYLES,
   type TopoEdge, type TopoNode,
 } from '../lib/securityView'
 
@@ -63,9 +64,10 @@ const props = defineProps<{ nodes: TopoNode[]; edges: TopoEdge[]; selectedId?: s
 defineEmits<{ (e: 'select', v: { kind: 'node' | 'edge'; item: TopoNode | TopoEdge }): void }>()
 
 const layout = computed(() => layoutTopology(props.nodes))
-const drawableEdges = computed(() => props.edges.filter(e => e.traffic !== "forbidden").flatMap((e) => {
+const drawableEdges = computed(() => props.edges.filter(e => e.traffic !== "forbidden").flatMap((e, index) => {
   const a = layout.value.placed[e.source], b = layout.value.placed[e.target]
   if (!a || !b) return []
+  if (e.traffic === 'direct_media') return [{ ...e, ...mediaEdgeRoute(a, b, index) }]
   const d = edgePath(a, b)
   const mx = (a.x + a.w / 2 + b.x + b.w / 2) / 2, my = (a.y + a.h / 2 + b.y + b.h / 2) / 2
   return [{ ...e, d, mx, my }]

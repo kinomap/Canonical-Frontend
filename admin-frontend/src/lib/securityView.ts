@@ -97,11 +97,11 @@ export function layoutTopology(nodes: TopoNode[], opts: { w?: number; h?: number
     const rows = Math.min(items.length, maxRows)
     items.forEach((n, i) => {
       const col = Math.floor(i / maxRows), row = i % maxRows
-      placed[n.id] = { id: n.id, x: x + col * (w + 16), y: 50 + row * (h + gapY), w, h }
+      placed[n.id] = { id: n.id, x: x + col * (w + 16), y: 94 + row * (h + gapY), w, h }
     })
     const width = cols * w + (cols - 1) * 16
     bands.push({ layer, x, width })
-    maxHeight = Math.max(maxHeight, 50 + rows * (h + gapY))
+    maxHeight = Math.max(maxHeight, 94 + rows * (h + gapY))
     x += width + gapX
   }
   return { placed, bands, width: Math.max(x, 400), height: Math.max(maxHeight + 20, 240) }
@@ -117,6 +117,19 @@ export function edgePath(a: Placed, b: Placed): string {
   }
   const mx = (x1 + x2) / 2
   return `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`
+}
+
+/** Route media above all cards, using the narrow gutters beside endpoint columns.
+ * Four lanes stay above the first card even when 100 nodes wrap into columns. */
+export function mediaEdgeRoute(a: Placed, b: Placed, index = 0) {
+  const sign = b.x >= a.x ? 1 : -1
+  const start = sign > 0 ? a.x + a.w : a.x
+  const end = sign > 0 ? b.x : b.x + b.w
+  const sy = a.y + a.h / 2, ey = b.y + b.h / 2
+  const sx = start + sign * 8, ex = end - sign * 8
+  const lane = 44 + (index % 4) * 10
+  const d = `M ${start} ${sy} Q ${sx} ${sy}, ${sx} ${sy - 8} L ${sx} ${lane + 8} Q ${sx} ${lane}, ${sx + sign * 8} ${lane} L ${ex - sign * 8} ${lane} Q ${ex} ${lane}, ${ex} ${lane + 8} L ${ex} ${ey - 8} Q ${ex} ${ey}, ${end} ${ey}`
+  return { d, mx: (sx + ex) / 2, my: lane }
 }
 
 export function formatAge(seconds: number | null | undefined): string {
