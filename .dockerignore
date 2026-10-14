@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/dist
+**/.vite
+**/.env
+**/.env.*
+**/*.session
+**/*.session-journal
+**/*.pem
+**/*.key
+**/__pycache__
