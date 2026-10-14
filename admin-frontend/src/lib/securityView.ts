@@ -53,6 +53,7 @@ const STATES: Record<string, StateMeta> = {
   FAIL: { label: 'Fail', icon: '✕', color: '#ef4444', bg: 'rgba(239,68,68,.14)' },
   UNKNOWN: { label: 'Unknown', icon: '?', color: '#94a3b8', bg: 'rgba(148,163,184,.12)' },
   STALE: { label: 'Stale', icon: '⧖', color: '#a78bfa', bg: 'rgba(167,139,250,.12)' },
+  DISABLED: { label: 'Optional / Disabled', icon: '—', color: '#94a3b8', bg: 'rgba(148,163,184,.12)' },
   MISSING: { label: 'Missing', icon: '∅', color: '#64748b', bg: 'rgba(100,116,139,.14)' },
   UNAVAILABLE: { label: 'Unavailable', icon: '⊘', color: '#f97316', bg: 'rgba(249,115,22,.12)' },
 }

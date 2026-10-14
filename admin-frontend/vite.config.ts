@@ -4,7 +4,7 @@ import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/admin/',
+  base: process.env.VITE_ADMIN_BASE_PATH || '/admin/',
   plugins: [vue()],
   resolve: {
     alias: {
@@ -13,6 +13,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
+    hmr: process.env.ENVIRONMENT === 'local' ? {clientPort: 8888, path: '/hmr'} : undefined,
     port: 5174,
     proxy: {
       '/api': {

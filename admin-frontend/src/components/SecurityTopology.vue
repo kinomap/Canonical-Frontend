@@ -11,6 +11,7 @@
         </span>
       </div>
     </div>
+    <p class="topo-help">Схема показывает разрешённые связи. Проверки запрещённых портов находятся в разделе Exposure; блокировка не является сетевым соединением.</p>
     <div ref="wrap" class="topo-canvas" @wheel.prevent="onWheel" @pointerdown="onDown" @pointermove="onMove"
          @pointerup="onUp" @pointerleave="onUp">
       <svg :viewBox="`0 0 ${layout.width} ${layout.height}`" preserveAspectRatio="xMinYMin meet" class="topo-svg"
@@ -62,7 +63,7 @@ const props = defineProps<{ nodes: TopoNode[]; edges: TopoEdge[]; selectedId?: s
 defineEmits<{ (e: 'select', v: { kind: 'node' | 'edge'; item: TopoNode | TopoEdge }): void }>()
 
 const layout = computed(() => layoutTopology(props.nodes))
-const drawableEdges = computed(() => props.edges.flatMap((e) => {
+const drawableEdges = computed(() => props.edges.filter(e => e.traffic !== "forbidden").flatMap((e) => {
   const a = layout.value.placed[e.source], b = layout.value.placed[e.target]
   if (!a || !b) return []
   const d = edgePath(a, b)
@@ -91,6 +92,7 @@ const onUp = () => { drag = null }
 </script>
 
 <style scoped>
+.topo-help { color: #94a3b8; font-size: 14px; margin: 4px 0; }
 .topo { display: flex; flex-direction: column; gap: 8px; }
 .topo-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .topo-btn { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px; cursor: pointer; }

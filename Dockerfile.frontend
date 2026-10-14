@@ -8,6 +8,8 @@ RUN npm run build
 
 # Stage 2: Build Admin Frontend
 FROM node:20-alpine AS admin-builder
+ARG VITE_ADMIN_BASE_PATH=/admin/
+ENV VITE_ADMIN_BASE_PATH=${VITE_ADMIN_BASE_PATH}
 WORKDIR /app
 COPY admin-frontend/package*.json ./
 RUN npm ci || npm install

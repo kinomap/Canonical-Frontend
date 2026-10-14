@@ -16,6 +16,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
+    hmr: process.env.ENVIRONMENT === 'local' ? {clientPort: 8888, path: '/hmr-public'} : undefined,
     port: 5173,
     proxy: {
       '/api': {

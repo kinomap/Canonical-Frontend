@@ -2,6 +2,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import axios from 'axios'
 import { addToast } from '../toast'
+import MediaVpsGuide from './MediaVpsGuide.vue'
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -17,6 +18,8 @@ let pollInterval: number | null = null
 // Step 1 — Target
 const nodeName = ref('')
 const region = ref('')
+const cacheL1 = ref(512)
+const cacheL2 = ref(10)
 const host = ref('')
 const sshPort = ref(22)
 const sshUsername = ref('ubuntu')
@@ -105,6 +108,8 @@ async function startDeploy() {
       const createResp = await axios.post('/api/v1/admin/media/nodes', {
         name: nodeName.value,
         for_provisioning: true,
+        cache_l1_max_mb: cacheL1.value,
+        cache_l2_max_gb: cacheL2.value,
         region: region.value.trim() || null,
         hostname: canonicalHost,
         // The backend derives the DNS name from the stable node slug + MEDIA_DOMAIN.
@@ -124,6 +129,8 @@ async function startDeploy() {
         if (existing) {
           nodeId = existing.id
           await axios.patch(`/api/v1/admin/media/nodes/${nodeId}`, {
+            cache_l1_max_mb: cacheL1.value,
+            cache_l2_max_gb: cacheL2.value,
             ...(region.value.trim() ? { region: region.value.trim() } : {}),
           }, auth())
         } else {
@@ -249,6 +256,9 @@ function stageClass(stage: string): string {
 
       <!-- Step 1: Target -->
       <div v-if="step === 1" class="wizard-body">
+        <label>L1-кэш, МиБ<input v-model.number="cacheL1" type="number" min="0" max="65536" /></label>
+        <label>L2-кэш, ГиБ<input v-model.number="cacheL2" type="number" min="0" max="65536" /></label>
+        <MediaVpsGuide />
         <h3>Target VPS</h3>
         <label>Node Name
           <input v-model="nodeName" placeholder="media-02" />

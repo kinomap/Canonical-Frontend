@@ -1,0 +1,20 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:?Committed Frontend SHA is required}
+        VITE_ADMIN_BASE_PATH: ${ADMIN_PATH:-/admin/}
+    image: ${FRONTEND_IMAGE:-kinosota-frontend}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ${FRONTEND_RUNTIME_DIR:?Separate runtime state required}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${FRONTEND_RUNTIME_DIR:?Separate runtime state required}/letsencrypt:/etc/letsencrypt:ro
+      - ${FRONTEND_RUNTIME_DIR:?Separate runtime state required}/certbot:/var/www/certbot:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://127.0.0.1/healthz >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

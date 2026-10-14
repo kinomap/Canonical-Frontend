@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { addToast } from '../toast'
 import RemoveMediaNodeModal from '../components/RemoveMediaNodeModal.vue'
+import MediaVpsGuide from '../components/MediaVpsGuide.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,6 +15,7 @@ interface NodeDetail {
   public_url: string | null; media_endpoint: string; status: string
   health_status: string; enabled: boolean; capacity: number
   active_streams: number; region: string | null
+  cache_l1_max_mb: number; cache_l2_max_gb: number
   egress_limit_mbps: number | null; bandwidth_capacity: number | null
   max_configured_streams: number | null; enrollment_token: string | null
   cpu_percent: number | null; ram_percent: number | null
@@ -46,6 +48,7 @@ const node = ref<NodeDetail | null>(null)
 const telemetry = ref<TelemetryNode | null>(null)
 const sessions = ref<SessionItem[]>([])
 const loading = ref(true)
+const cacheL1 = ref(512), cacheL2 = ref(10), cacheEditing = ref(false), cacheSaving = ref(false)
 const confirmAction = ref<string | null>(null)
 const showRemoveModal = ref(false)
 let refreshInterval: number | null = null
@@ -59,7 +62,10 @@ const fetchAll = async () => {
       axios.get(`/api/v1/admin/telemetry/nodes`, auth()),
       axios.get('/api/v1/admin/media/sessions', auth()),
     ])
-    if (nodeResp.status === 'fulfilled') node.value = nodeResp.value.data
+    if (nodeResp.status === 'fulfilled') {
+      node.value = nodeResp.value.data
+      if (!cacheEditing.value && node.value) { cacheL1.value = node.value.cache_l1_max_mb ?? 512; cacheL2.value = node.value.cache_l2_max_gb ?? 10 }
+    }
     if (telResp.status === 'fulfilled') {
       const all = telResp.value.data as TelemetryNode[]
       telemetry.value = all.find((t: TelemetryNode) => node.value && t.node_id === node.value.node_id) || null
@@ -72,6 +78,17 @@ const fetchAll = async () => {
   } catch (err: any) {
     addToast('Failed to load node details', 'error')
   } finally { loading.value = false }
+}
+
+const saveCache = async () => {
+  cacheSaving.value = true
+  try {
+    await axios.patch(`/api/v1/admin/media/nodes/${nodeId}`, {cache_l1_max_mb: cacheL1.value, cache_l2_max_gb: cacheL2.value}, auth())
+    cacheEditing.value = false
+    addToast('Лимиты сохранены. Для применения на Worker выполните повторное развёртывание ноды.', 'success')
+    await fetchAll()
+  } catch { addToast('Не удалось сохранить лимиты кэша', 'error') }
+  finally { cacheSaving.value = false }
 }
 
 const performAction = async (action: string) => {
@@ -156,6 +173,14 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
       <!-- ── Capacity ── -->
       <section class="nd-section" v-if="telemetry">
         <h2 class="nd-section-title">Capacity</h2>
+        <section class="cache-settings">
+          <h3>Настройки кэша ноды</h3>
+          <label>L1, МиБ <input v-model.number="cacheL1" type="number" min="0" max="65536" @input="cacheEditing = true" /></label>
+          <label>L2, ГиБ <input v-model.number="cacheL2" type="number" min="0" max="65536" @input="cacheEditing = true" /></label>
+          <button :disabled="cacheSaving || !cacheEditing" @click="saveCache">{{ cacheSaving ? 'Сохранение…' : 'Сохранить лимиты' }}</button>
+          <p>Лимиты применяются при развёртывании. Worker автоматически ограничивает L2 до 70% текущего свободного диска; фактический лимит — в health и метриках.</p>
+          <MediaVpsGuide />
+        </section>
         <div class="nd-capacity-grid">
           <div class="nd-cap-card" v-for="dim in [
             { label: 'Network', dim: telemetry.network, unit: 'Mbps' },
@@ -284,6 +309,10 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 </template>
 
 <style scoped>
+.cache-settings { padding:16px; margin:16px 0; border:1px solid #334155; border-radius:8px; }
+.cache-settings label { display:inline-flex; flex-direction:column; gap:8px; margin:8px 16px 8px 0; }
+.cache-settings input, .cache-settings button { min-height:44px; background:#1e293b; color:#e2e8f0; border:1px solid #475569; border-radius:6px; padding:8px; }
+.cache-settings p { font-size:14px; line-height:1.5; color:#cbd5e1; }
 .nd-page { padding: 1.5rem 2rem; max-width: 1200px; }
 .nd-back { background: none; border: none; color: #818cf8; cursor: pointer; font-size: 0.85rem; padding: 0; margin-bottom: 1rem; display: block; }
 .nd-back:hover { text-decoration: underline; }
