@@ -94,9 +94,10 @@ onBeforeUnmount(()=>{if(pollTimer)clearInterval(pollTimer);privateKey='';keyLoad
   <section class="domain-card">
    <h2>Cloudflare API Token</h2>
    <p>Токен настроен: {{ configured ? 'да' : 'нет' }}. Источник: {{ source === 'database' ? 'зашифрованная БД' : 'окружение' }}.</p>
-   <p>Нужны права чтения зон и изменения DNS только для используемых доменов. Сохранённый токен не возвращается в браузер.</p>
-   <label for="cf-token">Новый API Token</label>
-   <input id="cf-token" v-model="token" type="password" autocomplete="off" spellcheck="false" maxlength="512" :disabled="busy" />
+   <p>Нужен пользовательский API Token из Cloudflare → My Profile → API Tokens для создания, обновления и удаления DNS-записей Витрины и Медиа-Нод, а также ACME DNS-01 там, где он используется. Не Global API Key, не Cloudflare Tunnel token и не Origin CA key. Сохранённый токен не возвращается в браузер.</p>
+   <p id="cf-token-help">Права: Zone → DNS → Edit и Zone → Zone → Read. Zone Resources: Include → Specific zone → scenrix.com (корневая зона, не watch.scenrix.com). При смене домена включите старую и новую зоны; полный доступ к аккаунту не нужен. Проверка активности токена и чтения зон не подтверждает право изменения DNS.</p>
+   <label for="cf-token">Новый Cloudflare API Token · управление DNS</label>
+   <input id="cf-token" aria-describedby="cf-token-help" v-model="token" type="password" autocomplete="off" spellcheck="false" maxlength="512" :disabled="busy" />
    <div class="actions">
     <button :disabled="busy" @click="perform(false)">Проверить токен и загрузить зоны</button>
     <button :disabled="busy || token.length < 20" @click="perform(true)">Проверить и сохранить токен</button>
