@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onBeforeUnmount, computed, ref } from 'vue'
 import axios from 'axios'
 const token=ref(''), revision=ref(0), configured=ref(false), source=ref(''), busy=ref(false), message=ref(''), failure=ref(false)
 const zones=ref<Array<{id:string;name:string;status:string}>>([])
@@ -21,7 +21,46 @@ async function perform(save:boolean){
  } catch {failure.value=true;message.value='Операция не выполнена. Проверьте токен и доступ Zone:Read / DNS:Edit; при конфликте изменений обновите страницу.'}
  finally {busy.value=false}
 }
-onMounted(load)
+const domainState=ref<any>(null),domainMessage=ref(''),domainSubmitting=ref(false),keyLoaded=ref(false)
+const formRevision=ref(0),currentPrimary=ref(''),primary=ref(''),mirrorText=ref(''),publicIp=ref(''),sshPort=ref(22),sshUser=ref('root'),sshPin=ref(''),controlAddress=ref('10.8.0.1'),tlsEmail=ref(''),confirmDomain=ref(false)
+let privateKey='',pollTimer:ReturnType<typeof setInterval>|undefined
+const operationBusy=computed(()=>['QUEUED','RUNNING','COMMITTING','REQUIRES_REVIEW','COMPLETED_REQUIRES_REVIEW'].includes(domainState.value?.operation?.status))
+async function loadDomain(reset=false){
+ try {
+  const {data}=await axios.get('/api/v1/admin/domains/state',{headers:headers()});domainState.value=data
+  if(reset){
+   formRevision.value=data.revision
+   if(data.showcase){const c=data.showcase;currentPrimary.value=c.primary;primary.value=c.primary;mirrorText.value=c.mirrors.join('\n');publicIp.value=c.target.public_ip;sshPort.value=c.target.ssh_port;sshUser.value=c.target.ssh_username;sshPin.value=c.target.ssh_fingerprint;controlAddress.value=c.target.control_address}
+   domainMessage.value='Состояние формы обновлено. Передайте SSH key только для этой операции; он не сохраняется в БД.'
+  }
+ }catch{domainMessage.value='Domain Center недоступен. Переключение запрещено; проверьте Backend и права Admin.';domainState.value=null}
+}
+async function readKey(event:Event){
+ privateKey='';keyLoaded.value=false
+ const file=(event.target as HTMLInputElement).files?.[0]
+ if(!file)return
+ if(file.size>32768){domainMessage.value='SSH key должен быть не более 32 KiB';return}
+ privateKey=await file.text();keyLoaded.value=privateKey.length>=32
+}
+async function changeDomain(){
+ if(!domainState.value?.production||!confirmDomain.value||operationBusy.value||!keyLoaded.value)return
+ domainSubmitting.value=true;domainMessage.value='Запуск проверок. DNS/TLS не считаются готовыми до завершения всех этапов.'
+ try{
+  await axios.post('/api/v1/admin/domains/showcase',{
+   expected_revision:formRevision.value,current_primary:currentPrimary.value,primary:primary.value,
+   mirrors:mirrorText.value.split(/[\n,]+/).map(v=>v.trim()).filter(Boolean),tls_email:tlsEmail.value,
+   target:{public_ip:publicIp.value,ssh_port:sshPort.value,ssh_username:sshUser.value,ssh_fingerprint:sshPin.value,control_address:controlAddress.value},
+   ssh_private_key:privateKey,confirm:true
+  },{headers:headers()})
+  domainMessage.value='Операция принята. SSH key удалён из формы; наблюдайте этапы ниже. После завершения обновите форму.'
+  privateKey='';keyLoaded.value=false;confirmDomain.value=false
+  const input=document.getElementById('domain-ssh-key') as HTMLInputElement|null;if(input)input.value=''
+  await loadDomain()
+ }catch{domainMessage.value='Операция не принята. Обновите состояние формы; проверьте production, параметры, подтверждение и незавершённую предыдущую операцию.'}
+ finally{domainSubmitting.value=false}
+}
+onMounted(()=>{load();loadDomain(true);pollTimer=setInterval(()=>loadDomain(),2000)})
+onBeforeUnmount(()=>{if(pollTimer)clearInterval(pollTimer);privateKey='';keyLoaded.value=false})
 </script>
 <template>
  <main class="domains-page">
@@ -39,9 +78,37 @@ onMounted(load)
    <p v-if="message" role="status" :class="{ failure }">{{ message }}</p>
    <ul><li v-for="zone in zones" :key="zone.id">{{ zone.name }} — {{ zone.status }}</li></ul>
   </section>
-  <p class="pending">Смена основного домена, зеркала и массовый Cutover нод ещё не включены: сначала требуется готовый сценарий TLS и безопасного переключения. Изменение токена само по себе домены не переключает.</p>
+  <section class="domain-card">
+   <h2>Домены публичной Витрины · VPS 2</h2>
+   <p>Основной домен: {{ domainState?.showcase?.primary || 'ещё не зарегистрирован' }}. Зеркала: {{ domainState?.showcase?.mirrors?.join(', ') || 'нет' }}.</p>
+   <p v-if="!domainState?.production" class="pending">Переключение разрешено только в production Control Plane. Существующий localhost не меняется.</p>
+   <p>Только уже развёрнутый Public-only VPS2. Старый основной домен автоматически станет 301-зеркалом. Токен Cloudflare остаётся на Backend; приватный SSH key существует только в памяти операции.</p>
+   <button type="button" :disabled="domainSubmitting || operationBusy" @click="loadDomain(true)">Обновить состояние и форму</button>
+   <form @submit.prevent="changeDomain">
+    <label>Текущий домен на VPS2<input v-model="currentPrimary" required autocomplete="off" placeholder="watch.scenrix.com" /></label>
+    <label>Основной домен Витрины<input v-model="primary" required autocomplete="off" /></label>
+    <label>Домены-зеркала (до 10, по одному в строке)<textarea v-model="mirrorText" rows="3" autocomplete="off" /></label>
+    <label>Публичный IPv4 VPS2<input v-model="publicIp" required autocomplete="off" /></label>
+    <label>SSH port<input v-model.number="sshPort" type="number" min="1" max="65535" required /></label>
+    <label>SSH user<input v-model="sshUser" required autocomplete="off" /></label>
+    <label>Доверенный SHA256 host-key fingerprint из консоли провайдера<input v-model="sshPin" required autocomplete="off" /></label>
+    <label>Адрес Backend в WireGuard<input v-model="controlAddress" required autocomplete="off" /></label>
+    <label>Email Let's Encrypt (необязательно)<input v-model="tlsEmail" type="email" autocomplete="off" /></label>
+    <label>Приватный SSH key · только на время операции<input id="domain-ssh-key" type="file" :disabled="domainSubmitting || operationBusy" @change="readKey" /></label>
+    <p>{{ keyLoaded ? 'Ключ загружен в память формы' : 'Ключ не загружен' }}</p>
+    <label><input v-model="confirmDomain" type="checkbox" required /> Подтверждаю VPS2 и DNS/TLS/301 изменения. Не использовать IP действующей Media Node.</label>
+    <button type="submit" :disabled="!domainState?.production || domainSubmitting || operationBusy || !keyLoaded || !confirmDomain">Применить домены Витрины</button>
+   </form>
+   <p role="status">{{ domainMessage }}</p>
+   <div v-if="domainState?.operation" role="status" class="operation-status">
+    <b>{{ domainState.operation.status }}</b><p>{{ domainState.operation.stage }}</p>
+    <p v-if="domainState.operation.dns_may_remain">При остановке добавленные DNS-записи сохраняются; чужие записи автоматически не удаляются.</p>
+    <p v-if="operationBusy">Повтор заблокирован до завершения или проверенного восстановления. Не перезапускайте Backend во время операции.</p>
+   </div>
+  </section>
+  <p class="pending">Массовый Cutover базового домена Медиа-Нод пока не включён. Смена домена Витрины не меняет media_url или конфигурацию действующих нод.</p>
  </main>
 </template>
 <style scoped>
-.domains-page{padding:24px;max-width:980px;color:#e2e8f0}.domain-card{padding:24px;background:#111827;border:1px solid #334155;border-radius:12px;margin:20px 0}.domain-card p,.pending{line-height:1.6;color:#94a3b8}label{display:block;margin:20px 0 8px}input{box-sizing:border-box;width:100%;padding:12px;background:#0f172a;border:1px solid #475569;color:#e2e8f0;border-radius:6px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}button{padding:10px 16px;border-radius:6px;background:#2563eb;color:white;border:0;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.failure{color:#fca5a5!important}.pending{border-left:3px solid #f59e0b;padding:12px}
+.domains-page{padding:24px;max-width:980px;color:#e2e8f0}.domain-card{padding:24px;background:#111827;border:1px solid #334155;border-radius:12px;margin:20px 0}.domain-card p,.pending{line-height:1.6;color:#94a3b8}label{display:block;margin:20px 0 8px}textarea{box-sizing:border-box;width:100%;padding:12px;background:#0f172a;border:1px solid #475569;color:#e2e8f0;border-radius:6px}input[type=checkbox]{width:auto}.operation-status{margin-top:16px;padding:16px;border:1px solid #475569;border-radius:6px}input{box-sizing:border-box;width:100%;padding:12px;background:#0f172a;border:1px solid #475569;color:#e2e8f0;border-radius:6px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}button{padding:10px 16px;border-radius:6px;background:#2563eb;color:white;border:0;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.failure{color:#fca5a5!important}.pending{border-left:3px solid #f59e0b;padding:12px}
 </style>
