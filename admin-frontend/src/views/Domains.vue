@@ -59,8 +59,34 @@ async function changeDomain(){
  }catch{domainMessage.value='Операция не принята. Обновите состояние формы; проверьте production, параметры, подтверждение и незавершённую предыдущую операцию.'}
  finally{domainSubmitting.value=false}
 }
-onMounted(()=>{load();loadDomain(true);pollTimer=setInterval(()=>loadDomain(),2000)})
-onBeforeUnmount(()=>{if(pollTimer)clearInterval(pollTimer);privateKey='';keyLoaded.value=false})
+const nodeState=ref<any>(null),nodeMessage=ref(''),nodeRevision=ref(0),nextNodeDomain=ref(''),nodeSubmitting=ref(false),confirmNodes=ref(false)
+const nodeKeys=ref<Record<string,string>>({})
+const nodeBusy=computed(()=>['QUEUED','RUNNING','COMMITTING','REQUIRES_REVIEW','COMPLETED_REQUIRES_REVIEW'].includes(nodeState.value?.operation?.status))
+const nodeReady=computed(()=>nodeState.value?.production && nodeState.value?.nodes?.length>0 && nodeState.value.nodes.every((n:any)=>n.provisioned && n.pinned && nodeKeys.value[n.node_id]?.length>=32) && !!nextNodeDomain.value && nextNodeDomain.value!==nodeState.value.base_domain && confirmNodes.value && !nodeBusy.value && !operationBusy.value && !nodeSubmitting.value)
+function clearNodeKeys(){nodeKeys.value={};document.querySelectorAll<HTMLInputElement>('.node-cutover-key').forEach(i=>i.value='')}
+async function loadNodes(reset=false){
+ try{const {data}=await axios.get('/api/v1/admin/domains/nodes/state',{headers:headers()});nodeState.value=data;if(reset){nodeRevision.value=data.revision;clearNodeKeys();confirmNodes.value=false}}
+ catch{nodeState.value=null;nodeMessage.value='Состояние нод недоступно: переключение заблокировано.'}
+}
+async function readNodeKey(event:Event,nodeId:string){
+ delete nodeKeys.value[nodeId]
+ const input=event.target as HTMLInputElement,file=input.files?.[0]
+ if(!file)return
+ if(file.size>32768){input.value='';nodeMessage.value='SSH key превышает 32 KiB';return}
+ nodeKeys.value[nodeId]=await file.text()
+}
+async function cutoverNodes(){
+ if(!nodeReady.value)return
+ nodeSubmitting.value=true;nodeMessage.value='Запуск общей транзакции; конечный PASS только после всех проверок.'
+ try{
+  await axios.post('/api/v1/admin/domains/nodes/cutover',{expected_revision:nodeRevision.value,current_domain:nodeState.value.base_domain,new_domain:nextNodeDomain.value,confirm:true,access:nodeState.value.nodes.map((n:any)=>({node_id:n.node_id,ssh_private_key:nodeKeys.value[n.node_id]}))},{headers:headers()})
+  nodeMessage.value='Операция принята. Ключи удалены из формы; наблюдайте этапы ниже.'
+  await loadNodes()
+ }catch{nodeMessage.value='Операция не подтверждена. Обновите состояние; не повторяйте при RUNNING или REQUIRES_REVIEW.';await loadNodes()}
+ finally{clearNodeKeys();confirmNodes.value=false;nodeSubmitting.value=false}
+}
+onMounted(()=>{load();loadDomain(true);loadNodes(true);pollTimer=setInterval(()=>{loadDomain();loadNodes()},2000)})
+onBeforeUnmount(()=>{if(pollTimer)clearInterval(pollTimer);privateKey='';keyLoaded.value=false;clearNodeKeys()})
 </script>
 <template>
  <main class="domains-page">
@@ -106,7 +132,30 @@ onBeforeUnmount(()=>{if(pollTimer)clearInterval(pollTimer);privateKey='';keyLoad
     <p v-if="operationBusy">Повтор заблокирован до завершения или проверенного восстановления. Не перезапускайте Backend во время операции.</p>
    </div>
   </section>
-  <p class="pending">Массовый Cutover базового домена Медиа-Нод пока не включён. Смена домена Витрины не меняет media_url или конфигурацию действующих нод.</p>
+  <section class="domain-card" id="node-domain-cutover">
+   <h2>Базовый домен Медиа-Нод · Cutover</h2>
+   <p>Текущий базовый домен: {{ nodeState?.base_domain || 'не подтверждён' }}.</p>
+   <p>Все активные ноды проходят pinned SSH → DNS Only A → DNS-01 TLS (старый + новый hostname) → Nginx / HTTPS / renewal dry-run. Только затем media_url переключается одной транзакцией. Ноды не переустанавливаются; WireGuard не меняется.</p>
+   <p v-if="!nodeState?.production" class="pending">Production-only. Localhost и действующая тестовая нода не изменяются.</p>
+   <button :disabled="nodeBusy || nodeSubmitting" @click="loadNodes(true)">Обновить список нод и ревизию</button>
+   <form @submit.prevent="cutoverNodes">
+    <label>Новый базовый домен<input id="nodes-base-domain" v-model="nextNodeDomain" required autocomplete="off" list="active-node-zones" /></label>
+    <datalist id="active-node-zones"><option v-for="z in zones.filter(z=>z.status==='active')" :key="z.id" :value="z.name" /></datalist>
+    <div v-for="n in nodeState?.nodes || []" :key="n.node_id">
+     <p>{{ n.node_id }} · {{ n.public_ip }} · {{ n.media_endpoint }} · {{ n.pinned && n.provisioned ? '✓ Зарегистрирован и SSH pin задан' : '✗ Нужен provision / SSH pin' }}</p>
+     <label>SSH key для {{ n.node_id }} · только в памяти<input class="node-cutover-key" type="file" :disabled="nodeBusy || nodeSubmitting" @change="readNodeKey($event,n.node_id)" /></label>
+     <p>{{ nodeKeys[n.node_id]?.length>=32 ? '✓ Ключ загружен; SSH ещё не проверен' : '✗ Ключ не загружен' }}</p>
+    </div>
+    <label><input v-model="confirmNodes" type="checkbox" /> Подтверждаю DNS/TLS-переключение всех активных нод.</label>
+    <button id="nodes-cutover-submit" type="submit" :disabled="!nodeReady">Сменить домен нод (Cutover)</button>
+   </form>
+   <p role="status">{{ nodeMessage }}</p>
+   <div v-if="nodeState?.operation" role="status" class="operation-status">
+    <b>{{ nodeState.operation.status }}</b><p>{{ nodeState.operation.stage }}</p>
+    <p v-if="nodeState.operation.dns_may_remain">Добавленные DNS и TLS-артефакты сохраняются для проверки. При откате новая renewal-конфигурация изолируется; старые endpoints сохраняются.</p>
+    <p v-if="nodeBusy">Повтор и lifecycle-изменения заблокированы. При REQUIRES_REVIEW нужна проверка удалённых маркеров и commit; автоматического сброса нет.</p>
+   </div>
+  </section>
  </main>
 </template>
 <style scoped>
