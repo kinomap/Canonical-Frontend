@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 import { addToast } from '../toast'
+import MasterReplacement from './MasterReplacement.vue'
 
 interface MasterSession {
   id: string
@@ -33,7 +34,7 @@ const session = ref<MasterSession | null>(null)
 const health = ref<HealthData | null>(null)
 const loading = ref(true)
 const showReplaceModal = ref(false)
-const replacing = ref(false)
+const authPurpose = ref<'replace'|'authorize'>('replace')
 
 // Auth flow: phone -> code -> (optional 2FA password) -> authorized.
 // The challenge ({phone, phone_code_hash}) returned by request-code lives only in
@@ -46,15 +47,10 @@ const authCode = ref('')
 const authPassword = ref('')
 const authError = ref('')
 const authSending = ref(false)
+const authDelivery = ref('')
+const authDiagnostic = ref('')
 let authChallenge: AuthChallenge | null = null
 
-const newSession = ref({
-  name: '',
-  account_identifier: '',
-  session_identifier: '',
-  api_id: '',
-  api_hash: '',
-})
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } })
 
@@ -107,32 +103,6 @@ const formatTime = (d: string | null) => {
   return date.toLocaleString()
 }
 
-const replaceSession = async () => {
-  if (!newSession.value.account_identifier || !newSession.value.session_identifier) {
-    addToast('Account and Session identifiers required', 'error')
-    return
-  }
-  replacing.value = true
-  try {
-    const payload = {
-      name: newSession.value.name || null,
-      account_identifier: newSession.value.account_identifier,
-      session_identifier: newSession.value.session_identifier,
-      api_id: parseInt(newSession.value.api_id) || 0,
-      api_hash: newSession.value.api_hash,
-    }
-    await axios.post('/api/v1/admin/media/master-session/change', payload, auth())
-    addToast('Master Session replaced', 'success')
-    showReplaceModal.value = false
-    authStep.value = 'idle'
-    await fetchMasterSession()
-  } catch (err: any) {
-    addToast(err.response?.data?.detail || 'Failed to replace session', 'error')
-  } finally {
-    replacing.value = false
-  }
-}
-
 // Real backend/Telegram error text (FastAPI string detail or 422 validation list).
 const apiErrorMessage = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail
@@ -148,6 +118,8 @@ const apiErrorMessage = (err: any, fallback: string): string => {
 
 const resetAuth = () => {
   authChallenge = null
+  authDelivery.value = ''
+  authDiagnostic.value = ''
   authCode.value = ''
   authPassword.value = ''
   authError.value = ''
@@ -156,8 +128,8 @@ const resetAuth = () => {
 
 const startAuth = () => {
   resetAuth()
-  authPhone.value = ''
-  authStep.value = 'phone'
+  authPurpose.value = 'authorize'
+  showReplaceModal.value = true
 }
 
 const failAuth = async (err: any, fallback: string) => {
@@ -192,7 +164,34 @@ const requestCode = async () => {
     }
     authCode.value = ''
     authStep.value = 'code'
-    addToast('OTP code sent to Telegram', 'success')
+    // Keep only non-secret metadata. Never stringify resp.data (contains hash/phone).
+    const deliveries: Record<string, string> = {
+      SentCodeTypeApp: 'Telegram выбрал служебный чат Telegram на уже подключённом устройстве этого аккаунта.',
+      SentCodeTypeSms: 'Telegram выбрал SMS на указанный номер, не сообщение в приложении.',
+      SentCodeTypeCall: 'Telegram выбрал телефонный звонок.',
+      SentCodeTypeEmailCode: 'Telegram выбрал электронную почту аккаунта, не сообщение в приложении.',
+      SentCodeTypeSetUpEmailRequired: 'Telegram требует сначала настроить почту для входа. Этот ответ не подтверждает отправку кода.',
+      SentCodeTypeFlashCall: 'Telegram выбрал короткий звонок, не сообщение в приложении.',
+      SentCodeTypeMissedCall: 'Telegram выбрал пропущенный звонок, не сообщение в приложении.',
+      SentCodeTypeFragmentSms: 'Telegram выбрал доставку через Fragment, не служебный чат Telegram.',
+      SentCodeTypeFirebaseSms: 'Telegram выбрал Firebase SMS, не сообщение в приложении.',
+      SentCodeTypeSmsWord: 'Telegram выбрал SMS со словом, не сообщение в приложении.',
+      SentCodeTypeSmsPhrase: 'Telegram выбрал SMS с фразой, не сообщение в приложении.',
+
+    }
+    const kind = typeof resp.data.delivery_type === 'string' && /^SentCodeType[A-Za-z]+$/.test(resp.data.delivery_type)
+      ? resp.data.delivery_type : 'unknown'
+    authDelivery.value = deliveries[kind] || 'Backend не сообщил поддерживаемый способ доставки. Не запрашивайте коды подряд.'
+    const diagnostic = typeof resp.data.diagnostic_id === 'string' && /^[a-f0-9]{32}$/.test(resp.data.diagnostic_id) ? resp.data.diagnostic_id : null
+    authDiagnostic.value = JSON.stringify({
+      diagnostic_id: diagnostic,
+      delivery_type: Object.hasOwn(deliveries, kind) ? kind : 'unknown',
+      next_type: ['CodeTypeSms', 'CodeTypeCall', 'CodeTypeFlashCall', 'CodeTypeMissedCall', 'CodeTypeFragmentSms'].includes(resp.data.next_type) ? resp.data.next_type : null,
+      code_length: Number.isInteger(resp.data.code_length) && resp.data.code_length >= 1 && resp.data.code_length <= 32 ? resp.data.code_length : null,
+      next_send_timeout: Number.isInteger(resp.data.next_send_timeout) && resp.data.next_send_timeout >= 0 && resp.data.next_send_timeout <= 86400 ? resp.data.next_send_timeout : null,
+      delivery_confirmed: false,
+    }, null, 2)
+    addToast('Telegram принял запрос. Получение кода ещё не подтверждено.', 'info')
   } catch (err: any) {
     await failAuth(err, 'Failed to request code')
   } finally {
@@ -267,7 +266,7 @@ onUnmounted(() => {
 
     <div v-else-if="!session" class="ms-empty">
       <p>No master session configured.</p>
-      <button class="ms-btn ms-btn--primary" @click="showReplaceModal = true">Configure Session</button>
+      <button class="ms-btn ms-btn--primary" @click="authPurpose='replace';showReplaceModal = true">Configure Session</button>
     </div>
 
     <div v-else class="ms-body">
@@ -318,7 +317,7 @@ onUnmounted(() => {
       </div>
 
       <div class="ms-actions">
-        <button class="ms-btn ms-btn--outline" @click="showReplaceModal = true">Replace Session</button>
+        <button class="ms-btn ms-btn--outline" @click="authPurpose='replace';showReplaceModal = true">Replace Session</button>
         <button
           v-if="session.health_status !== 'HEALTHY'"
           class="ms-btn ms-btn--warn"
@@ -327,43 +326,11 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Replace Session Modal -->
-    <Teleport to="body">
-      <div v-if="showReplaceModal" class="ms-overlay" @click.self="showReplaceModal = false">
-        <div class="ms-modal">
-          <h3>Replace Master Session</h3>
-          <p class="ms-modal-desc">This will disconnect the current master session and assign a new one.</p>
-
-          <div class="ms-form">
-            <label>Session Name (optional)</label>
-            <input v-model="newSession.name" placeholder="e.g. Control Plane Master" />
-
-            <label>Account Identifier *</label>
-            <input v-model="newSession.account_identifier" placeholder="e.g. Account-A" />
-
-            <label>Session Identifier *</label>
-            <input v-model="newSession.session_identifier" placeholder="e.g. tg_stream_backend" />
-
-            <label>API ID *</label>
-            <input v-model="newSession.api_id" type="number" placeholder="12345678" />
-
-            <label>API Hash *</label>
-            <input v-model="newSession.api_hash" type="password" placeholder="abc123..." />
-          </div>
-
-          <div class="ms-modal-actions">
-            <button class="ms-btn ms-btn--outline" @click="showReplaceModal = false">Cancel</button>
-            <button class="ms-btn ms-btn--primary" @click="replaceSession" :disabled="replacing">
-              {{ replacing ? 'Replacing...' : 'Replace Session' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <MasterReplacement v-if="showReplaceModal" :purpose="authPurpose" :can-reuse="session?.credentials_configured===true" :initial-account="session?.account_identifier || ''" @close="showReplaceModal=false" @replaced="fetchMasterSession" />
 
     <!-- Authorize Modal -->
     <Teleport to="body">
-      <div v-if="authStep !== 'idle'" class="ms-overlay" @click.self="resetAuth">
+      <div v-if="authStep !== 'idle'" class="ms-overlay">
         <div class="ms-modal">
           <h3>Authorize Master Session</h3>
 
@@ -376,6 +343,15 @@ onUnmounted(() => {
           </div>
 
           <div v-else-if="authStep === 'code'" class="ms-form">
+            <div class="ms-delivery" role="status">
+              <strong>Вход ещё не завершён. Доставка кода не подтверждена.</strong>
+              <p>{{ authDelivery }}</p>
+              <p>Если кода нет, не вводите старый и не запускайте запрос одновременно в загрузчике и админке.</p>
+            </div>
+            <details v-if="authDiagnostic" class="ms-auth-diagnostic">
+              <summary>Безопасная диагностика запроса — без номера, кода и ключей</summary>
+              <pre>{{ authDiagnostic }}</pre>
+            </details>
             <label>OTP Code</label>
             <input v-model="authCode" placeholder="12345" autocomplete="one-time-code" inputmode="numeric" @keyup.enter="authCode && submitCode()" />
             <button class="ms-btn ms-btn--primary" @click="submitCode" :disabled="authSending || !authCode" style="margin-top: 12px">
@@ -405,6 +381,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.ms-delivery { padding: 12px; background: #302b1e; border: 1px solid #b88b37; border-radius: 8px; color: #f4d99c; font-size: 13px; line-height: 1.5; }
+.ms-delivery p { margin: 8px 0 0; }
+.ms-auth-diagnostic summary { cursor: pointer; padding: 12px 0; min-height: 44px; box-sizing: border-box; font-size: 12px; line-height: 1.5; }
+.ms-auth-diagnostic pre { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 11px; color: #cbd5e1; }
+.ms-modal { max-height: 85vh; overflow-y: auto; box-sizing: border-box; }
+.ms-modal .ms-btn, .ms-modal input { min-height: 44px; box-sizing: border-box; }
+
 .master-session-card {
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
   border: 1px solid rgba(99, 102, 241, 0.2);

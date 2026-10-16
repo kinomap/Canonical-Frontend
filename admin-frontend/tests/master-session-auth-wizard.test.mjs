@@ -48,6 +48,7 @@ function mount(postHandler) {
   const sandbox = {
     exports: {},
     require: (name) => name === 'axios' ? { __esModule: true, default: axios }
+      : name === './MasterReplacement.vue' ? { __esModule: true, default: {} }
       : name === '../toast' ? { addToast: (msg, kind) => toasts.push({ msg, kind }) } : require(name),
     localStorage: {
       getItem: () => 'admin-jwt',
@@ -66,7 +67,8 @@ function mount(postHandler) {
 const ok = (data) => ({ data })
 
 async function requestCode(app) {
-  app.state.startAuth()
+  // Exercise retained legacy challenge helpers directly; visible Authorize uses shared manager.
+  app.state.authStep.value = 'phone'
   assert.equal(app.state.authStep.value, 'phone')
   app.state.authPhone.value = '+79990001122'
   await app.state.requestCode()
@@ -191,3 +193,29 @@ test('phone_code_hash is never persisted, toasted or kept after the flow', async
   assert.equal(app.posts.length, before)
   assert.ok(!/\{\{[^}]*phone_code_hash[^}]*\}\}/.test(descriptor.template.content), 'hash must not be rendered')
 })
+
+
+test('accepted request shows delivery metadata, never a sent-code success claim', async () => {
+  const app = mount(async () => ok({ phone: '+79990001122', phone_code_hash: HASH,
+    delivery_type: 'SentCodeTypeApp', next_type: 'CodeTypeSms', code_length: 5,
+    next_send_timeout: 60, diagnostic_id: 'a'.repeat(32), private_field: 'PRIVATE' }))
+  await requestCode(app)
+  assert.match(app.state.authDelivery.value, /служебный чат Telegram/)
+  const diagnostics = app.state.authDiagnostic.value
+  assert.equal(JSON.parse(diagnostics).delivery_type, 'SentCodeTypeApp')
+  assert.equal(JSON.parse(diagnostics).delivery_confirmed, false)
+  for (const secret of [HASH, '+79990001122', 'PRIVATE']) assert.ok(!diagnostics.includes(secret))
+  assert.ok(!app.toasts.some(t => t.kind === 'success'))
+  app.state.resetAuth()
+  assert.equal(app.state.authDiagnostic.value, '')
+})
+
+test('legacy response does not imply Telegram-app delivery or echo arbitrary metadata', async () => {
+  const app = mount(async () => ok({ phone_code_hash: HASH, delivery_type: 'PRIVATE', diagnostic_id: 'PRIVATE' }))
+  await requestCode(app)
+  assert.match(app.state.authDelivery.value, /не сообщил/)
+  assert.ok(!app.state.authDiagnostic.value.includes('PRIVATE'))
+  assert.ok(!app.toasts.some(t => t.msg.includes('OTP code sent')))
+})
+
+test('visible Authorize opens dual-mode shared wizard without sending Telegram request',()=>{const app=mount(async()=>{throw new Error('must not send')});app.state.startAuth();assert.equal(app.state.showReplaceModal.value,true);assert.equal(app.state.authPurpose.value,'authorize');assert.equal(app.state.authStep.value,'idle');assert.equal(app.posts.length,0)})
