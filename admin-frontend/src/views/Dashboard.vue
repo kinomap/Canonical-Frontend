@@ -6,6 +6,26 @@ import { addToast } from '../toast'
 import MasterSession from '../components/MasterSession.vue'
 
 const router = useRouter()
+const snapshotBusy = ref(false)
+const snapshotError = ref('')
+const downloadCatalogSnapshot = async () => {
+  if (snapshotBusy.value) return
+  snapshotBusy.value = true
+  snapshotError.value = ''
+  try {
+    const response = await axios.get('/api/v1/admin/catalog/snapshot', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+      responseType: 'blob', timeout: 250000,
+    })
+    const url = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = url; link.download = 'db-catalog-snapshot.sql.gz'; link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 30000)
+  } catch {
+    snapshotError.value = 'Не удалось скачать снимок. Каталог и настройки не изменены. Проверьте подключение и повторите.'
+  } finally { snapshotBusy.value = false }
+}
+
 const catalogStats = ref<any>(null)
 const healthStats = ref<any>(null)
 const seriesStats = ref<any>(null)
@@ -141,7 +161,13 @@ onMounted(() => { fetchDashboardData() })
 
     <div class="dashboard-content">
       <!-- MASTER TELEGRAM SESSION -->
-      <MasterSession />
+      <section class="snapshot-card" style="margin: 1rem 0; padding: 1rem; border: 1px solid #475569; border-radius: 12px">
+      <h2>Резервная копия каталога</h2>
+      <p>Фильмы, сериалы, метаданные, источники Telegram и имеющиеся изображения. Без пользователей, паролей, сессий и настроек серверов. Снимок можно загрузить в Центре развёртывания при переезде.</p>
+      <button class="refresh-btn" :disabled="snapshotBusy" @click="downloadCatalogSnapshot">{{ snapshotBusy ? 'Создаём снимок…' : 'Скачать резервную копию каталога .sql.gz' }}</button>
+      <p v-if="snapshotError" role="alert">{{ snapshotError }}</p>
+    </section>
+    <MasterSession />
 
       <!-- CONTENT SECTION -->
       <section class="dashboard-section">
