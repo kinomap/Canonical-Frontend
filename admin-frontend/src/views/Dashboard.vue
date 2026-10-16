@@ -26,6 +26,23 @@ const downloadCatalogSnapshot = async () => {
   } finally { snapshotBusy.value = false }
 }
 
+const fullBackupBusy = ref(false)
+const fullBackupError = ref('')
+const downloadFullBackup = async () => {
+  if (fullBackupBusy.value) return
+  fullBackupBusy.value = true; fullBackupError.value = ''
+  try {
+    const response = await axios.get('/api/v1/admin/database/backup', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+      responseType: 'blob', timeout: 330000,
+    })
+    const url = URL.createObjectURL(response.data)
+    const a = document.createElement('a'); a.href = url; a.download = 'kinosota-full-database.dump'; a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 30000)
+  } catch { fullBackupError.value = 'Полный бэкап не создан. БД не изменена; проверьте доступ и свободное место.' }
+  finally { fullBackupBusy.value = false }
+}
+
 const catalogStats = ref<any>(null)
 const healthStats = ref<any>(null)
 const seriesStats = ref<any>(null)
@@ -164,6 +181,9 @@ onMounted(() => { fetchDashboardData() })
       <section class="snapshot-card" style="margin: 1rem 0; padding: 1rem; border: 1px solid #475569; border-radius: 12px">
       <h2>Резервная копия каталога</h2>
       <p>Фильмы, сериалы, метаданные, источники Telegram и имеющиеся изображения. Без пользователей, паролей, сессий и настроек серверов. Снимок можно загрузить в Центре развёртывания при переезде.</p>
+      <button class="refresh-btn" :disabled="fullBackupBusy" @click="downloadFullBackup">{{ fullBackupBusy ? 'Создаём полный бэкап…' : 'Создать и скачать полный бэкап БД' }}</button>
+      <p v-if="fullBackupError" role="alert">{{ fullBackupError }}</p>
+      <p>Полный .dump: все таблицы PostgreSQL и ключи восстановления. Храните приватно. Telegram .session и media-файлы сохраняются отдельно.</p>
       <button class="refresh-btn" :disabled="snapshotBusy" @click="downloadCatalogSnapshot">{{ snapshotBusy ? 'Создаём снимок…' : 'Скачать резервную копию каталога .sql.gz' }}</button>
       <p v-if="snapshotError" role="alert">{{ snapshotError }}</p>
     </section>
