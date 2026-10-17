@@ -3,7 +3,6 @@ import ChangePassword from '../components/ChangePassword.vue'
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
-import { addToast } from '../toast'
 import MasterSession from '../components/MasterSession.vue'
 
 const router = useRouter()
@@ -127,25 +126,6 @@ const fetchHealthData = async () => {
 const formatDate = (d: string | null) => {
   if (!d) return 'Never'
   return new Date(d).toLocaleString()
-}
-
-const isResetting = ref(false)
-
-const resetTotal = async () => {
-  if (!confirm('Reset the Total (Unique Physical Resources) counter? Existing Telegram Sources will not be deleted or modified.')) return
-
-  isResetting.value = true
-  const token = localStorage.getItem('admin_token')
-  try {
-    const res = await axios.post('/api/v1/admin/telegram-sources/metrics/reset', {}, { headers: { Authorization: `Bearer ${token}` } })
-    if (catalogStats.value) {
-      catalogStats.value.telegram_sources_total = res.data.total_unique_physical_resources
-    }
-  } catch (err: any) {
-    addToast(err.response?.data?.detail || 'Failed to reset metric.', 'error')
-  } finally {
-    isResetting.value = false
-  }
 }
 
 const statusClass = (s: string) => {
@@ -363,14 +343,7 @@ onMounted(() => { fetchDashboardData() })
             </svg>
             Telegram Sources
           </h2>
-          <button 
-            class="reset-action-btn" 
-            @click="resetTotal" 
-            :disabled="isResetting"
-            title="Reset metric to zero for new resources"
-          >
-            Reset Total
-          </button>
+
         </div>
         
         <div v-if="loadingCatalog && !catalogStats" class="loading-state-sm">
@@ -389,7 +362,8 @@ onMounted(() => { fetchDashboardData() })
             </div>
             <div>
               <div class="stat-value text-green">{{ catalogStats.telegram_sources_active }}</div>
-              <div class="stat-label">Active (Unique Movies)</div>
+              <div class="stat-label">Активные произведения</div>
+              <div class="stat-label">{{ catalogStats.telegram_active_movies }} фильмов + {{ catalogStats.telegram_active_series }} сериалов</div>
             </div>
           </div>
           <div class="stat-card">
@@ -402,7 +376,7 @@ onMounted(() => { fetchDashboardData() })
             </div>
             <div>
               <div class="stat-value text-blue">{{ catalogStats.recurring_telegram_sources }}</div>
-              <div class="stat-label">Recurring (Additional Sources)</div>
+              <div class="stat-label">Дополнительные копии фильмов / эпизодов</div>
             </div>
           </div>
           <div class="stat-card">
@@ -414,8 +388,9 @@ onMounted(() => { fetchDashboardData() })
               </svg>
             </div>
             <div>
-              <div class="stat-value">{{ catalogStats.telegram_sources_total }}</div>
-              <div class="stat-label" title="Counts unique Telegram resources registered after the last reset.">Total (Unique Physical Resources)</div>
+              <div class="stat-value">{{ catalogStats.telegram_physical_resources_active }}</div>
+              <div class="stat-label" title="Уникальные сообщения с активными файлами в активных каналах. Эпизоды не считаются отдельными сериалами.">Файлы активных источников</div>
+              <div class="stat-label">{{ catalogStats.telegram_active_episodes }} эпизодов · не число произведений</div>
             </div>
           </div>
           <div class="stat-card">
@@ -667,27 +642,6 @@ onMounted(() => { fetchDashboardData() })
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 12px;
   padding: 24px;
-}
-
-.reset-action-btn {
-  background: transparent;
-  border: 1px solid #ef4444;
-  color: #ef4444;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.reset-action-btn:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.reset-action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .section-title {

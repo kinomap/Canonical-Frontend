@@ -50,6 +50,19 @@ const fetchChannels = async () => {
   }
 }
 
+const restoringNames = ref(false)
+const missingNames = computed(() => channels.value.filter(c => c.name_known === false).length)
+const restoreNames = async () => {
+  restoringNames.value = true
+  try {
+    const { data } = await axios.post('/api/v1/admin/telegram/channels/restore-names', {}, auth())
+    addToast(`Названия восстановлены: ${data.restored}. Без сохранённого названия: ${data.missing}. Каналы не включались.`, data.missing ? 'info' : 'success')
+    await fetchChannels()
+  } catch (err: any) {
+    addToast(err.response?.data?.detail || 'Не удалось восстановить названия', 'error')
+  } finally { restoringNames.value = false }
+}
+
 // Entity Discovery state
 const entities = ref<any[]>([])
 const loadingEntities = ref(false)
@@ -256,6 +269,10 @@ onMounted(() => {
         :aria-pressed="channelStatusFilter === filter.value"
         @click="channelStatusFilter = filter.value">{{ filter.label }} ({{ channelFilterCount(filter.value) }})</button>
     </div>
+    <div v-if="missingNames" class="empty-state" style="padding: 16px; margin-bottom: 16px;">
+      <p>У {{ missingNames }} каналов не сохранено название. Можно восстановить последнее известное название из локального кэша Telegram — без подключения и включения каналов.</p>
+      <button class="btn-add" :disabled="restoringNames" @click="restoreNames">{{ restoringNames ? 'Восстановление…' : 'Восстановить названия' }}</button>
+    </div>
     <div v-if="loading" class="loading-state">
       <div class="loading-spinner"></div>
       <span>Loading channels...</span>
@@ -291,7 +308,7 @@ onMounted(() => {
             </div>
             <div>
               <div class="channel-name" style="display: flex; align-items: center; gap: 8px;">
-                {{ channel.name || channel.channel_id }}
+                {{ channel.name || 'Название не сохранено' }}
                 <span class="type-badge" :class="channel.is_series_channel ? 'type-series' : 'type-movie'">
                   {{ channel.is_series_channel ? 'SERIES' : 'MOVIE' }}
                 </span>
@@ -312,9 +329,21 @@ onMounted(() => {
         </div>
 
         <div class="channel-stats">
-          <div class="stat-item stat-highlight">
-            <span class="stat-label">Current Movies</span>
+          <div v-if="!channel.is_series_channel || channel.current_movies > 0" class="stat-item stat-highlight">
+            <span class="stat-label">Фильмы</span>
             <span class="stat-val stat-val-primary">{{ channel.current_movies?.toLocaleString() ?? '—' }}</span>
+          </div>
+          <div v-if="channel.is_series_channel || channel.current_series > 0" class="stat-item stat-highlight">
+            <span class="stat-label">Сериалы</span>
+            <span class="stat-val stat-val-primary">{{ channel.current_series?.toLocaleString() ?? '—' }}</span>
+          </div>
+          <div v-if="channel.is_series_channel || channel.current_series > 0" class="stat-item">
+            <span class="stat-label">Эпизоды</span>
+            <span class="stat-val">{{ channel.current_episodes?.toLocaleString() ?? '—' }}</span>
+          </div>
+          <div class="stat-item" title="Уникальные Telegram-сообщения с активными файлами; это не число фильмов или сериалов.">
+            <span class="stat-label">Файлы активных источников</span>
+            <span class="stat-val">{{ channel.active_physical_resources?.toLocaleString() ?? '—' }}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">Messages Processed</span>
