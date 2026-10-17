@@ -1,3 +1,4 @@
+import './browserAuth'
 import { createApp } from 'vue'
 import App from './App.vue'
 import router, { getPendingNavigation } from './router'

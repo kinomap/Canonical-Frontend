@@ -92,6 +92,7 @@ export interface HomeCollections {
 }
 
 export interface User {
+  password_login_available?: boolean
   id: string
   username: string
   email: string

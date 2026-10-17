@@ -23,7 +23,7 @@ const handleLogin = async () => {
       return
     }
 
-    localStorage.setItem('admin_token', res.data.access_token)
+    localStorage.setItem('admin_token', 'cookie-session')
     router.push('/')
   } catch (err: any) {
     if (err.response && err.response.data && err.response.data.detail) {
@@ -44,11 +44,11 @@ const handleLogin = async () => {
       <form @submit.prevent="handleLogin" class="login-form">
         <div class="input-group">
           <label>Username or Email</label>
-          <input type="text" v-model="usernameOrEmail" required placeholder="Enter admin username" />
+          <input type="text" autocomplete="username" v-model="usernameOrEmail" required placeholder="Enter admin username" />
         </div>
         <div class="input-group">
           <label>Password</label>
-          <input type="password" v-model="password" required placeholder="Enter password" />
+          <input type="password" autocomplete="current-password" v-model="password" required placeholder="Enter password" />
         </div>
         
         <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>

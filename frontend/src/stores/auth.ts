@@ -22,6 +22,7 @@ export function useAuthStore() {
   const isAuthenticated = computed(() => !!token.value)
 
   function setToken(newToken: string | null) {
+    newToken = newToken ? 'cookie-session' : null
     token.value = newToken
     if (newToken) {
       localStorage.setItem(TOKEN_KEY, newToken)
@@ -72,7 +73,8 @@ export function useAuthStore() {
     return resp
   }
 
-  function logout() {
+  async function logout() {
+    try { await fetch('/api/v1/auth/logout', {method:'POST'}) } catch { /* clear local state even offline */ }
     setToken(null)
     setUser(null)
   }

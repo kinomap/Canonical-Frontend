@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SocialLogin from '@/components/SocialLogin.vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -50,6 +51,7 @@ async function handleSubmit() {
         {{ error }}
       </div>
 
+      <p>Пароль: 15–128 символов. Используйте уникальную длинную фразу.</p>
       <form class="auth-form" @submit.prevent="handleSubmit">
         <div class="form-group">
           <label class="form-label">Username</label>
@@ -79,7 +81,7 @@ async function handleSubmit() {
           <label class="form-label">Password</label>
           <input
             v-model="password"
-            type="password"
+            type="password" minlength="15" maxlength="128"
             required
             placeholder="at least 6 characters"
             class="form-input"
@@ -91,7 +93,7 @@ async function handleSubmit() {
           <label class="form-label">Confirm Password</label>
           <input
             v-model="confirmPassword"
-            type="password"
+            type="password" minlength="15" maxlength="128"
             required
             placeholder="repeat password"
             class="form-input"
@@ -105,6 +107,7 @@ async function handleSubmit() {
         </button>
       </form>
 
+<SocialLogin  />
       <div class="auth-footer">
         Already have an account?
         <router-link to="/login" class="auth-link">Sign In</router-link>

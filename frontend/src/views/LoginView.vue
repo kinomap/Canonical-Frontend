@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SocialLogin from '@/components/SocialLogin.vue'
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -9,7 +10,6 @@ const authStore = useAuthStore()
 
 const usernameOrEmail = ref('')
 const password = ref('')
-const rememberMe = ref(true)
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -26,7 +26,8 @@ async function handleSubmit() {
   error.value = null
   try {
     await authStore.login(usernameOrEmail.value.trim(), password.value)
-    const redirectPath = (route.query.redirect as string) || '/profile'
+    const candidate = String(route.query.redirect || '/profile')
+    const redirectPath = candidate.startsWith('/') && !candidate.startsWith('//') && !candidate.includes('\\') ? candidate : '/profile'
     router.push(redirectPath)
   } catch (err: any) {
     error.value = err?.message || 'Invalid username or password'
@@ -77,12 +78,7 @@ async function handleSubmit() {
           />
         </div>
 
-        <div class="form-remember-row">
-          <label class="remember-label">
-            <input v-model="rememberMe" type="checkbox" />
-            Remember me
-          </label>
-        </div>
+        <p>Защищённый вход сохраняется до 12 часов. На чужом устройстве обязательно выйдите из аккаунта.</p>
 
         <button type="submit" class="submit-btn" :disabled="loading">
           <span v-if="loading">Signing in...</span>
@@ -90,6 +86,7 @@ async function handleSubmit() {
         </button>
       </form>
 
+<SocialLogin :completed="route.query.social === 'success'" />
       <div class="auth-footer">
         Don't have an account?
         <router-link to="/register" class="auth-link">Create Account</router-link>

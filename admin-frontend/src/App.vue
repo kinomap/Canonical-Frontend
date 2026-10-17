@@ -8,7 +8,8 @@ const router = useRouter()
 
 const isLoginPage = computed(() => route.name === 'login')
 
-const logout = () => {
+const logout = async () => {
+  try { await fetch('/api/v1/auth/logout', {method:'POST'}) } catch {}
   localStorage.removeItem('admin_token')
   router.push('/login')
 }

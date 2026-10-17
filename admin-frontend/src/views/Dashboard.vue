@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChangePassword from '../components/ChangePassword.vue'
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
@@ -571,6 +572,7 @@ onMounted(() => { fetchDashboardData() })
       </section>
     </div>
   </div>
+  <ChangePassword />
 </template>
 
 <style scoped>

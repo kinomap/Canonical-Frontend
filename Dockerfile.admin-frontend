@@ -1,5 +1,5 @@
 # Private Admin assets; expose only through the Backend's WG gateway.
-FROM node:20-alpine AS admin-builder
+FROM node:24-alpine AS admin-builder
 ARG VITE_ADMIN_BASE_PATH=/admin/
 ENV VITE_ADMIN_BASE_PATH=${VITE_ADMIN_BASE_PATH}
 WORKDIR /app

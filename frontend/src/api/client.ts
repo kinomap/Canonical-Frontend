@@ -54,6 +54,7 @@ const BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) || '
 // Decodes the payload without signature verification (backend still validates).
 // Lets us skip the network round-trip when the token is already expired.
 function isTokenExpired(token: string): boolean {
+  if (token === 'cookie-session') return false
   try {
     const payloadB64 = token.split('.')[1]
     if (!payloadB64) return true
