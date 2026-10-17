@@ -86,7 +86,7 @@ async function handleSubmit() {
         </button>
       </form>
 
-<SocialLogin :completed="route.query.social === 'success'" />
+<SocialLogin />
       <div class="auth-footer">
         Don't have an account?
         <router-link to="/register" class="auth-link">Create Account</router-link>

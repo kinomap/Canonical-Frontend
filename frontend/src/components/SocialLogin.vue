@@ -2,15 +2,13 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
-const props=defineProps<{completed?:boolean}>()
 const auth=useAuthStore(),router=useRouter()
-const providers=ref({google:false,telegram:false}),message=ref(''),loading=ref(false),widget=ref<HTMLElement|null>(null)
+const providers=ref({telegram:false}),message=ref(''),loading=ref(false),widget=ref<HTMLElement|null>(null)
 let script:HTMLScriptElement|null=null
 const callback='kinosotaTelegramLogin'+Math.random().toString(36).slice(2)
 onMounted(async()=>{
   try {
     const r=await fetch('/api/v1/auth/social/providers');const d=await r.json();providers.value=d.providers||providers.value
-    if(props.completed){auth.setToken('cookie-session');await auth.fetchCurrentUser();if(auth.user.value)router.replace('/profile');else message.value='Вход не подтверждён. Повторите авторизацию.'}
   } catch {message.value='Сервисы входа временно недоступны.'}
 })
 async function telegram(){
@@ -31,8 +29,6 @@ onBeforeUnmount(()=>{delete (window as any)[callback];script?.remove()})
 </script>
 <template>
  <section class="social-login" aria-label="Вход через другой сервис">
-  <a v-if="providers.google" href="/api/v1/auth/social/google/start">Войти через Google</a>
-  <button v-else disabled title="Администратору нужно подключить Google OAuth">Google · ещё не подключён</button>
   <button v-if="providers.telegram" type="button" @click="telegram" :disabled="loading">Войти через Telegram</button>
   <button v-else disabled title="Администратору нужно подключить Telegram Login Bot">Telegram · ещё не подключён</button>
   <div ref="widget"></div><p v-if="message" role="alert">{{message}}</p>
