@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
+const source=readFileSync(new URL('../src/channelFilters.ts',import.meta.url),'utf8');
+const js=ts.transpile(source,{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022});
+const {filterChannels}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const rows=[{id:1,status:'ACTIVE'},{id:2,status:'DISABLED'},{id:3,status:'ERROR'}];
+test('Active filter excludes disabled/historical channels',()=>assert.deepEqual(filterChannels(rows,'ACTIVE').map(x=>x.id),[1]));
+test('Inactive filter includes all non-active statuses',()=>assert.deepEqual(filterChannels(rows,'INACTIVE').map(x=>x.id),[2,3]));
+test('All does not mutate or discard historical data',()=>{assert.equal(filterChannels(rows,'ALL').length,3);assert.equal(rows.length,3)});
+test('Empty and active-by-default template states',()=>{assert.deepEqual(filterChannels([],'ACTIVE'),[]);const vue=readFileSync(new URL('../src/views/Telegram.vue',import.meta.url),'utf8');assert.match(vue,/channelStatusFilter = ref<ChannelFilter>\('ACTIVE'\)/);assert.match(vue,/channel in filteredChannels/);assert.match(vue,/filteredChannels.length === 0/)});

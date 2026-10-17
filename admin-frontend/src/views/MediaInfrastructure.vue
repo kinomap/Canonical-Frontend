@@ -263,15 +263,16 @@ onUnmounted(() => {
 
       <!-- ── Media Session Capacity ────────────────── -->
       <section class="obs-section" v-if="data.media_sessions_required > 0">
-        <h2 class="obs-section-title">Media Session Capacity</h2>
+        <h2 class="obs-section-title">Media Session Capacity · Workers only</h2>
+        <p>Master не участвует в медиатрафике. Цель ёмкости — план масштабирования, не минимальное число сессий для запуска видео. Отключённые и неподтверждённые сессии не считаются готовыми.</p>
         <div class="obs-session-capacity">
           <div class="obs-cap-row">
-            <span class="obs-cap-label">Required</span>
+            <span class="obs-cap-label">Capacity target</span>
             <span class="obs-cap-value">{{ data.media_sessions_required }} sessions</span>
           </div>
           <div class="obs-cap-row">
-            <span class="obs-cap-label">Assigned (Data Plane ready)</span>
-            <span class="obs-cap-value" :class="data.media_sessions_additional > 0 ? 'obs-cap-warn' : 'obs-cap-ok'">{{ data.media_sessions_assigned ?? data.media_sessions_connected }} sessions</span>
+            <span class="obs-cap-label">Healthy Workers (fresh heartbeat)</span>
+            <span class="obs-cap-value" :class="data.media_sessions_additional > 0 ? 'obs-cap-warn' : 'obs-cap-ok'">{{ data.media_sessions_healthy }} sessions</span>
           </div>
           <div class="obs-cap-row" v-if="data.media_sessions_unassigned > 0">
             <span class="obs-cap-label">Unassigned</span>

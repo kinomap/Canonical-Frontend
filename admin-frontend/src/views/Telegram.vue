@@ -3,10 +3,17 @@ import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import { addToast } from '../toast'
+import { filterChannels, type ChannelFilter } from '../channelFilters'
 
 const router = useRouter()
 const channels = ref<any[]>([])
 const loading = ref(true)
+const channelStatusFilter = ref<ChannelFilter>('ACTIVE')
+const filteredChannels = computed(() => filterChannels(channels.value, channelStatusFilter.value))
+const channelFilters: {value: ChannelFilter, label: string}[] = [
+  {value: 'ACTIVE', label: 'Активные'}, {value: 'INACTIVE', label: 'Неактивные'}, {value: 'ALL', label: 'Все'}
+]
+const channelFilterCount = (filter: ChannelFilter) => filterChannels(channels.value, filter).length
 
 // Add channel modal
 const showAddModal = ref(false)
@@ -244,6 +251,11 @@ onMounted(() => {
       </button>
     </div>
 
+    <div class="channel-filters" role="group" aria-label="Фильтр Telegram-каналов">
+      <button v-for="filter in channelFilters" :key="filter.value" type="button"
+        :aria-pressed="channelStatusFilter === filter.value"
+        @click="channelStatusFilter = filter.value">{{ filter.label }} ({{ channelFilterCount(filter.value) }})</button>
+    </div>
     <div v-if="loading" class="loading-state">
       <div class="loading-spinner"></div>
       <span>Loading channels...</span>
@@ -258,9 +270,14 @@ onMounted(() => {
       <button class="btn-add" @click="showAddModal = true">Add Channel</button>
     </div>
 
+    <div v-else-if="filteredChannels.length === 0" class="empty-state">
+      <h3>Нет каналов в выбранной категории</h3>
+      <p>Другие каналы сохранены. Выберите «Все», чтобы их посмотреть.</p>
+      <button class="btn-add" @click="channelStatusFilter = 'ALL'">Показать все</button>
+    </div>
     <div v-else class="channels-grid">
       <div
-        v-for="channel in channels"
+        v-for="channel in filteredChannels"
         :key="channel.channel_id"
         class="channel-card"
         :class="{ 'card-disabled': channel.status !== 'ACTIVE' }"
@@ -482,6 +499,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.channel-filters { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 24px; }
+.channel-filters button { padding:10px 16px; border:1px solid #475569; border-radius:8px; background:#1e293b; color:#cbd5e1; cursor:pointer; }
+.channel-filters button[aria-pressed="true"] { background:#0369a1; color:white; border-color:#38bdf8; }
+
 .telegram-page { max-width: 1200px; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
 .page-header h1 { margin: 0 0 4px; font-size: 1.75rem; font-weight: 800; color: #f8fafc; }
