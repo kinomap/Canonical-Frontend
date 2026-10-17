@@ -83,7 +83,7 @@ async function handleSubmit() {
             v-model="password"
             type="password" minlength="15" maxlength="128"
             required
-            placeholder="at least 6 characters"
+            placeholder="15–128 characters"
             class="form-input"
             autocomplete="new-password"
           />
