@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import ToastContainer from './components/ToastContainer.vue'
 
 const route = useRoute()
 const router = useRouter()
+const mobileNavOpen = ref(false)
+watch(() => route.fullPath, () => { mobileNavOpen.value = false })
 
 const isLoginPage = computed(() => route.name === 'login')
 
@@ -22,7 +24,8 @@ const logout = async () => {
   </div>
   <div v-else class="admin-layout">
     <ToastContainer />
-    <aside class="sidebar">
+    <header class="mobile-header"><strong>KINOSOTA · Admin</strong><button type="button" aria-controls="admin-navigation" :aria-expanded="mobileNavOpen" @click="mobileNavOpen = !mobileNavOpen">{{ mobileNavOpen ? 'Закрыть меню' : 'Открыть меню' }}</button></header>
+    <aside id="admin-navigation" class="sidebar" :class="{ 'sidebar--open': mobileNavOpen }">
       <div class="sidebar-header">
         <div class="brand-icon">K</div>
         <div class="brand-text">
@@ -349,5 +352,15 @@ body {
   padding: 32px;
   overflow-y: auto;
   min-width: 0;
+}
+
+.mobile-header { display: none; }
+@media (max-width: 760px) {
+  .admin-layout { display: block; }
+  .mobile-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #1a2540; border-bottom: 1px solid #334155; }
+  .mobile-header button { color: #e2e8f0; background: #334155; border: 1px solid #475569; border-radius: 8px; padding: 10px 12px; }
+  .sidebar { display: none; position: relative; width: 100%; height: auto; max-height: 70vh; overflow-y: auto; }
+  .sidebar.sidebar--open { display: flex; }
+  .main-content { width: 100%; padding: 16px; }
 }
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentAccessSwitch from '../components/ContentAccessSwitch.vue'
 import { ref, watch, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
@@ -180,15 +181,16 @@ onMounted(() => {
             <th class="sources-col">Sources</th>
             <th class="poster-status-col">Poster Status</th>
             <th class="status-col">Status</th>
+            <th>Доступ</th>
             <th class="actions-col">Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading && series.length === 0">
-            <td colspan="9" class="loading-cell">Loading...</td>
+            <td colspan="10" class="loading-cell">Loading...</td>
           </tr>
           <tr v-else-if="series.length === 0">
-            <td colspan="9" class="empty-cell">No series found matching criteria.</td>
+            <td colspan="10" class="empty-cell">No series found matching criteria.</td>
           </tr>
           <tr v-else v-for="s in series" :key="s.id" @click="goToDetail(s.id)" class="series-row">
             <td class="poster-col">
@@ -216,6 +218,7 @@ onMounted(() => {
                 {{ (s.status === 'available' || s.is_available) ? 'available' : 'unavailable' }}
               </span>
             </td>
+            <td @click.stop><ContentAccessSwitch kind="series" :content-id="s.id" /></td>
             <td class="actions-col">
               <div class="actions-cell">
                 <a 

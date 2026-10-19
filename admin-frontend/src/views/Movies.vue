@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentAccessSwitch from '../components/ContentAccessSwitch.vue'
 import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
@@ -167,15 +168,16 @@ onMounted(() => {
             <th>Sources</th>
             <th>Poster Status</th>
             <th>Status</th>
+            <th>Доступ</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading && movies.length === 0">
-            <td colspan="8" class="loading-cell">Loading...</td>
+            <td colspan="9" class="loading-cell">Loading...</td>
           </tr>
           <tr v-else-if="movies.length === 0">
-            <td colspan="8" class="empty-cell">No movies found matching criteria.</td>
+            <td colspan="9" class="empty-cell">No movies found matching criteria.</td>
           </tr>
           <tr v-else v-for="movie in movies" :key="movie.id" @click="goToDetail(movie.id)" class="movie-row">
             <td class="poster-col">
@@ -205,6 +207,7 @@ onMounted(() => {
                 {{ movie.status }}
               </span>
             </td>
+            <td @click.stop><ContentAccessSwitch kind="movie" :content-id="movie.id" /></td>
             <td class="actions-col">
               <div class="actions-cell">
                 <a 
