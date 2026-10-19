@@ -75,7 +75,7 @@ export const TRAFFIC_STYLES: Record<string, { color: string; dash: string; width
 
 export const LAYERS = ['external', 'edge', 'control', 'private', 'media'] as const
 export const LAYER_LABELS: Record<string, string> = {
-  external: 'External', edge: 'Edge / DNS', control: 'Control Plane', private: 'Private', media: 'Media Plane',
+  external: 'External', edge: 'Edge / Public Frontend', control: 'Control Plane', private: 'Private / Control Plane', media: 'Media Plane',
 }
 
 export interface Placed { id: string; x: number; y: number; w: number; h: number }
