@@ -19,3 +19,9 @@ window.addEventListener('vite:preloadError', (event) => {
 const app = createApp(App)
 app.use(router)
 app.mount('#app')
+
+// Bounded first-touch attribution, no raw URL/referrer/query persistence.
+try {
+ const source=new URLSearchParams(location.search).get('utm_source')
+ if(source && /^[A-Za-z0-9_.:/-]{1,128}$/.test(source) && !sessionStorage.getItem('acquisition_source')) sessionStorage.setItem('acquisition_source',source)
+} catch { /* storage may be unavailable */ }

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import ChangePassword from '@/components/ChangePassword.vue'
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const promoCode=ref(''),promoMessage=ref(''),promoBusy=ref(false)
+async function redeemPromo(){promoBusy.value=true;promoMessage.value='';try{const r=await fetch('/api/v1/me/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:promoCode.value})});if(!r.ok)throw new Error();await authStore.fetchCurrentUser();promoCode.value='';promoMessage.value='Доступ обновлён.'}catch{promoMessage.value='Промокод недоступен или сессия истекла.'}finally{promoBusy.value=false}}
 
 onMounted(() => {
   if (!authStore.isAuthenticated.value) {
@@ -74,6 +76,7 @@ function formatDate(isoStr?: string) {
         </div>
       </div>
 
+      <section aria-label="Подписка и права"><h2>Ваш доступ</h2><p>{{authStore.user.value.subscription_status || 'free'}}</p><ul><li v-for="right in authStore.user.value.entitlements || []" :key="right">{{right}}</li></ul><form @submit.prevent="redeemPromo"><label>Промокод <input v-model="promoCode" required minlength="8" maxlength="64" autocomplete="off" /></label><button :disabled="promoBusy">Применить</button></form><p role="status">{{promoMessage}}</p></section>
       <ChangePassword v-if="authStore.user.value?.password_login_available !== false" />
       <div class="profile-actions">
         <button class="logout-btn" @click="handleLogout">

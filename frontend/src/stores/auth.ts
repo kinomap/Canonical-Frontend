@@ -84,6 +84,7 @@ export function useAuthStore() {
     user,
     loading,
     isAuthenticated,
+    hasEntitlement: (code: string) => !!user.value?.entitlements?.includes(code),
     setToken,
     fetchCurrentUser,
     login,

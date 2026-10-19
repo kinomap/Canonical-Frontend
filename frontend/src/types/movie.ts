@@ -92,6 +92,8 @@ export interface HomeCollections {
 }
 
 export interface User {
+  entitlements?: string[]
+  subscription_status?: string
   password_login_available?: boolean
   id: string
   username: string

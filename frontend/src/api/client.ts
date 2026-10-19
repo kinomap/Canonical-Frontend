@@ -315,7 +315,7 @@ export const apiClient = {
   async register(username: string, email: string, password: string): Promise<AuthTokenResponse> {
     return request<AuthTokenResponse>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, email, password }),
+      body: JSON.stringify({ username, email, password, acquisition_source: sessionStorage.getItem('acquisition_source') || undefined }),
     })
   },
 

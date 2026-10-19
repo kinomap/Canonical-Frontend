@@ -14,9 +14,9 @@ async function render(enabled=true){
 describe('Telegram one-click UI',()=>{
  it('mounts official widget immediately, without a preliminary button',async()=>{
   const w=await render();expect(fetch).toHaveBeenCalledTimes(2)
-  expect(w.findAll('button')).toHaveLength(0)
+  expect(w.findAll('button')).toHaveLength(1)
   const script=w.find('script');expect(script.attributes('src')).toBe('https://telegram.org/js/telegram-widget.js?22')
-  expect(script.attributes('data-telegram-login')).toBe('kino_publisher_bot');expect(script.attributes('data-lang')).toBe('ru')
+  expect(script.attributes('data-telegram-login')).toBe('kino_publisher_bot');expect(script.attributes('data-lang')).toBe('ru');expect(script.attributes('data-request-access')).toBe('write')
   await script.trigger('load');expect(w.find('[role=status]').exists()).toBe(false)
   expect(w.text()).not.toContain('Google')
  })
@@ -25,8 +25,8 @@ describe('Telegram one-click UI',()=>{
  })
  it('shows retry only after a real loading error and replaces old widget',async()=>{
   const w=await render();await w.find('script').trigger('error');expect(w.find('[role=alert]').exists()).toBe(true)
-  expect(w.findAll('button')).toHaveLength(1);await w.find('button').trigger('click');await flushPromises()
-  expect(w.findAll('script')).toHaveLength(1);expect(w.findAll('button')).toHaveLength(0)
+  expect(w.findAll('button')).toHaveLength(2);await w.findAll('button').find(b=>b.text().includes('Повторить'))!.trigger('click');await flushPromises()
+  expect(w.findAll('script')).toHaveLength(1);expect(w.findAll('button')).toHaveLength(1)
  })
  it('removes its callback on unmount',async()=>{
   const w=await render();const callback=w.find('script').attributes('data-onauth')!.split('(')[0]!

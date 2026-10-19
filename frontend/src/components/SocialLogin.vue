@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import TelegramDeepLink from './TelegramDeepLink.vue'
 import { useRouter } from 'vue-router'
 const auth=useAuthStore(),router=useRouter()
 const configured=ref<boolean|null>(null),message=ref(''),loading=ref(true),widget=ref<HTMLElement|null>(null)
@@ -18,7 +19,7 @@ async function telegram(){
       if(disposed)return
       loading.value=true;message.value=''
       try{
-        const response=await fetch('/api/v1/auth/social/telegram/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:d.state,user})})
+        const response=await fetch('/api/v1/auth/social/telegram/complete',{method:'POST',headers:{'Content-Type':'application/json','X-Acquisition-Source':sessionStorage.getItem('acquisition_source')||''},body:JSON.stringify({state:d.state,user})})
         const result=await response.json()
         if(disposed)return
         if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Telegram не подтвердил вход.')
@@ -30,7 +31,7 @@ async function telegram(){
     }
     if(!widget.value)throw new Error('Не удалось показать кнопку Telegram.')
     script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true
-    script.setAttribute('data-telegram-login',d.bot_username);script.setAttribute('data-size','large');script.setAttribute('data-lang','ru');script.setAttribute('data-onauth',callback+'(user)')
+    script.setAttribute('data-request-access','write');script.setAttribute('data-telegram-login',d.bot_username);script.setAttribute('data-size','large');script.setAttribute('data-lang','ru');script.setAttribute('data-onauth',callback+'(user)')
     script.onload=()=>{if(!disposed){loading.value=false;clearTimeout(timer)}}
     script.onerror=()=>fail('Не удалось загрузить Telegram. Проверьте блокировщик или сеть и повторите попытку.')
     timer=setTimeout(()=>fail('Telegram не ответил. Проверьте соединение и повторите попытку.'),15000)
@@ -53,6 +54,7 @@ onBeforeUnmount(()=>{disposed=true;clearTimeout(timer);delete (window as any)[ca
   <p v-if="loading" role="status">Подключение Telegram…</p>
   <p v-if="configured===false && !message">Telegram · ещё не подключён</p>
   <div ref="widget" class="telegram-widget"></div>
+  <TelegramDeepLink v-if="configured" />
   <p v-if="message" role="alert">{{message}}</p>
   <button v-if="message" type="button" @click="retry" :disabled="loading">Повторить подключение Telegram</button>
  </section>
