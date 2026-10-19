@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import TelegramDeepLink from './TelegramDeepLink.vue'
 import { useRouter } from 'vue-router'
 const auth=useAuthStore(),router=useRouter()
 const configured=ref<boolean|null>(null),message=ref(''),loading=ref(true),widget=ref<HTMLElement|null>(null)
@@ -54,7 +53,6 @@ onBeforeUnmount(()=>{disposed=true;clearTimeout(timer);delete (window as any)[ca
   <p v-if="loading" role="status">Подключение Telegram…</p>
   <p v-if="configured===false && !message">Telegram · ещё не подключён</p>
   <div ref="widget" class="telegram-widget"></div>
-  <TelegramDeepLink v-if="configured" />
   <p v-if="message" role="alert">{{message}}</p>
   <button v-if="message" type="button" @click="retry" :disabled="loading">Повторить подключение Telegram</button>
  </section>
