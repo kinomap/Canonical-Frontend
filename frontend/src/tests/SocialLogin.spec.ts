@@ -1,10 +1,11 @@
 import { describe,it,expect,vi,beforeEach,afterEach } from 'vitest'
 import { mount,flushPromises } from '@vue/test-utils'
 import SocialLogin from '@/components/SocialLogin.vue'
-vi.mock('@/stores/auth',()=>({useAuthStore:()=>({setToken:vi.fn(),fetchCurrentUser:vi.fn(),user:{value:null}})}))
-vi.mock('vue-router',()=>({useRouter:()=>({push:vi.fn()})}))
+const mocks=vi.hoisted(()=>({setToken:vi.fn(),fetchCurrentUser:vi.fn(),push:vi.fn(),user:{value:null as any}}))
+vi.mock('@/stores/auth',()=>({useAuthStore:()=>mocks}))
+vi.mock('vue-router',()=>({useRouter:()=>({push:mocks.push})}))
 let wrappers:any[]=[]
-beforeEach(()=>{vi.stubGlobal('fetch',vi.fn());wrappers=[]})
+beforeEach(()=>{vi.clearAllMocks();mocks.user.value=null;vi.stubGlobal('fetch',vi.fn());wrappers=[]})
 afterEach(()=>{wrappers.forEach(w=>w.unmount());vi.unstubAllGlobals()})
 const reply=(d:any,ok=true)=>Promise.resolve(new Response(JSON.stringify(d),{status:ok?200:503,headers:{'Content-Type':'application/json'}}))
 async function render(enabled=true){
@@ -19,6 +20,13 @@ describe('Telegram one-click UI',()=>{
   expect(script.attributes('data-telegram-login')).toBe('kino_publisher_bot');expect(script.attributes('data-lang')).toBe('ru');expect(script.attributes('data-request-access')).toBe('write')
   await script.trigger('load');expect(w.find('[role=status]').exists()).toBe(false)
   expect(w.text()).not.toContain('Google')
+ })
+ it('opens Home after successful Telegram widget authentication',async()=>{
+  const w=await render();const callback=w.find('script').attributes('data-onauth')!.split('(')[0]!
+  mocks.user.value={id:'synthetic-viewer'}
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({access_token:'cookie-session'}),{status:200,headers:{'Content-Type':'application/json'}}))
+  await (window as any)[callback]({id:123,hash:'synthetic'});await flushPromises()
+  expect(mocks.fetchCurrentUser).toHaveBeenCalled();expect(mocks.push).toHaveBeenCalledWith('/')
  })
  it('does not start a flow when provider is not configured',async()=>{
   const w=await render(false);expect(fetch).toHaveBeenCalledTimes(1);expect(w.find('script').exists()).toBe(false);expect(w.text()).toContain('ещё не подключён')

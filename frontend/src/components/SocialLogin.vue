@@ -26,7 +26,7 @@ async function telegram(){
         auth.setToken('cookie-session');await auth.fetchCurrentUser()
         if(disposed)return
         if(!auth.user.value)throw new Error('Не удалось проверить вход. Повторите попытку.')
-        await router.push('/profile')
+        await router.push('/')
       }catch(e:any){fail(e?.message||'Не удалось завершить вход. Повторите попытку.')}finally{if(!disposed)loading.value=false}
     }
     if(!widget.value)throw new Error('Не удалось показать кнопку Telegram.')

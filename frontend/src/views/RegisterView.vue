@@ -30,7 +30,7 @@ async function handleSubmit() {
   error.value = null
   try {
     await authStore.register(username.value.trim(), email.value.trim(), password.value)
-    router.push('/profile')
+    router.push('/')
   } catch (err: any) {
     error.value = err?.message || 'Registration failed'
   } finally {

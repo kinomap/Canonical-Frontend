@@ -76,6 +76,33 @@ describe('Auth Views & Store', () => {
     expect(apiClient.login).toHaveBeenCalledWith('testuser', 'password123')
     expect(authStore.isAuthenticated.value).toBe(true)
     expect(authStore.user.value?.username).toBe('testuser')
+    expect(router.currentRoute.value.path).toBe('/')
+  })
+
+  it.each(['/profile', '/movies', '//external.invalid'])('successful login lands on Home even with redirect=%s', async (redirect) => {
+    await router.push({ path: '/login', query: { redirect } })
+    vi.mocked(apiClient.login).mockResolvedValueOnce({ access_token: 'cookie-session', token_type: 'bearer', user: { id: 'u-1', username: 'viewer', role: 'user', status: 'active' } } as any)
+    const wrapper = mount(LoginView, { global: { plugins: [router] } })
+    const inputs = wrapper.findAll('.form-input')
+    await inputs[0].setValue('viewer')
+    await inputs[1].setValue('synthetic-password')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/')
+    wrapper.unmount()
+  })
+
+  it('successful registration lands on Home', async () => {
+    await router.push('/register')
+    vi.mocked(apiClient.register).mockResolvedValueOnce({ access_token: 'cookie-session', token_type: 'bearer', user: { id: 'u-2', username: 'newviewer', role: 'user', status: 'active' } } as any)
+    const wrapper = mount(RegisterView, { global: { plugins: [router] } })
+    const inputs = wrapper.findAll('.form-input')
+    for (const [i, value] of ['newviewer', 'new@example.test', 'synthetic-password', 'synthetic-password'].entries()) await inputs[i].setValue(value)
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(apiClient.register).toHaveBeenCalled()
+    expect(router.currentRoute.value.path).toBe('/')
+    wrapper.unmount()
   })
 
   it('RegisterView validates matching passwords before submit', async () => {

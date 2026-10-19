@@ -26,9 +26,7 @@ async function handleSubmit() {
   error.value = null
   try {
     await authStore.login(usernameOrEmail.value.trim(), password.value)
-    const candidate = String(route.query.redirect || '/profile')
-    const redirectPath = candidate.startsWith('/') && !candidate.startsWith('//') && !candidate.includes('\\') ? candidate : '/profile'
-    router.push(redirectPath)
+    await router.push('/')
   } catch (err: any) {
     error.value = err?.message || 'Invalid username or password'
   } finally {

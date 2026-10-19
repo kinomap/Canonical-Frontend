@@ -15,7 +15,7 @@ describe('Telegram bot fallback',()=>{
   await w.find('button').trigger('click');await flushPromises();expect(w.text()).toContain('ABC123');expect(w.find('a').attributes('rel')).toBe('noopener noreferrer')
   await vi.advanceTimersByTimeAsync(2000);await flushPromises();expect(w.text()).toContain('Войти как synthetic');expect(mocks.setToken).not.toHaveBeenCalled()
   await w.findAll('button').find(b=>b.text().startsWith('Войти как'))!.trigger('click');await flushPromises()
-  expect(mocks.setToken).toHaveBeenCalledWith('cookie-session');expect(mocks.push).toHaveBeenCalledWith('/profile')
+  expect(mocks.setToken).toHaveBeenCalledWith('cookie-session');expect(mocks.push).toHaveBeenCalledWith('/')
   expect(JSON.parse(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body as string)).toEqual({state:'x'.repeat(43)})
  })
  it('does not issue a session on a pending challenge and stops polling after unmount',async()=>{
