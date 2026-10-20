@@ -1,0 +1,27 @@
+{
+  "keys": {
+    "trc20_xpub": "xpub6D1AabNHCupeiLM65ZR9UStMhJ1vCpyV4XbZdyhMZBiJXALQtmn9p42VTQckoHVn8WNqS7dqnJokZHAHcHGoaQgmv8D45oNUKx6DZMNZBCd",
+    "bep20_xpub": "xpub6DCoCpSuQZB2jawqnGMEPS63ePKWkwWPH4TU45Q7LPXWuNd8TMtVxRrgjtEshuqpK3mdhaWHPFsBngh5GFZaM6si3yZdUsT8ddYM3PwnATt",
+    "ton_public_key": "7952e94118f34607c75e23258dd9220d66ccac5a3ee074125c25068e8107bfbf"
+  },
+  "addresses": [
+    {
+      "index": 0,
+      "trc20": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+      "bep20": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
+      "ton": "UQAzWZa6nM5mJev91wGc7VCSfBoIsYRqKJpV78N8Add9-RKY"
+    },
+    {
+      "index": 1,
+      "trc20": "TSeJkUh4Qv67VNFwY8LaAxERygNdy6NQZK",
+      "bep20": "0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0",
+      "ton": "UQBUNB8d47K61gWTjuFqjTuhZ5Zn-7KJptMkXmUA_Xw_HnVH"
+    },
+    {
+      "index": 2,
+      "trc20": "TYJPRrdB5APNeRs4R7fYZSwW3TcrTKw2gx",
+      "bep20": "0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A",
+      "ton": "UQDbx_0ut2qP7ESlM7EbZnT4RZxP7q7wiJ1owa6itzwi6tSG"
+    }
+  ]
+}

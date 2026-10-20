@@ -1,0 +1,7 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+import {fromMnemonic,preview,tonAddress,secpAddress,generateKeys} from '../src/crypto/hd.mjs';
+const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/hd-public-vectors.json',import.meta.url)));
+test('BIP39 account and public preview match cross-language vectors',()=>{const k=fromMnemonic([...Array(11).fill('abandon'),'about'].join(' '));assert.deepEqual(k,fixture.keys);assert.deepEqual(preview(k),fixture.addresses)});
+test('Three unique valid addresses on each network',()=>{const rows=preview(fixture.keys);for(const n of ['trc20','bep20','ton'])assert.equal(new Set(rows.map(x=>x[n])).size,3);for(const a of rows){assert.match(a.trc20,/^T[1-9A-HJ-NP-Za-km-z]{33}$/);assert.match(a.bep20,/^0x[0-9a-fA-F]{40}$/);assert.match(a.ton,/^UQ[A-Za-z0-9_-]{46}$/)}});
+test('Public-only keys and non-hardened index enforced',()=>{for(const i of [-1,2147483648,1.5]){assert.throws(()=>tonAddress(fixture.keys.ton_public_key,i));assert.throws(()=>secpAddress(fixture.keys.bep20_xpub,i,'bep20'))}assert.throws(()=>secpAddress('xprvbad',0,'bep20'));assert.throws(()=>tonAddress('00'.repeat(32),0))});
+test('Local CSPRNG creates 12-word BIP39 with only public master fields',()=>{const a=generateKeys(),b=generateKeys();assert.equal(a.mnemonic.split(' ').length,12);assert.notEqual(a.mnemonic,b.mnemonic);assert.deepEqual(Object.keys(a.keys).sort(),['bep20_xpub','ton_public_key','trc20_xpub']);a.mnemonic='';b.mnemonic=''});
