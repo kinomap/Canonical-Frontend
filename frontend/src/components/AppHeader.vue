@@ -74,12 +74,11 @@ watch(route, () => {
         <!-- Auth Navigation -->
         <div class="auth-controls">
           <template v-if="authStore.isAuthenticated.value">
-            <router-link to="/profile" class="profile-btn" :title="t('User Profile')">
+            <router-link to="/profile" class="profile-btn" :title="t('User Profile')" :aria-label="t('User Profile')">
               <div class="avatar-circle">
                 <img v-if="authStore.user.value" :src="authStore.user.value.avatar_url || ('/avatars/'+(authStore.user.value.avatar_preset||0)+'.svg')" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>
                 <span v-else>U</span>
               </div>
-              <span class="user-name">{{ authStore.user.value?.display_name || authStore.user.value?.username || t('User Profile') }}</span>
             </router-link>
           </template>
           <template v-else>
@@ -140,6 +139,8 @@ watch(route, () => {
 </template>
 
 <style scoped>
+.auth-controls .profile-btn{width:44px;height:44px;padding:4px;box-sizing:border-box;justify-content:center;border-radius:50%}.profile-btn .avatar-circle{width:34px;height:34px;flex-shrink:0}
+
 .app-header {
   position: sticky;
   top: 0;

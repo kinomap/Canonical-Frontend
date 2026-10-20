@@ -3,6 +3,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { tr, language } from '../i18n'
 import { accountApi as api } from '../accountApi'
 import ChangePassword from './ChangePassword.vue'
+import TwoFactorStatus from './TwoFactorStatus.vue'
 const emit=defineEmits(['changed'])
 const account=ref<any>(null),sessions=ref<any[]>([]),password=ref(''),otp=ref(''),setup=ref<any>(null),codes=ref<string[]>([]),busy=ref(false),message=ref(''),error=ref('')
 async function load(){[account.value,sessions.value]=await Promise.all([api('/account'),api('/account/sessions')])}
@@ -21,6 +22,7 @@ onMounted(()=>load().catch(e=>error.value=e.message));onBeforeUnmount(()=>{setup
  <div class="security-stack">
   <p v-if="error" role="alert" class="notice error">{{error}}</p><p v-if="message" role="status" class="notice">{{message}}</p>
   <section class="security-card" v-if="account"><div class="section-line"><div><p class="eyebrow">{{tr('ЗАЩИТА АККАУНТА','ACCOUNT PROTECTION')}}</p><h2>{{tr('Двухфакторная аутентификация','Two-factor authentication')}}</h2></div><span class="status" :class="{enabled:account.two_factor_enabled}">{{account.two_factor_enabled?tr('Включена','Enabled'):tr('Не подключена','Not enabled')}}</span></div>
+   <TwoFactorStatus :account="account"/>
    <p class="muted">{{tr('Коды генерируются локально по стандарту TOTP. Подойдут Google Authenticator, Aegis, 1Password и другие приложения.','Codes are generated locally using TOTP. Use Google Authenticator, Aegis, 1Password or another authenticator.')}}</p>
    <label v-if="account.password_login_available">{{tr('Текущий пароль для подтверждения действий','Current password to confirm changes')}}<input v-model="password" type="password" autocomplete="current-password" maxlength="1024" /></label>
    <p class="muted" v-if="account.two_factor_enabled">{{tr('Для каждого нового действия используйте новый код из приложения. Уже использованный код повторно не принимается.','Use a fresh authenticator code for each action. Already used codes cannot be replayed.')}}</p><div v-if="setup" class="wizard"><div class="steps">{{tr('1 · Сканирование → 2 · Подтверждение → 3 · Резервные коды','1 · Scan → 2 · Confirm → 3 · Recovery codes')}}</div><img class="qr" :src="qr(setup.qr_svg)" :alt="tr('QR-код для подключения 2FA','QR code for 2FA setup')" /><p>{{tr('Или введите ключ вручную:','Or enter this key manually:')}}</p><code class="secret">{{setup.secret}}</code><form @submit.prevent="confirm"><label>{{tr('Шестизначный код из приложения','Six-digit authenticator code')}}<input v-model="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required /></label><button :disabled="busy">{{tr('Подтвердить подключение','Confirm setup')}}</button><button type="button" class="secondary" @click="setup=null">{{tr('Отмена','Cancel')}}</button></form></div>
