@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { t } from '@/i18n'
+import { t, messageText, language } from '@/i18n'
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
@@ -32,7 +32,7 @@ async function telegram(){
     }
     if(!widget.value)throw new Error('Не удалось показать кнопку Telegram.')
     script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true
-    script.setAttribute('data-request-access','write');script.setAttribute('data-telegram-login',d.bot_username);script.setAttribute('data-size','large');script.setAttribute('data-lang','ru');script.setAttribute('data-onauth',callback+'(user)')
+    script.setAttribute('data-request-access','write');script.setAttribute('data-telegram-login',d.bot_username);script.setAttribute('data-size','large');script.setAttribute('data-lang',language.value);script.setAttribute('data-onauth',callback+'(user)')
     script.onload=()=>{if(!disposed){loading.value=false;clearTimeout(timer)}}
     script.onerror=()=>fail('Не удалось загрузить Telegram. Проверьте блокировщик или сеть и повторите попытку.')
     timer=setTimeout(()=>fail('Telegram не ответил. Проверьте соединение и повторите попытку.'),15000)
@@ -55,7 +55,7 @@ onBeforeUnmount(()=>{disposed=true;clearTimeout(timer);delete (window as any)[ca
   <p v-if="loading" role="status">{{ t("Подключение Telegram…") }}</p>
   <p v-if="configured===false && !message">{{ t("Telegram · ещё не подключён") }}</p>
   <label>{{t('Код 2FA или резервный код')}}<input v-model="otp" autocomplete="one-time-code" maxlength="64" /></label><div ref="widget" class="telegram-widget"></div>
-  <p v-if="message" role="alert">{{message}}</p>
+  <p v-if="message" role="alert">{{messageText(message)}}</p>
   <button v-if="message" type="button" @click="retry" :disabled="loading">{{ t("Повторить подключение Telegram") }}</button>
  </section>
 </template>

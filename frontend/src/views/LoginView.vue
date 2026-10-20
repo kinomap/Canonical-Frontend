@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { t } from '@/i18n'
+import { t, messageText, language } from '@/i18n'
 import SocialLogin from '@/components/SocialLogin.vue'
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -48,7 +48,7 @@ async function handleSubmit() {
       <div v-if="sessionExpired" class="auth-session-alert"> {{ t("🔒 Your session has expired. Please sign in again.") }} </div>
 
       <div v-if="error" class="auth-error-alert">
-        {{ error }}
+        {{ error ? messageText(error) : '' }}
       </div>
 
       <form class="auth-form" @submit.prevent="handleSubmit">

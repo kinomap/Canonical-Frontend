@@ -18,7 +18,7 @@ describe('Telegram one-click UI',()=>{
   const w=await render();expect(fetch).toHaveBeenCalledTimes(2)
   expect(w.findAll('button')).toHaveLength(0)
   const script=w.find('script');expect(script.attributes('src')).toBe('https://telegram.org/js/telegram-widget.js?22')
-  expect(script.attributes('data-telegram-login')).toBe('kino_publisher_bot');expect(script.attributes('data-lang')).toBe('ru');expect(script.attributes('data-request-access')).toBe('write')
+  expect(script.attributes('data-telegram-login')).toBe('kino_publisher_bot');expect(script.attributes('data-lang')).toBe('en');expect(script.attributes('data-request-access')).toBe('write')
   await script.trigger('load');expect(w.find('[role=status]').exists()).toBe(false)
   expect(w.text()).not.toContain('Google')
   expect(w.text()).not.toContain(t('Войти через Telegram-бота'))

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { tr } from '../i18n'
+import { tr, language } from '../i18n'
 import { accountApi as api } from '../accountApi'
 import ChangePassword from './ChangePassword.vue'
 const emit=defineEmits(['changed'])
@@ -14,7 +14,7 @@ function regenerate(){action(async()=>{const r=await api('/account/2fa/recovery'
 function revoke(){action(async()=>{await api('/account/sessions/revoke-others','POST',{current_password:password.value},otp.value);await load();message.value=tr('Все остальные сеансы завершены.','All other sessions ended.')})}
 function download(){const url=URL.createObjectURL(new Blob([tr('KINOSOTA · Резервные коды','KINOSOTA · Recovery codes')+'\n\n'+codes.value.join('\n')+'\n\n'+tr('Храните офлайн. Каждый код используется один раз.','Keep offline. Each code can be used once.')],{type:'text/plain'}));const a=document.createElement('a');a.href=url;a.download='kinosota-recovery-codes.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function qr(svg:string){return 'data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg)))}
-function date(s:string){return new Date(s).toLocaleString()}
+function date(s:string){return new Date(s).toLocaleString(language.value==='ru'?'ru-RU':'en-US')}
 onMounted(()=>load().catch(e=>error.value=e.message));onBeforeUnmount(()=>{setup.value=null;codes.value=[];password.value='';otp.value=''})
 </script>
 <template>

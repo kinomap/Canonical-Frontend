@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { t } from '@/i18n'
+import { t, messageText, language } from '@/i18n'
 import SocialLogin from '@/components/SocialLogin.vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -49,7 +49,7 @@ async function handleSubmit() {
       </div>
 
       <div v-if="error" class="auth-error-alert">
-        {{ error }}
+        {{ error ? messageText(error) : '' }}
       </div>
 
       <p>{{ t("Пароль: 15–128 символов. Используйте уникальную длинную фразу.") }}</p>

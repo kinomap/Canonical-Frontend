@@ -26,6 +26,6 @@ describe('Telegram bot fallback',()=>{
  })
  it('shows backend failures without a fake success',async()=>{
   vi.mocked(fetch).mockImplementation(()=>reply({detail:'Telegram не настроен'},409))
-  const w=mount(TelegramDeepLink);wrappers.push(w);await w.find('button').trigger('click');await flushPromises();expect(w.find('[role=alert]').text()).toContain(t('не настроен'));expect(mocks.setToken).not.toHaveBeenCalled();expect(w.find('a').exists()).toBe(false)
+  const w=mount(TelegramDeepLink);wrappers.push(w);await w.find('button').trigger('click');await flushPromises();expect(w.find('[role=alert]').text()).toContain('Telegram is not configured');expect(mocks.setToken).not.toHaveBeenCalled();expect(w.find('a').exists()).toBe(false)
  })
 })
