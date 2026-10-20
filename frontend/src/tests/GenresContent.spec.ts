@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 // Genre page content: real backend response shape (fixtures captured from
 // GET /api/v1/genres/{slug} through the frontend Nginx), empty genre, unknown
 // genre and a real API failure. The view must not hide failures as "empty".
@@ -58,7 +59,7 @@ describe('GenresView genre content', () => {
       expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(true)
     }
     expect(wrapper.text()).toContain(`${(genreContent as any).total}`)
-    if (items.some(i => i.type === 'series')) expect(wrapper.text()).toContain('СЕРИАЛ')
+    if (items.some(i => i.type === 'series')) expect(wrapper.text()).toContain(t('СЕРИАЛ'))
   })
 
   it('renders a mixed movies+series page (real drama page 3) with correct links', async () => {
@@ -74,7 +75,7 @@ describe('GenresView genre content', () => {
       const href = item.type === 'series' ? `/series/${item.id}` : `/movies/${item.id}`
       expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(true)
     }
-    expect(wrapper.text()).toContain('СЕРИАЛ')
+    expect(wrapper.text()).toContain(t('СЕРИАЛ'))
   })
 
   it('selecting a genre card performs exactly one content request', async () => {
@@ -92,7 +93,7 @@ describe('GenresView genre content', () => {
     const { wrapper } = await mountAt(`/genres?genre=${(genreEmpty as any).genre.slug}`)
     expect(wrapper.find('.empty-state').exists()).toBe(true)
     expect(wrapper.find('.error-state').exists()).toBe(false)
-    expect(wrapper.text()).toContain('контент пока отсутствует')
+    expect(wrapper.text()).toContain('no content is available yet')
   })
 
   it('shows an error (not an empty list) when the API really fails', async () => {
@@ -100,7 +101,7 @@ describe('GenresView genre content', () => {
     const { wrapper } = await mountAt('/genres?genre=voennyj')
     expect(wrapper.find('.error-state').exists()).toBe(true)
     expect(wrapper.find('.empty-state').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Не удалось загрузить контент жанра')
+    expect(wrapper.text()).toContain(t('Не удалось загрузить контент жанра'))
 
     // Retry re-requests and recovers.
     vi.mocked(apiClient.getGenreContent).mockResolvedValue(genreContent as any)
@@ -113,6 +114,6 @@ describe('GenresView genre content', () => {
     vi.mocked(apiClient.getGenreContent).mockRejectedValue(new ApiError(404, 'Genre not found'))
     const { wrapper } = await mountAt('/genres?genre=no-such-genre')
     expect(wrapper.find('.error-state').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Жанр не найден')
+    expect(wrapper.text()).toContain(t('Жанр не найден'))
   })
 })

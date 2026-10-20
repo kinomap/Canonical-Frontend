@@ -31,6 +31,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    setupFiles: ['./src/tests/localeSetup.ts'],
     environment: 'jsdom'
   }
 })

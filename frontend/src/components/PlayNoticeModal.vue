@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 defineProps<{
   show: boolean
 }>()
@@ -22,10 +23,10 @@ function close() {
           </svg>
         </div>
 
-        <h3 class="modal-title">Play Movie</h3>
-        <p class="modal-message">Playback integration pending</p>
+        <h3 class="modal-title">{{ t("Play Movie") }}</h3>
+        <p class="modal-message">{{ t("Playback integration pending") }}</p>
 
-        <button class="modal-btn" @click="close">OK</button>
+        <button class="modal-btn" @click="close">{{ t("OK") }}</button>
       </div>
     </div>
   </Teleport>

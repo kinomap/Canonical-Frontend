@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import SeriesDetailsView from '@/views/SeriesDetailsView.vue'
@@ -88,7 +89,7 @@ describe('SeriesDetailsView.vue', () => {
     // Active episode button check
     const activeEpisodeBtn = wrapper.find('.episode-btn.active')
     expect(activeEpisodeBtn.exists()).toBe(true)
-    expect(activeEpisodeBtn.text()).toContain('1 серия')
+    expect(activeEpisodeBtn.text()).toContain('1 episode')
   })
 
   it('switches episode when Episode button is clicked', async () => {
@@ -137,7 +138,7 @@ describe('SeriesDetailsView.vue', () => {
 
     const epBtns = wrapper.findAll('.episode-btn')
     expect(epBtns.length).toBe(2)
-    expect(epBtns[0].text()).toContain('1 серия')
+    expect(epBtns[0].text()).toContain('1 episode')
   })
 
   it('respects deep-linking query parameters ?season=2&episode=2', async () => {
@@ -155,7 +156,7 @@ describe('SeriesDetailsView.vue', () => {
     const activeSeason = wrapper.find('.season-btn.active')
     expect(activeSeason.text()).toContain('Season 2')
     const activeEpisode = wrapper.find('.episode-btn.active')
-    expect(activeEpisode.text()).toContain('2 серия')
+    expect(activeEpisode.text()).toContain('2 episode')
   })
 
   it('disables episode button if episode is not playable', async () => {

@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import type { User } from '@/types/movie'
 import { apiClient } from '@/api/client'
+import {setLanguage} from '@/i18n'
 
 const TOKEN_KEY = 'tg_stream_access_token'
 const USER_KEY = 'tg_stream_user'
@@ -35,6 +36,7 @@ export function useAuthStore() {
 
   function setUser(newUser: User | null) {
     user.value = newUser
+    if (newUser?.language) setLanguage(newUser.language)
     if (newUser) {
       localStorage.setItem(USER_KEY, JSON.stringify(newUser))
     } else {
@@ -59,8 +61,8 @@ export function useAuthStore() {
     }
   }
 
-  async function login(usernameOrEmail: string, password: string) {
-    const resp = await apiClient.login(usernameOrEmail, password)
+  async function login(usernameOrEmail: string, password: string, otp = '') {
+    const resp = otp ? await apiClient.login(usernameOrEmail, password, otp) : await apiClient.login(usernameOrEmail, password)
     setToken(resp.access_token)
     setUser(resp.user)
     return resp

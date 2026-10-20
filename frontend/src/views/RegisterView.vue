@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import SocialLogin from '@/components/SocialLogin.vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -43,30 +44,30 @@ async function handleSubmit() {
   <div class="auth-page">
     <div class="auth-card">
       <div class="auth-header">
-        <h1 class="auth-title">Create Account</h1>
-        <p class="auth-subtitle">Join KINOSOTA VOD Portal</p>
+        <h1 class="auth-title">{{ t("Create Account") }}</h1>
+        <p class="auth-subtitle">{{ t("Join KINOSOTA VOD Portal") }}</p>
       </div>
 
       <div v-if="error" class="auth-error-alert">
         {{ error }}
       </div>
 
-      <p>Пароль: 15–128 символов. Используйте уникальную длинную фразу.</p>
+      <p>{{ t("Пароль: 15–128 символов. Используйте уникальную длинную фразу.") }}</p>
       <form class="auth-form" @submit.prevent="handleSubmit">
         <div class="form-group">
-          <label class="form-label">Username</label>
+          <label class="form-label">{{ t("Username") }}</label>
           <input
             v-model="username"
             type="text"
             required
-            placeholder="choose a username"
+            :placeholder="t('choose a username')"
             class="form-input"
             autocomplete="username"
           />
         </div>
 
         <div class="form-group">
-          <label class="form-label">Email Address</label>
+          <label class="form-label">{{ t("Email Address") }}</label>
           <input
             v-model="email"
             type="email"
@@ -78,39 +79,37 @@ async function handleSubmit() {
         </div>
 
         <div class="form-group">
-          <label class="form-label">Password</label>
+          <label class="form-label">{{ t("Password") }}</label>
           <input
             v-model="password"
             type="password" minlength="15" maxlength="128"
             required
-            placeholder="15–128 characters"
+            :placeholder="t('15–128 characters')"
             class="form-input"
             autocomplete="new-password"
           />
         </div>
 
         <div class="form-group">
-          <label class="form-label">Confirm Password</label>
+          <label class="form-label">{{ t("Confirm Password") }}</label>
           <input
             v-model="confirmPassword"
             type="password" minlength="15" maxlength="128"
             required
-            placeholder="repeat password"
+            :placeholder="t('repeat password')"
             class="form-input"
             autocomplete="new-password"
           />
         </div>
 
         <button type="submit" class="submit-btn" :disabled="loading">
-          <span v-if="loading">Creating Account...</span>
-          <span v-else>Register</span>
+          <span v-if="loading">{{ t("Creating Account...") }}</span>
+          <span v-else>{{ t("Register") }}</span>
         </button>
       </form>
 
 <SocialLogin  />
-      <div class="auth-footer">
-        Already have an account?
-        <router-link to="/login" class="auth-link">Sign In</router-link>
+      <div class="auth-footer"> {{ t("Already have an account?") }} <router-link to="/login" class="auth-link">{{ t("Sign In") }}</router-link>
       </div>
     </div>
   </div>

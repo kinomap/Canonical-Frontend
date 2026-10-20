@@ -34,6 +34,7 @@ const logout = async () => {
         </div>
       </div>
       <nav class="sidebar-nav">
+        <router-link to="/account-security" class="nav-item" active-class="nav-item--active">Безопасность · 2FA</router-link>
         <router-link to="/" class="nav-item" exact-active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>

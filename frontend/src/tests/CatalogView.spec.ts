@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import CatalogView from '@/views/CatalogView.vue'
@@ -97,7 +98,7 @@ describe('CatalogView.vue', () => {
     await flushPromises()
 
     expect(wrapper.find('.error-state').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Не удалось загрузить каталог')
+    expect(wrapper.text()).toContain(t('Не удалось загрузить каталог'))
     expect(wrapper.text()).not.toContain('Network error')
   })
 

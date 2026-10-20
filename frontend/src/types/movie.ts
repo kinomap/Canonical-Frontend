@@ -92,6 +92,11 @@ export interface HomeCollections {
 }
 
 export interface User {
+  display_name?: string
+  language?: 'ru'|'en'
+  two_factor_enabled?: boolean
+  avatar_url?: string | null
+  avatar_preset?: number
   entitlements?: string[]
   subscription_status?: string
   password_login_available?: boolean

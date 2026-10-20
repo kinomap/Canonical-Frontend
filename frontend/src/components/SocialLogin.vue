@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 const auth=useAuthStore(),router=useRouter()
 const configured=ref<boolean|null>(null),message=ref(''),loading=ref(true),widget=ref<HTMLElement|null>(null)
 let script:HTMLScriptElement|null=null,disposed=false,timer:ReturnType<typeof setTimeout>|undefined
+const otp=ref('')
 const callback='kinosotaTelegramLogin'+Math.random().toString(36).slice(2)
 function fail(text:string){if(disposed)return;message.value=text;loading.value=false;clearTimeout(timer);widget.value?.replaceChildren()}
 async function telegram(){
@@ -18,7 +20,7 @@ async function telegram(){
       if(disposed)return
       loading.value=true;message.value=''
       try{
-        const response=await fetch('/api/v1/auth/social/telegram/complete',{method:'POST',headers:{'Content-Type':'application/json','X-Acquisition-Source':sessionStorage.getItem('acquisition_source')||''},body:JSON.stringify({state:d.state,user})})
+        const response=await fetch('/api/v1/auth/social/telegram/complete',{method:'POST',headers:{'Content-Type':'application/json','X-TOTP-Code':otp.value,'X-Acquisition-Source':sessionStorage.getItem('acquisition_source')||''},body:JSON.stringify({state:d.state,user})})
         const result=await response.json()
         if(disposed)return
         if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Telegram не подтвердил вход.')
@@ -49,12 +51,12 @@ async function retry(){if(configured.value)await telegram();else window.location
 onBeforeUnmount(()=>{disposed=true;clearTimeout(timer);delete (window as any)[callback];script?.remove()})
 </script>
 <template>
- <section class="social-login" aria-label="Вход через Telegram">
-  <p v-if="loading" role="status">Подключение Telegram…</p>
-  <p v-if="configured===false && !message">Telegram · ещё не подключён</p>
-  <div ref="widget" class="telegram-widget"></div>
+ <section class="social-login" :aria-label="t('Вход через Telegram')">
+  <p v-if="loading" role="status">{{ t("Подключение Telegram…") }}</p>
+  <p v-if="configured===false && !message">{{ t("Telegram · ещё не подключён") }}</p>
+  <label>{{t('Код 2FA или резервный код')}}<input v-model="otp" autocomplete="one-time-code" maxlength="64" /></label><div ref="widget" class="telegram-widget"></div>
   <p v-if="message" role="alert">{{message}}</p>
-  <button v-if="message" type="button" @click="retry" :disabled="loading">Повторить подключение Telegram</button>
+  <button v-if="message" type="button" @click="retry" :disabled="loading">{{ t("Повторить подключение Telegram") }}</button>
  </section>
 </template>
 <style scoped>

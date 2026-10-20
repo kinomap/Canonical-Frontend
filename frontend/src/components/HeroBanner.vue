@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import type { MovieSummary } from '@/types/movie'
 import { computed } from 'vue'
 
@@ -48,18 +49,14 @@ function onPlay() {
         <button class="hero-play-btn" @click="onPlay" tabindex="0">
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-          Play Movie
-        </button>
+          </svg> {{ t("Play Movie") }} </button>
 
         <router-link :to="`/movies/${movie.id}`" class="hero-details-btn" tabindex="0">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
             <path d="M12 16v-4"/>
             <path d="M12 8h.01"/>
-          </svg>
-          More Details
-        </router-link>
+          </svg> {{ t("More Details") }} </router-link>
       </div>
     </div>
   </div>

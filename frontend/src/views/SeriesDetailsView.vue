@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiClient, ApiError } from '@/api/client'
@@ -219,9 +220,7 @@ onMounted(() => {
       <router-link to="/series" class="back-link">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="m15 18-6-6 6-6"/>
-        </svg>
-        Back to Series Catalog
-      </router-link>
+        </svg> {{ t("Back to Series Catalog") }} </router-link>
     </nav>
 
     <!-- Loading Skeleton -->
@@ -243,9 +242,9 @@ onMounted(() => {
           <path d="m9 9 6 6"/>
         </svg>
       </div>
-      <h2>Series Not Found</h2>
-      <p>The requested series does not exist or has been removed.</p>
-      <router-link to="/series" class="nav-btn">Return to Catalog</router-link>
+      <h2>{{ t("Series Not Found") }}</h2>
+      <p>{{ t("The requested series does not exist or has been removed.") }}</p>
+      <router-link to="/series" class="nav-btn">{{ t("Return to Catalog") }}</router-link>
     </div>
 
     <!-- Error State -->
@@ -257,9 +256,9 @@ onMounted(() => {
           <line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
       </div>
-      <h2>Error Loading Details</h2>
+      <h2>{{ t("Error Loading Details") }}</h2>
       <p>{{ error }}</p>
-      <button class="nav-btn" @click="fetchData">Retry</button>
+      <button class="nav-btn" @click="fetchData">{{ t("Retry") }}</button>
     </div>
 
     <!-- Main Series View -->
@@ -288,7 +287,7 @@ onMounted(() => {
 
         <div v-if="playError" class="inline-error" role="alert">
           <span>{{ playError }}</span>
-          <button class="inline-error-close" @click="playError = null" aria-label="Dismiss">&times;</button>
+          <button class="inline-error-close" @click="playError = null" :aria-label="t('Dismiss')">&times;</button>
         </div>
       </div>
 
@@ -332,8 +331,8 @@ onMounted(() => {
         <div class="navigation-section" v-if="series.seasons && series.seasons.length > 0">
           <!-- Season Selector -->
           <div class="selector-block">
-            <div class="selector-label">SEASONS</div>
-            <div class="seasons-row" role="tablist" aria-label="Seasons">
+            <div class="selector-label">{{ t("SEASONS") }}</div>
+            <div class="seasons-row" role="tablist" :aria-label="t('Seasons')">
               <button
                 v-for="s in series.seasons"
                 :key="s.id"
@@ -342,22 +341,19 @@ onMounted(() => {
                 role="tab"
                 :aria-selected="selectedSeason?.id === s.id"
                 @click="selectSeason(s)"
-              >
-                Season {{ s.season_number }}
+              > {{ t("Season") }} {{ s.season_number }}
               </button>
             </div>
           </div>
 
           <!-- Episode Selector -->
           <div class="selector-block" v-if="selectedSeason">
-            <div class="selector-label">EPISODES</div>
+            <div class="selector-label">{{ t("EPISODES") }}</div>
             <div
               v-if="!selectedSeason.episodes || selectedSeason.episodes.length === 0"
               class="no-episodes-text"
-            >
-              No episodes in this season.
-            </div>
-            <div v-else class="episodes-row" role="tablist" aria-label="Episodes">
+            > {{ t("No episodes in this season.") }} </div>
+            <div v-else class="episodes-row" role="tablist" :aria-label="t('Episodes')">
               <button
                 v-for="ep in selectedSeason.episodes"
                 :key="ep.id"
@@ -371,8 +367,7 @@ onMounted(() => {
                 :aria-selected="selectedEpisode?.id === ep.id"
                 @click="selectEpisode(ep)"
               >
-                {{ ep.episode_number }} серия
-              </button>
+                {{ ep.episode_number }} {{ t("серия") }} </button>
             </div>
           </div>
         </div>

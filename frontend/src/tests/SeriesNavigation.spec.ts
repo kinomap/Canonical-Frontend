@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 // The "Series" tab: header link -> application router -> lazy SeriesCatalogView ->
 // GET /series -> cards; plus browser back/forward and direct URL open.
 // Uses the real application router (router/index.ts) and the real backend
@@ -65,7 +66,7 @@ describe('Series tab navigation', () => {
     await waitForPath('/series')
 
     expect(router.currentRoute.value.fullPath).toBe('/series')
-    expect(wrapper.text()).toContain('Каталог сериалов')
+    expect(wrapper.text()).toContain(t('Каталог сериалов'))
     expect(apiClient.listSeries).toHaveBeenCalled()
     const first = (seriesList as any).items[0]
     expect(wrapper.text()).toContain(first.title)
@@ -87,7 +88,7 @@ describe('Series tab navigation', () => {
     router.forward()
     await settle()
     expect(router.currentRoute.value.path).toBe('/series')
-    expect(wrapper.text()).toContain('Каталог сериалов')
+    expect(wrapper.text()).toContain(t('Каталог сериалов'))
     wrapper.unmount()
   })
 

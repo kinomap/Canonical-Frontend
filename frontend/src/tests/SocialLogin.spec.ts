@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 import { describe,it,expect,vi,beforeEach,afterEach } from 'vitest'
 import { mount,flushPromises } from '@vue/test-utils'
 import SocialLogin from '@/components/SocialLogin.vue'
@@ -20,7 +21,7 @@ describe('Telegram one-click UI',()=>{
   expect(script.attributes('data-telegram-login')).toBe('kino_publisher_bot');expect(script.attributes('data-lang')).toBe('ru');expect(script.attributes('data-request-access')).toBe('write')
   await script.trigger('load');expect(w.find('[role=status]').exists()).toBe(false)
   expect(w.text()).not.toContain('Google')
-  expect(w.text()).not.toContain('Войти через Telegram-бота')
+  expect(w.text()).not.toContain(t('Войти через Telegram-бота'))
   expect(w.find('[aria-label="Резервный вход через Telegram-бота"]').exists()).toBe(false)
  })
  it('opens Home after successful Telegram widget authentication',async()=>{
@@ -31,11 +32,11 @@ describe('Telegram one-click UI',()=>{
   expect(mocks.fetchCurrentUser).toHaveBeenCalled();expect(mocks.push).toHaveBeenCalledWith('/')
  })
  it('does not start a flow when provider is not configured',async()=>{
-  const w=await render(false);expect(fetch).toHaveBeenCalledTimes(1);expect(w.find('script').exists()).toBe(false);expect(w.text()).toContain('ещё не подключён')
+  const w=await render(false);expect(fetch).toHaveBeenCalledTimes(1);expect(w.find('script').exists()).toBe(false);expect(w.text()).toContain('not connected')
  })
  it('shows retry only after a real loading error and replaces old widget',async()=>{
   const w=await render();await w.find('script').trigger('error');expect(w.find('[role=alert]').exists()).toBe(true)
-  expect(w.findAll('button')).toHaveLength(1);await w.findAll('button').find(b=>b.text().includes('Повторить'))!.trigger('click');await flushPromises()
+  expect(w.findAll('button')).toHaveLength(1);await w.findAll('button').find(b=>b.text().includes(t('Повторить')))!.trigger('click');await flushPromises()
   expect(w.findAll('script')).toHaveLength(1);expect(w.findAll('button')).toHaveLength(0)
  })
  it('removes its callback on unmount',async()=>{

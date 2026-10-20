@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import HomeView from '@/views/HomeView.vue'
@@ -87,9 +88,9 @@ describe('HomeView.vue', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Hero Featured Movie')
-    expect(wrapper.text()).toContain('Популярное')
+    expect(wrapper.text()).toContain(t('Популярное'))
     expect(wrapper.text()).toContain('Popular Movie')
-    expect(wrapper.text()).toContain('Фильмы 2026 года')
+    expect(wrapper.text()).toContain(t('Фильмы 2026 года'))
   })
 
   it('renders friendly error state when home collections call fails without raw 500 error', async () => {
@@ -102,7 +103,7 @@ describe('HomeView.vue', () => {
     await flushPromises()
 
     expect(wrapper.find('.home-error').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Не удалось загрузить каталог')
+    expect(wrapper.text()).toContain(t('Не удалось загрузить каталог'))
     expect(wrapper.text()).not.toContain('500 Server Error')
   })
 })

@@ -1,238 +1,57 @@
 <script setup lang="ts">
-import ChangePassword from '@/components/ChangePassword.vue'
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-
-const router = useRouter()
-const authStore = useAuthStore()
-const promoCode=ref(''),promoMessage=ref(''),promoBusy=ref(false)
-async function redeemPromo(){promoBusy.value=true;promoMessage.value='';try{const r=await fetch('/api/v1/me/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:promoCode.value})});if(!r.ok)throw new Error();await authStore.fetchCurrentUser();promoCode.value='';promoMessage.value='Доступ обновлён.'}catch{promoMessage.value='Промокод недоступен или сессия истекла.'}finally{promoBusy.value=false}}
-
-onMounted(() => {
-  if (!authStore.isAuthenticated.value) {
-    router.push('/login')
-  } else if (!authStore.user.value) {
-    authStore.fetchCurrentUser()
-  }
-})
-
-function handleLogout() {
-  authStore.logout()
-  router.push('/login')
-}
-
-function formatDate(isoStr?: string) {
-  if (!isoStr) return 'N/A'
-  try {
-    return new Date(isoStr).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
-  } catch {
-    return isoStr
-  }
-}
+import {ref,computed,onMounted,onBeforeUnmount} from 'vue'
+import {useRouter} from 'vue-router'
+import {UserRound, Gem, ShieldCheck, SlidersHorizontal, LogOut, ArrowUpRight, Check, Wallet, Link2} from 'lucide-vue-next'
+import {useAuthStore} from '@/stores/auth'
+import {tr,language,setLanguage} from '@/i18n'
+import {accountApi as api} from '@/accountApi'
+import AccountSecurity from '@/components/AccountSecurity.vue'
+import type {TonConnectUI} from '@tonconnect/ui'
+const auth=useAuthStore(),router=useRouter()
+const tabs=computed(()=>[{id:'profile',label:tr('Профиль','Profile'),icon:UserRound},{id:'billing',label:tr('PRO подписка и оплата','PRO & Billing'),icon:Gem},{id:'security',label:tr('Безопасность и 2FA','Security & 2FA'),icon:ShieldCheck},{id:'settings',label:tr('Настройки','Settings'),icon:SlidersHorizontal}])
+const active=ref('profile'),account=ref<any>(null),plans=ref<any[]>([]),orders=ref<any[]>([]),activations=ref<any[]>([]),orderTotal=ref(0),offset=ref(0),busy=ref(false),error=ref(''),message=ref(''),displayName=ref(''),username=ref(''),email=ref(''),password=ref(''),otp=ref(''),promo=ref(''),notifications=ref(false),link=ref<any>(null),selectedPlan=ref(''),walletConnected=ref(false),latestOrder=ref<any>(null),avatarVersion=ref(0)
+let ton:TonConnectUI|undefined,unsubscribe:(()=>void)|undefined,timer:ReturnType<typeof setInterval>|undefined,disposed=false
+const avatar=computed(()=>account.value?.avatar_url?account.value.avatar_url+'?v='+avatarVersion.value:'/avatars/'+(account.value?.avatar_preset||0)+'.svg')
+const isPro=computed(()=>account.value?.subscription_status&&account.value.subscription_status!=='free'&&account.value.subscription_status!=='expired'&&account.value.subscription_status!=='churned')
+const features=computed(()=>[{name:tr('Премиум-каталог','Premium catalog'),code:'content:premium'},{name:'4K Ultra HD',code:'quality:uhd'},{name:'Movie Radar',code:'module:movie_radar'},{name:tr('Без рекламы','No ads'),code:'feature:no_ads'}])
+function hasFeature(code:string){return account.value?.entitlements?.includes(code)||(code==='quality:uhd'&&account.value?.entitlements?.includes('quality:4k'))}
+async function history(){const [o,a]=await Promise.all([api('/billing/orders?offset='+offset.value),api('/billing/activations')]);orders.value=o.items;orderTotal.value=o.total;activations.value=a}
+async function load(){const a=await api('/account');if(disposed)return;account.value=a;displayName.value=a.display_name;username.value=a.username;email.value=a.email;notifications.value=a.telegram_notifications;setLanguage(a.language);avatarVersion.value++;await auth.fetchCurrentUser()}
+async function action(fn:()=>Promise<void>){if(busy.value)return;busy.value=true;error.value='';message.value='';try{await fn()}catch(e:any){error.value=e.message}finally{busy.value=false;password.value='';otp.value=''}}
+function tabKey(event:KeyboardEvent){const ids=tabs.value.map(t=>t.id);let index=ids.indexOf(active.value);if(['ArrowDown','ArrowRight','ArrowUp','ArrowLeft','Home','End'].includes(event.key)){event.preventDefault();index=event.key==='Home'?0:event.key==='End'?3:(index+(['ArrowDown','ArrowRight'].includes(event.key)?1:3))%4;active.value=ids[index]!;document.getElementById('tab-'+active.value)?.focus()}}
+function saveProfile(){action(async()=>{await api('/account/profile','PATCH',{display_name:displayName.value,username:username.value,email:email.value,current_password:password.value},otp.value);await load();message.value=tr('Профиль обновлён.','Profile updated.')})}
+function preset(n:number){action(async()=>{await api('/account/avatar/preset','PUT',{preset:n});await load()})}
+function upload(e:Event){const input=e.target as HTMLInputElement,file=input.files?.[0];if(!file)return;if(file.size>2*1024*1024){error.value=tr('Максимальный размер — 2 МБ.','Maximum file size is 2 MB.');input.value='';return}action(async()=>{const form=new FormData();form.append('file',file);await api('/account/avatar','POST',form);input.value='';await load()})}
+function saveSettings(){action(async()=>{await api('/account/settings','PUT',{language:language.value,telegram_notifications:notifications.value});message.value=tr('Настройки сохранены.','Settings saved.')})}
+function redeem(){action(async()=>{await api('/me/promo','POST',{code:promo.value});promo.value='';await load();await history();message.value=tr('Промокод активирован.','Promo code activated.')})}
+function startTelegram(){action(async()=>{link.value=await api('/account/telegram/start','POST',{current_password:password.value},otp.value)})}
+function finishTelegram(){action(async()=>{const r=await api('/account/telegram/complete','POST',{state:link.value.state});if(r.status==='linked'){link.value=null;await load()}else message.value=tr('Сначала подтвердите привязку в боте.','Confirm the link in the bot first.')})}
+function unlinkTelegram(){if(!window.confirm(tr('Отвязать Telegram?','Unlink Telegram?')))return;action(async()=>{await api('/account/telegram/unlink','POST',{current_password:password.value},otp.value);await load()})}
+async function connectWallet(){await action(async()=>{const challenge=await api('/billing/wallet/challenge','POST',{});if(!ton){const {TonConnectUI}=await import('@tonconnect/ui');ton=new TonConnectUI({manifestUrl:window.location.origin+'/tonconnect-manifest.json'});unsubscribe=ton.onStatusChange(async wallet=>{walletConnected.value=!!wallet;if(!wallet)return;const proof=wallet.connectItems?.tonProof;if(proof&&'proof'in proof){try{await api('/billing/wallet','POST',{address:wallet.account.address,network:wallet.account.chain,proof:proof.proof});await load();message.value=tr('Кошелёк подтверждён.','Wallet verified.')}catch(e:any){error.value=e.message}}})}ton.setConnectRequestParameters({state:'ready',value:{tonProof:challenge.payload}});if(ton.connected)await ton.disconnect();await ton.openModal()})}
+function disconnectWallet(){action(async()=>{await api('/billing/wallet','DELETE',undefined,otp.value);if(ton?.connected)await ton.disconnect();await load()})}
+function buy(provider:'ton'|'stars'){action(async()=>{if(!selectedPlan.value)return;const order=await api('/billing/orders','POST',{plan_id:selectedPlan.value,provider,request_key:crypto.randomUUID()});latestOrder.value=order;await history();if(provider==='stars'){window.open(order.invoice_url,'_blank','noopener,noreferrer');message.value=tr('Откройте счёт в Telegram. Подписка активируется после подтверждения оплаты.','Open the invoice in Telegram. Access activates after payment confirmation.')}else{if(!ton?.connected)throw new Error(tr('Подключите кошелёк в этом браузере.','Connect your wallet in this browser.'));await ton.sendTransaction({validUntil:Math.floor(new Date(order.expires_at).getTime()/1000),network:'-239',from:order.sender,messages:[{address:order.receiver,amount:String(order.amount),payload:order.payload}]});message.value=tr('Транзакция отправлена. Ожидаем подтверждения блокчейна.','Transaction sent. Waiting for blockchain confirmation.')}})}
+const chosen=computed(()=>plans.value.find(p=>p.id===selectedPlan.value))
+function date(s?:string){return s?new Date(s).toLocaleDateString(language.value==='ru'?'ru-RU':'en-US',{day:'numeric',month:'short',year:'numeric'}):'—'}
+function status(s:string){return ({pending:tr('Ожидает оплаты','Pending'),paid:tr('Оплачено','Paid'),expired:tr('Истёк','Expired'),refunded:tr('Возврат','Refunded'),active:tr('Активна','Active'),trial:tr('Пробная','Trial'),canceled:tr('Отменена','Canceled')})[s]||s}
+async function logout(){await auth.logout();router.push('/login')}
+onMounted(async()=>{if(!auth.isAuthenticated.value){router.push('/login');return}await action(async()=>{await load();plans.value=await api('/billing/plans');selectedPlan.value=plans.value[0]?.id||'';await history()});timer=setInterval(async()=>{if(disposed||busy.value||active.value!=='billing'||!latestOrder.value)return;try{await history();const order=orders.value.find(x=>x.id===latestOrder.value.id);if(order?.status==='paid'){latestOrder.value=null;await load();message.value=tr('Оплата подтверждена. PRO активирован!','Payment confirmed. PRO is active!')}}catch{}},12000)})
+onBeforeUnmount(()=>{disposed=true;clearInterval(timer);unsubscribe?.();password.value='';otp.value=''})
 </script>
-
 <template>
-  <div class="profile-page">
-    <div v-if="authStore.loading.value" class="profile-loading">
-      <div class="spinner"></div>
-      <span>Loading user profile...</span>
-    </div>
-
-    <div v-else-if="authStore.user.value" class="profile-card">
-      <div class="profile-header">
-        <div class="profile-avatar">
-          {{ authStore.user.value.username[0].toUpperCase() }}
-        </div>
-        <div class="header-info">
-          <h1 class="user-username">{{ authStore.user.value.username }}</h1>
-          <span class="user-role-badge">{{ authStore.user.value.role }}</span>
-        </div>
-      </div>
-
-      <div class="profile-sections">
-        <div class="info-row">
-          <span class="info-label">Email Address</span>
-          <span class="info-value">{{ authStore.user.value.email }}</span>
-        </div>
-
-        <div class="info-row">
-          <span class="info-label">Account Status</span>
-          <span class="info-value status-active">{{ authStore.user.value.status }}</span>
-        </div>
-
-        <div class="info-row">
-          <span class="info-label">Member Since</span>
-          <span class="info-value">{{ formatDate(authStore.user.value.created_at) }}</span>
-        </div>
-
-        <div class="info-row">
-          <span class="info-label">Active Session</span>
-          <span class="info-value text-blue">1 Device Connected</span>
-        </div>
-      </div>
-
-      <section aria-label="Подписка и права"><h2>Ваш доступ</h2><p>{{authStore.user.value.subscription_status || 'free'}}</p><ul><li v-for="right in authStore.user.value.entitlements || []" :key="right">{{right}}</li></ul><form @submit.prevent="redeemPromo"><label>Промокод <input v-model="promoCode" required minlength="8" maxlength="64" autocomplete="off" /></label><button :disabled="promoBusy">Применить</button></form><p role="status">{{promoMessage}}</p></section>
-      <ChangePassword v-if="authStore.user.value?.password_login_available !== false" />
-      <div class="profile-actions">
-        <button class="logout-btn" @click="handleLogout">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-          Sign Out
-        </button>
-      </div>
-    </div>
-  </div>
+ <div class="account-page"><header class="page-intro"><div><p class="eyebrow">KINOSOTA · {{tr('ВАШЕ ПРОСТРАНСТВО','YOUR SPACE')}}</p><h1>{{tr('Личный кабинет','Your account')}}</h1><p class="muted">{{tr('Всё для вашего следующего киносеанса.','Everything for your next movie night.')}}</p></div><span class="private-badge"><ShieldCheck :size="15"/>{{tr('Защищённый аккаунт','Private account')}}</span></header>
+ <div class="account-layout"><aside class="account-sidebar"><div class="identity-mini"><img :src="avatar" alt=""/><strong>{{account?.display_name||auth.user.value?.username}}</strong><span class="muted">{{isPro?'PRO':tr('Базовый аккаунт','Free account')}}</span></div><nav :aria-label="tr('Разделы личного кабинета','Account sections')" role="tablist" aria-orientation="vertical"><button v-for="tab in tabs" :id="'tab-'+tab.id" :key="tab.id" role="tab" :tabindex="active===tab.id?0:-1" @keydown="tabKey" :aria-selected="active===tab.id" :aria-controls="'panel-'+tab.id" :class="{selected:active===tab.id}" @click="active=tab.id"><component :is="tab.icon" :size="19"/><span>{{tab.label}}</span></button></nav><button class="logout" @click="logout"><LogOut :size="17"/>{{tr('Выйти','Sign out')}}</button><div class="sidebar-foot">{{tr('Кино начинается с вас.','Great stories start with you.')}}</div></aside>
+ <div class="account-content" :aria-busy="busy"><p v-if="error" class="notice error" role="alert">{{error}}</p><p v-if="message" class="notice" role="status">{{message}}</p><div v-if="!account" class="card">{{tr('Загружаем аккаунт…','Loading your account…')}}</div>
+ <section v-else-if="active==='profile'" id="panel-profile" role="tabpanel" aria-labelledby="tab-profile" class="panel-stack"><div class="section-heading"><div><h2>{{tr('Ваш профиль','Your profile')}}</h2><p class="muted">{{tr('Сделайте аккаунт своим.','Make yourself at home.')}}</p></div><span class="quiet-label">{{tr('С нами с','Member since')}} {{date(account.created_at)}}</span></div><div class="card avatar-card"><img class="avatar-large" :src="avatar" :alt="tr('Ваш аватар','Your avatar')"/><div class="avatar-copy"><h3>{{tr('Ваш образ','Your look')}}</h3><p class="muted">{{tr('Выберите аватар или загрузите свой. JPEG, PNG, WebP · до 2 МБ.','Pick an avatar or upload your own. JPEG, PNG, WebP · up to 2 MB.')}}</p><div class="preset-gallery"><button v-for="n in 8" :key="n" :disabled="busy" :aria-label="tr('Выбрать аватар ','Choose avatar ')+n" :aria-pressed="!account.avatar_url&&account.avatar_preset===n-1" @click="preset(n-1)"><img :src="'/avatars/'+(n-1)+'.svg'" alt=""/></button></div><label class="upload-button">{{tr('Загрузить изображение','Upload image')}}<input type="file" accept="image/jpeg,image/png,image/webp" @change="upload" :disabled="busy"/></label></div></div>
+ <form class="card" @submit.prevent="saveProfile"><div class="card-title"><UserRound :size="20"/><h3>{{tr('Данные аккаунта','Account details')}}</h3></div><label>{{tr('Никнейм','Display name')}}<input v-model="displayName" required maxlength="80" autocomplete="nickname" /></label><div class="field-grid"><label>{{tr('Логин','Username')}}<input v-model="username" required minlength="3" maxlength="50" pattern="[A-Za-z0-9_.-]+" autocomplete="username" :disabled="!account.password_login_available"/></label><label>Email<input v-model="email" type="email" required autocomplete="email" :disabled="!account.password_login_available"/></label></div><p class="muted small">{{tr('Для смены логина или email подтвердите текущий пароль и, если включена, 2FA.','To change your username or email, confirm your current password and 2FA if enabled.')}}</p><div class="field-grid" v-if="account.password_login_available"><label>{{tr('Текущий пароль','Current password')}}<input v-model="password" type="password" autocomplete="current-password" maxlength="1024"/></label><label v-if="account.two_factor_enabled">{{tr('Код 2FA или резервный код','2FA or recovery code')}}<input v-model="otp" autocomplete="one-time-code" maxlength="64"/></label></div><button class="primary" :disabled="busy">{{tr('Сохранить изменения','Save changes')}}</button></form>
+ <div class="card telegram-card"><div class="card-title"><Link2 :size="20"/><h3>{{tr('Связь с Telegram','Telegram connection')}}</h3><span class="status" :class="{good:account.telegram_linked}">{{account.telegram_linked?tr('Привязан','Linked'):tr('Не привязан','Not linked')}}</span></div><p class="muted">{{account.telegram_linked?'@'+(account.telegram_username||'Telegram'):tr('Привяжите аккаунт для входа, оплаты Stars и уведомлений. Для действия используйте пароль и код из формы выше.','Link your account for sign-in, Stars payments and notifications. Use the password and code in the form above.')}}</p><template v-if="link"><p>{{tr('Код проверки:','Verification code:')}} <strong>{{link.verification_code}}</strong></p><a class="primary inline" :href="link.url" target="_blank" rel="noopener noreferrer">{{tr('Открыть Telegram','Open Telegram')}}<ArrowUpRight :size="15"/></a><button class="secondary" @click="finishTelegram" :disabled="busy">{{tr('Проверить привязку','Check connection')}}</button></template><button v-else class="secondary" :disabled="busy" @click="account.telegram_linked?unlinkTelegram():startTelegram()">{{account.telegram_linked?tr('Отвязать Telegram','Unlink Telegram'):tr('Привязать Telegram','Link Telegram')}}</button></div></section>
+ <section v-else-if="active==='billing'" id="panel-billing" role="tabpanel" aria-labelledby="tab-billing" class="panel-stack"><div class="section-heading"><div><h2>{{tr('Больше кино. Больше возможностей.','More cinema. More possibilities.')}}</h2><p class="muted">{{tr('Ваша подписка и история оплат.','Your subscription and payment history.')}}</p></div></div><div class="pro-card"><div class="pro-header"><span class="pro-word">{{isPro?'PRO':'FREE'}}</span><span class="status">{{tr('Текущий тариф','Current plan')}}</span></div><h3>{{isPro?tr('Хорошее кино без границ','Great cinema, without limits'):tr('Откройте больше с PRO','Unlock more with PRO')}}</h3><p>{{account.subscription_lifetime?tr('Бессрочный доступ','Lifetime access'):account.subscription_expires_at?tr('Действует до ','Active until ')+date(account.subscription_expires_at):tr('Выберите удобный срок и способ оплаты ниже.','Choose a duration and payment method below.')}}</p><div class="feature-grid"><div v-for="f in features" :key="f.code" :class="{available:hasFeature(f.code)}"><Check :size="16"/>{{f.name}}<span v-if="!hasFeature(f.code)">PRO</span></div></div><small>{{tr('Фактические возможности определяются правами выбранного тарифа.','Available features depend on the selected plan’s entitlements.')}}</small></div>
+ <div class="card"><div class="card-title"><Gem :size="20"/><h3>{{tr('Выберите подписку','Choose your plan')}}</h3></div><div class="plan-grid"><label v-for="plan in plans" :key="plan.id" class="plan-option" :class="{chosen:selectedPlan===plan.id}"><input type="radio" v-model="selectedPlan" :value="plan.id" name="pro-plan"/><span>PRO · {{plan.days}} {{tr('дней','days')}}</span><strong>{{plan.ton?plan.ton+' TON':'—'}}</strong><small>{{plan.stars?'★ '+plan.stars:tr('Оплата не настроена','Payment not configured')}}</small></label></div><p v-if="!plans.length" class="muted">{{tr('Тарифы пока недоступны.','Plans are not available yet.')}}</p><div class="wallet-box"><Wallet :size="24"/><div><strong>{{tr('TON-кошелёк','TON wallet')}}</strong><p class="wallet-address">{{account.ton_address||tr('Tonkeeper, Wallet и MyTonWallet · QR или приложение','Tonkeeper, Wallet and MyTonWallet · QR or mobile app')}}</p></div><button class="secondary" @click="connectWallet" :disabled="busy">{{account.ton_address?tr('Переподключить','Reconnect'):tr('Подключить кошелёк','Connect wallet')}}</button><button v-if="account.ton_address" class="text-button" @click="disconnectWallet" :disabled="busy">{{tr('Отвязать','Unlink')}}</button><label v-if="account.two_factor_enabled" class="wallet-otp">{{tr('Код 2FA для отвязки кошелька','2FA code to unlink wallet')}}<input v-model="otp" autocomplete="one-time-code" maxlength="64" /></label></div><div class="payment-actions"><button class="primary" :disabled="busy||!chosen?.ton_available||!account.ton_address" @click="buy('ton')">{{tr('Оплатить в TON','Pay with TON')}}</button><button class="stars-button" :disabled="busy||!chosen?.stars_available||!account.telegram_linked" @click="buy('stars')">{{tr('Оплатить ★ Telegram Stars','Pay with ★ Telegram Stars')}}</button></div><a v-if="latestOrder?.invoice_url" :href="latestOrder.invoice_url" target="_blank" rel="noopener noreferrer">{{tr('Открыть выставленный счёт','Open payment invoice')}} ↗</a><p class="muted small">{{tr('Разовая оплата без автопродления. PRO активируется только после серверного подтверждения. Для Stars привяжите Telegram; для TON подтвердите активированный кошелёк основной сети.','One-time payment, no auto-renewal. PRO activates only after server confirmation. Link Telegram for Stars; verify a deployed mainnet wallet for TON.')}}</p></div>
+ <form class="card promo-card" @submit.prevent="redeem"><div><h3>{{tr('Есть промокод?','Have a promo code?')}}</h3><p class="muted">{{tr('Активируйте свой доступ здесь.','Activate your access here.')}}</p></div><div class="promo-input"><label class="sr-only" for="promo">{{tr('Промокод','Promo code')}}</label><input id="promo" v-model="promo" required minlength="8" maxlength="64" autocomplete="off" :placeholder="tr('Введите промокод','Enter promo code')"/><button class="secondary" :disabled="busy">{{tr('Активировать','Activate')}}</button></div></form>
+ <div class="card"><h3>{{tr('История покупок','Purchase history')}}</h3><div class="table-scroll"><table><thead><tr><th>{{tr('Дата','Date')}}</th><th>{{tr('Тариф','Plan')}}</th><th>{{tr('Сумма','Amount')}}</th><th>{{tr('Статус','Status')}}</th></tr></thead><tbody><tr v-for="order in orders" :key="order.id"><td>{{date(order.created_at)}}</td><td>{{order.plan_title}} · {{order.duration_days}} {{tr('дней','days')}}</td><td>{{order.provider==='ton'?(Number(order.amount)/1e9)+' TON':'★ '+order.amount}}</td><td><span class="status" :class="{good:order.status==='paid'}">{{status(order.status)}}</span></td></tr><tr v-if="!orders.length"><td colspan="4" class="empty-state">{{tr('Покупок пока нет. Здесь появятся ваши платежи.','No purchases yet. Your payments will appear here.')}}</td></tr></tbody></table></div><div class="payment-actions" v-if="orderTotal>50"><button class="secondary" :disabled="offset===0" @click="offset-=50;history()">{{tr('Назад','Previous')}}</button><button class="secondary" :disabled="offset+50>=orderTotal" @click="offset+=50;history()">{{tr('Далее','Next')}}</button></div><h3 class="subheading">{{tr('История активаций','Activation history')}}</h3><div class="activation" v-for="(a,i) in activations" :key="i"><span>{{a.title}} · {{({promo_code:tr('Промокод','Promo code'),manual_admin:tr('Администратор','Admin'),telegram_stars:'Telegram Stars',crypto:'TON'} as Record<string,string>)[a.source]||a.source}}</span><small>{{status(a.status)}} · {{a.expires_at?date(a.expires_at):tr('Бессрочно','Lifetime')}}</small></div><p v-if="!activations.length" class="muted">{{tr('Активаций пока нет.','No activations yet.')}}</p></div></section>
+ <section v-else-if="active==='security'" id="panel-security" role="tabpanel" aria-labelledby="tab-security"><AccountSecurity @changed="load"/></section>
+ <section v-else id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" class="panel-stack"><div class="section-heading"><div><h2>{{tr('Настройте под себя','Make it yours')}}</h2><p class="muted">{{tr('Язык интерфейса и ваши предпочтения.','Your language and preferences.')}}</p></div></div><form class="card" @submit.prevent="saveSettings"><h3>{{tr('Язык интерфейса','Interface language')}}</h3><p class="muted">{{tr('Один язык для всей витрины. Выбор сохраняется в аккаунте и этом браузере.','One language across the storefront. Saved to your account and this browser.')}}</p><div class="language-options"><label :class="{chosen:language==='ru'}"><input type="radio" name="language" :checked="language==='ru'" @change="setLanguage('ru')"/><strong>Русский</strong><span>RU</span></label><label :class="{chosen:language==='en'}"><input type="radio" name="language" :checked="language==='en'" @change="setLanguage('en')"/><strong>English</strong><span>EN</span></label></div><div class="settings-divider"></div><h3>{{tr('Уведомления','Notifications')}}</h3><label class="switch-row"><div><strong>{{tr('Новинки и акции в Telegram','New releases & offers on Telegram')}}</strong><p class="muted">{{tr('Только если Telegram привязан и бот доступен. Можно отключить в любой момент.','Requires a linked Telegram account and an available bot. Turn off at any time.')}}</p></div><input v-model="notifications" type="checkbox" role="switch"/></label><button class="primary" :disabled="busy">{{tr('Сохранить настройки','Save settings')}}</button></form></section>
+ </div></div></div>
 </template>
-
 <style scoped>
-.profile-page {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 40px 16px 64px 16px;
-  width: 100%;
-}
-
-.profile-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 64px;
-  color: #9ca3af;
-}
-
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.profile-card {
-  background: #181920;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  padding: 32px;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
-}
-
-.profile-header {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: 24px;
-}
-
-.profile-avatar {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: #3b82f6;
-  color: #ffffff;
-  font-size: 1.8rem;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.header-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.user-username {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: #ffffff;
-  margin: 0;
-}
-
-.user-role-badge {
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  background: rgba(59, 130, 246, 0.2);
-  color: #60a5fa;
-  padding: 2px 10px;
-  border-radius: 12px;
-  align-self: flex-start;
-}
-
-.profile-sections {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 32px;
-}
-
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 10px;
-}
-
-.info-label {
-  font-size: 0.9rem;
-  color: #9ca3af;
-}
-
-.info-value {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #f3f4f6;
-}
-
-.status-active {
-  color: #34d399;
-  text-transform: capitalize;
-}
-
-.text-blue {
-  color: #60a5fa;
-}
-
-.profile-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.logout-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
-  padding: 10px 20px;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.logout-btn:hover {
-  background: rgba(239, 68, 68, 0.25);
-}
+.account-page{max-width:1240px;margin:0 auto;padding:46px 28px 80px;color:#eef0f8}.page-intro{display:flex;justify-content:space-between;align-items:center;margin-bottom:34px;gap:20px}.eyebrow{font-size:11px;font-weight:600;letter-spacing:.16em;color:#b5a2f8;margin:0 0 12px}h1{font-size:36px;letter-spacing:-.045em;margin:0 0 10px}h2{font-size:25px;letter-spacing:-.03em;margin:0 0 8px}h3{font-size:18px;letter-spacing:-.015em;margin:0 0 8px}.muted{color:#a1aabd;line-height:1.65;margin:5px 0 16px;font-size:14px}.small,small{font-size:12px}.private-badge{display:flex;align-items:center;gap:7px;color:#b6c6c2;font-size:12px;border:1px solid #34413f;padding:8px 12px;border-radius:24px}.account-layout{display:grid;grid-template-columns:232px minmax(0,1fr);gap:32px;align-items:start}.account-sidebar{background:#131720;border:1px solid #282e3c;border-radius:18px;overflow:hidden;position:sticky;top:90px}.identity-mini{padding:27px 22px 20px;border-bottom:1px solid #292f3e;display:grid;grid-template-columns:44px 1fr;column-gap:12px}.identity-mini img{width:44px;height:44px;grid-row:span 2;border-radius:14px}.identity-mini strong{overflow-wrap:anywhere;font-size:14px;align-self:end}.identity-mini .muted{font-size:11px;margin:0}.account-sidebar nav{padding:14px 10px;display:grid;gap:5px}.account-sidebar nav button{display:flex;gap:11px;text-align:left;align-items:center;border:none;background:transparent;color:#a6afc1;font:inherit;font-size:13px;padding:13px 12px;border-radius:10px;cursor:pointer;line-height:1.4}.account-sidebar nav button.selected{color:#dacdff;background:#2b2540}.account-sidebar nav button.selected svg{color:#b7a2ff}.logout{margin:8px 20px 14px;display:flex;align-items:center;gap:9px;border:0;background:none;color:#a5aabd;font:inherit;font-size:13px;cursor:pointer}.sidebar-foot{padding:18px 20px;border-top:1px solid #292f3e;color:#6f7a92;font-size:11px}.account-content{min-width:0}.panel-stack{display:grid;gap:22px}.section-heading{display:flex;justify-content:space-between;gap:12px;align-items:center}.section-heading .muted{margin-bottom:0}.quiet-label{font-size:11px;color:#919bb0;white-space:nowrap}.card{background:#151923;border:1px solid #2b3141;border-radius:18px;padding:28px;min-width:0}.card-title{display:flex;gap:10px;align-items:center;margin-bottom:18px;color:#c9bbff}.card-title h3{color:#eef0f8;margin:0}.card-title .status{margin-left:auto}.avatar-card{display:flex;gap:25px;align-items:center}.avatar-large{width:112px;height:112px;border-radius:30px;flex-shrink:0}.avatar-copy{flex:1;min-width:0}.preset-gallery{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}.preset-gallery button{border:2px solid transparent;border-radius:13px;padding:2px;background:none;cursor:pointer}.preset-gallery button[aria-pressed=true]{border-color:#bda9ff}.preset-gallery img{width:37px;height:37px;border-radius:9px;display:block}.upload-button{display:inline-block!important;font-size:12px!important;color:#d2c3ff!important;cursor:pointer;margin:0!important;padding:6px 0}.upload-button input{width:1px;height:1px;position:absolute;opacity:0}.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}label{display:block;font-size:13px;color:#bcc3d4;margin-bottom:18px}input:not([type=radio]):not([type=checkbox]):not([type=file]){display:block;width:100%;box-sizing:border-box;background:#0d111b;color:#fff;border:1px solid #3b4358;border-radius:10px;padding:12px 14px;margin-top:8px;font:inherit;min-width:0}input:disabled{opacity:.5}input:focus-visible,button:focus-visible,a:focus-visible,label:focus-within{outline:2px solid #b7a2ff;outline-offset:3px}button{font:inherit;font-size:13px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.primary,.secondary,.stars-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:12px 17px;border-radius:10px;font-weight:600;font-size:13px;text-decoration:none}.primary{background:#b6a4ff;color:#151021;border:1px solid #b6a4ff}.secondary{background:#232938;color:#e1e5f2;border:1px solid #414960}.stars-button{background:#352f1f;color:#ffdf8e;border:1px solid #7c6935}.inline{margin-right:10px}.status{display:inline-block;background:#302a40;color:#cdbdf1;padding:5px 9px;border-radius:20px;font-size:11px;white-space:nowrap}.status.good{background:#143b31;color:#9ee6c6}.notice{margin:0 0 20px;padding:14px 18px;border-radius:12px;background:#153a30;color:#a3efd0;font-size:14px;line-height:1.5}.notice.error{background:#3c222e;color:#ffc2cf}.pro-card{padding:30px;border:1px solid #746395;border-radius:20px;background:radial-gradient(ellipse at 100% 0%,#57407855,transparent 65%),#222034}.pro-header{display:flex;align-items:center;justify-content:space-between}.pro-word{font-size:37px;font-weight:800;letter-spacing:.06em;color:#e0d4ff}.pro-card h3{font-size:25px;margin:20px 0 8px}.pro-card p{font-size:14px;color:#c3bad7;line-height:1.6}.pro-card small{display:block;color:#b0a6c6;margin-top:18px;line-height:1.5}.feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:24px}.feature-grid>div{display:flex;align-items:center;gap:9px;font-size:13px;color:#9a91ac}.feature-grid .available{color:#d9cff0}.feature-grid span{font-size:9px;border:1px solid #70637e;border-radius:4px;padding:1px 4px;margin-left:auto}.plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:22px}.plan-option{position:relative;padding:18px 14px;background:#101520;border:1px solid #30394f;border-radius:12px;cursor:pointer;display:grid;gap:9px}.plan-option.chosen{border-color:#b4a0ef;background:#2a233e}.plan-option input{position:absolute;right:10px;top:10px;accent-color:#b6a4ff}.plan-option span{font-size:12px;padding-right:10px}.plan-option strong{font-size:20px;color:#efebfb}.plan-option small{color:#bcb3cf}.wallet-box{display:flex;gap:13px;align-items:center;padding:19px 0;border-top:1px solid #2d3343;margin-top:14px;flex-wrap:wrap}.wallet-box>div{flex:1;min-width:150px}.wallet-address{color:#8f9bb4;font-size:11px;overflow-wrap:anywhere;line-height:1.6;margin:7px 0 0}.text-button{border:0;background:none;color:#b4a3e9;font-size:12px}.payment-actions{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}.promo-card{display:flex;gap:20px;align-items:center;justify-content:space-between}.promo-card p{margin-bottom:0}.promo-input{display:flex;align-items:center;gap:8px;max-width:420px}.promo-input input{margin-top:0!important}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12px;text-align:left;margin-top:20px}th{font-weight:500;color:#8d98ad;padding:0 12px 15px 0}td{padding:16px 12px 16px 0;border-top:1px solid #2b3141;white-space:nowrap}.empty-state{color:#8d98ad;text-align:center;white-space:normal;padding:32px 8px}.subheading{margin-top:28px}.activation{display:flex;justify-content:space-between;gap:16px;padding:13px 0;border-bottom:1px solid #2b3141;font-size:12px}.activation small{color:#939db3}.language-options{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0}.language-options label{display:flex;align-items:center;gap:13px;border:1px solid #3b4358;border-radius:12px;padding:18px;margin:0;cursor:pointer}.language-options .chosen{background:#2b2540;border-color:#b7a2ff}.language-options span{margin-left:auto;color:#9b8fb3;font-size:11px}.language-options input{accent-color:#b6a4ff}.settings-divider{border-top:1px solid #2d3343;margin:28px 0}.switch-row{display:flex;align-items:center;gap:20px;margin-top:24px}.switch-row>div{flex:1}.switch-row p{font-size:12px;margin:8px 0}.switch-row input{appearance:none;width:44px;height:25px;background:#394254;border-radius:20px;position:relative;cursor:pointer;flex-shrink:0}.switch-row input:before{content:'';position:absolute;top:3px;left:3px;width:19px;height:19px;background:#c6ccda;border-radius:50%;transition:transform .18s}.switch-row input:checked{background:#a38be8}.switch-row input:checked:before{transform:translateX(19px);background:white}@media(max-width:1000px){.account-layout{grid-template-columns:200px minmax(0,1fr);gap:22px}.plan-grid{grid-template-columns:1fr}.plan-option{grid-template-columns:1fr 1fr;margin:0}.plan-option strong{font-size:17px}.promo-card{display:block}.promo-input{margin-top:18px}.avatar-card{align-items:flex-start}.quiet-label{display:none}}@media(max-width:720px){.account-page{padding:28px 16px 60px}.page-intro{margin-bottom:24px}.private-badge{display:none}h1{font-size:29px}.account-layout{display:block}.account-sidebar{position:static;margin-bottom:26px;background:transparent;border:0;border-radius:0}.identity-mini,.sidebar-foot{display:none}.account-sidebar nav{padding:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}.account-sidebar nav button{border:1px solid #2b3141;padding:12px;font-size:12px;border-radius:10px}.account-sidebar nav button.selected{border-color:#72618f}.logout{margin:14px 0 0;font-size:12px}.card{padding:20px}.avatar-card{gap:16px}.avatar-large{width:65px;height:65px;border-radius:19px}.field-grid{grid-template-columns:1fr;gap:0}h2{font-size:23px}.feature-grid{grid-template-columns:1fr}.pro-card{padding:24px}.pro-card h3{font-size:23px}.language-options{gap:10px}.language-options label{padding:14px 10px;gap:8px}.activation{flex-direction:column;gap:6px}.payment-actions>button{flex:1;min-width:160px}.wallet-box>.secondary{width:100%}.promo-input{max-width:none}.promo-input button{padding:12px 10px}}
 </style>

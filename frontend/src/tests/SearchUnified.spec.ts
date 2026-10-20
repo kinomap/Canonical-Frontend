@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import MovieCard from '@/components/MovieCard.vue'
@@ -56,7 +57,7 @@ describe('TZ35 Unified Search Frontend Integration', () => {
 
     expect(movieWrapper.find('a').attributes('href')).toBe('/movies/movie-1')
     expect(seriesWrapper.find('a').attributes('href')).toBe('/series/series-1')
-    expect(seriesWrapper.text()).toContain('СЕРИАЛ')
+    expect(seriesWrapper.text()).toContain(t('СЕРИАЛ'))
   })
 
   it('SearchBar.vue renders series badge and routes to /series/:id on click', async () => {
@@ -80,7 +81,7 @@ describe('TZ35 Unified Search Frontend Integration', () => {
     await flushPromises()
 
     expect(apiClient.searchMoviesQuick).toHaveBeenCalledWith('Shōgun', 5)
-    expect(wrapper.text()).toContain('Сериал')
+    expect(wrapper.text()).toContain(t('Сериал'))
 
     const suggestions = wrapper.findAll('.suggestion-item')
     expect(suggestions.length).toBe(2)

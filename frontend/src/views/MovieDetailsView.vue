@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { apiClient, ApiError } from '@/api/client'
@@ -198,9 +199,7 @@ onMounted(() => {
       <router-link to="/" class="back-link">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="m15 18-6-6 6-6"/>
-        </svg>
-        Back to Catalog
-      </router-link>
+        </svg> {{ t("Back to Catalog") }} </router-link>
     </nav>
 
     <!-- Loading Skeleton (matches exact YouTube layout to avoid UI flash) -->
@@ -222,9 +221,9 @@ onMounted(() => {
           <path d="m9 9 6 6"/>
         </svg>
       </div>
-      <h2>Movie Not Found</h2>
-      <p>The requested movie does not exist or has been removed.</p>
-      <router-link to="/" class="nav-btn">Return to Catalog</router-link>
+      <h2>{{ t("Movie Not Found") }}</h2>
+      <p>{{ t("The requested movie does not exist or has been removed.") }}</p>
+      <router-link to="/" class="nav-btn">{{ t("Return to Catalog") }}</router-link>
     </div>
 
     <!-- Error State -->
@@ -236,9 +235,9 @@ onMounted(() => {
           <line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
       </div>
-      <h2>Error Loading Details</h2>
+      <h2>{{ t("Error Loading Details") }}</h2>
       <p>{{ error }}</p>
-      <button class="nav-btn" @click="fetchData">Retry</button>
+      <button class="nav-btn" @click="fetchData">{{ t("Retry") }}</button>
     </div>
 
     <!-- Details View (YouTube-style) -->
@@ -257,7 +256,7 @@ onMounted(() => {
       <!-- Inline player error (non-auth failures only) -->
       <div v-if="playError" class="inline-error" role="alert">
         <span>{{ playError }}</span>
-        <button class="inline-error-close" @click="playError = null" aria-label="Dismiss">&times;</button>
+        <button class="inline-error-close" @click="playError = null" :aria-label="t('Dismiss')">&times;</button>
       </div>
 
       <!-- Main Content Area -->

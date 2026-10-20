@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiClient, ApiError } from '@/api/client'
@@ -126,12 +127,10 @@ onMounted(async () => {
     <div v-if="selectedGenreSlug" class="genre-detail-mode">
       <div class="page-header detail-header">
         <button class="back-btn" @click="clearGenreSelection">
-          <ArrowLeft :size="20" />
-          Все жанры
-        </button>
+          <ArrowLeft :size="20" /> {{ t("Все жанры") }} </button>
         <div class="title-with-count">
           <h1 class="page-title">{{ activeGenreName }}</h1>
-          <span class="genre-count">{{ total }} фильма и сериала</span>
+          <span class="genre-count">{{ total }} {{ t("фильма и сериала") }}</span>
         </div>
       </div>
 
@@ -149,9 +148,9 @@ onMounted(async () => {
         <div class="state-icon text-red">
           <AlertCircle :size="48" stroke-width="2" />
         </div>
-        <h2>Не удалось загрузить контент</h2>
+        <h2>{{ t("Не удалось загрузить контент") }}</h2>
         <p>{{ contentError }}</p>
-        <button class="retry-btn" @click="loadGenreContent">Повторить</button>
+        <button class="retry-btn" @click="loadGenreContent">{{ t("Повторить") }}</button>
       </div>
 
       <!-- Empty -->
@@ -159,8 +158,8 @@ onMounted(async () => {
         <div class="state-icon">
           <SearchX :size="48" stroke-width="1.5" />
         </div>
-        <h2>В жанре "{{ activeGenreName }}" контент пока отсутствует</h2>
-        <button class="retry-btn" @click="clearGenreSelection">Вернуться к жанрам</button>
+        <h2>{{ t("В жанре \"") }}{{ activeGenreName }}{{ t("\" контент пока отсутствует") }}</h2>
+        <button class="retry-btn" @click="clearGenreSelection">{{ t("Вернуться к жанрам") }}</button>
       </div>
 
       <!-- Mixed Movies + Series Grid -->
@@ -175,17 +174,17 @@ onMounted(async () => {
 
       <!-- Pagination -->
       <div v-if="!contentLoading && !contentError && genreItems.length > 0 && totalPages > 1" class="pagination">
-        <button class="page-btn" :disabled="page <= 1" @click="changePage(page - 1)">Назад</button>
-        <span class="page-info">Страница {{ page }} из {{ totalPages }}</span>
-        <button class="page-btn" :disabled="page >= totalPages" @click="changePage(page + 1)">Вперёд</button>
+        <button class="page-btn" :disabled="page <= 1" @click="changePage(page - 1)">{{ t("Назад") }}</button>
+        <span class="page-info">{{ t("Страница") }} {{ page }} {{ t("из") }} {{ totalPages }}</span>
+        <button class="page-btn" :disabled="page >= totalPages" @click="changePage(page + 1)">{{ t("Вперёд") }}</button>
       </div>
     </div>
 
     <!-- View Mode B: All Genres Overview Cards Grid -->
     <div v-else class="genres-overview-mode">
       <div class="page-header">
-        <h1 class="page-title">Жанры</h1>
-        <p class="page-subtitle">Выберите настроение на вечер (Фильмы и Сериалы)</p>
+        <h1 class="page-title">{{ t("Жанры") }}</h1>
+        <p class="page-subtitle">{{ t("Выберите настроение на вечер (Фильмы и Сериалы)") }}</p>
       </div>
 
       <!-- Loading -->
@@ -195,9 +194,9 @@ onMounted(async () => {
 
       <!-- Error -->
       <div v-else-if="error" class="genres-error">
-        <h2>Failed to load genres</h2>
+        <h2>{{ t("Failed to load genres") }}</h2>
         <p>{{ error }}</p>
-        <button class="retry-btn" @click="loadGenres">Retry</button>
+        <button class="retry-btn" @click="loadGenres">{{ t("Retry") }}</button>
       </div>
 
       <!-- Genres Cards Grid -->
@@ -218,9 +217,7 @@ onMounted(async () => {
           <div class="genre-card-overlay"></div>
           <div class="genre-card-content">
             <h3 class="genre-name">{{ genre.name }}</h3>
-            <span class="genre-action">
-              Смотреть
-              <ArrowRight :size="16" stroke-width="2.5" />
+            <span class="genre-action"> {{ t("Смотреть") }} <ArrowRight :size="16" stroke-width="2.5" />
             </span>
           </div>
         </div>
@@ -228,7 +225,7 @@ onMounted(async () => {
 
       <!-- Empty -->
       <div v-else class="genres-empty">
-        <p>Жанры пока недоступны.</p>
+        <p>{{ t("Жанры пока недоступны.") }}</p>
       </div>
     </div>
 

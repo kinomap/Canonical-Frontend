@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import type { AudioTrack } from '@/types/movie'
 
 defineProps<{
@@ -30,19 +31,15 @@ function formatChannels(ch: number): string {
         <path d="M18 10v4"/>
         <path d="M3 12h.01"/>
         <path d="M21 12h.01"/>
-      </svg>
-      Audio Tracks
-    </h3>
+      </svg> {{ t("Audio Tracks") }} </h3>
 
-    <div v-if="!tracks || tracks.length === 0" class="audio-empty">
-      Audio tracks unavailable
-    </div>
+    <div v-if="!tracks || tracks.length === 0" class="audio-empty"> {{ t("Audio tracks unavailable") }} </div>
 
     <div v-else class="audio-tracks-grid">
       <div v-for="track in tracks" :key="track.id" class="track-card" :class="{ default: track.is_default }">
         <div class="track-header">
-          <span class="track-index">Track #{{ track.track_index + 1 }}</span>
-          <span v-if="track.is_default" class="default-badge">Default</span>
+          <span class="track-index">{{ t("Track #") }}{{ track.track_index + 1 }}</span>
+          <span v-if="track.is_default" class="default-badge">{{ t("Default") }}</span>
         </div>
 
         <div class="track-details">

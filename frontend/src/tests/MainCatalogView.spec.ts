@@ -1,3 +1,4 @@
+import {t} from '../i18n'
 import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import MainCatalogView from '@/views/MainCatalogView.vue'
@@ -40,7 +41,7 @@ describe('MainCatalogView.vue', () => {
     await new Promise(r => setTimeout(r, 10))
     await wrapper.vm.$nextTick()
     
-    expect(wrapper.text()).not.toContain('Каталог пуст')
+    expect(wrapper.text()).not.toContain(t('Каталог пуст'))
   })
 
   it('TEST E: newest is empty but by_genre has movies -> frontend still renders the genre rail', async () => {
@@ -60,7 +61,7 @@ describe('MainCatalogView.vue', () => {
     await new Promise(r => setTimeout(r, 10))
     await wrapper.vm.$nextTick()
     
-    expect(wrapper.text()).not.toContain('Каталог пуст')
+    expect(wrapper.text()).not.toContain(t('Каталог пуст'))
     expect(wrapper.text()).toContain('Comedy')
   })
 
@@ -81,6 +82,6 @@ describe('MainCatalogView.vue', () => {
     await new Promise(r => setTimeout(r, 10))
     await wrapper.vm.$nextTick()
     
-    expect(wrapper.text()).toContain('Каталог пуст')
+    expect(wrapper.text()).toContain(t('Каталог пуст'))
   })
 })

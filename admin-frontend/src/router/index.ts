@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    {path:'/account-security',name:'account-security',component:()=>import('../views/AccountSecurity.vue'),meta:{requiresAuth:true}},
     {path:'/audience',name:'audience',component:()=>import('../views/Audience.vue'),meta:{requiresAuth:true}},
     {
       path: '/login',

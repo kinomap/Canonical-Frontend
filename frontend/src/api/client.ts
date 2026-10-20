@@ -319,9 +319,10 @@ export const apiClient = {
     })
   },
 
-  async login(usernameOrEmail: string, password: string): Promise<AuthTokenResponse> {
+  async login(usernameOrEmail: string, password: string, otp = ''): Promise<AuthTokenResponse> {
     return request<AuthTokenResponse>('/auth/login', {
       method: 'POST',
+      headers: otp ? {'X-TOTP-Code':otp} : undefined,
       body: JSON.stringify({ username_or_email: usernameOrEmail, password }),
     })
   },

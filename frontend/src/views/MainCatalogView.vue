@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { apiClient } from '@/api/client'
 import type { HomeCollections } from '@/types/movie'
@@ -140,8 +141,8 @@ onUnmounted(() => {
         <span class="banner-text">
           {{ newMovieCount === 1 ? 'Добавлен новый фильм' : `Добавлено новых фильмов: ${newMovieCount}` }}
         </span>
-        <button class="banner-show-btn" @click="showNewMovies">Показать</button>
-        <button class="banner-close-btn" aria-label="Закрыть" @click="dismissBanner">
+        <button class="banner-show-btn" @click="showNewMovies">{{ t("Показать") }}</button>
+        <button class="banner-close-btn" :aria-label="t('Закрыть')" @click="dismissBanner">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -150,9 +151,7 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="catalog-header">
       <h1 class="catalog-title">
-        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="title-icon"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        Главная
-      </h1>
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="title-icon"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> {{ t("Главная") }} </h1>
     </div>
 
     <!-- Loading skeleton -->
@@ -172,9 +171,9 @@ onUnmounted(() => {
       <div class="state-icon">
         <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       </div>
-      <h2 class="state-title">Не удалось загрузить каталог</h2>
+      <h2 class="state-title">{{ t("Не удалось загрузить каталог") }}</h2>
       <p class="state-desc">{{ error }}</p>
-      <button class="retry-btn" @click="loadHome(false)">Повторить</button>
+      <button class="retry-btn" @click="loadHome(false)">{{ t("Повторить") }}</button>
     </div>
 
     <!-- Empty state -->
@@ -182,14 +181,14 @@ onUnmounted(() => {
       <div class="state-icon">
         <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
       </div>
-      <h2 class="state-title">Каталог пуст</h2>
-      <p class="state-desc">Контент ещё не добавлен. Запустите ingest pipeline.</p>
+      <h2 class="state-title">{{ t("Каталог пуст") }}</h2>
+      <p class="state-desc">{{ t("Контент ещё не добавлен. Запустите ingest pipeline.") }}</p>
     </div>
 
     <!-- Rails -->
     <div v-else-if="collections" class="home-content">
       <MovieRail
-        title="Новинки"
+        :title="t('Новинки')"
         :movies="collections.newest"
         view-all-link="/movies?sort=newest"
         eager

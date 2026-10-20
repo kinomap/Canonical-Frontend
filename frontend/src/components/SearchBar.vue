@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, watch, onUnmounted, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Search, X, Loader2 } from 'lucide-vue-next'
@@ -141,7 +142,7 @@ onUnmounted(() => {
       @focus="query.trim().length >= 2 && (showDropdown = true)"
     />
 
-    <button v-if="query" class="clear-btn" title="Clear search" @click="clear">
+    <button v-if="query" class="clear-btn" :title="t('Clear search')" @click="clear">
       <X :size="16" stroke-width="2" />
     </button>
 
@@ -149,11 +150,11 @@ onUnmounted(() => {
     <div v-if="showDropdown && (loading || suggestions.length > 0 || query.trim().length >= 2)" class="search-dropdown">
       <div v-if="loading" class="dropdown-state">
         <Loader2 class="spinner" :size="20" stroke-width="2" />
-        <span>Searching...</span>
+        <span>{{ t("Searching...") }}</span>
       </div>
       
       <div v-else-if="suggestions.length === 0" class="dropdown-state">
-        <span>No results found</span>
+        <span>{{ t("No results found") }}</span>
       </div>
 
       <ul v-else class="suggestions-list">
@@ -167,7 +168,7 @@ onUnmounted(() => {
           <div class="suggestion-info">
             <h4 class="suggestion-title">
               {{ movie.title }}
-              <span v-if="movie.type === 'series'" class="type-badge">Сериал</span>
+              <span v-if="movie.type === 'series'" class="type-badge">{{ t("Сериал") }}</span>
             </h4>
             <span class="suggestion-meta" v-if="movie.year">{{ movie.year }} <span v-if="movie.rating">★ {{ movie.rating.toFixed(1) }}</span></span>
           </div>
@@ -176,7 +177,7 @@ onUnmounted(() => {
       
       <!-- See all results link -->
       <div class="dropdown-footer" v-if="!loading && suggestions.length > 0" @click="onEnter">
-        <span>See all results for "{{ query }}"</span>
+        <span>{{ t("See all results for \"") }}{{ query }}"</span>
       </div>
     </div>
   </div>

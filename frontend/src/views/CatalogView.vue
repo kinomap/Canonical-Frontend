@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiClient } from '@/api/client'
@@ -152,11 +153,11 @@ onMounted(() => {
   <div class="catalog-page">
     <div class="catalog-title-bar">
       <h1 class="page-title">
-        <span v-if="searchQuery">Search Results for "{{ searchQuery }}"</span>
-        <span v-else-if="selectedGenre">Genre: {{ selectedGenre }}</span>
-        <span v-else>Movie Catalog</span>
+        <span v-if="searchQuery">{{ t("Search Results for \"") }}{{ searchQuery }}"</span>
+        <span v-else-if="selectedGenre">{{ t("Genre:") }} {{ selectedGenre }}</span>
+        <span v-else>{{ t("Movie Catalog") }}</span>
       </h1>
-      <span class="catalog-count">{{ total }} {{ total === 1 ? 'movie' : 'movies' }} available</span>
+      <span class="catalog-count">{{ total }} {{ total === 1 ? 'movie' : 'movies' }} {{ t("available") }}</span>
     </div>
 
 
@@ -177,9 +178,9 @@ onMounted(() => {
         <div class="state-icon text-red">
           <AlertCircle :size="48" stroke-width="2" />
         </div>
-        <h2>Не удалось загрузить каталог</h2>
-        <p>Пожалуйста, проверьте подключение к сети и попробуйте снова.</p>
-        <button class="retry-btn" @click="loadMovies">Повторить попытку</button>
+        <h2>{{ t("Не удалось загрузить каталог") }}</h2>
+        <p>{{ t("Пожалуйста, проверьте подключение к сети и попробуйте снова.") }}</p>
+        <button class="retry-btn" @click="loadMovies">{{ t("Повторить попытку") }}</button>
       </div>
 
       <!-- Empty State -->
@@ -187,10 +188,10 @@ onMounted(() => {
         <div class="state-icon">
           <SearchX :size="48" stroke-width="1.5" />
         </div>
-        <h2>No movies found</h2>
-        <p v-if="searchQuery">No movies match your search query "{{ searchQuery }}".</p>
-        <p v-else>No movies match the selected filters.</p>
-        <button class="retry-btn" @click="clearAllFilters">Clear All Filters</button>
+        <h2>{{ t("No movies found") }}</h2>
+        <p v-if="searchQuery">{{ t("No movies match your search query \"") }}{{ searchQuery }}".</p>
+        <p v-else>{{ t("No movies match the selected filters.") }}</p>
+        <button class="retry-btn" @click="clearAllFilters">{{ t("Clear All Filters") }}</button>
       </div>
 
       <!-- Movie Grid -->
@@ -209,17 +210,13 @@ onMounted(() => {
           class="page-btn"
           :disabled="page <= 1"
           @click="changePage(page - 1)"
-        >
-          Previous
-        </button>
-        <span class="page-info">Page {{ page }} of {{ totalPages }}</span>
+        > {{ t("Previous") }} </button>
+        <span class="page-info">{{ t("Page") }} {{ page }} {{ t("of") }} {{ totalPages }}</span>
         <button
           class="page-btn"
           :disabled="page >= totalPages"
           @click="changePage(page + 1)"
-        >
-          Next
-        </button>
+        > {{ t("Next") }} </button>
       </div>
     </main>
 

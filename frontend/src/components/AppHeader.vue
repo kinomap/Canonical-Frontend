@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -53,10 +54,10 @@ watch(route, () => {
 
         <!-- Desktop Navigation Links -->
         <nav class="desktop-nav">
-          <router-link to="/" class="nav-link" :class="{ active: route.path === '/' }">Home</router-link>
-          <router-link to="/movies" class="nav-link" :class="{ active: route.path.startsWith('/movies') }">Movies</router-link>
-          <router-link to="/series" class="nav-link" :class="{ active: route.path.startsWith('/series') }">Series</router-link>
-          <router-link to="/genres" class="nav-link" :class="{ active: route.path === '/genres' }">Genres</router-link>
+          <router-link to="/" class="nav-link" :class="{ active: route.path === '/' }">{{ t("Home") }}</router-link>
+          <router-link to="/movies" class="nav-link" :class="{ active: route.path.startsWith('/movies') }">{{ t("Movies") }}</router-link>
+          <router-link to="/series" class="nav-link" :class="{ active: route.path.startsWith('/series') }">{{ t("Series") }}</router-link>
+          <router-link to="/genres" class="nav-link" :class="{ active: route.path === '/genres' }">{{ t("Genres") }}</router-link>
         </nav>
       </div>
 
@@ -65,7 +66,7 @@ watch(route, () => {
         <div class="header-search">
           <SearchBar
             v-model="searchQuery"
-            placeholder="Search movies..."
+            :placeholder="t('Search movies...')"
             @search="handleSearch"
           />
         </div>
@@ -73,16 +74,17 @@ watch(route, () => {
         <!-- Auth Navigation -->
         <div class="auth-controls">
           <template v-if="authStore.isAuthenticated.value">
-            <router-link to="/profile" class="profile-btn" title="User Profile">
+            <router-link to="/profile" class="profile-btn" :title="t('User Profile')">
               <div class="avatar-circle">
-                {{ (authStore.user.value?.username || 'U')[0].toUpperCase() }}
+                <img v-if="authStore.user.value" :src="authStore.user.value.avatar_url || ('/avatars/'+(authStore.user.value.avatar_preset||0)+'.svg')" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>
+                <span v-else>U</span>
               </div>
-              <span class="user-name">{{ authStore.user.value?.username || 'Profile' }}</span>
+              <span class="user-name">{{ authStore.user.value?.display_name || authStore.user.value?.username || t('User Profile') }}</span>
             </router-link>
           </template>
           <template v-else>
-            <router-link to="/login" class="login-btn">Sign In</router-link>
-            <router-link to="/register" class="register-btn">Register</router-link>
+            <router-link to="/login" class="login-btn">{{ t("Sign In") }}</router-link>
+            <router-link to="/register" class="register-btn">{{ t("Register") }}</router-link>
           </template>
         </div>
 
@@ -90,7 +92,7 @@ watch(route, () => {
         <button
           class="mobile-hamburger-btn"
           :aria-expanded="mobileMenuOpen"
-          aria-label="Toggle Navigation Menu"
+          :aria-label="t('Toggle Navigation Menu')"
           @click="toggleMobileMenu"
         >
           <svg v-if="!mobileMenuOpen" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -111,26 +113,26 @@ watch(route, () => {
       <div class="mobile-search-wrapper">
         <SearchBar
           v-model="searchQuery"
-          placeholder="Search movies..."
+          :placeholder="t('Search movies...')"
           @search="handleSearch"
         />
       </div>
 
       <nav class="mobile-nav">
-        <router-link to="/" class="mobile-nav-link" @click="closeMobileMenu">Home</router-link>
-        <router-link to="/movies" class="mobile-nav-link" @click="closeMobileMenu">Movies</router-link>
-        <router-link to="/series" class="mobile-nav-link" @click="closeMobileMenu">Series</router-link>
-        <router-link to="/genres" class="mobile-nav-link" @click="closeMobileMenu">Genres</router-link>
+        <router-link to="/" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Home") }}</router-link>
+        <router-link to="/movies" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Movies") }}</router-link>
+        <router-link to="/series" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Series") }}</router-link>
+        <router-link to="/genres" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Genres") }}</router-link>
 
         <div class="mobile-auth-divider"></div>
 
         <template v-if="authStore.isAuthenticated.value">
-          <router-link to="/profile" class="mobile-nav-link" @click="closeMobileMenu">Profile ({{ authStore.user.value?.username }})</router-link>
-          <button class="mobile-logout-btn" @click="authStore.logout(); closeMobileMenu()">Sign Out</button>
+          <router-link to="/profile" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Profile (") }}{{ authStore.user.value?.username }})</router-link>
+          <button class="mobile-logout-btn" @click="authStore.logout(); closeMobileMenu()">{{ t("Sign Out") }}</button>
         </template>
         <template v-else>
-          <router-link to="/login" class="mobile-nav-link" @click="closeMobileMenu">Sign In</router-link>
-          <router-link to="/register" class="mobile-nav-link register" @click="closeMobileMenu">Create Account</router-link>
+          <router-link to="/login" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Sign In") }}</router-link>
+          <router-link to="/register" class="mobile-nav-link register" @click="closeMobileMenu">{{ t("Create Account") }}</router-link>
         </template>
       </nav>
     </div>

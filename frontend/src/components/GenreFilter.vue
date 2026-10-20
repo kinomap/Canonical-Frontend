@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import type { Genre } from '@/types/movie'
 
 defineProps<{
@@ -21,9 +22,7 @@ function select(slug: string | null) {
       class="genre-chip"
       :class="{ active: selectedGenre === null || selectedGenre === '' }"
       @click="select(null)"
-    >
-      All Genres
-    </button>
+    > {{ t("All Genres") }} </button>
     <button
       v-for="genre in genres"
       :key="genre.id"

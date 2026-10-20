@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PaymentSettings from '../components/PaymentSettings.vue'
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import axios from 'axios'
 const base = '/api/v1/admin/audience'
@@ -78,6 +79,7 @@ onBeforeUnmount(() => { clearTimeout(searchTimer); clearTimeout(catalogTimer); c
     </div>
   </section>
   <section v-if="tab === 'access'" class="stack">
+    <PaymentSettings />
     <div class="section-head"><div><h2>Модули и возможности</h2><p class="muted">Собирайте тариф из прав. Технические идентификаторы создаются автоматически.</p></div><button @click="showModule = !showModule">+ Добавить модуль / функцию</button></div>
     <form v-if="showModule" class="panel inline-form" @submit.prevent="saveModule"><label>Название<input v-model="moduleForm.name" required maxlength="200" /></label><label class="grow">Описание<input v-model="moduleForm.description" maxlength="4000" /></label><button class="primary" :disabled="busy">Добавить</button><button type="button" @click="showModule = false">Отмена</button></form>
     <div class="module-grid"><article v-for="m in modules" :key="m.code" class="module"><span class="module-icon">{{ m.code === 'content:premium' ? '🔒' : m.code === 'module:movie_radar' ? '🎯' : m.code.startsWith('quality:') ? '⚡' : '◇' }}</span><h3>{{ m.name }}</h3><p>{{ m.description }}</p><small>Настраивается в правах тарифа</small></article></div>

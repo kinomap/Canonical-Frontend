@@ -6,6 +6,7 @@ import axios from 'axios'
 const router = useRouter()
 const usernameOrEmail = ref('')
 const password = ref('')
+const otp = ref('')
 const errorMsg = ref('')
 const loading = ref(false)
 
@@ -16,7 +17,7 @@ const handleLogin = async () => {
     const res = await axios.post('/api/v1/auth/login', {
       username_or_email: usernameOrEmail.value,
       password: password.value
-    })
+    },{headers:{'X-TOTP-Code':otp.value}})
     
     if (res.data.user.role !== 'admin') {
       errorMsg.value = 'Access denied. Admin role required.'
@@ -51,6 +52,7 @@ const handleLogin = async () => {
           <input type="password" autocomplete="current-password" v-model="password" required placeholder="Enter password" />
         </div>
         
+        <label>Код 2FA или резервный код<input v-model="otp" autocomplete="one-time-code" maxlength="64" /></label>
         <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
         
         <button type="submit" class="submit-btn" :disabled="loading">

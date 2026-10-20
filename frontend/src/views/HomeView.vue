@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, onMounted } from 'vue'
 import { apiClient } from '@/api/client'
 import type { HomeCollections, MovieSummary } from '@/types/movie'
@@ -54,9 +55,9 @@ onMounted(() => {
           <line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
       </div>
-      <h2>Не удалось загрузить каталог</h2>
-      <p>Пожалуйста, проверьте подключение и попробуйте снова.</p>
-      <button class="retry-btn" @click="loadHome">Повторить попытку</button>
+      <h2>{{ t("Не удалось загрузить каталог") }}</h2>
+      <p>{{ t("Пожалуйста, проверьте подключение и попробуйте снова.") }}</p>
+      <button class="retry-btn" @click="loadHome">{{ t("Повторить попытку") }}</button>
     </div>
 
     <!-- Home Content -->
@@ -70,21 +71,21 @@ onMounted(() => {
 
       <!-- Horizontal Rails -->
       <MovieRail
-        title="Популярное"
+        :title="t('Популярное')"
         :movies="collections.popular"
         view-all-link="/movies?sort=popular"
         @play="handlePlayNotice"
       />
 
       <MovieRail
-        title="Новые фильмы"
+        :title="t('Новые фильмы')"
         :movies="collections.newest"
         view-all-link="/movies?sort=newest"
         @play="handlePlayNotice"
       />
 
       <MovieRail
-        title="Лучший рейтинг"
+        :title="t('Лучший рейтинг')"
         :movies="collections.top_rated"
         view-all-link="/movies?sort=rating_desc"
         @play="handlePlayNotice"

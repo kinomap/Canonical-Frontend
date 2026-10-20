@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiClient } from '@/api/client'
@@ -165,11 +166,11 @@ onMounted(() => {
   <div class="catalog-page">
     <div class="catalog-title-bar">
       <h1 class="page-title">
-        <span v-if="searchQuery">Поиск по сериалам "{{ searchQuery }}"</span>
-        <span v-else-if="selectedGenre">Сериалы: {{ selectedGenre }}</span>
-        <span v-else>Каталог сериалов</span>
+        <span v-if="searchQuery">{{ t("Поиск по сериалам \"") }}{{ searchQuery }}"</span>
+        <span v-else-if="selectedGenre">{{ t("Сериалы:") }} {{ selectedGenre }}</span>
+        <span v-else>{{ t("Каталог сериалов") }}</span>
       </h1>
-      <span class="catalog-count">{{ total }} доступно</span>
+      <span class="catalog-count">{{ total }} {{ t("доступно") }}</span>
     </div>
 
     <!-- Main Content -->
@@ -188,9 +189,9 @@ onMounted(() => {
         <div class="state-icon text-red">
           <AlertCircle :size="48" stroke-width="2" />
         </div>
-        <h2>Не удалось загрузить каталог сериалов</h2>
-        <p>Пожалуйста, проверьте подключение к сети и попробуйте снова.</p>
-        <button class="retry-btn" @click="loadSeries">Повторить попытку</button>
+        <h2>{{ t("Не удалось загрузить каталог сериалов") }}</h2>
+        <p>{{ t("Пожалуйста, проверьте подключение к сети и попробуйте снова.") }}</p>
+        <button class="retry-btn" @click="loadSeries">{{ t("Повторить попытку") }}</button>
       </div>
 
       <!-- Empty State -->
@@ -198,10 +199,10 @@ onMounted(() => {
         <div class="state-icon">
           <SearchX :size="48" stroke-width="1.5" />
         </div>
-        <h2>Сериалы не найдены</h2>
-        <p v-if="searchQuery">По запросу "{{ searchQuery }}" сериалов не найдено.</p>
-        <p v-else>Нет сериалов, соответствующих выбранным фильтрам.</p>
-        <button class="retry-btn" @click="clearAllFilters">Сбросить фильтры</button>
+        <h2>{{ t("Сериалы не найдены") }}</h2>
+        <p v-if="searchQuery">{{ t("По запросу \"") }}{{ searchQuery }}{{ t("\" сериалов не найдено.") }}</p>
+        <p v-else>{{ t("Нет сериалов, соответствующих выбранным фильтрам.") }}</p>
+        <button class="retry-btn" @click="clearAllFilters">{{ t("Сбросить фильтры") }}</button>
       </div>
 
       <!-- Series Grid -->
@@ -220,17 +221,13 @@ onMounted(() => {
           class="page-btn"
           :disabled="page <= 1"
           @click="changePage(page - 1)"
-        >
-          Назад
-        </button>
-        <span class="page-info">Страница {{ page }} из {{ totalPages }}</span>
+        > {{ t("Назад") }} </button>
+        <span class="page-info">{{ t("Страница") }} {{ page }} {{ t("из") }} {{ totalPages }}</span>
         <button
           class="page-btn"
           :disabled="page >= totalPages"
           @click="changePage(page + 1)"
-        >
-          Вперёд
-        </button>
+        > {{ t("Вперёд") }} </button>
       </div>
     </main>
 

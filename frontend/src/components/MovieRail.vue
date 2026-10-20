@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import type { MovieSummary } from '@/types/movie'
 import MovieCard from '@/components/MovieCard.vue'
@@ -52,10 +53,10 @@ function handleWheel(event: WheelEvent) {
       <h2 class="rail-title">{{ title }}</h2>
       <div class="rail-header-right">
         <div class="scroll-buttons">
-          <button class="scroll-btn" title="Scroll Left" @click="scrollLeft">
+          <button class="scroll-btn" :title="t('Scroll Left')" @click="scrollLeft">
             <ChevronLeft :size="20" />
           </button>
-          <button class="scroll-btn" title="Scroll Right" @click="scrollRight">
+          <button class="scroll-btn" :title="t('Scroll Right')" @click="scrollRight">
             <ChevronRight :size="20" />
           </button>
         </div>

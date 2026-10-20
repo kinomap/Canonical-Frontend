@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = defineProps<{
@@ -277,14 +278,14 @@ onBeforeUnmount(() => {
           </div>
           
           <div class="btn-row">
-            <button class="ctrl-btn" @click="skip(-10)" title="−10 с">
+            <button class="ctrl-btn" @click="skip(-10)" :title="t('−10 с')">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/></svg>
             </button>
-            <button class="ctrl-btn big" @click="togglePlay" title="Play / Pause">
+            <button class="ctrl-btn big" @click="togglePlay" :title="t('Play / Pause')">
               <svg v-if="!isPlaying" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               <svg v-else xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
             </button>
-            <button class="ctrl-btn" @click="skip(10)" title="+10 с">
+            <button class="ctrl-btn" @click="skip(10)" :title="t('+10 с')">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 17l5-5-5-5"/><path d="M6 17l5-5-5-5"/></svg>
             </button>
             
@@ -295,7 +296,7 @@ onBeforeUnmount(() => {
             </div>
             
             <div class="vol-wrap">
-              <span class="vol-icon" @click="toggleMute" title="Mute">
+              <span class="vol-icon" @click="toggleMute" :title="t('Mute')">
                 <svg v-if="isMuted || volume === 0" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
                 <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
               </span>
@@ -308,7 +309,7 @@ onBeforeUnmount(() => {
                 :value="isMuted ? 0 : volume" 
                 @input="handleVolumeChange" 
               />
-              <button class="ctrl-btn fullscreen-btn" @click="toggleFullscreen" title="Во весь экран">
+              <button class="ctrl-btn fullscreen-btn" @click="toggleFullscreen" :title="t('Во весь экран')">
                 <svg v-if="!isFullscreen" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
                 <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
               </button>

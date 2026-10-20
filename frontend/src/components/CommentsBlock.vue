@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, watch, onMounted } from 'vue'
 import { apiClient } from '@/api/client'
 import type { Comment } from '@/api/client'
@@ -92,29 +93,29 @@ watch(() => props.targetId, () => {
 
 <template>
   <div class="comments-section">
-    <h3 class="comments-title">{{ comments?.length || 0 }} Comments</h3>
-    
+    <h3 class="comments-title">{{ comments?.length || 0 }} {{ t("Comments") }}</h3>
+
     <!-- Add Comment Box -->
     <div class="comment-input-area" v-if="isAuthenticated">
       <div class="comment-avatar me">{{ currentUser?.username[0].toUpperCase() }}</div>
       <div class="comment-form">
-        <input 
-          type="text" 
-          v-model="newComment" 
-          placeholder="Add a comment... (emojis supported 😊)" 
+        <input
+          type="text"
+          v-model="newComment"
+          :placeholder="t('Add a comment... (emojis supported 😊)')"
           class="comment-input"
           @keyup.enter="postComment"
         />
         <div class="comment-actions" v-if="newComment.trim()">
-          <button class="post-btn" @click="postComment">Comment</button>
+          <button class="post-btn" @click="postComment">{{ t("Comment") }}</button>
         </div>
       </div>
     </div>
-    
+
     <!-- Inline comment error (non-auth failures only) -->
     <div v-if="commentError" class="inline-error" role="alert">
       <span>{{ commentError }}</span>
-      <button class="close-error-btn" @click="commentError = null" aria-label="Close error">×</button>
+      <button class="close-error-btn" @click="commentError = null" :aria-label="t('Close error')">×</button>
     </div>
 
     <!-- Comments List -->
@@ -141,22 +142,20 @@ watch(() => props.targetId, () => {
           <div class="comment-body edit-mode" v-else>
             <input type="text" v-model="editCommentText" class="comment-input edit-input" @keyup.enter="saveEditComment(comment.id)" />
             <div class="edit-actions">
-              <button class="edit-save-btn" @click="saveEditComment(comment.id)"><Check :size="14" /> Save</button>
-              <button class="edit-cancel-btn" @click="cancelEditComment"><X :size="14" /> Cancel</button>
+              <button class="edit-save-btn" @click="saveEditComment(comment.id)"><Check :size="14" /> {{ t("Save") }}</button>
+              <button class="edit-cancel-btn" @click="cancelEditComment"><X :size="14" /> {{ t("Cancel") }}</button>
             </div>
           </div>
           <div class="comment-admin" v-if="currentUser?.role === 'admin' || currentUser?.id === comment.user.id">
-            <button v-if="editingCommentId !== comment.id" class="edit-btn" @click="startEditComment(comment)" title="Edit comment">
+            <button v-if="editingCommentId !== comment.id" class="edit-btn" @click="startEditComment(comment)" :title="t('Edit comment')">
               <Edit2 :size="16" />
             </button>
-            <button class="delete-btn" @click="deleteComment(comment.id)" title="Delete comment">
+            <button class="delete-btn" @click="deleteComment(comment.id)" :title="t('Delete comment')">
               <Trash2 :size="16" />
             </button>
           </div>
         </div>
-        <div v-if="!comments?.length" class="no-comments">
-          No comments yet. Be the first to share your thoughts!
-        </div>
+        <div v-if="!comments?.length" class="no-comments"> {{ t("No comments yet. Be the first to share your thoughts!") }} </div>
       </template>
     </div>
   </div>

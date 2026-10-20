@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import type { MovieSummary } from '@/types/movie'
 import { computed, ref } from 'vue'
 
@@ -59,7 +60,7 @@ const displayYear = computed(() => {
       </div>
 
       <div class="badges-overlay">
-        <span class="badge series-badge" v-if="movie.type === 'series'">СЕРИАЛ</span>
+        <span class="badge series-badge" v-if="movie.type === 'series'">{{ t("СЕРИАЛ") }}</span>
         <span class="badge rating-badge" v-if="movie.rating">{{ movie.rating.toFixed(1) }}</span>
       </div>
     </div>

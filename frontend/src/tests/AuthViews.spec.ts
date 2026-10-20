@@ -134,6 +134,8 @@ describe('Auth Views & Store', () => {
       created_at: '2026-08-16T10:00:00Z'
     }
 
+    vi.mocked(apiClient.getCurrentUser).mockResolvedValue(authStore.user.value!)
+    vi.stubGlobal('fetch',vi.fn(async(input:any)=>({ok:true,json:async()=>String(input).includes('/billing/plans')?[]:String(input).includes('/billing/orders')?{items:[],total:0}:String(input).includes('/billing/activations')?[]:String(input).includes('/account')?{...authStore.user.value,display_name:'activeuser',language:'en',avatar_preset:0,telegram_notifications:false}:({ok:true})})))
     const wrapper = mount(ProfileView, {
       global: { plugins: [router] }
     })
@@ -141,9 +143,9 @@ describe('Auth Views & Store', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('activeuser')
-    expect(wrapper.text()).toContain('active@test.com')
+    expect((wrapper.get('input[type=email]').element as HTMLInputElement).value).toBe('active@test.com')
 
-    const logoutBtn = wrapper.find('.logout-btn')
+    const logoutBtn = wrapper.find('.logout')
     await logoutBtn.trigger('click')
     await flushPromises()
 

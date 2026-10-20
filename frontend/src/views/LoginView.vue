@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import SocialLogin from '@/components/SocialLogin.vue'
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -10,6 +11,7 @@ const authStore = useAuthStore()
 
 const usernameOrEmail = ref('')
 const password = ref('')
+const otp = ref('')
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -25,7 +27,7 @@ async function handleSubmit() {
   loading.value = true
   error.value = null
   try {
-    await authStore.login(usernameOrEmail.value.trim(), password.value)
+    await authStore.login(usernameOrEmail.value.trim(), password.value, otp.value)
     await router.push('/')
   } catch (err: any) {
     error.value = err?.message || 'Invalid username or password'
@@ -39,33 +41,32 @@ async function handleSubmit() {
   <div class="auth-page">
     <div class="auth-card">
       <div class="auth-header">
-        <h1 class="auth-title">Sign In</h1>
-        <p class="auth-subtitle">Access your KINOSOTA account</p>
+        <h1 class="auth-title">{{ t("Sign In") }}</h1>
+        <p class="auth-subtitle">{{ t("Access your KINOSOTA account") }}</p>
       </div>
 
-      <div v-if="sessionExpired" class="auth-session-alert">
-        🔒 Your session has expired. Please sign in again.
-      </div>
+      <div v-if="sessionExpired" class="auth-session-alert"> {{ t("🔒 Your session has expired. Please sign in again.") }} </div>
 
       <div v-if="error" class="auth-error-alert">
         {{ error }}
       </div>
 
       <form class="auth-form" @submit.prevent="handleSubmit">
+
         <div class="form-group">
-          <label class="form-label">Username or Email</label>
+          <label class="form-label">{{ t("Username or Email") }}</label>
           <input
             v-model="usernameOrEmail"
             type="text"
             required
-            placeholder="enter username or email"
+            :placeholder="t('enter username or email')"
             class="form-input"
             autocomplete="username"
           />
         </div>
 
         <div class="form-group">
-          <label class="form-label">Password</label>
+          <label class="form-label">{{ t("Password") }}</label>
           <input
             v-model="password"
             type="password"
@@ -76,18 +77,17 @@ async function handleSubmit() {
           />
         </div>
 
-        <p>Защищённый вход сохраняется до 12 часов. На чужом устройстве обязательно выйдите из аккаунта.</p>
+        <p>{{ t("Защищённый вход сохраняется до 12 часов. На чужом устройстве обязательно выйдите из аккаунта.") }}</p>
 
-        <button type="submit" class="submit-btn" :disabled="loading">
-          <span v-if="loading">Signing in...</span>
-          <span v-else>Sign In</span>
+                <div class="form-group"><label class="form-label">{{t('Код 2FA или резервный код')}}</label><input class="form-input" v-model="otp" autocomplete="one-time-code" maxlength="64" /></div>
+<button type="submit" class="submit-btn" :disabled="loading">
+          <span v-if="loading">{{ t("Signing in...") }}</span>
+          <span v-else>{{ t("Sign In") }}</span>
         </button>
       </form>
 
 <SocialLogin />
-      <div class="auth-footer">
-        Don't have an account?
-        <router-link to="/register" class="auth-link">Create Account</router-link>
+      <div class="auth-footer"> {{ t("Don't have an account?") }} <router-link to="/register" class="auth-link">{{ t("Create Account") }}</router-link>
       </div>
     </div>
   </div>

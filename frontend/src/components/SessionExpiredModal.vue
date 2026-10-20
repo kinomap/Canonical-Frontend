@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * SessionExpiredModal — shown app-wide when auth:expired fires.
  *
@@ -34,11 +35,8 @@ const emit = defineEmits<{ confirm: [] }>()
         </div>
 
         <!-- Text -->
-        <h2 id="session-title" class="session-title">Session Expired</h2>
-        <p class="session-body">
-          Your session has ended due to inactivity or token expiry.<br>
-          Please sign in again to continue.
-        </p>
+        <h2 id="session-title" class="session-title">{{ t("Session Expired") }}</h2>
+        <p class="session-body"> {{ t("Your session has ended due to inactivity or token expiry.") }}<br> {{ t("Please sign in again to continue.") }} </p>
 
         <!-- CTA -->
         <button class="session-btn" @click="emit('confirm')" autofocus>
@@ -48,9 +46,7 @@ const emit = defineEmits<{ confirm: [] }>()
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
             <polyline points="10 17 15 12 10 7"/>
             <line x1="15" y1="12" x2="3" y2="12"/>
-          </svg>
-          Sign In Again
-        </button>
+          </svg> {{ t("Sign In Again") }} </button>
       </div>
     </div>
   </Transition>
