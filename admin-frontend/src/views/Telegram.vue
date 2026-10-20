@@ -201,10 +201,22 @@ const updateChannelSettings = async () => {
   }
 }
 
+async function waitBackground(data:any){
+  if(!data.job_id)return data
+  for(let n=0;n<240;n++){
+    await new Promise(r=>setTimeout(r,750))
+    const response=await axios.get('/api/v1/admin/background/jobs/'+data.job_id,auth())
+    if(response.data.status==='ok')return {status:'ok',...response.data.result}
+    if(response.data.status==='error')throw new Error(response.data.message||'Remote operation failed')
+  }
+  throw new Error('Operation timed out')
+}
+
 const syncChannel = async (channel: any) => {
   syncing.value = channel.channel_id
   try {
-    await axios.post(`/api/v1/admin/telegram/channels/${encodeURIComponent(channel.channel_id)}/sync`, {}, auth())
+    const queued=await axios.post(`/api/v1/admin/telegram/channels/${encodeURIComponent(channel.channel_id)}/sync`, {}, auth())
+    await waitBackground(queued.data)
     await fetchChannels()
     addToast(`Sync completed for ${channel.channel_id}`, 'success')
   } catch (err: any) {
@@ -219,9 +231,10 @@ const testConnection = async (channel: any) => {
   testResults.value = { ...testResults.value, [channel.channel_id]: null }
   try {
     const res = await axios.post(`/api/v1/admin/telegram/channels/${encodeURIComponent(channel.channel_id)}/test`, {}, auth())
-    testResults.value = { ...testResults.value, [channel.channel_id]: res.data }
-    if (res.data.status === 'ok') addToast(`Connection OK`, 'success')
-    else addToast(`Connection failed: ${res.data.message}`, 'error')
+    const result=await waitBackground(res.data)
+    testResults.value = { ...testResults.value, [channel.channel_id]: result }
+    if (result.status === 'ok') addToast(`Connection OK`, 'success')
+    else addToast(`Connection failed: ${result.message}`, 'error')
   } catch (err: any) {
     addToast(err.response?.data?.detail || 'Test failed', 'error')
     testResults.value = { ...testResults.value, [channel.channel_id]: { status: 'error', message: 'Request failed' } }

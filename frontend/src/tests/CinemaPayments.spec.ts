@@ -35,18 +35,11 @@ describe('Cinema checkout and real TON Connect SDK validator',()=>{
   expect(()=>validatedTransaction(request,SENDER)).toThrow('PAYMENT_REQUEST_INVALID')
  })
  it('renders exactly 3 plan cards and 4 bento benefits, updates the selected amount',async()=>{const w=mount(BillingPanel,{props:{account}});wrappers.push(w);await flushPromises();expect(w.findAll('.plan-card')).toHaveLength(3);expect(w.findAll('.benefit')).toHaveLength(4);expect(w.get('.checkout-total').text()).toContain('22');await w.get('[data-days="365"]').trigger('click');expect(w.get('.checkout-total').text()).toContain('35')})
- it('keeps Stars clickable without Telegram and opens linking inline, not a dead disabled button',async()=>{const w=mount(BillingPanel,{props:{account},attachTo:document.body});wrappers.push(w);await flushPromises();expect(w.get('[data-testid=pay-stars]').attributes('disabled')).toBeUndefined();await w.get('[data-testid=pay-stars]').trigger('click');await flushPromises();expect(document.querySelector('dialog[open]')).not.toBeNull();expect(w.get('dialog').text()).toContain('Привяжите Telegram');expect(w.find('dialog input').exists()).toBe(false);expect(mocks.api.mock.calls.some(c=>c[0]==='/billing/orders'&&c[1]==='POST')).toBe(false)})
  it('shows an unavailable-method modal before calling any wallet SDK or creating an order',async()=>{const w=mount(BillingPanel,{props:{account},attachTo:document.body});wrappers.push(w);await flushPromises();await w.get('.checkout-total button').trigger('click');await flushPromises();expect(w.get('dialog').text()).toContain('Этот способ оплаты настраивается');expect(mocks.api.mock.calls.some(c=>c[1]==='POST')).toBe(false)})
- it('uses a direct Stars invoice for an already linked account',async()=>{
-  vi.spyOn(window,'open').mockImplementation(()=>null)
-  mocks.api.mockImplementation(async(path:string,method:string,body:any)=>path==='/billing/plans'?plans:path==='/billing/orders'&&method==='POST'?{id:'fixture',provider:'stars',invoice_url:'https://t.me/$fixtureOnly',duration_days:180,amount_display:'1100',status:'pending'}:path.startsWith('/billing/orders')?{items:[],total:0}:[])
-  const w=mount(BillingPanel,{props:{account:{...account,telegram_linked:true}},attachTo:document.body});wrappers.push(w);await flushPromises();await w.get('[data-testid=pay-stars]').trigger('click');await flushPromises();expect(mocks.api).toHaveBeenCalledWith('/billing/orders','POST',expect.objectContaining({plan_id:'m6',provider:'stars'}));expect(w.get('dialog a').attributes('href')).toBe('https://t.me/$fixtureOnly')
+ it.each([false,true])('opens native Stars invoice without linking (linked=%s)',async telegram_linked=>{
+  vi.useFakeTimers();const replace=vi.fn(),close=vi.fn();vi.spyOn(window,'open').mockReturnValue({location:{replace},close,opener:null} as any)
+  const order={id:'fixture',provider:'stars',invoice_url:'https://t.me/$fixtureOnly',duration_days:180,amount_display:'1100',status:'pending'}
+  mocks.api.mockImplementation(async(path:string,method:string)=>path==='/billing/plans'?plans:path==='/billing/orders'&&method==='POST'?{...order,invoice_url:null}:path.startsWith('/billing/orders')?{items:[order],total:1}:[])
+  const w=mount(BillingPanel,{props:{account:{...account,telegram_linked}},attachTo:document.body});wrappers.push(w);await flushPromises();await w.get('[data-testid=pay-stars]').trigger('click');await flushPromises();await vi.advanceTimersByTimeAsync(800);await flushPromises();expect(replace).toHaveBeenCalledWith(order.invoice_url);expect(mocks.api).toHaveBeenCalledWith('/billing/orders','POST',expect.objectContaining({plan_id:'m6',provider:'stars'}));expect(mocks.api.mock.calls.some(c=>String(c[0]).includes('/account/telegram'))).toBe(false);expect(w.text()).not.toContain('Привяжите Telegram');w.unmount();vi.useRealTimers()
  })
-})
-
-it('links an authenticated MFA account without sending a password or OTP',async()=>{
- mocks.api.mockImplementation(async(path:string)=>path==='/billing/plans'?plans:path==='/account/telegram/start'?{state:'fixture',url:'https://t.me/fixture_bot',verification_code:'TEST00'}:path.startsWith('/billing/orders')?{items:[],total:0}:[])
- const w=mount(BillingPanel,{props:{account:{...account,two_factor_enabled:true}},attachTo:document.body});wrappers.push(w);await flushPromises();await w.get('[data-testid=pay-stars]').trigger('click');await flushPromises()
- expect(w.findAll('dialog input')).toHaveLength(0);await w.get('dialog form').trigger('submit.prevent');await flushPromises()
- expect(mocks.api).toHaveBeenCalledWith('/account/telegram/start','POST',{});expect(w.get('.link-ready a').attributes('href')).toContain('fixture_bot')
 })

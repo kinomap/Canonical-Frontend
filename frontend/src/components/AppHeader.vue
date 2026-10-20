@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UserAvatar from './UserAvatar.vue'
 import { t } from '@/i18n'
 import { ref, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -76,8 +77,8 @@ watch(route, () => {
           <template v-if="authStore.isAuthenticated.value">
             <router-link to="/profile" class="profile-btn" :title="t('User Profile')" :aria-label="t('User Profile')">
               <div class="avatar-circle">
-                <img v-if="authStore.user.value" :src="authStore.user.value.avatar_url || ('/avatars/'+(authStore.user.value.avatar_preset||0)+'.svg')" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>
-                <span v-else>U</span>
+                <UserAvatar :user="authStore.user.value" :size="34" />
+
               </div>
             </router-link>
           </template>

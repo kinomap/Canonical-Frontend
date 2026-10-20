@@ -1,50 +1,18 @@
-import {t} from '../i18n'
-import { describe,it,expect,vi,beforeEach,afterEach } from 'vitest'
-import { mount,flushPromises } from '@vue/test-utils'
+import {describe,it,expect,vi,beforeEach,afterEach} from 'vitest'
+import {mount,flushPromises} from '@vue/test-utils'
 import SocialLogin from '@/components/SocialLogin.vue'
 const mocks=vi.hoisted(()=>({setToken:vi.fn(),fetchCurrentUser:vi.fn(),push:vi.fn(),user:{value:null as any}}))
 vi.mock('@/stores/auth',()=>({useAuthStore:()=>mocks}))
 vi.mock('vue-router',()=>({useRouter:()=>({push:mocks.push})}))
-let wrappers:any[]=[]
-beforeEach(()=>{vi.clearAllMocks();mocks.user.value=null;vi.stubGlobal('fetch',vi.fn());wrappers=[]})
+let wrappers:any[]=[];let callback:any
+beforeEach(()=>{vi.clearAllMocks();wrappers=[];callback=null;vi.stubGlobal('Telegram',{Login:{auth:vi.fn((_o:any,cb:any)=>callback=cb)}});vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({state:'fixture',bot_id:'123'})})))})
 afterEach(()=>{wrappers.forEach(w=>w.unmount());vi.unstubAllGlobals()})
-const reply=(d:any,ok=true)=>Promise.resolve(new Response(JSON.stringify(d),{status:ok?200:503,headers:{'Content-Type':'application/json'}}))
-async function render(enabled=true){
- vi.mocked(fetch).mockImplementation((url:any)=>String(url).endsWith('/providers')?reply({providers:{telegram:enabled}}):reply({state:'synthetic-flow-state',bot_username:'kino_publisher_bot'}))
- const w=mount(SocialLogin);wrappers.push(w);await flushPromises();return w
-}
-describe('Telegram one-click UI',()=>{
- it('mounts official widget immediately, without a preliminary button',async()=>{
-  const w=await render();expect(fetch).toHaveBeenCalledTimes(2)
-  expect(w.findAll('button')).toHaveLength(0)
-  const script=w.find('script');expect(script.attributes('src')).toBe('https://telegram.org/js/telegram-widget.js?22')
-  expect(script.attributes('data-telegram-login')).toBe('kino_publisher_bot');expect(script.attributes('data-lang')).toBe('en');expect(script.attributes('data-request-access')).toBe('write')
-  await script.trigger('load');expect(w.find('[role=status]').exists()).toBe(false)
-  expect(w.text()).not.toContain('Google')
-  expect(w.text()).not.toContain(t('Войти через Telegram-бота'))
-  expect(w.find('[aria-label="Резервный вход через Telegram-бота"]').exists()).toBe(false)
- })
- it('opens Home after successful Telegram widget authentication',async()=>{
-  const w=await render();const callback=w.find('script').attributes('data-onauth')!.split('(')[0]!
-  mocks.user.value={id:'synthetic-viewer'}
-  vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({access_token:'cookie-session'}),{status:200,headers:{'Content-Type':'application/json'}}))
-  await (window as any)[callback]({id:123,hash:'synthetic'});await flushPromises()
-  expect(mocks.fetchCurrentUser).toHaveBeenCalled();expect(mocks.push).toHaveBeenCalledWith('/')
- })
- it('does not start a flow when provider is not configured',async()=>{
-  const w=await render(false);expect(fetch).toHaveBeenCalledTimes(1);expect(w.find('script').exists()).toBe(false);expect(w.text()).toContain('not connected')
- })
- it('shows retry only after a real loading error and replaces old widget',async()=>{
-  const w=await render();await w.find('script').trigger('error');expect(w.find('[role=alert]').exists()).toBe(true)
-  expect(w.findAll('button')).toHaveLength(1);await w.findAll('button').find(b=>b.text().includes(t('Повторить')))!.trigger('click');await flushPromises()
-  expect(w.findAll('script')).toHaveLength(1);expect(w.findAll('button')).toHaveLength(0)
- })
- it('removes its callback on unmount',async()=>{
-  const w=await render();const callback=w.find('script').attributes('data-onauth')!.split('(')[0]!
-  expect(typeof(window as any)[callback]).toBe('function');w.unmount();expect((window as any)[callback]).toBeUndefined()
- })
- it('does not inject a script after the page has been left',async()=>{
-  let resolve:any;vi.mocked(fetch).mockReturnValue(new Promise(r=>{resolve=r}) as any)
-  const w=mount(SocialLogin);w.unmount();resolve({ok:true,json:async()=>({providers:{telegram:true}})});await flushPromises();expect(fetch).toHaveBeenCalledTimes(1)
- })
+async function render(){const w=mount(SocialLogin);wrappers.push(w);await flushPromises();return w}
+describe('Custom rectangular Telegram login',()=>{
+ it('has one own button, no iframe or widget attributes',async()=>{const w=await render();expect(w.findAll('button')).toHaveLength(1);expect(w.find('iframe').exists()).toBe(false);expect(document.querySelector('[data-telegram-login]')).toBeNull();expect(fetch).toHaveBeenCalledTimes(1)})
+ it('opens SDK popup from user click and routes home after authentication',async()=>{const w=await render();await w.get('button').trigger('click');expect((window as any).Telegram.Login.auth).toHaveBeenCalledWith({bot_id:123,request_access:'write'},expect.any(Function));vi.mocked(fetch).mockResolvedValueOnce({ok:true,json:async()=>({access_token:'cookie-session'})} as any);await callback({id:123,hash:'fixture'});expect(mocks.fetchCurrentUser).toHaveBeenCalled();expect(mocks.push).toHaveBeenCalledWith('/')})
+ it('emits MFA challenge instead of granting a session',async()=>{const w=await render();await w.get('button').trigger('click');vi.mocked(fetch).mockResolvedValueOnce({ok:false,json:async()=>({detail:{code:'MFA_REQUIRED',challenge:'fixture-mfa'}})} as any);await callback({id:123});expect(w.emitted('challenge')).toEqual([['fixture-mfa']]);expect(mocks.setToken).not.toHaveBeenCalled()})
+ it('shows unavailable provider error without injecting a widget',async()=>{vi.mocked(fetch).mockResolvedValueOnce({ok:false,json:async()=>({detail:'Telegram unavailable'})} as any);const w=await render();expect(w.get('[role=alert]').text()).toContain('Telegram unavailable');expect(w.find('iframe').exists()).toBe(false)})
+ it('does not process popup callbacks after unmount',async()=>{const w=await render();await w.get('button').trigger('click');w.unmount();await callback({id:123});expect(fetch).toHaveBeenCalledTimes(1);expect(mocks.setToken).not.toHaveBeenCalled()})
+ it('does not inject scripts after navigation during preparation',async()=>{let resolve:any;vi.mocked(fetch).mockReturnValue(new Promise(r=>resolve=r) as any);const w=mount(SocialLogin);w.unmount();resolve({ok:true,json:async()=>({state:'late',bot_id:123})});await flushPromises();expect(document.querySelector('script[src*="telegram-widget"]')).toBeNull()})
 })

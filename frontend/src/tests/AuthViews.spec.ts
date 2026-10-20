@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach,afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
@@ -21,6 +21,8 @@ describe('Auth Views & Store', () => {
 
   beforeEach(() => {
     vi.resetAllMocks()
+    vi.stubGlobal('fetch',vi.fn(async(url:any,init:any)=>{if(String(url).endsWith('/auth/login'))return {ok:true,json:async()=>({access_token:'cookie-session'})};return {ok:false,json:async()=>({detail:'Provider not configured'})}}))
+    vi.mocked(apiClient.getCurrentUser).mockResolvedValue({id:'u-1',username:'testuser',role:'user',status:'active'} as any)
     localStorage.clear()
     authStore = useAuthStore()
     authStore.setToken(null)
@@ -45,6 +47,8 @@ describe('Auth Views & Store', () => {
       }
     })
   })
+
+  afterEach(()=>vi.unstubAllGlobals())
 
   it('LoginView submits credentials and authenticates user', async () => {
     const mockUser = {
@@ -73,7 +77,7 @@ describe('Auth Views & Store', () => {
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(apiClient.login).toHaveBeenCalledWith('testuser', 'password123')
+    expect(fetch).toHaveBeenCalledWith('/api/v1/auth/login',expect.objectContaining({body:JSON.stringify({username_or_email:'testuser',password:'password123'})}))
     expect(authStore.isAuthenticated.value).toBe(true)
     expect(authStore.user.value?.username).toBe('testuser')
     expect(router.currentRoute.value.path).toBe('/')

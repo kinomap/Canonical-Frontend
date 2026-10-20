@@ -1,67 +1,15 @@
 <script setup lang="ts">
-import { t, messageText, language } from '@/i18n'
-import { onMounted, onBeforeUnmount, ref } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
-const auth=useAuthStore(),router=useRouter()
-const configured=ref<boolean|null>(null),message=ref(''),loading=ref(true),widget=ref<HTMLElement|null>(null)
-let script:HTMLScriptElement|null=null,disposed=false,timer:ReturnType<typeof setTimeout>|undefined
-const otp=ref('')
-const callback='kinosotaTelegramLogin'+Math.random().toString(36).slice(2)
-function fail(text:string){if(disposed)return;message.value=text;loading.value=false;clearTimeout(timer);widget.value?.replaceChildren()}
-async function telegram(){
-  if(disposed)return
-  message.value='';loading.value=true;clearTimeout(timer);widget.value?.replaceChildren()
-  try{
-    const r=await fetch('/api/v1/auth/social/telegram/start',{method:'POST'});const d=await r.json()
-    if(disposed)return
-    if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Не удалось начать вход.')
-    ;(window as any)[callback]=async(user:any)=>{
-      if(disposed)return
-      loading.value=true;message.value=''
-      try{
-        const response=await fetch('/api/v1/auth/social/telegram/complete',{method:'POST',headers:{'Content-Type':'application/json','X-TOTP-Code':otp.value,'X-Acquisition-Source':sessionStorage.getItem('acquisition_source')||''},body:JSON.stringify({state:d.state,user})})
-        const result=await response.json()
-        if(disposed)return
-        if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Telegram не подтвердил вход.')
-        auth.setToken('cookie-session');await auth.fetchCurrentUser()
-        if(disposed)return
-        if(!auth.user.value)throw new Error('Не удалось проверить вход. Повторите попытку.')
-        await router.push('/')
-      }catch(e:any){fail(e?.message||'Не удалось завершить вход. Повторите попытку.')}finally{if(!disposed)loading.value=false}
-    }
-    if(!widget.value)throw new Error('Не удалось показать кнопку Telegram.')
-    script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true
-    script.setAttribute('data-request-access','write');script.setAttribute('data-telegram-login',d.bot_username);script.setAttribute('data-size','large');script.setAttribute('data-lang',language.value);script.setAttribute('data-onauth',callback+'(user)')
-    script.onload=()=>{if(!disposed){loading.value=false;clearTimeout(timer)}}
-    script.onerror=()=>fail('Не удалось загрузить Telegram. Проверьте блокировщик или сеть и повторите попытку.')
-    timer=setTimeout(()=>fail('Telegram не ответил. Проверьте соединение и повторите попытку.'),15000)
-    widget.value.append(script)
-  }catch(e:any){fail(e?.message||'Не удалось подготовить вход Telegram.')}
-}
-onMounted(async()=>{
-  try{
-    const r=await fetch('/api/v1/auth/social/providers');if(!r.ok)throw new Error()
-    const d=await r.json();if(disposed)return
-    configured.value=!!d.providers?.telegram
-    if(configured.value)await telegram();else loading.value=false
-  }catch{fail('Сервисы входа временно недоступны.')}
-})
-async function retry(){if(configured.value)await telegram();else window.location.reload()}
-onBeforeUnmount(()=>{disposed=true;clearTimeout(timer);delete (window as any)[callback];script?.remove()})
+import {ref,onMounted,onBeforeUnmount} from 'vue'
+import {useAuthStore} from '@/stores/auth'
+import {useRouter} from 'vue-router'
+import {tr} from '@/i18n'
+const emit=defineEmits<{challenge:[string]}>()
+const auth=useAuthStore(),router=useRouter(),busy=ref(false),message=ref('')
+let config:any=null,disposed=false;let script:HTMLScriptElement|undefined;let preparing:Promise<void>|undefined
+onBeforeUnmount(()=>{disposed=true;script?.remove()})
+async function prepare(){if(preparing)return preparing;preparing=(async()=>{const r=await fetch('/api/v1/auth/social/telegram/start',{method:'POST'});const d=await r.json();if(disposed)return;if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Telegram недоступен');config=d;if(!(window as any).Telegram?.Login?.auth)await new Promise<void>((resolve,reject)=>{script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.onload=()=>resolve();script.onerror=()=>{script?.remove();reject(new Error('Не удалось загрузить Telegram'))};document.head.append(script)})})();try{await preparing}finally{preparing=undefined}}
+onMounted(()=>prepare().catch(e=>message.value=e.message))
+function login(){if(busy.value)return;if(!config||!(window as any).Telegram?.Login?.auth){message.value='Подключение Telegram… Повторите нажатие.';prepare().catch(e=>message.value=e.message);return}busy.value=true;message.value='';(window as any).Telegram.Login.auth({bot_id:Number(config.bot_id),request_access:'write'},async(user:any)=>{try{if(disposed)return;if(!user)throw new Error('Вход отменён');const r=await fetch('/api/v1/auth/social/telegram/complete',{method:'POST',headers:{'Content-Type':'application/json','X-Session-Mode':'cookie'},body:JSON.stringify({state:config.state,user})});const d=await r.json();if(d.detail?.code==='MFA_REQUIRED'){emit('challenge',d.detail.challenge);return}if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Не удалось войти');auth.setToken('cookie-session');await auth.fetchCurrentUser();await router.push('/')}catch(e:any){message.value=e.message;config=null;prepare().catch(()=>{})}finally{busy.value=false}})}
 </script>
-<template>
- <section class="social-login" :aria-label="t('Вход через Telegram')">
-  <p v-if="loading" role="status">{{ t("Подключение Telegram…") }}</p>
-  <p v-if="configured===false && !message">{{ t("Telegram · ещё не подключён") }}</p>
-  <label>{{t('Код 2FA или резервный код')}}<input v-model="otp" autocomplete="one-time-code" maxlength="64" /></label><div ref="widget" class="telegram-widget"></div>
-  <p v-if="message" role="alert">{{messageText(message)}}</p>
-  <button v-if="message" type="button" @click="retry" :disabled="loading">{{ t("Повторить подключение Telegram") }}</button>
- </section>
-</template>
-<style scoped>
-.social-login{display:grid;justify-items:center;gap:10px;margin:20px 0;min-height:40px}
-.telegram-widget{min-height:40px;max-width:100%}
-.social-login button{padding:12px;border-radius:8px;background:#27324a;color:#fff;border:1px solid #596780;font:inherit}
-.social-login p{margin:0;color:#aaa;text-align:center}.social-login [role=alert]{color:#fca5a5}
-</style>
+<template><section class="social-login"><button type="button" :disabled="busy" @click="login">{{tr('Войти через Telegram','Sign in with Telegram')}}</button><p v-if="message" role="alert">{{message}}</p></section></template>
+<style scoped>.social-login{margin:20px 0}.social-login button{width:100%;box-sizing:border-box;min-height:46px;padding:12px;border:0;border-radius:10px;background:#27324a;color:#fff;font-size:1rem;font-weight:700;cursor:pointer}.social-login p{color:#fca5a5;font-size:14px}.social-login button:disabled{opacity:.5}</style>
