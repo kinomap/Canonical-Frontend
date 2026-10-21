@@ -13,7 +13,7 @@ const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const challenge=ref(''),otp=ref('')
-async function confirmFactor(){loading.value=true;error.value=null;try{const r=await fetch('/api/v1/auth/mfa/complete',{method:'POST',headers:{'Content-Type':'application/json','X-TOTP-Code':otp.value,'X-Session-Mode':'cookie'},body:JSON.stringify({challenge:challenge.value})});const d=await r.json();if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Неверный код подтверждения');authStore.setToken('cookie-session');await authStore.fetchCurrentUser();localStorage.removeItem('telegram_require_confirmation');await router.push('/')}catch(e:any){error.value=e.message}finally{loading.value=false}}
+async function confirmFactor(){loading.value=true;error.value=null;try{const r=await fetch('/api/v1/auth/mfa/complete',{method:'POST',headers:{'Content-Type':'application/json','X-TOTP-Code':otp.value,'X-Session-Mode':'cookie'},body:JSON.stringify({challenge:challenge.value})});const d=await r.json();if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Неверный код подтверждения');authStore.setToken('cookie-session');await authStore.fetchCurrentUser();localStorage.removeItem('telegram_require_confirmation');localStorage.removeItem('tg_just_unlinked');localStorage.removeItem('tg_unlinked_username');await router.push('/')}catch(e:any){error.value=e.message}finally{loading.value=false}}
 
 const loading = ref(false)
 const error = ref<string | null>(null)
