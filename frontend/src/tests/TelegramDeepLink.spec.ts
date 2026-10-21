@@ -1,4 +1,4 @@
-import {t} from '../i18n'
+import {t,setLanguage} from '../i18n'
 import { describe,it,expect,vi,beforeEach,afterEach } from 'vitest'
 import { mount,flushPromises } from '@vue/test-utils'
 import TelegramDeepLink from '@/components/TelegramDeepLink.vue'
@@ -7,7 +7,7 @@ vi.mock('@/stores/auth',()=>({useAuthStore:()=>({...mocks,user:{value:{id:'synth
 vi.mock('vue-router',()=>({useRouter:()=>({push:mocks.push})}))
 let wrappers:any[]=[]
 const reply=(d:any,status=200)=>Promise.resolve(new Response(JSON.stringify(d),{status,headers:{'Content-Type':'application/json'}}))
-beforeEach(()=>{vi.useFakeTimers();vi.stubGlobal('fetch',vi.fn());vi.clearAllMocks();wrappers=[]})
+beforeEach(()=>{vi.useFakeTimers();vi.stubGlobal('fetch',vi.fn());vi.clearAllMocks();setLanguage('en');wrappers=[]})
 afterEach(()=>{wrappers.forEach(w=>w.unmount());vi.useRealTimers();vi.unstubAllGlobals()})
 describe('Telegram bot fallback',()=>{
  it('requires bot confirmation and an explicit browser completion click',async()=>{

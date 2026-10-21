@@ -65,6 +65,7 @@ describe('Human profiles, Telegram disconnection and visible MFA',()=>{
   const w=mount(ProfileView);wrappers.push(w);await flushPromises();mocks.api.mockClear()
   await w.findAll('button').find(b=>b.text()==='Отвязать Telegram')!.trigger('click');await flushPromises()
   expect(mocks.api).toHaveBeenCalledWith('/account/telegram/unlink','POST',{})
+  expect(localStorage.getItem('telegram_require_confirmation')).toBe('1');
   expect(mocks.setToken).toHaveBeenCalledWith(null);expect(mocks.push).toHaveBeenCalledWith('/')
   expect(mocks.api.mock.calls.filter(c=>c[0]==='/account')).toHaveLength(0)
  })

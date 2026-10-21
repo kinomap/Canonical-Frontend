@@ -12,6 +12,8 @@ const username = ref('')
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
+const challenge=ref(''),otp=ref('')
+async function confirmFactor(){loading.value=true;error.value=null;try{const r=await fetch('/api/v1/auth/mfa/complete',{method:'POST',headers:{'Content-Type':'application/json','X-TOTP-Code':otp.value,'X-Session-Mode':'cookie'},body:JSON.stringify({challenge:challenge.value})});const d=await r.json();if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Неверный код подтверждения');authStore.setToken('cookie-session');await authStore.fetchCurrentUser();localStorage.removeItem('telegram_require_confirmation');await router.push('/')}catch(e:any){error.value=e.message}finally{loading.value=false}}
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -53,7 +55,7 @@ async function handleSubmit() {
       </div>
 
       <p>{{ t("Пароль: 15–128 символов. Используйте уникальную длинную фразу.") }}</p>
-      <form class="auth-form" @submit.prevent="handleSubmit">
+      <form v-if="!challenge" class="auth-form" @submit.prevent="handleSubmit">
         <div class="form-group">
           <label class="form-label">{{ t("Username") }}</label>
           <input
@@ -108,7 +110,8 @@ async function handleSubmit() {
         </button>
       </form>
 
-<SocialLogin  />
+<SocialLogin v-if="!challenge" @challenge="challenge=$event" />
+      <form v-else class="auth-form" @submit.prevent="confirmFactor"><h2>{{t('Подтверждение 2FA')}}</h2><label class="form-group">{{t('Код 2FA или резервный код')}}<input class="form-input" v-model="otp" autocomplete="one-time-code" maxlength="64" required /></label><button class="submit-btn" :disabled="loading">{{t('Подтвердить вход')}}</button><button type="button" class="submit-btn" @click="challenge='';otp=''">{{t('Назад')}}</button></form>
       <div class="auth-footer"> {{ t("Already have an account?") }} <router-link to="/login" class="auth-link">{{ t("Sign In") }}</router-link>
       </div>
     </div>
