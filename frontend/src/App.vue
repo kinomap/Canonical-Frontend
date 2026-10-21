@@ -43,13 +43,14 @@ onUnmounted(() => {
 
 <template>
   <div class="app-wrapper">
-    <AppHeader />
+    <AppHeader v-if="!route.meta.authPopup" />
     <main class="app-main">
       <RouterView />
     </main>
 
     <!-- Global session-expired modal — rendered above everything -->
     <SessionExpiredModal
+      v-if="!route.meta.authPopup"
       :visible="sessionExpiredVisible"
       :return-url="sessionReturnUrl"
       @confirm="handleSessionConfirm"

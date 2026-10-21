@@ -79,7 +79,6 @@ async function handleSubmit() {
           />
         </div>
 
-        <p>{{ t("Защищённый вход сохраняется до 12 часов. На чужом устройстве обязательно выйдите из аккаунта.") }}</p>
 
 <button type="submit" class="submit-btn" :disabled="loading">
           <span v-if="loading">{{ t("Signing in...") }}</span>
