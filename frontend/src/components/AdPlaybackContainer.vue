@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { adRequest } from '@/api/client'
-import { pendingCues, type Cue } from '@/utils/adTimeline'
+import { pendingCues, resolvedCues, type Cue } from '@/utils/adTimeline'
 const props=withDefaults(defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string;requested?:boolean}>(),{requested:true})
 type Ad={cache_ttl_ms?:number;delivery_id:string;media_url:string;duration_sec:number;skip_after:number|null;cta_url:string;cta_text:string}
 const media=ref<HTMLVideoElement|null>(null), active=ref(false), loading=ref(false), ad=ref<Ad|null>(null), elapsed=ref(0), blocked=ref(false)
@@ -66,7 +66,7 @@ function tick(){
  const time=props.main.currentTime,duration=props.main.duration
  const due=pendingCues(cues,played,time,duration)
  if(due.length){void (running=run(due,generation)).then(()=>{if(!disposed&&!busy.value&&props.source)props.main?.play()?.catch(()=>{})});return}
- const next=cues.filter(c=>c.kind==='mid'&&!played.has(c.id)&&c.at_sec>time&&c.at_sec-time<=15&&(!Number.isFinite(duration)||c.at_sec<duration)).sort((a,b)=>a.at_sec-b.at_sec)[0]
+ const next=resolvedCues(cues,duration).filter(c=>c.kind==='mid'&&!played.has(c.id)&&c.at_sec>time&&c.at_sec-time<=15&&(!Number.isFinite(duration)||c.at_sec<duration)).sort((a,b)=>a.at_sec-b.at_sec)[0]
  if(next&&prepared?.id!==next.id)void preload(next)
 }
 async function end(){await running;if(disposed)return;const duration=props.main?.duration||Infinity;await (running=run([...pendingCues(cues,played,duration,duration),...cues.filter(c=>c.kind==='post'&&!played.has(c.id))],generation))}

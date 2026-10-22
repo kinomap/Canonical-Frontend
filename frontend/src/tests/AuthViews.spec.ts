@@ -18,10 +18,12 @@ vi.mock('@/api/client', () => ({
 describe('Auth Views & Store', () => {
   let router: any
   let authStore: any
+  let telegramCallback:any
 
   beforeEach(() => {
     vi.resetAllMocks()
-    vi.stubGlobal('fetch',vi.fn(async(url:any,init:any)=>{if(String(url).endsWith('/auth/login'))return {ok:true,json:async()=>({access_token:'cookie-session'})};return {ok:false,json:async()=>({detail:'Provider not configured'})}}))
+    window.Telegram={Login:{auth:vi.fn((_:any,cb:any)=>{telegramCallback=cb})}}
+    vi.stubGlobal('fetch',vi.fn(async(url:any)=>({ok:true,json:async()=>String(url).endsWith('/providers')?{providers:{telegram:true},telegram_bot_id:'123'}:String(url).endsWith('/start')?{state:'fixture-state'}:{access_token:'cookie-session'}})))
     vi.mocked(apiClient.getCurrentUser).mockResolvedValue({id:'u-1',username:'testuser',role:'user',status:'active'} as any)
     localStorage.clear()
     authStore = useAuthStore()
@@ -48,9 +50,9 @@ describe('Auth Views & Store', () => {
     })
   })
 
-  afterEach(()=>vi.unstubAllGlobals())
+  afterEach(()=>{vi.unstubAllGlobals();delete window.Telegram})
 
-  it('LoginView submits credentials and authenticates user', async () => {
+  it('LoginView submits native signed Telegram assertion and authenticates user', async () => {
     const mockUser = {
       id: 'u-1',
       username: 'testuser',
@@ -70,14 +72,12 @@ describe('Auth Views & Store', () => {
       global: { plugins: [router] }
     })
 
-    const inputs = wrapper.findAll('.form-input')
-    await inputs[0].setValue('testuser')
-    await inputs[1].setValue('password123')
-
-    await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
-
-    expect(fetch).toHaveBeenCalledWith('/api/v1/auth/login',expect.objectContaining({body:JSON.stringify({username_or_email:'testuser',password:'password123'})}))
+    expect(wrapper.findAll('input')).toHaveLength(0)
+    await wrapper.get('.social-login button').trigger('click')
+    telegramCallback({id:123,auth_date:123,hash:'fixture',first_name:'Fixture'})
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledWith('/api/v1/auth/social/telegram/complete',expect.objectContaining({body:JSON.stringify({state:'fixture-state',user:{id:123,auth_date:123,hash:'fixture',first_name:'Fixture'}})}))
     expect(authStore.isAuthenticated.value).toBe(true)
     expect(authStore.user.value?.username).toBe('testuser')
     expect(router.currentRoute.value.path).toBe('/')
@@ -87,10 +87,9 @@ describe('Auth Views & Store', () => {
     await router.push({ path: '/login', query: { redirect } })
     vi.mocked(apiClient.login).mockResolvedValueOnce({ access_token: 'cookie-session', token_type: 'bearer', user: { id: 'u-1', username: 'viewer', role: 'user', status: 'active' } } as any)
     const wrapper = mount(LoginView, { global: { plugins: [router] } })
-    const inputs = wrapper.findAll('.form-input')
-    await inputs[0].setValue('viewer')
-    await inputs[1].setValue('synthetic-password')
-    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    await wrapper.get('.social-login button').trigger('click')
+    telegramCallback({id:123,auth_date:123,hash:'fixture',first_name:'Fixture'})
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/')
     wrapper.unmount()

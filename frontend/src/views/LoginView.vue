@@ -9,8 +9,6 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-const usernameOrEmail = ref('')
-const password = ref('')
 const otp = ref('')
 const challenge = ref('')
 async function finishLogin(){authStore.setToken('cookie-session');await authStore.fetchCurrentUser();await router.push('/')}
@@ -21,22 +19,6 @@ const error = ref<string | null>(null)
 // Show an informational notice when redirected after session expiry
 const sessionExpired = computed(() => route.query.reason === 'session_expired')
 
-async function handleSubmit() {
-  if (!usernameOrEmail.value || !password.value) {
-    error.value = 'Please enter both username/email and password'
-    return
-  }
-
-  loading.value = true
-  error.value = null
-  try {
-    const r=await fetch('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json','X-Session-Mode':'cookie'},body:JSON.stringify({username_or_email:usernameOrEmail.value.trim(),password:password.value})});const d=await r.json();password.value='';if(d.detail?.code==='MFA_REQUIRED'){challenge.value=d.detail.challenge;return}if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Не удалось войти');await finishLogin()
-  } catch (err: any) {
-    error.value = err?.message || 'Invalid username or password'
-  } finally {
-    loading.value = false
-  }
-}
 </script>
 
 <template>
@@ -52,39 +34,6 @@ async function handleSubmit() {
       <div v-if="error" class="auth-error-alert">
         {{ error ? messageText(error) : '' }}
       </div>
-
-      <form v-if="!challenge" class="auth-form" @submit.prevent="handleSubmit">
-
-        <div class="form-group">
-          <label class="form-label">{{ t("Username or Email") }}</label>
-          <input
-            v-model="usernameOrEmail"
-            type="text"
-            required
-            :placeholder="t('enter username or email')"
-            class="form-input"
-            autocomplete="username"
-          />
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">{{ t("Password") }}</label>
-          <input
-            v-model="password"
-            type="password"
-            required
-            placeholder="••••••••"
-            class="form-input"
-            autocomplete="current-password"
-          />
-        </div>
-
-
-<button type="submit" class="submit-btn" :disabled="loading">
-          <span v-if="loading">{{ t("Signing in...") }}</span>
-          <span v-else>{{ t("Sign In") }}</span>
-        </button>
-      </form>
 
 <SocialLogin v-if="!challenge" @challenge="challenge=$event" />
       <form v-else class="auth-form" @submit.prevent="confirmFactor"><h2>Подтверждение 2FA</h2><label class="form-group">Код 2FA или резервный код<input class="form-input" v-model="otp" autocomplete="one-time-code" maxlength="64" autofocus required /></label><button class="submit-btn" :disabled="loading">Подтвердить вход</button><button type="button" class="submit-btn" @click="challenge='';otp=''">Назад</button></form>

@@ -10,7 +10,7 @@ let w:any
 beforeEach(()=>{vi.clearAllMocks();setLanguage('ru');m.fetchCurrentUser.mockResolvedValue({id:'fixture'});w=mount(LoginView,{global:{stubs:{SocialLogin:true}}})})
 afterEach(()=>{w.unmount();vi.unstubAllGlobals()})
 describe('Clean login and second-step site MFA',()=>{
- it('has two fields and exactly two buttons without auxiliary links',()=>{expect(w.findAll('input')).toHaveLength(2);expect(w.findAll('button').map((b:any)=>b.text())).toEqual(['Войти']);expect(w.findAll('a')).toHaveLength(0);expect(w.findComponent(SocialLogin).exists()).toBe(true);expect(w.text()).not.toContain('был отвязан')})
+ it('has only the native Telegram component, no password form or auxiliary buttons',()=>{expect(w.findAll('input')).toHaveLength(0);expect(w.findAll('button')).toHaveLength(0);expect(w.findAll('a')).toHaveLength(0);expect(w.findComponent(SocialLogin).exists()).toBe(true);expect(w.text()).not.toContain('был отвязан')})
  it('replaces native login with MFA and sends six digits to MFA completion only',async()=>{
   w.findComponent(SocialLogin).vm.$emit('challenge','fixture-mfa');await flushPromises();expect(w.find('input[type=password]').exists()).toBe(false);expect(w.findComponent(SocialLogin).exists()).toBe(false)
   vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({access_token:'cookie-session'})})))

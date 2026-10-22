@@ -1,6 +1,6 @@
 # Native Telegram login
 
-The login card contains username/email, password, the primary sign-in button and exactly one rectangular Telegram button. There are no account-switch, disconnected-account, bot-confirmation or registration controls on /login. Existing site MFA appears only as a second step.
+The initial /login card contains exactly one rectangular Telegram button. No username/password inputs or local password-submit action are rendered. Password endpoints remain supported for private admin/recovery; they are not removed. There are no account-switch, disconnected-account, bot-confirmation or registration controls on /login. Existing site MFA appears only as a second step.
 
 The official https://telegram.org/js/telegram-widget.js?22 SDK is loaded ahead of a user click; window.Telegram.Login.auth is invoked synchronously by that click. No bot-chat redirect, site confirmation popup or polling is used. Signed payloads are checked server-side with CSRF state, HMAC, five-minute age, replay prevention, rate limits, account status and site MFA intact.
 
