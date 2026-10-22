@@ -2,6 +2,7 @@
 import { t } from '@/i18n'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { catalogPage } from '@/router/catalogNavigation'
 import { apiClient } from '@/api/client'
 import type { Genre, MovieFilters, MovieSummary } from '@/types/movie'
 import MovieCard from '@/components/MovieCard.vue'
@@ -14,7 +15,7 @@ const router = useRouter()
 const movies = ref<MovieSummary[]>([])
 const genres = ref<Genre[]>([])
 const total = ref(0)
-const page = ref(1)
+const page = ref(catalogPage(route.query.page))
 const pageSize = ref(20)
 
 const selectedGenre = ref<string>( (route.query.genre as string) || '' )
@@ -138,7 +139,7 @@ watch(
     selectedMinRating.value = (newQuery.min_rating as string) || ''
     selectedSort.value = (newQuery.sort as string) || 'popular'
     searchQuery.value = (newQuery.q as string) || ''
-    if (newQuery.page) page.value = parseInt(newQuery.page as string, 10) || 1
+    page.value = catalogPage(newQuery.page)
     loadMovies()
   }
 )
@@ -150,7 +151,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="catalog-page">
+  <div class="catalog-page" :data-catalog-ready="!loading">
     <div class="catalog-title-bar">
       <h1 class="page-title">
         <span v-if="searchQuery">{{ t("Search Results for \"") }}{{ searchQuery }}"</span>

@@ -2,6 +2,7 @@
 import { t } from '@/i18n'
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
+import { listingHistoryBack, returnToListing } from '@/router/catalogNavigation'
 import { apiClient, ApiError } from '@/api/client'
 import type { AudioTrack, MovieDetail } from '@/types/movie'
 import type { Comment, MovieReaction } from '@/api/client'
@@ -14,6 +15,10 @@ import { Play } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
+const backTarget = computed(() => {
+  void route.fullPath
+  return listingHistoryBack(window.history.state?.back) || '/movies'
+})
 const { user: currentUser, isAuthenticated, token, fetchCurrentUser } = useAuthStore()
 
 const movieId = computed(() => route.params.id as string)
@@ -200,10 +205,10 @@ onMounted(() => {
 <template>
   <div class="movie-details-page">
     <nav class="details-nav">
-      <router-link to="/" class="back-link">
+      <a :href="backTarget" class="back-link" @click="returnToListing(router, $event)">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="m15 18-6-6 6-6"/>
-        </svg> {{ t("Back to Catalog") }} </router-link>
+        </svg> {{ t("Back to Catalog") }} </a>
     </nav>
 
     <!-- Loading Skeleton (matches exact YouTube layout to avoid UI flash) -->

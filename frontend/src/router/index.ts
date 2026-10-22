@@ -8,10 +8,12 @@ import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
 import ProfileView from '@/views/ProfileView.vue'
 import NotFoundView from '@/views/NotFoundView.vue'
+import { createCatalogScrollBehavior } from './catalogNavigation'
 import { handleChunkLoadError } from './chunkReload'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
+  scrollBehavior: createCatalogScrollBehavior(),
   routes: [
     {
       path: '/',
