@@ -20,5 +20,5 @@ server {
     location /media/ { proxy_pass http://__BACKEND_WG_ADDRESS__:8888; }
     location /stream/ { return 404; } # video must go directly to Media Node, never through Frontend/CP
     location __ADMIN_PATH__ { alias /usr/share/nginx/html/admin/; try_files $uri $uri/ __ADMIN_PATH__index.html; }
-    location / { root /usr/share/nginx/html/public; try_files $uri $uri/ /index.html; }
+    location / { root /usr/share/nginx/html/public; try_files $uri /index.html; }
 }
