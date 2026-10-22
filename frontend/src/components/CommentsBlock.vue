@@ -14,6 +14,11 @@ const props = defineProps<{
 const authStore = useAuthStore()
 const { isAuthenticated, user: currentUser } = authStore
 
+// Telegram-only accounts may intentionally have no public username.
+function avatarInitial(name?: string | null): string {
+  return Array.from(name?.trim() || '?')[0]!.toUpperCase()
+}
+
 const comments = ref<Comment[]>([])
 const newComment = ref('')
 const editingCommentId = ref<string | null>(null)
@@ -97,7 +102,7 @@ watch(() => props.targetId, () => {
 
     <!-- Add Comment Box -->
     <div class="comment-input-area" v-if="isAuthenticated">
-      <div class="comment-avatar me">{{ currentUser?.username[0].toUpperCase() }}</div>
+      <div class="comment-avatar me">{{ avatarInitial(currentUser?.display_name || currentUser?.username) }}</div>
       <div class="comment-form">
         <input
           type="text"
@@ -131,7 +136,7 @@ watch(() => props.targetId, () => {
       </template>
       <template v-else>
         <div v-for="comment in comments" :key="comment.id" class="comment-item">
-          <div class="comment-avatar">{{ comment.user.username[0].toUpperCase() }}</div>
+          <div class="comment-avatar">{{ avatarInitial(comment.user.username) }}</div>
           <div class="comment-body" v-if="editingCommentId !== comment.id">
             <div class="comment-header">
               <span class="comment-author">@{{ comment.user.username }}</span>
