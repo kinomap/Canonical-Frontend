@@ -99,6 +99,8 @@ async function handlePlay() {
     return
   }
   playbackStarting.value = true
+  // Mount the ad player now; resolve the main stream in parallel.
+  shouldPlay.value = true
   if (!streamUrl.value) {
     try {
       const res = await apiClient.startPlayback(movieId.value)
@@ -252,7 +254,7 @@ onMounted(() => {
           </div>
         </div>
       </div>
-      <VideoPlayer :target-id="movie?.id" target-type="movie" v-else-if="streamUrl" :src="streamUrl" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" />
+      <VideoPlayer :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" />
       <!-- Inline player error (non-auth failures only) -->
       <div v-if="playError" class="inline-error" role="alert">
         <span>{{ playError }}</span>

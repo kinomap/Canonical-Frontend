@@ -5,6 +5,7 @@ import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = defineProps<{
   src: string;
+  requested?: boolean;
   targetId?: string;
   targetType?: 'movie' | 'episode';
   poster?: string;
@@ -70,6 +71,7 @@ function formatTime(seconds: number) {
 }
 
 function togglePlay() {
+  if(props.requested===false)return
   if (adsRef.value?.busy) return
   if (!videoRef.value) return
   if (videoRef.value.paused) {
@@ -192,6 +194,7 @@ function toggleFullscreen() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if(props.requested===false)return
   if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return
   if (e.code === 'Space') {
     e.preventDefault()
@@ -243,7 +246,7 @@ onBeforeUnmount(() => {
     <div class="video-wrap">
       <video 
         ref="videoRef"
-        :src="src"
+        :src="src||undefined"
         :poster="poster"
         preload="auto"
         playsinline
@@ -259,7 +262,7 @@ onBeforeUnmount(() => {
         @seeking="adsRef?.tick()"
       ></video>
       
-      <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" />
+      <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" :requested="requested" />
       <!-- Buffering overlay -->
       <div class="buf-overlay" :class="{ show: isBuffering }">
         <div class="spinner"></div>

@@ -278,9 +278,9 @@ onMounted(() => {
           </div>
         </div>
 
-        <VideoPlayer :target-id="selectedEpisode?.id" target-type="episode"
-          v-else-if="streamUrl"
-          :src="streamUrl"
+        <VideoPlayer :target-id="isAuthenticated?selectedEpisode?.id:undefined" target-type="episode"
+          v-show="shouldPlay" :requested="shouldPlay"
+          :src="streamUrl||''"
           :poster="series.backdrop_url || series.poster_url || undefined"
           :title="series.title + ' — ' + playingEpisodeTitle"
         />

@@ -214,7 +214,7 @@ describe('MovieDetailsView.vue', () => {
     wrapper.unmount()
   })
 
-  it.each(['success', 'failure'])('keeps the player splash and page stable during a pending playback start (%s)', async (outcome) => {
+  it.each(['success', 'failure'])('mounts the ad player immediately while resolving main stream (%s)', async (outcome) => {
     vi.mocked(apiClient.getMovie).mockResolvedValueOnce({
       id: 'movie-123', title: 'Stable Movie', original_title: '', year: 2024,
       poster: '/poster.jpg', rating: null, runtime: 90, quality: 'HD',
@@ -234,14 +234,13 @@ describe('MovieDetailsView.vue', () => {
     const wrapper = mount(MovieDetailsView, { global: { plugins: [router] } })
     await flushPromises()
     expect(apiClient.startPlayback).not.toHaveBeenCalled()
-    const splash = wrapper.find('.player-container').element
     const content = wrapper.find('.main-content').element
     await wrapper.find('.player-container').trigger('click')
-    await wrapper.find('.player-container').trigger('click')
     expect(apiClient.startPlayback).toHaveBeenCalledTimes(1)
-    expect(wrapper.find('.player-container').element).toBe(splash)
+    expect(wrapper.findComponent({name:'VideoPlayer'}).exists()).toBe(true)
+    expect(wrapper.findComponent({name:'VideoPlayer'}).props('src')).toBe('')
     expect(wrapper.find('.main-content').element).toBe(content)
-    expect(wrapper.find('.player-container').attributes('aria-busy')).toBe('true')
+    expect(wrapper.find('.player-container').exists()).toBe(false)
     expect(router.currentRoute.value.fullPath).toBe('/movies/movie-123')
     if (outcome === 'success') {
       resolveStart({ session_id: 's1', media_url: 'https://media.example/stream', heartbeat_interval_seconds: 30 })
@@ -253,7 +252,7 @@ describe('MovieDetailsView.vue', () => {
     if (outcome === 'success') {
       expect(wrapper.findComponent({ name: 'VideoPlayer' }).exists()).toBe(true)
     } else {
-      expect(wrapper.find('.player-container').element).toBe(splash)
+      expect(wrapper.find('.player-container').exists()).toBe(true)
       expect(wrapper.text()).toContain('Node unavailable')
       expect(wrapper.find('.player-container').attributes('aria-busy')).toBe('false')
     }

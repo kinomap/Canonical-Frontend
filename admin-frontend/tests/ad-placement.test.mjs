@@ -24,9 +24,8 @@ test('group selection cannot accidentally apply stale selected videos or exact t
 test('invalid draft cannot reach server preview',()=>{
  for(const change of [{creative_id:''},{targets:[]},{where:'genre'},{minutes:0.5},{minutes:121},{exact:'00:60:00'},{exact:'07:00:00'},{exact:'00:00:00'},{exact:'00:01:00,00:01:00'},{preroll:false}])assert.throws(()=>placementBody({...draft(),...change}))
 })
-test('confirmation invalidates synchronously on edits; delete needs a separate explicit confirmation',()=>{
+test('two modes, visual markers and revision-safe save replace four tabs and comma timings',()=>{
  const view=readFileSync(new URL('../src/views/AdStudio.vue',import.meta.url),'utf8')
- assert.match(view,/watch\(draft,[^\n]+review\.value=null[^\n]+flush:'sync'/)
- for(const text of ["'/placements/preview'","'/placements/apply'",'confirmation_token:token',"'/usage'",'deleteCandidate','deleteUsage.videos','Удалить из библиотеки','Статистика сохраняется','role="dialog"'])assert.ok(view.includes(text),text)
- assert.match(view,/params:\{confirm:true\}/)
+ for(const text of ['Ролики и авто-правила','Визуальная студия таймингов','revision:revision.value','@pointerdown="drag','@keydown.left.prevent','Тест перехода','testTransition','/api/v1/playback/stop','/api/v1/playback/heartbeat'])assert.ok(view.includes(text),text)
+ for(const text of ['Точные тайминги видео','Настроить показ','через запятую'])assert.ok(!view.includes(text),text)
 })

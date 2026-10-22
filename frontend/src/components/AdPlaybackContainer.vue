@@ -2,13 +2,15 @@
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { adRequest } from '@/api/client'
 import { pendingCues, type Cue } from '@/utils/adTimeline'
-const props=defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string}>()
+const props=defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string;requested?:boolean}>()
 type Ad={delivery_id:string;media_url:string;duration_sec:number;skip_after:number|null;cta_url:string;cta_text:string}
 const media=ref<HTMLVideoElement|null>(null), active=ref(false), loading=ref(false), ad=ref<Ad|null>(null), elapsed=ref(0), blocked=ref(false)
+const requested=computed(()=>props.requested!==false)
 const busy=computed(()=>active.value||loading.value)
 const remaining=computed(()=>Math.max(0,Math.ceil((ad.value?.duration_sec||0)-elapsed.value)))
 const canSkip=computed(()=>ad.value?.skip_after!=null&&elapsed.value>=ad.value.skip_after)
 let cues:Cue[]=[], token='', played=new Set<string>(), generation=0, disposed=false, finish:(()=>void)|null=null, watchdog:ReturnType<typeof setTimeout>|null=null, started=false
+let initialReady:Promise<void>=Promise.resolve(),preStarted=false
 let running:Promise<void>=Promise.resolve()
 let prepared:{id:string;at:number;value:Promise<Ad|null>}|null=null
 function clearTimer(){if(watchdog)clearTimeout(watchdog);watchdog=null}
@@ -34,29 +36,36 @@ async function run(list:Cue[],g:number){
   if(!value)continue
   ad.value=value;elapsed.value=0;started=false;blocked.value=false;active.value=true;loading.value=false
   await nextTick()
-  await new Promise<void>(resolve=>{finish=resolve;arm();media.value?.play().catch(()=>{blocked.value=true;clearTimer()})})
+  await new Promise<void>(resolve=>{finish=resolve;arm();media.value?.play().catch((e:DOMException)=>{if(e.name==='NotAllowedError'){blocked.value=true;clearTimer()}else complete('error')})})
   if(g!==generation)break
   active.value=false;ad.value=null;prepared=null;loading.value=true
  }
  if(g===generation){loading.value=false;active.value=false}
 }
 async function initialize(){
- const g=++generation;clearTimer();finish?.();finish=null;played=new Set();cues=[];token='';prepared=null;ad.value=null;active.value=false
+ const g=++generation;preStarted=false;clearTimer();finish?.();finish=null;played=new Set();cues=[];token='';prepared=null;ad.value=null;active.value=false
  if(!props.targetId){loading.value=false;return}
- loading.value=true;props.main?.pause()
+ loading.value=requested.value;props.main?.pause()
  try{
   const p=await adRequest<{cue_points:Cue[];plan_token:string|null}>('/ads/plan/'+(props.targetType||'movie')+'/'+props.targetId,{signal:AbortSignal.timeout(5000)})
   if(g!==generation||disposed)return
   cues=p.cue_points;token=p.plan_token||''
-  await (running=run(cues.filter(c=>c.kind==='pre'),g))
+  if(requested.value)await startInitial(g)
+  else {const first=cues.find(c=>c.kind==='pre');if(first)await preload(first)}
  }catch{/* Ad service failure must not take down main playback. */}
- if(g===generation&&!disposed){loading.value=false;props.main?.play()?.catch(()=>{})}
+ if(g===generation&&!disposed){loading.value=false;if(props.source&&requested.value)props.main?.play()?.catch(()=>{})}
+}
+async function startInitial(g:number){
+ if(preStarted||g!==generation||disposed||!requested.value)return
+ preStarted=true
+ await (running=run(cues.filter(c=>c.kind==='pre'),g))
+ if(g===generation&&!disposed&&requested.value){loading.value=false;if(props.source)props.main?.play()?.catch(()=>{})}
 }
 function tick(){
- if(!props.main||busy.value)return
+ if(!requested.value||!props.main||busy.value)return
  const time=props.main.currentTime,duration=props.main.duration
  const due=pendingCues(cues,played,time,duration)
- if(due.length){void (running=run(due,generation)).then(()=>{if(!disposed&&!busy.value)props.main?.play()?.catch(()=>{})});return}
+ if(due.length){void (running=run(due,generation)).then(()=>{if(!disposed&&!busy.value&&props.source)props.main?.play()?.catch(()=>{})});return}
  const next=cues.filter(c=>c.kind==='mid'&&!played.has(c.id)&&c.at_sec>time&&c.at_sec-time<=15&&(!Number.isFinite(duration)||c.at_sec<duration)).sort((a,b)=>a.at_sec-b.at_sec)[0]
  if(next&&prepared?.id!==next.id)void preload(next)
 }
@@ -69,7 +78,10 @@ function complete(kind:'completion'|'skip'|'error'){
  const done=finish;finish=null;done?.()
 }
 function play(){void media.value?.play().catch(()=>{blocked.value=true})}
-watch(()=>[props.targetId,props.source,props.main],()=>{if(props.main)void initialize()},{immediate:true,flush:'post'})
+// Main URL is resolved independently; changing it must not restart pre-roll.
+watch(()=>[props.targetId,props.main],()=>{if(props.main)initialReady=initialize()},{immediate:true,flush:'post'})
+watch(()=>props.source,()=>{if(props.source&&requested.value&&!busy.value)props.main?.play()?.catch(()=>{})},{flush:'post'})
+watch(requested,value=>{if(!value){media.value?.pause();props.main?.pause();return}if(active.value){void media.value?.play().catch(()=>{blocked.value=true});return}if(preStarted&&props.source){props.main?.play()?.catch(()=>{});return}void initialReady.then(()=>startInitial(generation))},{flush:'post'})
 onBeforeUnmount(()=>{disposed=true;generation++;clearTimer();finish?.();media.value?.pause()})
 defineExpose({busy,tick,end})
 </script>
