@@ -1,3 +1,6 @@
+import axios from 'axios'
+import '../httpClient'
+import { safeReturnPath } from '../sessionNavigation'
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
@@ -141,12 +144,20 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, _from, next) => {
-  const token = localStorage.getItem('admin_token')
-  if (to.meta.requiresAuth && !token) {
-    next('/login')
-  } else {
-    next()
+router.beforeEach(async to => {
+  if (!to.meta.requiresAuth) return true
+  // localStorage is only a UI marker. The server decides whether a session exists.
+  try {
+    const {data} = await axios.get('/api/v1/auth/me', {timeout:10000})
+    if (data.role !== 'admin') {
+      localStorage.removeItem('admin_token')
+      return {name:'login',query:{reason:'forbidden'}}
+    }
+    localStorage.setItem('admin_token','cookie-session')
+    return true
+  } catch (error: any) {
+    if (error.response?.status === 401) localStorage.removeItem('admin_token')
+    return {name:'login',query:{reason:error.response?.status === 401?'expired':'unavailable',redirect:safeReturnPath(to.fullPath)}}
   }
 })
 

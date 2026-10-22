@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 
+import { safeReturnPath } from '../sessionNavigation'
 const router = useRouter()
+const route = useRoute()
+const sessionNotice = computed(() => route.query.reason === 'expired' ? 'Сессия администратора завершена. Войдите снова, затем повторите загрузку ролика.' : route.query.reason === 'unavailable' ? 'Не удалось проверить сессию. Проверьте соединение и повторите вход.' : route.query.reason === 'forbidden' ? 'Для входа требуется учётная запись администратора.' : '')
 const usernameOrEmail = ref('')
 const password = ref('')
 const otp = ref('')
@@ -25,7 +28,7 @@ const handleLogin = async () => {
     }
 
     localStorage.setItem('admin_token', 'cookie-session')
-    router.push('/')
+    await router.replace(safeReturnPath(route.query.redirect))
   } catch (err: any) {
     if (err.response && err.response.data && err.response.data.detail) {
       errorMsg.value = err.response.data.detail
@@ -42,6 +45,7 @@ const handleLogin = async () => {
   <div class="login-container">
     <div class="login-card">
       <h1 class="login-title">KINOSOTA <span class="highlight">ADMIN</span></h1>
+      <p v-if="sessionNotice" role="status" class="session-notice">{{ sessionNotice }}</p>
       <form @submit.prevent="handleLogin" class="login-form">
         <div class="input-group">
           <label>Username or Email</label>
@@ -94,6 +98,8 @@ const handleLogin = async () => {
 .highlight {
   color: #38bdf8;
 }
+
+.session-notice { color:#fbbf24; line-height:1.5; margin-bottom:20px; }
 
 .login-form {
   display: flex;
