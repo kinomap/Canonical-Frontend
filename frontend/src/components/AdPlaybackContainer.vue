@@ -3,7 +3,7 @@ import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { adRequest } from '@/api/client'
 import { pendingCues, type Cue } from '@/utils/adTimeline'
 const props=withDefaults(defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string;requested?:boolean}>(),{requested:true})
-type Ad={delivery_id:string;media_url:string;duration_sec:number;skip_after:number|null;cta_url:string;cta_text:string}
+type Ad={cache_ttl_ms?:number;delivery_id:string;media_url:string;duration_sec:number;skip_after:number|null;cta_url:string;cta_text:string}
 const media=ref<HTMLVideoElement|null>(null), active=ref(false), loading=ref(false), ad=ref<Ad|null>(null), elapsed=ref(0), blocked=ref(false)
 const requested=computed(()=>props.requested!==false)
 const busy=computed(()=>active.value||loading.value)
@@ -12,15 +12,15 @@ const canSkip=computed(()=>ad.value?.skip_after!=null&&elapsed.value>=ad.value.s
 let cues:Cue[]=[], token='', played=new Set<string>(), generation=0, disposed=false, finish:(()=>void)|null=null, watchdog:ReturnType<typeof setTimeout>|null=null, started=false
 let initialReady:Promise<void>=Promise.resolve(),preStarted=false
 let running:Promise<void>=Promise.resolve()
-let prepared:{id:string;at:number;value:Promise<Ad|null>}|null=null
+let prepared:{id:string;at:number;maxAge:number;value:Promise<Ad|null>}|null=null
 function clearTimer(){if(watchdog)clearTimeout(watchdog);watchdog=null}
 function arm(){clearTimer();watchdog=setTimeout(()=>complete('error'),20000)}
 let telemetry:Promise<void>=Promise.resolve()
 function event(kind:string){const id=ad.value?.delivery_id;if(!id)return Promise.resolve();telemetry=telemetry.then(async()=>{try{await adRequest('/ads/events/'+id,{method:'POST',body:JSON.stringify({event:kind}),signal:AbortSignal.timeout(5000)})}catch{/* Never fake completion or interrupt the movie on telemetry failure. */}});return telemetry}
 function prepare(cue:Cue):Promise<Ad|null>{
- if(!prepared||prepared.id!==cue.id||Date.now()-prepared.at>240000){
+ if(!prepared||prepared.id!==cue.id||Date.now()-prepared.at>=prepared.maxAge){
   const t=token
-  prepared={id:cue.id,at:Date.now(),value:adRequest<{ad:Ad|null}>('/ads/prepare',{method:'POST',body:JSON.stringify({plan_token:t,cue_id:cue.id}),signal:AbortSignal.timeout(6000)}).then(x=>x.ad).catch(()=>null)}
+  prepared={id:cue.id,at:Date.now(),maxAge:30000,value:adRequest<{ad:Ad|null}>('/ads/prepare',{method:'POST',body:JSON.stringify({plan_token:t,cue_id:cue.id}),signal:AbortSignal.timeout(6000)}).then(x=>{if(prepared?.id===cue.id)prepared.maxAge=Math.max(1,Math.min(30000,x.ad?.cache_ttl_ms??30000));return x.ad}).catch(()=>null)}
  }
  return prepared.value
 }
