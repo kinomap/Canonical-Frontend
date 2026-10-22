@@ -97,6 +97,9 @@ function changePage(newPage: number) {
   }
 }
 
+const artworkAliases:Record<string,string>={mystery:'detektiv','televizionnyj-fil-m':'televizionnyj-film',fentezi:'fjentezi'}
+function genreArtwork(slug:string){return '/genres/'+(artworkAliases[slug]||slug)+'.jpg'}
+
 function onImageError(e: Event) {
   const target = e.target as HTMLElement;
   target.style.backgroundImage = 'linear-gradient(135deg, #1f2028 0%, #26293a 100%)';
@@ -211,7 +214,7 @@ onMounted(async () => {
         >
           <div 
             class="genre-card-bg"
-            :style="{ backgroundImage: `url('/genres/${genre.slug}.jpg')` }"
+            :style="{ backgroundImage: `url('${genreArtwork(genre.slug)}')` }"
             @error="onImageError"
           ></div>
           <div class="genre-card-overlay"></div>

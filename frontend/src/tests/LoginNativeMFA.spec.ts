@@ -3,14 +3,14 @@ import {mount,flushPromises} from '@vue/test-utils'
 import LoginView from '@/views/LoginView.vue'
 import SocialLogin from '@/components/SocialLogin.vue'
 import {setLanguage} from '@/i18n'
-const m=vi.hoisted(()=>({push:vi.fn(),setToken:vi.fn(),fetchCurrentUser:vi.fn()}))
+const m=vi.hoisted(()=>({push:vi.fn(),setToken:vi.fn(),fetchCurrentUser:vi.fn(),login:vi.fn()}))
 vi.mock('@/stores/auth',()=>({useAuthStore:()=>m}))
 vi.mock('vue-router',()=>({useRouter:()=>({push:m.push}),useRoute:()=>({query:{}})}))
 let w:any
 beforeEach(()=>{vi.clearAllMocks();setLanguage('ru');m.fetchCurrentUser.mockResolvedValue({id:'fixture'});w=mount(LoginView,{global:{stubs:{SocialLogin:true}}})})
 afterEach(()=>{w.unmount();vi.unstubAllGlobals()})
 describe('Clean login and second-step site MFA',()=>{
- it('has only the native Telegram component, no password form or auxiliary buttons',()=>{expect(w.findAll('input')).toHaveLength(0);expect(w.findAll('button')).toHaveLength(0);expect(w.findAll('a')).toHaveLength(0);expect(w.findComponent(SocialLogin).exists()).toBe(true);expect(w.text()).not.toContain('был отвязан')})
+ it('has password credentials and native Telegram, no unlink notices',()=>{expect(w.findAll('input')).toHaveLength(2);expect(w.findAll('button')).toHaveLength(1);expect(w.findAll('a')).toHaveLength(0);expect(w.findComponent(SocialLogin).exists()).toBe(true);expect(w.text()).not.toContain('был отвязан')})
  it('replaces native login with MFA and sends six digits to MFA completion only',async()=>{
   w.findComponent(SocialLogin).vm.$emit('challenge','fixture-mfa');await flushPromises();expect(w.find('input[type=password]').exists()).toBe(false);expect(w.findComponent(SocialLogin).exists()).toBe(false)
   vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({access_token:'cookie-session'})})))
@@ -21,4 +21,9 @@ describe('Clean login and second-step site MFA',()=>{
   w.findComponent(SocialLogin).vm.$emit('challenge','fixture-mfa');await flushPromises();vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,json:async()=>({detail:'Неверный код'})})))
   await w.get('input[autocomplete=one-time-code]').setValue('000000');await w.get('form').trigger('submit.prevent');await flushPromises();expect(m.setToken).not.toHaveBeenCalled();expect(m.push).not.toHaveBeenCalled();expect(w.find('.auth-error-alert').exists()).toBe(true);expect(w.find('input[autocomplete=one-time-code]').exists()).toBe(true)
  })
+})
+
+it('submits ordinary credentials without replacing Telegram',async()=>{
+ m.login=vi.fn().mockResolvedValue({access_token:'cookie-session'});
+ await w.get('input[autocomplete=username]').setValue('kinosota_qa');await w.get('input[type=password]').setValue('fixture-only');await w.get('form').trigger('submit.prevent');await flushPromises();expect(m.login).toHaveBeenCalledWith('kinosota_qa','fixture-only');expect(m.push).toHaveBeenCalledWith('/')
 })

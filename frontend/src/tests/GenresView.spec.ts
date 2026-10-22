@@ -53,4 +53,17 @@ describe('GenresView.vue', () => {
     expect(wrapper.find('.genres-error').exists()).toBe(true)
     expect(wrapper.text()).toContain('Network error')
   })
+  it('maps canonical genre slugs to real shipped artwork',async()=>{
+    vi.mocked(apiClient.listGenres).mockResolvedValueOnce([
+      {id:1,name:'Mystery',slug:'mystery'},
+      {id:2,name:'TV',slug:'televizionnyj-fil-m'},
+      {id:3,name:'Fantasy',slug:'fentezi'}
+    ])
+    const w=mount(GenresView,{global:{plugins:[router]}});await flushPromises()
+    const styles=w.findAll('.genre-card-bg').map(c=>c.attributes('style')).join(' ')
+    expect(styles).toContain('/genres/detektiv.jpg')
+    expect(styles).toContain('/genres/televizionnyj-film.jpg')
+    expect(styles).toContain('/genres/fjentezi.jpg')
+  })
+
 })

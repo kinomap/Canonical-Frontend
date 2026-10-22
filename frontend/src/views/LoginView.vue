@@ -9,7 +9,17 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
+const username = ref('')
+const password = ref('')
 const otp = ref('')
+async function passwordLogin(){
+ loading.value=true;error.value=null
+ try{await authStore.login(username.value.trim(),password.value);password.value='';await router.push('/')}
+ catch(e:any){let detail:any;try{detail=JSON.parse(e.message)}catch{}
+  if(detail?.code==='MFA_REQUIRED'&&detail.challenge){challenge.value=detail.challenge;password.value=''}
+  else error.value=e.message
+ }finally{loading.value=false}
+}
 const challenge = ref('')
 async function finishLogin(){authStore.setToken('cookie-session');await authStore.fetchCurrentUser();await router.push('/')}
 async function confirmFactor(){loading.value=true;error.value=null;try{const r=await fetch('/api/v1/auth/mfa/complete',{method:'POST',headers:{'Content-Type':'application/json','X-TOTP-Code':otp.value,'X-Session-Mode':'cookie'},body:JSON.stringify({challenge:challenge.value})});const d=await r.json();if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Неверный код подтверждения');await finishLogin();localStorage.removeItem('telegram_require_confirmation');localStorage.removeItem('tg_just_unlinked');localStorage.removeItem('tg_unlinked_username')}catch(e:any){error.value=e.message}finally{loading.value=false}}
@@ -35,7 +45,15 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
         {{ error ? messageText(error) : '' }}
       </div>
 
-<SocialLogin v-if="!challenge" @challenge="challenge=$event" />
+<template v-if="!challenge">
+      <form class="auth-form" @submit.prevent="passwordLogin">
+        <label class="form-group"><span class="form-label">Логин или электронная почта</span><input class="form-input" v-model="username" autocomplete="username" name="username" required maxlength="254" /></label>
+        <label class="form-group"><span class="form-label">Пароль</span><input class="form-input" v-model="password" type="password" autocomplete="current-password" name="password" required maxlength="1024" /></label>
+        <button class="submit-btn" type="submit" :disabled="loading">{{loading?'Входим…':'Войти'}}</button>
+      </form>
+      <p class="login-divider">или</p>
+      <SocialLogin @challenge="challenge=$event;password=''" />
+      </template>
       <form v-else class="auth-form" @submit.prevent="confirmFactor"><h2>Подтверждение 2FA</h2><label class="form-group">Код 2FA или резервный код<input class="form-input" v-model="otp" autocomplete="one-time-code" maxlength="64" autofocus required /></label><button class="submit-btn" :disabled="loading">Подтвердить вход</button><button type="button" class="submit-btn" @click="challenge='';otp=''">Назад</button></form>
 
     </div>
@@ -43,6 +61,9 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
 </template>
 
 <style scoped>
+.login-divider{text-align:center;color:#aeb5c4;margin:20px 0}
+.form-input:focus-visible,.submit-btn:focus-visible{outline:2px solid #a8c3ff;outline-offset:3px}
+
 .auth-page {
   min-height: 80vh;
   display: flex;

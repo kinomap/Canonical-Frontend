@@ -73,7 +73,7 @@ describe('Auth Views & Store', () => {
     })
 
     await flushPromises()
-    expect(wrapper.findAll('input')).toHaveLength(0)
+    expect(wrapper.find('input[autocomplete=username]').exists()).toBe(true)
     await wrapper.get('.social-login button').trigger('click')
     telegramCallback({id:123,auth_date:123,hash:'fixture',first_name:'Fixture'})
     await flushPromises()

@@ -81,3 +81,14 @@ it('unlinks password account without signing out or redirecting',async()=>{
  await w.findAll('button').find(b=>b.text()==='Отвязать Telegram')!.trigger('click');await flushPromises()
  expect(mocks.setToken).not.toHaveBeenCalledWith(null);expect(mocks.push).not.toHaveBeenCalled();expect(w.text()).toContain('Telegram отвязан.');expect(localStorage.getItem('tg_just_unlinked')).toBeNull()
 })
+
+it('stops initial spinner on failure and retries the account without rendering null data',async()=>{
+ mocks.api.mockRejectedValueOnce(new Error('Account temporarily unavailable'))
+ const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+ expect(w.get('[role=alert]').text()).toContain('Account temporarily unavailable')
+ expect(w.text()).not.toContain('Загружаем аккаунт')
+ expect(w.find('#panel-profile').exists()).toBe(false)
+ await w.get('[role=alert] button').trigger('click');await flushPromises()
+ expect(w.find('#panel-profile').exists()).toBe(true)
+ expect(w.find('[role=alert]').exists()).toBe(false)
+})
