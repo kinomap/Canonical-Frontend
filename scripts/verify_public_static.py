@@ -22,7 +22,7 @@ try:
  fonts=run('exec',name,'find','/usr/share/nginx/html','-name','Manrope-*.ttf').decode().splitlines()
  assert fonts,'Self-hosted Manrope missing from image'
  for asset in fonts:
-  relative=asset.split('/usr/share/nginx/html/',1)[1]
+  relative=str(Path(asset).relative_to('/usr/share/nginx/html/public'))
   body=run('exec',name,'wget','-q','-O-','http://127.0.0.1/'+relative)
   assert body==(font_root/'Manrope-Variable.ttf').read_bytes(),'Font not served byte-for-byte'
  print('PASS: actual Nginx delivered',len(files),'avatar/genre assets and',len(fonts),'Manrope asset(s) byte-for-byte; no host port opened')
