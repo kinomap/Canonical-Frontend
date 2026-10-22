@@ -328,7 +328,7 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   text-decoration: none;
   font-size: 0.95rem;
   font-weight: 500;
@@ -336,7 +336,7 @@ onMounted(() => {
 }
 
 .back-link:hover {
-  color: #f3f4f6;
+  color: var(--ui-text);
 }
 
 /* Common states */
@@ -347,10 +347,10 @@ onMounted(() => {
   justify-content: center;
   padding: 80px 16px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  color: #9ca3af;
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius-panel);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-secondary);
 }
 
 /* Skeleton layout for seamless zero-flicker loading */
@@ -359,7 +359,7 @@ onMounted(() => {
 }
 
 .player-skeleton {
-  background: linear-gradient(90deg, #16171e 25%, #222430 50%, #16171e 75%);
+  background: var(--ui-surface);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite;
   cursor: default;
@@ -369,8 +369,8 @@ onMounted(() => {
   height: 32px;
   width: 60%;
   max-width: 450px;
-  border-radius: 8px;
-  background: linear-gradient(90deg, #16171e 25%, #222430 50%, #16171e 75%);
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite;
   margin-bottom: 16px;
@@ -379,16 +379,16 @@ onMounted(() => {
 .reactions-skeleton {
   height: 36px;
   width: 240px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--ui-radius-panel);
+  background: var(--ui-raised);
   margin-bottom: 20px;
 }
 
 .desc-skeleton {
   height: 100px;
   width: 100%;
-  border-radius: 12px;
-  background: linear-gradient(90deg, #16171e 25%, #222430 50%, #16171e 75%);
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite;
 }
@@ -401,10 +401,10 @@ onMounted(() => {
 .nav-btn {
   display: inline-block;
   padding: 8px 20px;
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
@@ -424,12 +424,12 @@ onMounted(() => {
 .player-container {
   width: 100%;
   aspect-ratio: 16 / 9;
-  background: #000;
-  border-radius: 12px;
+  background: var(--ui-bg);
+  border-radius: var(--ui-radius);
   overflow: hidden;
   cursor: pointer;
   position: relative;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: none;
 }
 
 .player-splash {
@@ -461,8 +461,8 @@ onMounted(() => {
 .play-circle {
   width: 80px;
   height: 80px;
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(8px);
+  background: var(--ui-raised);
+  backdrop-filter: none;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -472,7 +472,7 @@ onMounted(() => {
 }
 
 .player-container:hover .play-circle {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--ui-raised);
   transform: scale(1.1);
 }
 
@@ -488,7 +488,7 @@ onMounted(() => {
 .movie-title {
   font-size: 1.8rem;
   font-weight: 700;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin: 0 0 12px 0;
 }
 
@@ -499,8 +499,8 @@ onMounted(() => {
 
 .reactions-bar {
   display: flex;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 20px;
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius-panel);
   padding: 4px;
   gap: 4px;
 }
@@ -512,21 +512,21 @@ onMounted(() => {
   background: transparent;
   border: none;
   padding: 8px 14px;
-  border-radius: 16px;
+  border-radius: var(--ui-radius-panel);
   cursor: pointer;
   transition: background 0.2s ease;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   font-weight: 500;
   font-size: 0.95rem;
 }
 
 .reaction-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ui-raised);
 }
 
 .reaction-btn.active {
-  background: rgba(59, 130, 246, 0.2);
-  color: #60a5fa;
+  background: var(--ui-raised);
+  color: var(--ui-link);
 }
 
 .reaction-emoji {
@@ -535,8 +535,8 @@ onMounted(() => {
 
 /* Description Box */
 .description-box {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius);
   padding: 16px;
   cursor: pointer;
   transition: background 0.2s ease;
@@ -544,7 +544,7 @@ onMounted(() => {
 }
 
 .description-box:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ui-raised);
 }
 
 .desc-stats {
@@ -554,19 +554,19 @@ onMounted(() => {
   margin-bottom: 8px;
   font-weight: 600;
   font-size: 0.95rem;
-  color: #f3f4f6;
+  color: var(--ui-text);
 }
 
 .stat-badge {
-  color: #fbbf24;
+  color: var(--ui-warning);
 }
 
 .stat-text {
-  color: #e5e7eb;
+  color: var(--ui-text);
 }
 
 .stat-text.quality {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ui-raised);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.8rem;
@@ -579,12 +579,12 @@ onMounted(() => {
 }
 
 .desc-genre {
-  color: #60a5fa;
+  color: var(--ui-link);
   font-size: 0.9rem;
 }
 
 .desc-text {
-  color: #d1d5db;
+  color: var(--ui-secondary);
   line-height: 1.5;
   font-size: 0.95rem;
   display: -webkit-box;
@@ -600,7 +600,7 @@ onMounted(() => {
 .expand-btn {
   background: transparent;
   border: none;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   font-weight: 600;
   padding: 0;
   margin-top: 8px;
@@ -609,13 +609,13 @@ onMounted(() => {
 }
 
 .expand-btn:hover {
-  color: #f3f4f6;
+  color: var(--ui-text);
 }
 
 .audio-tracks-mt {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--ui-border);
 }
 
 /* Comments */
@@ -626,21 +626,21 @@ onMounted(() => {
 .comments-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin-bottom: 20px;
 }
 
 .login-prompt {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--ui-raised);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   text-align: center;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   margin-bottom: 24px;
 }
 
 .login-link {
-  color: #3b82f6;
+  color: var(--ui-link);
   text-decoration: none;
   font-weight: 600;
 }
@@ -655,8 +655,8 @@ onMounted(() => {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #3b82f6;
-  color: white;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -666,7 +666,7 @@ onMounted(() => {
 }
 
 .comment-avatar.me {
-  background: #ef4444;
+  background: var(--ui-danger-bg);
 }
 
 .comment-form {
@@ -679,8 +679,8 @@ onMounted(() => {
   width: 100%;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  color: #f3f4f6;
+  border-bottom: 1px solid var(--ui-control);
+  color: var(--ui-text);
   font-size: 0.95rem;
   padding: 8px 0;
   outline: none;
@@ -688,7 +688,7 @@ onMounted(() => {
 }
 
 .comment-input:focus {
-  border-bottom-color: #f3f4f6;
+  border-bottom-color: var(--ui-border);
 }
 
 .comment-actions {
@@ -698,17 +698,18 @@ onMounted(() => {
 }
 
 .post-btn {
-  background: #3b82f6;
-  color: white;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
   padding: 8px 16px;
-  border-radius: 18px;
+  border-radius: var(--ui-radius-panel);
   font-weight: 600;
   cursor: pointer;
 }
 
 .post-btn:hover {
-  background: #2563eb;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 
 /* Comments List */
@@ -736,17 +737,17 @@ onMounted(() => {
 
 .comment-author {
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--ui-text);
   font-size: 0.9rem;
 }
 
 .comment-date {
-  color: #9ca3af;
+  color: var(--ui-secondary);
   font-size: 0.8rem;
 }
 
 .comment-text {
-  color: #e5e7eb;
+  color: var(--ui-text);
   font-size: 0.95rem;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -764,7 +765,7 @@ onMounted(() => {
 .delete-btn {
   background: transparent;
   border: none;
-  color: #ef4444;
+  color: var(--ui-danger);
   cursor: pointer;
   padding: 8px;
   border-radius: 50%;
@@ -777,7 +778,7 @@ onMounted(() => {
 .no-comments {
   text-align: center;
   padding: 40px;
-  color: #6b7280;
+  color: var(--ui-muted);
   font-style: italic;
 }
 
@@ -789,11 +790,11 @@ onMounted(() => {
 
 .edit-input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-control);
   border-radius: 4px;
   padding: 8px;
-  color: #fff;
+  color: var(--ui-text);
   font-size: 0.95rem;
 }
 
@@ -815,14 +816,14 @@ onMounted(() => {
 }
 
 .edit-save-btn {
-  color: #34d399;
+  color: var(--ui-success);
 }
 .edit-save-btn:hover {
   background: rgba(52, 211, 153, 0.1);
 }
 
 .edit-cancel-btn {
-  color: #f87171;
+  color: var(--ui-danger);
 }
 .edit-cancel-btn:hover {
   background: rgba(248, 113, 113, 0.1);
@@ -831,14 +832,14 @@ onMounted(() => {
 .edit-btn {
   background: transparent;
   border: none;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   cursor: pointer;
   padding: 8px;
   border-radius: 50%;
 }
 .edit-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 /* Inline error banner (replaces raw alert dialogs) */
@@ -849,9 +850,9 @@ onMounted(() => {
   gap: 12px;
   background: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
+  color: var(--ui-danger);
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--ui-radius);
   font-size: 0.9rem;
   margin-top: 10px;
   animation: fadeIn 0.2s ease;
@@ -860,7 +861,7 @@ onMounted(() => {
 .inline-error-close {
   background: transparent;
   border: none;
-  color: #f87171;
+  color: var(--ui-danger);
   font-size: 1.1rem;
   cursor: pointer;
   line-height: 1;
@@ -869,7 +870,7 @@ onMounted(() => {
 }
 
 .inline-error-close:hover {
-  color: #fff;
+  color: var(--ui-text);
 }
 
 @keyframes fadeIn {

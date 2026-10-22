@@ -26,9 +26,9 @@
 
 .not-found-card {
   text-align: center;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-panel);
   padding: 48px 32px;
   max-width: 440px;
   width: 100%;
@@ -37,7 +37,7 @@
 .error-code {
   font-size: 5rem;
   font-weight: 900;
-  color: #3b82f6;
+  color: var(--ui-link);
   margin: 0;
   line-height: 1;
   letter-spacing: -2px;
@@ -46,13 +46,13 @@
 .error-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin: 16px 0 8px 0;
 }
 
 .error-message {
   font-size: 0.95rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   margin: 0 0 28px 0;
 }
 
@@ -60,10 +60,10 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   padding: 10px 24px;
-  border-radius: 10px;
+  border-radius: var(--ui-radius);
   text-decoration: none;
   font-weight: 600;
   font-size: 0.95rem;
@@ -71,6 +71,7 @@
 }
 
 .home-btn:hover {
-  background: #2563eb;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 </style>

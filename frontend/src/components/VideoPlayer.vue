@@ -369,10 +369,10 @@ onBeforeUnmount(() => {
   aspect-ratio: 16 / 9;
   margin: 0 auto;
   position: relative;
-  background: #000;
-  border-radius: 12px;
+  background: var(--ui-bg);
+  border-radius: var(--ui-radius);
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0,0,0,.55);
+  box-shadow: none;
 }
 
 .video-player-container.fullscreen {
@@ -394,7 +394,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #000;
+  background: var(--ui-bg);
   position: relative;
 }
 
@@ -404,7 +404,7 @@ video {
   max-height: 100vh;
   object-fit: contain;
   cursor: pointer;
-  background: #000;
+  background: var(--ui-bg);
 }
 
 .buf-overlay {
@@ -418,8 +418,8 @@ video {
 .buf-overlay.show { display: flex; }
 .spinner {
   width: 48px; height: 48px;
-  border: 4px solid rgba(255,255,255,0.1);
-  border-top-color: #5b8dee;
+  border: 4px solid var(--ui-border);
+  border-top-color: var(--ui-control);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -437,7 +437,7 @@ video {
 .now-playing-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--ui-text);
   text-shadow: 0 2px 4px rgba(0,0,0,0.8);
   margin: 0;
 }
@@ -473,19 +473,19 @@ video {
 .progress-wrap {
   position: relative;
   height: 6px;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--ui-raised);
   border-radius: 3px;
   cursor: pointer;
   user-select: none;
   transition: height 0.1s ease;
 }
 .progress-wrap:hover { height: 8px; }
-.progress-buf  { position: absolute; top: 0; left: 0; height: 100%; background: rgba(255,255,255,0.3); border-radius: 3px; }
-.progress-fill { position: absolute; top: 0; left: 0; height: 100%; background: #5b8dee; border-radius: 3px; }
+.progress-buf  { position: absolute; top: 0; left: 0; height: 100%; background: var(--ui-raised); border-radius: 3px; }
+.progress-fill { position: absolute; top: 0; left: 0; height: 100%; background: var(--ui-primary); border-radius: 3px; color: var(--ui-on-primary); }
 .progress-thumb {
   position: absolute; top: 50%;
   width: 14px; height: 14px;
-  background: #fff;
+  background: var(--ui-raised);
   border-radius: 50%;
   transform: translate(-50%, -50%);
   opacity: 0;
@@ -502,7 +502,7 @@ video {
 .ctrl-btn {
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--ui-text);
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   opacity: 0.8;
@@ -517,24 +517,24 @@ video {
 .time-display {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.85rem;
-  color: #f1f5f9;
+  color: var(--ui-text);
   font-weight: 500;
   margin-left: 8px;
 }
-.time-display .sep { color: #94a3b8; margin: 0 4px; }
+.time-display .sep { color: var(--ui-link); margin: 0 4px; }
 
 .vol-wrap {
   display: flex; align-items: center; gap: 12px; margin-left: auto;
 }
 .vol-icon { 
-  color: #fff; opacity: 0.8; cursor: pointer; transition: opacity 0.15s;
+  color: var(--ui-text); opacity: 0.8; cursor: pointer; transition: opacity 0.15s;
   display: flex; align-items: center;
 }
 .vol-icon:hover { opacity: 1; }
 input[type="range"].vol-slider {
   -webkit-appearance: none;
   width: 80px; height: 4px;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--ui-raised);
   border-radius: 2px;
   outline: none;
 }
@@ -542,7 +542,7 @@ input[type="range"].vol-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 12px; height: 12px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--ui-raised);
   cursor: pointer;
 }
 .fullscreen-btn {

@@ -67,16 +67,16 @@ function formatChannels(ch: number): string {
   gap: 8px;
   font-size: 1.1rem;
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin-bottom: 12px;
 }
 
 .audio-empty {
   padding: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px dashed rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  color: #9ca3af;
+  background: var(--ui-raised);
+  border: 1px dashed var(--ui-border);
+  border-radius: var(--ui-radius);
+  color: var(--ui-secondary);
   font-size: 0.9rem;
   text-align: center;
 }
@@ -88,9 +88,9 @@ function formatChannels(ch: number): string {
 }
 
 .track-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
@@ -98,8 +98,8 @@ function formatChannels(ch: number): string {
 }
 
 .track-card.default {
-  border-color: rgba(59, 130, 246, 0.4);
-  background: rgba(59, 130, 246, 0.06);
+  border-color: var(--ui-border);
+  background: var(--ui-raised);
 }
 
 .track-header {
@@ -111,15 +111,15 @@ function formatChannels(ch: number): string {
 .track-index {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   text-transform: uppercase;
 }
 
 .default-badge {
-  font-size: 0.7rem;
+  font-size: 12px;
   font-weight: 600;
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -127,7 +127,7 @@ function formatChannels(ch: number): string {
 .track-title-text {
   font-size: 0.95rem;
   font-weight: 500;
-  color: #f3f4f6;
+  color: var(--ui-text);
 }
 
 .track-meta {
@@ -138,16 +138,16 @@ function formatChannels(ch: number): string {
 }
 
 .meta-tag {
-  font-size: 0.75rem;
-  background: rgba(255, 255, 255, 0.08);
-  color: #d1d5db;
+  font-size: 12px;
+  background: var(--ui-raised);
+  color: var(--ui-secondary);
   padding: 2px 8px;
   border-radius: 4px;
 }
 
 .lang-tag {
   background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
+  color: var(--ui-success);
   text-transform: uppercase;
   font-weight: 600;
 }

@@ -74,7 +74,7 @@ const displayYear = computed(() => {
   display: flex;
   flex-direction: column;
   background: transparent;
-  border-radius: 12px;
+  border-radius: var(--ui-radius);
   overflow: hidden;
   text-decoration: none;
   color: inherit;
@@ -91,16 +91,16 @@ const displayYear = computed(() => {
   position: relative;
   aspect-ratio: 2 / 3;
   width: 100%;
-  background: #1a1b22;
-  border-radius: 12px;
+  background: var(--ui-bg);
+  border-radius: var(--ui-radius);
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+  border: 1px solid var(--ui-border);
 }
 
 .series-card:hover .poster-wrapper {
-  border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.6);
+  border-color: var(--ui-border);
+  box-shadow: none;
 }
 
 .poster-img {
@@ -121,7 +121,7 @@ const displayYear = computed(() => {
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 50%, #000000 100%);
-  color: #fff;
+  color: var(--ui-text);
   text-align: center;
   padding: 16px;
   position: relative;
@@ -154,9 +154,9 @@ const displayYear = computed(() => {
 }
 
 .brand-text {
-  font-size: 0.7rem;
+  font-size: 12px;
   letter-spacing: 0.2em;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ui-secondary);
   text-transform: uppercase;
 }
 
@@ -164,7 +164,7 @@ const displayYear = computed(() => {
   font-size: 1.1rem;
   font-weight: 700;
   margin: 0;
-  color: #f3f4f6;
+  color: var(--ui-text);
   line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 4;
@@ -176,7 +176,7 @@ const displayYear = computed(() => {
 
 .fallback-year {
   font-size: 0.85rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   font-weight: 500;
 }
 
@@ -192,13 +192,13 @@ const displayYear = computed(() => {
   font-size: 0.8rem;
   font-weight: 700;
   padding: 4px 8px;
-  border-radius: 6px;
-  backdrop-filter: blur(8px);
+  border-radius: var(--ui-radius);
+  backdrop-filter: none;
 }
 
 .rating-badge {
   background: rgba(0, 0, 0, 0.75);
-  color: #fbbf24;
+  color: var(--ui-warning);
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
@@ -212,7 +212,7 @@ const displayYear = computed(() => {
   font-size: 1rem;
   font-weight: 600;
   margin: 0;
-  color: #f3f4f6;
+  color: var(--ui-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

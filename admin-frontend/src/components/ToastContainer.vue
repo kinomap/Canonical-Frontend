@@ -25,16 +25,16 @@ import { toasts } from '../toast'
 
 .toast {
   padding: 12px 24px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   color: white;
   font-weight: 500;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
   min-width: 250px;
 }
 
-.toast-success { background: #10b981; }
-.toast-error { background: #ef4444; }
-.toast-info { background: #3b82f6; }
+.toast-success { background: var(--ui-success-bg); }
+.toast-error { background: var(--ui-danger-bg); }
+.toast-info { background: var(--ui-primary); color: var(--ui-on-primary); }
 
 .toast-enter-active,
 .toast-leave-active {

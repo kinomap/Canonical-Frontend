@@ -147,12 +147,12 @@ watch(route, () => {
   top: 0;
   z-index: 100;
   background: rgba(13, 14, 18, 0.88);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: none;
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .header-container {
-  max-width: 1280px;
+  max-width: var(--ui-content-max);
   margin: 0 auto;
   padding: 12px 16px;
   display: flex;
@@ -171,13 +171,13 @@ watch(route, () => {
   display: flex;
   align-items: center;
   text-decoration: none;
-  color: #f3f4f6;
+  color: var(--ui-text);
   outline: none;
 }
 
 .brand-link:focus-visible {
-  box-shadow: 0 0 0 2px #3b82f6;
-  border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--ui-link);
+  border-radius: var(--ui-radius);
 }
 
 .desktop-logo {
@@ -203,30 +203,31 @@ watch(route, () => {
   gap: 20px;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .desktop-nav {
     display: flex;
   }
 }
 
 .nav-link {
-  color: #9ca3af;
+  color: var(--ui-secondary);
   text-decoration: none;
   font-size: 0.95rem;
   font-weight: 500;
   transition: color 0.15s ease;
   outline: none;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 10px 8px;
+  border-radius: var(--ui-radius);
 }
 
 .nav-link:hover,
 .nav-link:focus-visible {
-  color: #f3f4f6;
+  color: var(--ui-text);
 }
 
 .nav-link.active {
-  color: #3b82f6;
+  background: var(--ui-raised);
+  color: var(--ui-link);
   font-weight: 600;
 }
 
@@ -261,32 +262,33 @@ watch(route, () => {
 }
 
 .login-btn {
-  color: #d1d5db;
+  color: var(--ui-secondary);
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 600;
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   transition: color 0.15s ease;
 }
 
 .login-btn:hover {
-  color: #ffffff;
+  color: var(--ui-text);
 }
 
 .register-btn {
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 600;
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   transition: background 0.15s ease;
 }
 
 .register-btn:hover {
-  background: #2563eb;
+  background: var(--ui-primary);
+  color:var(--ui-on-primary);
 }
 
 .profile-btn {
@@ -294,19 +296,19 @@ watch(route, () => {
   align-items: center;
   gap: 8px;
   text-decoration: none;
-  color: #f3f4f6;
+  color: var(--ui-text);
   padding: 4px 10px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--ui-radius-panel);
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
 }
 
 .avatar-circle {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #3b82f6;
-  color: #fff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   font-weight: 700;
   font-size: 0.85rem;
   display: flex;
@@ -325,21 +327,21 @@ watch(route, () => {
   justify-content: center;
   background: transparent;
   border: none;
-  color: #f3f4f6;
+  color: var(--ui-text);
   cursor: pointer;
   padding: 6px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .mobile-hamburger-btn {
     display: none;
   }
 }
 
 .mobile-menu-drawer {
-  background: #14151a;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--ui-bg);
+  border-bottom: 1px solid var(--ui-border);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -357,33 +359,33 @@ watch(route, () => {
 }
 
 .mobile-nav-link {
-  color: #d1d5db;
+  color: var(--ui-secondary);
   text-decoration: none;
   font-size: 1rem;
   font-weight: 600;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
 }
 
 .mobile-nav-link:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .mobile-nav-link.register {
-  color: #3b82f6;
+  color: var(--ui-link);
 }
 
 .mobile-auth-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ui-raised);
   margin: 4px 0;
 }
 
 .mobile-logout-btn {
   background: transparent;
   border: none;
-  color: #ef4444;
+  color: var(--ui-danger);
   font-size: 1rem;
   font-weight: 600;
   text-align: left;

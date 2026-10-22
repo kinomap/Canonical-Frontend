@@ -129,13 +129,13 @@ async function handleSubmit() {
 }
 
 .auth-card {
-  background: #181920;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-panel);
   padding: 40px 32px;
   max-width: 440px;
   width: 100%;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+  box-shadow: none;
 }
 
 .auth-header {
@@ -146,22 +146,22 @@ async function handleSubmit() {
 .auth-title {
   font-size: 1.8rem;
   font-weight: 800;
-  color: #ffffff;
+  color: var(--ui-text);
   margin: 0 0 6px 0;
 }
 
 .auth-subtitle {
   font-size: 0.9rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   margin: 0;
 }
 
 .auth-error-alert {
   background: rgba(239, 68, 68, 0.15);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
+  color: var(--ui-danger);
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--ui-radius);
   font-size: 0.9rem;
   margin-bottom: 20px;
   text-align: center;
@@ -182,14 +182,14 @@ async function handleSubmit() {
 .form-label {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #d1d5db;
+  color: var(--ui-secondary);
 }
 
 .form-input {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  color: #ffffff;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-control);
+  border-radius: var(--ui-radius);
+  color: var(--ui-text);
   padding: 10px 14px;
   font-size: 0.95rem;
   outline: none;
@@ -197,15 +197,15 @@ async function handleSubmit() {
 }
 
 .form-input:focus {
-  border-color: #3b82f6;
+  border-color: var(--ui-control);
 }
 
 .submit-btn {
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: var(--ui-radius);
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
@@ -214,7 +214,8 @@ async function handleSubmit() {
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 
 .submit-btn:disabled {
@@ -226,11 +227,11 @@ async function handleSubmit() {
   text-align: center;
   margin-top: 24px;
   font-size: 0.9rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
 }
 
 .auth-link {
-  color: #3b82f6;
+  color: var(--ui-link);
   text-decoration: none;
   font-weight: 600;
   margin-left: 4px;

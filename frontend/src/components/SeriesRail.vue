@@ -86,7 +86,7 @@ function handleWheel(event: WheelEvent) {
 .rail-title {
   font-size: 1.3rem;
   font-weight: 800;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin: 0;
   letter-spacing: -0.3px;
 }
@@ -106,9 +106,9 @@ function handleWheel(event: WheelEvent) {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #f3f4f6;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -117,7 +117,7 @@ function handleWheel(event: WheelEvent) {
 }
 
 .scroll-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--ui-raised);
 }
 
 .rail-track {

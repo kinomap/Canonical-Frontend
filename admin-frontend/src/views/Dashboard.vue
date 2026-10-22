@@ -143,8 +143,8 @@ onMounted(() => { fetchDashboardData() })
   <div class="dashboard-page">
     <div class="page-header">
       <div>
-        <h1>Dashboard</h1>
-        <p class="page-subtitle">Platform overview and system health</p>
+        <h1>Обзор</h1>
+        <p class="page-subtitle">Каталог, сервисы и состояние системы</p>
       </div>
       <button class="refresh-btn" @click="fetchDashboardData" :disabled="loadingCatalog || loadingHealth">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"
@@ -153,21 +153,21 @@ onMounted(() => { fetchDashboardData() })
           <polyline points="1 20 1 14 7 14"/>
           <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
         </svg>
-        Refresh
+        Обновить
       </button>
     </div>
 
     <div class="dashboard-content">
       <!-- MASTER TELEGRAM SESSION -->
-      <section class="snapshot-card" style="margin: 1rem 0; padding: 1rem; border: 1px solid #475569; border-radius: 12px">
-      <h2>Резервная копия каталога</h2>
+      <details class="snapshot-card">
+      <summary>Резервные копии каталога и базы данных</summary>
       <p>Фильмы, сериалы, метаданные, источники Telegram и имеющиеся изображения. Без пользователей, паролей, сессий и настроек серверов. Снимок можно загрузить в Центре развёртывания при переезде.</p>
       <button class="refresh-btn" :disabled="fullBackupBusy" @click="downloadFullBackup">{{ fullBackupBusy ? 'Создаём полный бэкап…' : 'Создать и скачать полный бэкап БД' }}</button>
       <p v-if="fullBackupError" role="alert">{{ fullBackupError }}</p>
       <p>Полный .dump: все таблицы PostgreSQL и ключи восстановления. Храните приватно. Telegram .session и media-файлы сохраняются отдельно.</p>
       <button class="refresh-btn" :disabled="snapshotBusy" @click="downloadCatalogSnapshot">{{ snapshotBusy ? 'Создаём снимок…' : 'Скачать резервную копию каталога .sql.gz' }}</button>
       <p v-if="snapshotError" role="alert">{{ snapshotError }}</p>
-    </section>
+    </details>
     <MasterSession />
 
       <!-- CONTENT SECTION -->
@@ -566,12 +566,12 @@ onMounted(() => { fetchDashboardData() })
   margin: 0 0 4px 0;
   font-size: 1.75rem;
   font-weight: 800;
-  color: #f8fafc;
+  color: var(--ui-text);
 }
 
 .page-subtitle {
   margin: 0;
-  color: #64748b;
+  color: var(--ui-link);
   font-size: 0.875rem;
 }
 
@@ -580,10 +580,10 @@ onMounted(() => { fetchDashboardData() })
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #94a3b8;
-  border-radius: 8px;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-control);
+  color: var(--ui-link);
+  border-radius: var(--ui-radius);
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 500;
@@ -591,8 +591,8 @@ onMounted(() => { fetchDashboardData() })
 }
 
 .refresh-btn:hover:not(:disabled) {
-  background: #334155;
-  color: #f1f5f9;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -603,8 +603,8 @@ onMounted(() => { fetchDashboardData() })
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #334155;
-  border-top-color: #38bdf8;
+  border: 3px solid var(--ui-control);
+  border-top-color: var(--ui-control);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -615,18 +615,18 @@ onMounted(() => { fetchDashboardData() })
   align-items: center;
   gap: 12px;
   padding: 60px;
-  color: #64748b;
-  background: #1e293b;
-  border-radius: 12px;
-  border: 1px solid #334155;
+  color: var(--ui-link);
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius);
+  border: 1px solid var(--ui-control);
 }
 
 .retry-btn {
   padding: 8px 20px;
-  background: #38bdf8;
+  background: var(--ui-primary);
   border: none;
-  border-radius: 6px;
-  color: #0f172a;
+  border-radius: var(--ui-radius);
+  color: var(--ui-on-primary);
   font-weight: 700;
   cursor: pointer;
 }
@@ -638,9 +638,9 @@ onMounted(() => { fetchDashboardData() })
 }
 
 .dashboard-section {
-  background: #1e293b;
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 12px;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
   padding: 24px;
 }
 
@@ -653,7 +653,7 @@ onMounted(() => { fetchDashboardData() })
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #64748b;
+  color: var(--ui-link);
 }
 
 .stats-grid-content {
@@ -671,9 +671,9 @@ onMounted(() => { fetchDashboardData() })
 }
 
 .stat-card {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255,255,255,0.05);
-  border-radius: 10px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
   padding: 14px 16px;
   width: 100%;
   min-height: 84px;
@@ -685,8 +685,8 @@ onMounted(() => { fetchDashboardData() })
 }
 
 .stat-card.section-tile {
-  background: rgba(30, 41, 59, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
   justify-content: flex-start;
   padding-left: 20px;
   cursor: default;
@@ -695,27 +695,27 @@ onMounted(() => { fetchDashboardData() })
 .section-tile-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
-.section-tile-icon.movies { color: #38bdf8; background: rgba(56, 189, 248, 0.15); }
-.section-tile-icon.series { color: #8b5cf6; background: rgba(139, 92, 246, 0.15); }
-.section-tile-icon.general { color: #94a3b8; background: rgba(148, 163, 184, 0.15); }
+.section-tile-icon.movies { color: var(--ui-link); background: var(--ui-raised); }
+.section-tile-icon.series { color: var(--ui-link); background: var(--ui-raised); }
+.section-tile-icon.general { color: var(--ui-link); background: var(--ui-raised); }
 
 .section-tile-title {
   font-size: 0.85rem;
   font-weight: 800;
   letter-spacing: 0.12em;
-  color: #cbd5e1;
+  color: var(--ui-secondary);
   text-transform: uppercase;
 }
 
 .stat-card.decorative-tile {
-  background: rgba(30, 41, 59, 0.3);
-  border: 1px dashed rgba(255, 255, 255, 0.08);
+  background: var(--ui-surface);
+  border: 1px dashed var(--ui-border);
   justify-content: flex-start;
   padding-left: 20px;
   cursor: default;
@@ -724,20 +724,20 @@ onMounted(() => { fetchDashboardData() })
 .decorative-tile-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #475569;
-  background: rgba(255, 255, 255, 0.03);
+  color: var(--ui-link);
+  background: var(--ui-raised);
 }
 
 .decorative-tile-title {
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.15em;
-  color: #475569;
+  color: var(--ui-link);
   text-transform: uppercase;
 }
 
@@ -746,31 +746,31 @@ onMounted(() => { fetchDashboardData() })
 }
 
 .stat-card.clickable:hover {
-  border-color: rgba(56, 189, 248, 0.2);
-  background: rgba(56, 189, 248, 0.04);
+  border-color: var(--ui-border);
+  background: var(--ui-raised);
   transform: translateY(-1px);
 }
 
 .stat-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.stat-icon.total { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
-.stat-icon.available { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
-.stat-icon.blocked { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-.stat-icon.poster { background: rgba(250, 204, 21, 0.15); color: #facc15; }
-.stat-icon.tmdb { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+.stat-icon.total { background: var(--ui-raised); color: var(--ui-link); }
+.stat-icon.available { background: rgba(74, 222, 128, 0.15); color: var(--ui-success); }
+.stat-icon.blocked { background: rgba(239, 68, 68, 0.15); color: var(--ui-danger); }
+.stat-icon.poster { background: rgba(250, 204, 21, 0.15); color: var(--ui-warning); }
+.stat-icon.tmdb { background: var(--ui-raised); color: var(--ui-link); }
 
 .stat-value {
   font-size: 1.6rem;
   font-weight: 800;
-  color: #f8fafc;
+  color: var(--ui-text);
   line-height: 1;
   margin-bottom: 4px;
 }
@@ -778,21 +778,21 @@ onMounted(() => { fetchDashboardData() })
 .stat-value-sm {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--ui-text);
   margin-bottom: 4px;
 }
 
 .stat-label {
-  font-size: 0.75rem;
-  color: #64748b;
+  font-size: 12px;
+  color: var(--ui-link);
   font-weight: 500;
   line-height: 1.25;
 }
 
-.text-green { color: #4ade80; }
-.text-red { color: #ef4444; }
-.text-yellow { color: #facc15; }
-.text-blue { color: #38bdf8; }
+.text-green { color: var(--ui-success); }
+.text-red { color: var(--ui-danger); }
+.text-yellow { color: var(--ui-warning); }
+.text-blue { color: var(--ui-link); }
 
 .bottom-grid {
   display: grid;
@@ -823,33 +823,36 @@ onMounted(() => { fetchDashboardData() })
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   transition: background 0.1s;
 }
 
 .health-row:hover {
-  background: rgba(255,255,255,0.03);
+  background: var(--ui-raised);
 }
 
 .health-name {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #cbd5e1;
+  color: var(--ui-secondary);
 }
 
 .badge {
-  font-size: 0.7rem;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
-  border-radius: 20px;
+  border-radius: var(--ui-radius-panel);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-.badge-ok { background: rgba(74, 222, 128, 0.15); color: #4ade80; }
-.badge-error { background: rgba(239, 68, 68, 0.15); color: #f87171; }
-.badge-warn { background: rgba(250, 204, 21, 0.15); color: #facc15; }
-.badge-unknown { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+.badge-ok { background: rgba(74, 222, 128, 0.15); color: var(--ui-success); }
+.badge-error { background: rgba(239, 68, 68, 0.15); color: var(--ui-danger); }
+.badge-warn { background: rgba(250, 204, 21, 0.15); color: var(--ui-warning); }
+.badge-unknown { background: var(--ui-raised); color: var(--ui-link); }
+
+.snapshot-card{margin:0 0 24px;padding:16px 20px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-panel);background:var(--ui-surface)}
+.snapshot-card summary{cursor:pointer;min-height:24px;font-weight:650}.snapshot-card[open] summary{margin-bottom:16px}.snapshot-card p{margin:12px 0;color:var(--ui-secondary);font-size:14px}.snapshot-card .refresh-btn{white-space:normal;text-align:left}
 </style>
 
 .loading-state-sm {

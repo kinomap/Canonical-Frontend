@@ -1,0 +1,32 @@
+/* KINOSOTA: one semantic source for the public and private applications.
+   Taste Skill true-black-flat, seed 22. Existing blue is reserved for brand/data.
+   No external font request; Cyrillic/Latin Manrope is shipped with its OFL. */
+@font-face { font-family: 'Manrope'; src: url('./fonts/Manrope-Variable.ttf') format('truetype'); font-style: normal; font-weight: 200 800; font-display: swap; }
+:root {
+  color-scheme: dark;
+  --ui-font: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ui-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --ui-bg: #0c0d0f; --ui-surface: #161719; --ui-raised: #222326; --ui-active: #2a2b2e;
+  --ui-field: #111214; --ui-border: #303236; --ui-control: #747982; --ui-control-hover: #858990;
+  --ui-text: #f5f6f7; --ui-secondary: #b8bbc1; --ui-muted: #a3a7af;
+  --ui-primary: #f5f6f7; --ui-primary-hover: #d9dde3; --ui-on-primary: #111214;
+  --ui-brand: #79b4ff; --ui-link: #a4cbff; --ui-focus: #a4cbff;
+  --ui-success: #8bdfb1; --ui-success-bg: #163327;
+  --ui-warning: #f0d08a; --ui-warning-bg: #342c1c;
+  --ui-danger: #ffafb8; --ui-danger-bg: #3c2028;
+  --ui-radius: 8px; --ui-radius-panel: 12px; --ui-radius-chip: 5px;
+  --ui-space-1: 4px; --ui-space-2: 8px; --ui-space-3: 12px; --ui-space-4: 16px;
+  --ui-space-5: 20px; --ui-space-6: 24px; --ui-space-8: 32px; --ui-space-12: 48px;
+  --ui-control-height: 40px; --ui-touch-height: 44px; --ui-header-height: 64px;
+  --ui-content-max: 1440px; --ui-sidebar: 232px;
+  --ui-shadow-overlay: 0 20px 64px #0008;
+  /* Compatibility aliases: existing scoped components consume the same contract. */
+  --k-bg: var(--ui-bg); --k-surface: var(--ui-surface); --k-surface-muted: var(--ui-surface);
+  --k-surface-sunken: var(--ui-field); --k-border: var(--ui-border); --k-border-strong: var(--ui-control);
+  --k-text: var(--ui-text); --k-text-secondary: var(--ui-secondary); --k-text-muted: var(--ui-muted); --k-text-dim: var(--ui-muted);
+  --k-accent: var(--ui-primary); --k-accent-hover: var(--ui-primary-hover); --k-info: var(--ui-link);
+  --k-success: var(--ui-success); --k-warning: var(--ui-warning); --k-danger: var(--ui-danger);
+  --k-radius: var(--ui-radius); --k-radius-lg: var(--ui-radius-panel); --k-font: var(--ui-font); --k-mono: var(--ui-mono);
+  --surface-card: var(--ui-surface); --surface-hover: var(--ui-raised);
+  --color-primary: var(--ui-primary); --color-primary-hover: var(--ui-primary-hover);
+}

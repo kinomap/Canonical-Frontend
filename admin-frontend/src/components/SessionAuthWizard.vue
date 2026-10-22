@@ -24,6 +24,6 @@ async function create(){
 </template>
 <style scoped>
 .aw-overlay{position:fixed;inset:0;background:#080c16b8;display:flex;align-items:center;justify-content:center;z-index:1100;padding:12px;box-sizing:border-box}
-.aw-modal{box-sizing:border-box;background:#202b3d;color:#e7edf7;border:1px solid #40506a;border-radius:14px;padding:24px;max-width:520px;width:100%;max-height:90dvh;overflow:auto;overflow-wrap:anywhere}
-label{display:flex;flex-direction:column;gap:7px}input{box-sizing:border-box;min-width:0;width:100%;min-height:44px;background:#131e30;border:1px solid #53627b;border-radius:7px;color:white;padding:10px;font-size:16px}button{min-height:44px;border:1px solid #6975cf;border-radius:7px;background:#555cce;color:white;padding:10px;font-size:14px;cursor:pointer}button:disabled{opacity:.55}p[role=alert]{background:#471e2c;color:#ffd3d3;padding:12px;border-radius:8px}
+.aw-modal{box-sizing:border-box;background:var(--ui-raised);color:var(--ui-text);border:1px solid var(--ui-control);border-radius:var(--ui-radius-panel);padding:24px;max-width:520px;width:100%;max-height:90dvh;overflow:auto;overflow-wrap:anywhere}
+label{display:flex;flex-direction:column;gap:7px}input{box-sizing:border-box;min-width:0;width:100%;min-height:44px;background:var(--ui-surface);border:1px solid var(--ui-control);border-radius:var(--ui-radius);color:white;padding:10px;font-size:16px}button{min-height:44px;border:1px solid var(--ui-control);border-radius:var(--ui-radius);background:var(--ui-primary);color:var(--ui-on-primary);padding:10px;font-size:14px;cursor:pointer}button:disabled{opacity:.55}p[role=alert]{background:var(--ui-danger-bg);color:var(--ui-danger);padding:12px;border-radius:var(--ui-radius)}
 </style>

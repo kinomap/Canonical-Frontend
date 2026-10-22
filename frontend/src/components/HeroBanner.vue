@@ -66,14 +66,14 @@ function onPlay() {
 .hero-banner {
   position: relative;
   min-height: 420px;
-  border-radius: 20px;
+  border-radius: var(--ui-radius-panel);
   overflow: hidden;
   display: flex;
   align-items: flex-end;
   padding: 40px 32px;
   margin-bottom: 36px;
-  background: #14151a;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
 }
 
 .backdrop-wrapper {
@@ -121,26 +121,26 @@ function onPlay() {
   font-size: 0.8rem;
   font-weight: 600;
   padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #e5e7eb;
+  border-radius: var(--ui-radius);
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .hero-badge.quality {
   background: rgba(16, 185, 129, 0.25);
-  color: #34d399;
+  color: var(--ui-success);
 }
 
 .hero-badge.rating {
   background: rgba(251, 191, 36, 0.2);
-  color: #fbbf24;
+  color: var(--ui-warning);
 }
 
 .hero-title {
   font-size: 2.4rem;
   font-weight: 900;
   line-height: 1.15;
-  color: #ffffff;
+  color: var(--ui-text);
   margin: 0;
   letter-spacing: -0.5px;
 }
@@ -152,10 +152,10 @@ function onPlay() {
 
 .hero-genre-tag {
   font-size: 0.8rem;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ui-raised);
   padding: 2px 10px;
-  border-radius: 12px;
-  color: #d1d5db;
+  border-radius: var(--ui-radius);
+  color: var(--ui-secondary);
 }
 
 .hero-actions {
@@ -169,36 +169,37 @@ function onPlay() {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
   padding: 12px 28px;
-  border-radius: 12px;
+  border-radius: var(--ui-radius);
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.4);
+  box-shadow: none;
   transition: background 0.15s ease, transform 0.15s ease;
   outline: none;
 }
 
 .hero-play-btn:hover,
 .hero-play-btn:focus-visible {
-  background: #2563eb;
+  background: var(--ui-primary);
   transform: translateY(-2px);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 3px var(--ui-border);
+  color: var(--ui-on-primary);
 }
 
 .hero-details-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #f3f4f6;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text);
   text-decoration: none;
   padding: 12px 24px;
-  border-radius: 12px;
+  border-radius: var(--ui-radius);
   font-size: 1rem;
   font-weight: 600;
   transition: background 0.15s ease;
@@ -207,6 +208,6 @@ function onPlay() {
 
 .hero-details-btn:hover,
 .hero-details-btn:focus-visible {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--ui-raised);
 }
 </style>

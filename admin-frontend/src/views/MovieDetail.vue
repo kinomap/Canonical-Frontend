@@ -508,17 +508,17 @@ const handleAdminDelete = async () => {
 
 .back-btn {
   background: transparent;
-  color: #94a3b8;
-  border: 1px solid #334155;
+  color: var(--ui-link);
+  border: 1px solid var(--ui-control);
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .back-btn:hover {
-  background: #334155;
-  color: #f1f5f9;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .detail-container {
@@ -531,10 +531,10 @@ const handleAdminDelete = async () => {
   display: grid;
   grid-template-columns: 260px 1fr;
   gap: 32px;
-  background: #1e293b;
+  background: var(--ui-raised);
   padding: 32px;
-  border-radius: 12px;
-  border: 1px solid #334155;
+  border-radius: var(--ui-radius);
+  border: 1px solid var(--ui-control);
 }
 
 @media (max-width: 900px) {
@@ -561,9 +561,9 @@ const handleAdminDelete = async () => {
 }
 
 .view-poster-btn {
-  background: #0f172a;
-  border: 1px solid #38bdf8;
-  color: #38bdf8;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-control);
+  color: var(--ui-link);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -571,28 +571,28 @@ const handleAdminDelete = async () => {
 }
 
 .view-poster-btn:hover {
-  background: #38bdf8;
-  color: #0f172a;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 
 .poster-fallback {
   width: 100%;
   aspect-ratio: 2/3;
   background: radial-gradient(circle at top left, #334155, #0f172a);
-  border-radius: 12px;
+  border-radius: var(--ui-radius);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   text-align: center;
   padding: 24px;
-  border: 1px solid #475569;
+  border: 1px solid var(--ui-control);
 }
 
 .real-poster {
   width: 100%;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+  border-radius: var(--ui-radius);
+  box-shadow: none;
   object-fit: cover;
   display: block;
 }
@@ -600,29 +600,30 @@ const handleAdminDelete = async () => {
 .fallback-title {
   font-size: 1.2rem;
   font-weight: 800;
-  color: #e2e8f0;
+  color: var(--ui-text);
   text-transform: uppercase;
   margin-bottom: 8px;
 }
 
 .fallback-year {
   font-size: 1rem;
-  color: #94a3b8;
+  color: var(--ui-link);
 }
 
 .poster-status-badge {
   text-align: center;
   padding: 6px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius);
   font-weight: bold;
   font-size: 0.8rem;
-  background: #334155;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .provider-info {
   text-align: center;
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--ui-link);
 }
 
 .info-section {
@@ -646,46 +647,47 @@ const handleAdminDelete = async () => {
 }
 
 .view-movie-btn {
-  background: #3b82f6;
-  color: #fff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   font-size: 0.95rem;
   padding: 10px 20px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius);
   text-decoration: none;
   font-weight: 700;
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.4);
+  box-shadow: none;
   transition: all 0.2s;
   text-align: center;
 }
 
 .view-movie-btn:hover {
-  background: #2563eb;
+  background: var(--ui-primary);
   transform: translateY(-2px);
-  box-shadow: 0 6px 10px -2px rgba(59, 130, 246, 0.5);
+  box-shadow: none;
+  color: var(--ui-on-primary);
 }
 
 .unavailable-status-text {
-  color: #ef4444;
+  color: var(--ui-danger);
   font-weight: 600;
   font-size: 0.9rem;
   padding: 12px 16px;
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   text-align: center;
 }
 
 .movie-title {
   margin: 0 0 6px 0;
   font-size: 1.8rem;
-  color: #f8fafc;
+  color: var(--ui-text);
   line-height: 1.2;
 }
 
 .movie-original-title {
   margin: 0 0 12px 0;
   font-size: 1rem;
-  color: #94a3b8;
+  color: var(--ui-link);
   font-weight: 400;
 }
 
@@ -709,8 +711,8 @@ const handleAdminDelete = async () => {
 }
 
 .meta-label {
-  font-size: 0.75rem;
-  color: #94a3b8;
+  font-size: 12px;
+  color: var(--ui-link);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -718,31 +720,31 @@ const handleAdminDelete = async () => {
 .meta-value {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--ui-text);
 }
 
 .overview-section h3 {
-  color: #f8fafc;
+  color: var(--ui-text);
   font-size: 1.15rem;
   margin-bottom: 12px;
 }
 
 .overview-section p {
-  color: #cbd5e1;
+  color: var(--ui-secondary);
   line-height: 1.5;
   font-size: 0.95rem;
 }
 
 .sources-section {
-  background: #1e293b;
+  background: var(--ui-raised);
   padding: 24px;
-  border-radius: 12px;
-  border: 1px solid #334155;
+  border-radius: var(--ui-radius);
+  border: 1px solid var(--ui-control);
 }
 
 .sources-header h3 {
   margin: 0 0 16px 0;
-  color: #f8fafc;
+  color: var(--ui-text);
   font-size: 1.15rem;
 }
 
@@ -754,21 +756,21 @@ const handleAdminDelete = async () => {
 .sources-table th, .sources-table td {
   padding: 10px 12px;
   text-align: left;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid var(--ui-control);
   font-size: 0.9rem;
 }
 
 .sources-table th {
-  color: #94a3b8;
-  font-size: 0.75rem;
+  color: var(--ui-link);
+  font-size: 12px;
   text-transform: uppercase;
 }
 
 .no-sources-box {
-  color: #94a3b8;
+  color: var(--ui-link);
   padding: 12px 16px;
-  background: #0f172a;
-  border-radius: 6px;
+  background: var(--ui-surface);
+  border-radius: var(--ui-radius);
   font-size: 0.9rem;
 }
 
@@ -776,31 +778,32 @@ const handleAdminDelete = async () => {
   display: inline-block;
   padding: 4px 8px;
   border-radius: 4px;
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
 }
-.badge-green { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
-.badge-red { background: rgba(239, 68, 68, 0.2); color: #f87171; }
-.badge-yellow { background: rgba(250, 204, 21, 0.2); color: #facc15; }
-.badge-purple { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
-.badge-blue { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
-.error-msg { color: #ef4444; }
-.loading-state { color: #94a3b8; }
+.badge-green { background: rgba(74, 222, 128, 0.2); color: var(--ui-success); }
+.badge-red { background: rgba(239, 68, 68, 0.2); color: var(--ui-danger); }
+.badge-yellow { background: rgba(250, 204, 21, 0.2); color: var(--ui-warning); }
+.badge-purple { background: var(--ui-raised); color: var(--ui-link); }
+.badge-blue { background: var(--ui-raised); color: var(--ui-link); }
+.error-msg { color: var(--ui-danger); }
+.loading-state { color: var(--ui-link); }
 
 .action-btn {
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius);
   font-weight: 600;
   cursor: pointer;
   border: none;
   transition: all 0.2s;
-  background: #334155;
-  color: #f8fafc;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .action-btn:hover:not(:disabled) {
-  background: #475569;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .action-btn:disabled {
@@ -815,30 +818,30 @@ const handleAdminDelete = async () => {
 
 .block-btn {
   background: transparent;
-  border: 1px solid #ef4444;
-  color: #ef4444;
+  border: 1px solid var(--ui-danger);
+  color: var(--ui-danger);
 }
 .block-btn:hover {
-  background: #ef4444;
+  background: var(--ui-danger-bg);
   color: white;
 }
 
 .unblock-btn {
   background: transparent;
-  border: 1px solid #10b981;
-  color: #10b981;
+  border: 1px solid var(--ui-success);
+  color: var(--ui-success);
 }
 .unblock-btn:hover {
-  background: #10b981;
+  background: var(--ui-success-bg);
   color: white;
 }
 
 .manual-badge {
-  background: #f59e0b;
-  color: #fff;
+  background: var(--ui-warning-bg);
+  color: var(--ui-text);
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 0.7rem;
+  font-size: 12px;
   font-weight: 800;
   margin-left: 8px;
 }
@@ -851,8 +854,8 @@ const handleAdminDelete = async () => {
 
 .icon-btn {
   background: transparent;
-  color: #38bdf8;
-  border: 1px solid #38bdf8;
+  color: var(--ui-link);
+  border: 1px solid var(--ui-control);
   border-radius: 4px;
   padding: 4px 12px;
   cursor: pointer;
@@ -866,21 +869,22 @@ const handleAdminDelete = async () => {
 }
 
 .edit-overview-form textarea {
-  background: #0f172a;
-  border: 1px solid #475569;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-control);
   color: white;
   padding: 12px;
-  border-radius: 6px;
-  font-family: inherit;
+  border-radius: var(--ui-radius);
+  font-family: var(--ui-font);
   resize: vertical;
 }
 
 .save-btn {
-  background: #38bdf8;
-  color: #0f172a;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 .save-btn:hover:not(:disabled) {
-  background: #7dd3fc;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 
 .cancel-btn {
@@ -890,7 +894,7 @@ const handleAdminDelete = async () => {
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(15, 23, 42, 0.8);
+  background: var(--ui-surface);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -898,16 +902,16 @@ const handleAdminDelete = async () => {
 }
 
 .modal-content {
-  background: #1e293b;
+  background: var(--ui-raised);
   padding: 32px;
-  border-radius: 12px;
+  border-radius: var(--ui-radius);
   width: 400px;
-  border: 1px solid #334155;
+  border: 1px solid var(--ui-control);
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
 }
 
 .modal-desc {
-  color: #94a3b8;
+  color: var(--ui-link);
   font-size: 0.9rem;
   margin-bottom: 24px;
 }
@@ -919,18 +923,18 @@ const handleAdminDelete = async () => {
 .form-group label {
   display: block;
   font-size: 0.85rem;
-  color: #cbd5e1;
+  color: var(--ui-secondary);
   margin-bottom: 8px;
 }
 
 .form-group input[type="text"],
 .form-group textarea {
   width: 100%;
-  background: #0f172a;
-  border: 1px solid #475569;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-control);
   color: white;
   padding: 10px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius);
 }
 
 .form-group input:disabled {
@@ -945,15 +949,15 @@ const handleAdminDelete = async () => {
 }
 
 .block-btn-solid {
-  background: #ef4444;
+  background: var(--ui-danger-bg);
   color: white;
 }
 .block-btn-solid:hover:not(:disabled) {
-  background: #dc2626;
+  background: var(--ui-danger-bg);
 }
 
 .blocked-reason {
-  color: #ef4444;
+  color: var(--ui-danger);
   font-style: italic;
 }
 
@@ -964,7 +968,7 @@ const handleAdminDelete = async () => {
 
 .override-badge {
   font-size: 0.75em;
-  color: #facc15;
+  color: var(--ui-warning);
   margin-left: 6px;
   cursor: default;
 }
@@ -972,7 +976,7 @@ const handleAdminDelete = async () => {
 .link-btn {
   background: none;
   border: none;
-  color: #38bdf8;
+  color: var(--ui-link);
   cursor: pointer;
   font-size: 0.8rem;
   font-weight: 500;
@@ -993,10 +997,10 @@ const handleAdminDelete = async () => {
   flex: 1;
   min-width: 200px;
   padding: 8px 12px;
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid #38bdf8;
-  border-radius: 8px;
-  color: #f1f5f9;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-control);
+  border-radius: var(--ui-radius);
+  color: var(--ui-text);
   font-size: 1rem;
   font-weight: 600;
   outline: none;
@@ -1004,10 +1008,10 @@ const handleAdminDelete = async () => {
 
 .btn-save {
   padding: 8px 16px;
-  background: #38bdf8;
+  background: var(--ui-primary);
   border: none;
-  border-radius: 8px;
-  color: #0f172a;
+  border-radius: var(--ui-radius);
+  color: var(--ui-on-primary);
   font-size: 0.875rem;
   font-weight: 700;
   cursor: pointer;
@@ -1019,41 +1023,41 @@ const handleAdminDelete = async () => {
 .btn-cancel {
   padding: 8px 12px;
   background: transparent;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  color: #64748b;
+  border: 1px solid var(--ui-control);
+  border-radius: var(--ui-radius);
+  color: var(--ui-link);
   font-size: 0.875rem;
   cursor: pointer;
 }
 
 /* Restore poster button */
 .restore-btn {
-  background: rgba(100, 116, 139, 0.15);
-  border: 1px solid rgba(100, 116, 139, 0.3) !important;
-  color: #94a3b8 !important;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border) !important;
+  color: var(--ui-link) !important;
 }
 
 .restore-btn:hover {
-  background: rgba(100, 116, 139, 0.25) !important;
-  color: #cbd5e1 !important;
+  background: var(--ui-raised) !important;
+  color: var(--ui-secondary) !important;
 }
 
 /* Admin Delete button */
 .admin-delete-btn {
   background: rgba(239, 68, 68, 0.1) !important;
   border: 1px solid rgba(239, 68, 68, 0.3) !important;
-  color: #f87171 !important;
+  color: var(--ui-danger) !important;
 }
 
 .admin-delete-btn:hover {
   background: rgba(239, 68, 68, 0.2) !important;
   border-color: rgba(239, 68, 68, 0.5) !important;
-  color: #ef4444 !important;
+  color: var(--ui-danger) !important;
 }
 
 /* Admin Delete modal */
 .admin-delete-modal {
-  border-top: 3px solid #ef4444;
+  border-top: 3px solid var(--ui-danger);
 }
 
 .admin-delete-info {
@@ -1062,7 +1066,7 @@ const handleAdminDelete = async () => {
   align-items: flex-start;
   background: rgba(239, 68, 68, 0.06);
   border: 1px solid rgba(239, 68, 68, 0.15);
-  border-radius: 10px;
+  border-radius: var(--ui-radius);
   padding: 16px;
   margin-bottom: 20px;
 }
@@ -1075,31 +1079,31 @@ const handleAdminDelete = async () => {
 .admin-delete-title {
   margin: 0 0 10px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--ui-text);
   font-size: 0.95rem;
 }
 
 .admin-delete-list {
   margin: 0;
   padding-left: 18px;
-  color: #94a3b8;
+  color: var(--ui-link);
   font-size: 0.85rem;
   line-height: 1.8;
 }
 
 .admin-delete-list li strong {
-  color: #f1f5f9;
+  color: var(--ui-text);
 }
 
 .admin-delete-btn-solid {
-  background: #ef4444 !important;
-  border-color: #ef4444 !important;
-  color: #fff !important;
+  background: var(--ui-danger-bg) !important;
+  border-color: var(--ui-danger) !important;
+  color: var(--ui-text) !important;
 }
 
 .admin-delete-btn-solid:hover:not(:disabled) {
-  background: #dc2626 !important;
-  border-color: #dc2626 !important;
+  background: var(--ui-danger-bg) !important;
+  border-color: var(--ui-danger) !important;
 }
 
 .admin-delete-btn-solid:disabled {
@@ -1116,7 +1120,7 @@ const handleAdminDelete = async () => {
   justify-content: center;
   align-items: center;
   z-index: 9999;
-  backdrop-filter: blur(4px);
+  backdrop-filter: none;
   padding: 40px;
 }
 
@@ -1133,8 +1137,8 @@ const handleAdminDelete = async () => {
   max-width: 100%;
   max-height: 90vh;
   object-fit: contain;
-  border-radius: 8px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border-radius: var(--ui-radius);
+  box-shadow: none;
 }
 
 .lightbox-close {
@@ -1143,7 +1147,7 @@ const handleAdminDelete = async () => {
   right: -40px;
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--ui-text);
   font-size: 2rem;
   cursor: pointer;
   transition: transform 0.2s;

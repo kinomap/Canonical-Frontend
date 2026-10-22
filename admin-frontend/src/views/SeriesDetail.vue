@@ -164,9 +164,9 @@ onMounted(() => { fetchSeriesDetail() })
   align-items: center;
   gap: 0.5rem;
   background: transparent;
-  border: 1px solid #334155;
-  color: #94a3b8;
-  border-radius: 6px;
+  border: 1px solid var(--ui-control);
+  color: var(--ui-link);
+  border-radius: var(--ui-radius);
   cursor: pointer;
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
@@ -174,32 +174,32 @@ onMounted(() => { fetchSeriesDetail() })
 }
 
 .back-btn:hover {
-  color: #f8fafc;
-  background: #1e293b;
-  border-color: #475569;
+  color: var(--ui-text);
+  background: var(--ui-raised);
+  border-color: var(--ui-control);
 }
 
 .detail-header {
   display: flex;
   gap: 2rem;
   margin-bottom: 2rem;
-  background: #1e293b;
+  background: var(--ui-raised);
   padding: 2rem;
-  border-radius: 12px;
-  border: 1px solid #334155;
+  border-radius: var(--ui-radius);
+  border: 1px solid var(--ui-control);
 }
 
 .poster-container {
   width: 220px;
   flex-shrink: 0;
   aspect-ratio: 2/3;
-  background: #0f172a;
-  border-radius: 8px;
+  background: var(--ui-surface);
+  border-radius: var(--ui-radius);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #334155;
+  border: 1px solid var(--ui-control);
 }
 
 .item-poster {
@@ -209,7 +209,7 @@ onMounted(() => { fetchSeriesDetail() })
 }
 
 .item-poster-placeholder {
-  color: #64748b;
+  color: var(--ui-link);
   font-size: 0.95rem;
   font-weight: 500;
 }
@@ -228,19 +228,19 @@ onMounted(() => { fetchSeriesDetail() })
 .title {
   font-size: 1.8rem;
   margin: 0;
-  color: #f8fafc;
+  color: var(--ui-text);
   font-weight: 700;
 }
 
 .meta {
-  color: #94a3b8;
+  color: var(--ui-link);
   margin-bottom: 1rem;
   font-size: 1rem;
 }
 
 .meta-dot {
   margin: 0 0.5rem;
-  color: #475569;
+  color: var(--ui-link);
 }
 
 .original-title {
@@ -255,17 +255,17 @@ onMounted(() => { fetchSeriesDetail() })
 }
 
 .id-badge {
-  background: #0f172a;
+  background: var(--ui-surface);
   padding: 0.25rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--ui-radius);
   font-size: 0.8rem;
-  color: #94a3b8;
-  border: 1px solid #334155;
+  color: var(--ui-link);
+  border: 1px solid var(--ui-control);
 }
 
 .overview {
   line-height: 1.6;
-  color: #cbd5e1;
+  color: var(--ui-secondary);
   margin-top: 1rem;
 }
 
@@ -279,32 +279,32 @@ onMounted(() => { fetchSeriesDetail() })
 
 .meta-label {
   font-weight: 600;
-  color: #f8fafc;
+  color: var(--ui-text);
 }
 
 .text-success {
-  color: #4ade80;
+  color: var(--ui-success);
   font-weight: 600;
 }
 
 .text-warning {
-  color: #facc15;
+  color: var(--ui-warning);
   font-weight: 600;
 }
 
 .seasons-section {
-  background: #1e293b;
+  background: var(--ui-raised);
   padding: 1.5rem;
-  border-radius: 12px;
-  border: 1px solid #334155;
+  border-radius: var(--ui-radius);
+  border: 1px solid var(--ui-control);
 }
 
 .seasons-section h2 {
   margin-top: 0;
   margin-bottom: 1.5rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid #334155;
-  color: #f8fafc;
+  border-bottom: 1px solid var(--ui-control);
+  color: var(--ui-text);
   font-size: 1.3rem;
 }
 
@@ -315,7 +315,7 @@ onMounted(() => { fetchSeriesDetail() })
 .season-block h3 {
   margin-top: 0;
   margin-bottom: 1rem;
-  color: #38bdf8;
+  color: var(--ui-link);
   font-size: 1.1rem;
 }
 
@@ -326,9 +326,9 @@ onMounted(() => { fetchSeriesDetail() })
 }
 
 .episode-item {
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 8px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-control);
+  border-radius: var(--ui-radius);
   padding: 1rem;
 }
 
@@ -341,8 +341,8 @@ onMounted(() => { fetchSeriesDetail() })
 
 .episode-number {
   font-weight: bold;
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
+  background: var(--ui-raised);
+  color: var(--ui-link);
   padding: 0.2rem 0.6rem;
   border-radius: 4px;
   font-size: 0.85rem;
@@ -350,7 +350,7 @@ onMounted(() => { fetchSeriesDetail() })
 
 .episode-title {
   font-weight: 500;
-  color: #f1f5f9;
+  color: var(--ui-text);
 }
 
 .sources-list {
@@ -366,29 +366,29 @@ onMounted(() => { fetchSeriesDetail() })
   gap: 1rem;
   font-size: 0.85rem;
   padding: 0.5rem 0.75rem;
-  background: #1e293b;
-  border-radius: 6px;
-  border: 1px solid #334155;
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius);
+  border: 1px solid var(--ui-control);
 }
 
 .source-channel {
-  color: #94a3b8;
+  color: var(--ui-link);
   font-family: monospace;
 }
 
 .source-msg {
-  color: #94a3b8;
+  color: var(--ui-link);
   font-family: monospace;
 }
 
 .source-size {
-  color: #cbd5e1;
+  color: var(--ui-secondary);
 }
 
 .source-status {
   margin-left: auto;
   text-transform: uppercase;
-  font-size: 0.7rem;
+  font-size: 12px;
   font-weight: 600;
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
@@ -396,11 +396,11 @@ onMounted(() => { fetchSeriesDetail() })
 
 .source-status.available, .source-status.ACTIVE {
   background: rgba(74, 222, 128, 0.2);
-  color: #4ade80;
+  color: var(--ui-success);
 }
 
 .no-sources {
-  color: #64748b;
+  color: var(--ui-link);
   font-size: 0.85rem;
   font-style: italic;
   margin-top: 0.25rem;
@@ -412,26 +412,26 @@ onMounted(() => { fetchSeriesDetail() })
   gap: 4px;
   padding: 4px 8px;
   border-radius: 4px;
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-.badge-green { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
-.badge-red { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.badge-green { background: rgba(74, 222, 128, 0.2); color: var(--ui-success); }
+.badge-red { background: rgba(239, 68, 68, 0.2); color: var(--ui-danger); }
 
 .loading-state {
   text-align: center;
   padding: 3rem;
-  color: #94a3b8;
+  color: var(--ui-link);
 }
 
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #334155;
-  border-top-color: #38bdf8;
+  border: 3px solid var(--ui-control);
+  border-top-color: var(--ui-control);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 1rem;
@@ -443,9 +443,9 @@ onMounted(() => { fetchSeriesDetail() })
 
 .error-msg {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--ui-danger);
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius);
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
 </style>

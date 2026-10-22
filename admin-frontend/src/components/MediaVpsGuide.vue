@@ -12,8 +12,8 @@
   </aside>
 </template>
 <style scoped>
-.vps-guide { border: 1px solid #334155; border-radius: 8px; padding: 16px; margin: 16px 0; background: #172334; color: #e2e8f0; }
+.vps-guide { border: 1px solid var(--ui-control); border-radius: var(--ui-radius); padding: 16px; margin: 16px 0; background: var(--ui-surface); color: var(--ui-text); }
 h3 { font-size: 17px; margin: 0 0 12px; } dl { margin: 0; } dl div { display: grid; grid-template-columns: 88px 1fr; gap: 12px; margin: 12px 0; }
-dt { font-weight: 600; } dd { margin: 0; line-height: 1.5; font-size: 14px; } p { color: #cbd5e1; font-size: 14px; line-height: 1.5; margin: 16px 0 0; }
+dt { font-weight: 600; } dd { margin: 0; line-height: 1.5; font-size: 14px; } p { color: var(--ui-secondary); font-size: 14px; line-height: 1.5; margin: 16px 0 0; }
 @media(max-width:480px) { dl div { grid-template-columns: 1fr; gap: 4px; } }
 </style>

@@ -195,7 +195,7 @@ onUnmounted(() => {
 .search-icon {
   position: absolute;
   left: 14px;
-  color: #6b7280;
+  color: var(--ui-muted);
   pointer-events: none;
   z-index: 2;
 }
@@ -203,10 +203,10 @@ onUnmounted(() => {
 .search-input {
   width: 100%;
   padding: 10px 38px 10px 42px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  color: #f3f4f6;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-control);
+  border-radius: var(--ui-radius);
+  color: var(--ui-text);
   font-size: 0.95rem;
   outline: none;
   transition: border-color 0.15s ease, background 0.15s ease;
@@ -214,8 +214,8 @@ onUnmounted(() => {
 }
 
 .search-input:focus {
-  border-color: #3b82f6;
-  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--ui-control);
+  background: var(--ui-raised);
 }
 
 .clear-btn {
@@ -223,7 +223,7 @@ onUnmounted(() => {
   right: 10px;
   background: transparent;
   border: none;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -234,8 +234,8 @@ onUnmounted(() => {
 }
 
 .clear-btn:hover {
-  color: #f3f4f6;
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--ui-text);
+  background: var(--ui-raised);
 }
 
 /* Dropdown */
@@ -244,9 +244,9 @@ onUnmounted(() => {
   top: calc(100% + 8px);
   left: 0;
   width: 100%;
-  background: #1a1b23;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   z-index: 1000;
@@ -260,13 +260,13 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   font-size: 0.9rem;
 }
 
 .spinner {
   animation: spin 1s linear infinite;
-  color: #3b82f6;
+  color: var(--ui-link);
 }
 
 @keyframes spin {
@@ -292,15 +292,15 @@ onUnmounted(() => {
 }
 
 .suggestion-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ui-raised);
 }
 
 .suggestion-poster {
   width: 40px;
   height: 56px;
   object-fit: cover;
-  border-radius: 6px;
-  background: #2a2b36;
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
 }
 
 .suggestion-info {
@@ -314,7 +314,7 @@ onUnmounted(() => {
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--ui-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -324,26 +324,26 @@ onUnmounted(() => {
 }
 
 .type-badge {
-  font-size: 0.7rem;
+  font-size: 12px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(59, 130, 246, 0.2);
-  color: #60a5fa;
-  border: 1px solid rgba(96, 165, 250, 0.3);
+  background: var(--ui-raised);
+  color: var(--ui-link);
+  border: 1px solid var(--ui-border);
   font-weight: 500;
 }
 
 .suggestion-meta {
   font-size: 0.8rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
 }
 
 .dropdown-footer {
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.02);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--ui-raised);
+  border-top: 1px solid var(--ui-border);
   font-size: 0.9rem;
-  color: #3b82f6;
+  color: var(--ui-link);
   font-weight: 500;
   cursor: pointer;
   text-align: center;
@@ -351,6 +351,6 @@ onUnmounted(() => {
 }
 
 .dropdown-footer:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--ui-raised);
 }
 </style>

@@ -248,11 +248,11 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #9ca3af;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-secondary);
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -261,8 +261,8 @@ onMounted(async () => {
 }
 
 .back-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .title-with-count {
@@ -273,19 +273,19 @@ onMounted(async () => {
 
 .genre-count {
   font-size: 0.95rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
 }
 
 .page-title {
   font-size: 2.2rem;
   font-weight: 800;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin: 0 0 8px 0;
   letter-spacing: -0.5px;
 }
 
 .page-subtitle {
-  color: #9ca3af;
+  color: var(--ui-secondary);
   font-size: 1.1rem;
   margin: 0;
 }
@@ -317,12 +317,12 @@ onMounted(async () => {
 .genre-card {
   position: relative;
   aspect-ratio: 16 / 9;
-  border-radius: 16px;
+  border-radius: var(--ui-radius-panel);
   overflow: hidden;
   text-decoration: none;
   color: inherit;
   outline: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: none;
   cursor: pointer;
 }
 
@@ -371,7 +371,7 @@ onMounted(async () => {
 .genre-name {
   font-size: 1.5rem;
   font-weight: 800;
-  color: #ffffff;
+  color: var(--ui-text);
   margin: 0;
   text-shadow: 0 2px 4px rgba(0,0,0,0.5);
   letter-spacing: -0.3px;
@@ -383,7 +383,7 @@ onMounted(async () => {
   gap: 6px;
   font-size: 0.9rem;
   font-weight: 700;
-  color: #3b82f6;
+  color: var(--ui-link);
   opacity: 0;
   transform: translateX(-10px);
   transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -403,8 +403,8 @@ onMounted(async () => {
 
 .genre-card-skeleton {
   aspect-ratio: 16 / 9;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--ui-radius-panel);
+  background: linear-gradient(to right, rgba(255,255,255,0.04) 4%, rgba(255,255,255,0.08) 25%, rgba(255,255,255,0.04) 36%);
   animation: shimmer 2s infinite linear;
   background: linear-gradient(to right, rgba(255,255,255,0.04) 4%, rgba(255,255,255,0.08) 25%, rgba(255,255,255,0.04) 36%);
   background-size: 1000px 100%;
@@ -417,28 +417,28 @@ onMounted(async () => {
   justify-content: center;
   padding: 64px 16px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius-panel);
+  border: 1px solid var(--ui-border);
   margin: 24px 0;
 }
 
 .state-icon {
-  color: #6b7280;
+  color: var(--ui-muted);
   margin-bottom: 16px;
 }
 
 .text-red {
-  color: #ef4444;
+  color: var(--ui-danger);
 }
 
 .retry-btn {
   margin-top: 16px;
-  background: #3b82f6;
-  color: #fff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
   padding: 10px 24px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
@@ -454,10 +454,10 @@ onMounted(async () => {
 
 .page-btn {
   padding: 8px 18px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #f3f4f6;
-  border-radius: 8px;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text);
+  border-radius: var(--ui-radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -470,6 +470,6 @@ onMounted(async () => {
 
 .page-info {
   font-size: 0.9rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
 }
 </style>

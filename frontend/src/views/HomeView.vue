@@ -137,15 +137,15 @@ onMounted(() => {
 
 .hero-skeleton {
   height: 380px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--ui-radius-panel);
+  background: var(--ui-raised);
 }
 
 .rail-skeleton-title {
   height: 24px;
   width: 180px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--ui-radius);
+  background: var(--ui-raised);
 }
 
 .rail-skeleton-cards {
@@ -156,8 +156,8 @@ onMounted(() => {
 .card-skeleton {
   flex: 0 0 180px;
   aspect-ratio: 2 / 3;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--ui-radius);
+  background: var(--ui-raised);
 }
 
 .home-error {
@@ -167,33 +167,33 @@ onMounted(() => {
   justify-content: center;
   padding: 80px 16px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius-panel);
+  border: 1px solid var(--ui-border);
 }
 
 .error-icon {
-  color: #ef4444;
+  color: var(--ui-danger);
   margin-bottom: 16px;
 }
 
 .home-error h2 {
   font-size: 1.3rem;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin: 0 0 8px 0;
 }
 
 .home-error p {
-  color: #9ca3af;
+  color: var(--ui-secondary);
   margin: 0 0 20px 0;
 }
 
 .retry-btn {
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
   padding: 8px 24px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   font-weight: 600;
   cursor: pointer;
 }

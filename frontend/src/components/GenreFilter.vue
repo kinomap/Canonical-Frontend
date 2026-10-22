@@ -42,15 +42,15 @@ function select(slug: string | null) {
   overflow-x: auto;
   padding-bottom: 4px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-color: var(--ui-secondary) transparent;
 }
 
 .genre-chip {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #9ca3af;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-secondary);
   padding: 6px 14px;
-  border-radius: 20px;
+  border-radius: var(--ui-radius-panel);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -59,13 +59,13 @@ function select(slug: string | null) {
 }
 
 .genre-chip:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #f3f4f6;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .genre-chip.active {
-  background: #3b82f6;
-  color: #ffffff;
-  border-color: #3b82f6;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
+  border-color: var(--ui-control);
 }
 </style>

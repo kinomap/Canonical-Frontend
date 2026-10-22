@@ -23,7 +23,7 @@ const handleLogin = async () => {
     },{headers:{'X-TOTP-Code':otp.value}})
     
     if (res.data.user.role !== 'admin') {
-      errorMsg.value = 'Access denied. Admin role required.'
+      errorMsg.value = 'Для входа требуется учётная запись администратора.'
       return
     }
 
@@ -33,7 +33,7 @@ const handleLogin = async () => {
     if (err.response && err.response.data && err.response.data.detail) {
       errorMsg.value = err.response.data.detail
     } else {
-      errorMsg.value = 'Login failed. Please check your credentials.'
+      errorMsg.value = 'Не удалось войти. Проверьте логин и пароль.'
     }
   } finally {
     loading.value = false
@@ -48,19 +48,19 @@ const handleLogin = async () => {
       <p v-if="sessionNotice" role="status" class="session-notice">{{ sessionNotice }}</p>
       <form @submit.prevent="handleLogin" class="login-form">
         <div class="input-group">
-          <label>Username or Email</label>
-          <input type="text" autocomplete="username" v-model="usernameOrEmail" required placeholder="Enter admin username" />
+          <label for="admin-username">Логин или электронная почта</label>
+          <input id="admin-username" type="text" autocomplete="username" v-model="usernameOrEmail" required placeholder="Введите логин" />
         </div>
         <div class="input-group">
-          <label>Password</label>
-          <input type="password" autocomplete="current-password" v-model="password" required placeholder="Enter password" />
+          <label for="admin-password">Пароль</label>
+          <input id="admin-password" type="password" autocomplete="current-password" v-model="password" required placeholder="Введите пароль" />
         </div>
         
         <label>Код 2FA или резервный код<input v-model="otp" autocomplete="one-time-code" maxlength="64" /></label>
-        <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
+        <div v-if="errorMsg" class="error-msg" role="alert">{{ errorMsg }}</div>
         
         <button type="submit" class="submit-btn" :disabled="loading">
-          {{ loading ? 'Authenticating...' : 'Login' }}
+          {{ loading ? 'Входим…' : 'Войти' }}
         </button>
       </form>
     </div>
@@ -72,17 +72,18 @@ const handleLogin = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+  min-height: 100dvh;
+  padding: 24px 16px;
+  background: var(--ui-surface);
 }
 
 .login-card {
-  background: rgba(30, 41, 59, 0.8);
-  backdrop-filter: blur(12px);
-  padding: 40px;
-  border-radius: 16px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--ui-surface);
+  backdrop-filter: none;
+  padding: 32px;
+  border-radius: var(--ui-radius-panel);
+  box-shadow: none;
+  border: 1px solid var(--ui-border);
   width: 100%;
   max-width: 400px;
 }
@@ -92,14 +93,14 @@ const handleLogin = async () => {
   margin-bottom: 32px;
   font-size: 1.8rem;
   letter-spacing: 0.1em;
-  color: #f8fafc;
+  color: var(--ui-text);
 }
 
 .highlight {
-  color: #38bdf8;
+  color: var(--ui-link);
 }
 
-.session-notice { color:#fbbf24; line-height:1.5; margin-bottom:20px; }
+.session-notice { color:var(--ui-warning); line-height:1.5; margin-bottom:20px; }
 
 .login-form {
   display: flex;
@@ -115,15 +116,15 @@ const handleLogin = async () => {
 
 .input-group label {
   font-size: 0.9rem;
-  color: #94a3b8;
+  color: var(--ui-link);
   font-weight: 500;
 }
 
 .input-group input {
   padding: 12px 16px;
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid #334155;
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-control);
   color: white;
   font-size: 1rem;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -131,27 +132,27 @@ const handleLogin = async () => {
 }
 
 .input-group input:focus {
-  border-color: #38bdf8;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+  border-color: var(--ui-control);
+  box-shadow: 0 0 0 2px var(--ui-border);
 }
 
 .error-msg {
-  color: #ef4444;
+  color: var(--ui-danger);
   font-size: 0.9rem;
   text-align: center;
   background: rgba(239, 68, 68, 0.1);
   padding: 10px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius);
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .submit-btn {
   margin-top: 10px;
   padding: 14px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   border: none;
-  background: #38bdf8;
-  color: #0f172a;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
@@ -159,7 +160,8 @@ const handleLogin = async () => {
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: #7dd3fc;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 
 .submit-btn:active:not(:disabled) {

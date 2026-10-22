@@ -175,7 +175,7 @@ watch(() => props.targetId, () => {
   font-size: 1.2rem;
   font-weight: 600;
   margin-bottom: 24px;
-  color: #f3f4f6;
+  color: var(--ui-text);
 }
 
 .comment-input-area {
@@ -188,17 +188,18 @@ watch(() => props.targetId, () => {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #374151;
+  background: var(--ui-raised);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  color: #fff;
+  color: var(--ui-text);
   flex-shrink: 0;
 }
 
 .comment-avatar.me {
-  background: #3b82f6;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 
 .comment-form {
@@ -212,16 +213,16 @@ watch(() => props.targetId, () => {
   width: 100%;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid var(--ui-control);
   padding: 8px 0;
-  color: #f3f4f6;
+  color: var(--ui-text);
   font-size: 1.1rem;
   transition: border-color 0.2s ease;
 }
 
 .comment-input:focus {
   outline: none;
-  border-bottom-color: #3b82f6;
+  border-bottom-color: var(--ui-control);
 }
 
 .comment-actions {
@@ -230,18 +231,19 @@ watch(() => props.targetId, () => {
 }
 
 .post-btn {
-  background: #3b82f6;
-  color: #fff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
   padding: 8px 16px;
-  border-radius: 20px;
+  border-radius: var(--ui-radius-panel);
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .post-btn:hover {
-  background: #2563eb;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 
 .comments-list {
@@ -269,23 +271,23 @@ watch(() => props.targetId, () => {
 
 .comment-author {
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--ui-text);
   font-size: 0.95rem;
 }
 
 .comment-date {
-  color: #6b7280;
+  color: var(--ui-muted);
   font-size: 0.8rem;
 }
 
 .comment-text {
-  color: #d1d5db;
+  color: var(--ui-secondary);
   line-height: 1.5;
   white-space: pre-wrap;
 }
 
 .no-comments {
-  color: #6b7280;
+  color: var(--ui-muted);
   text-align: center;
   padding: 32px 0;
   font-size: 0.95rem;
@@ -305,7 +307,7 @@ watch(() => props.targetId, () => {
 .delete-btn, .edit-btn {
   background: none;
   border: none;
-  color: #6b7280;
+  color: var(--ui-muted);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -313,13 +315,13 @@ watch(() => props.targetId, () => {
 }
 
 .delete-btn:hover {
-  color: #ef4444;
+  color: var(--ui-danger);
   background: rgba(239, 68, 68, 0.1);
 }
 
 .edit-btn:hover {
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
+  color: var(--ui-link);
+  background: var(--ui-raised);
 }
 
 .edit-mode {
@@ -344,7 +346,7 @@ watch(() => props.targetId, () => {
   align-items: center;
   gap: 4px;
   padding: 4px 12px;
-  border-radius: 16px;
+  border-radius: var(--ui-radius-panel);
   font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
@@ -353,30 +355,31 @@ watch(() => props.targetId, () => {
 }
 
 .edit-save-btn {
-  background: #3b82f6;
-  color: #fff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 
 .edit-save-btn:hover {
-  background: #2563eb;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 
 .edit-cancel-btn {
   background: transparent;
-  color: #9ca3af;
+  color: var(--ui-secondary);
 }
 
 .edit-cancel-btn:hover {
-  background: rgba(255,255,255,0.05);
-  color: #f3f4f6;
+  background: var(--ui-raised);
+  color: var(--ui-text);
 }
 
 .inline-error {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: var(--ui-danger);
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   margin-bottom: 24px;
   display: flex;
   justify-content: space-between;
@@ -387,7 +390,7 @@ watch(() => props.targetId, () => {
 .close-error-btn {
   background: transparent;
   border: none;
-  color: #ef4444;
+  color: var(--ui-danger);
   font-size: 1.2rem;
   cursor: pointer;
   padding: 0;
@@ -395,14 +398,14 @@ watch(() => props.targetId, () => {
 }
 
 .player-skeleton {
-  background: linear-gradient(90deg, #16171e 25%, #222430 50%, #16171e 75%);
+  background: var(--ui-surface);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite;
 }
 
 .title-skeleton {
-  border-radius: 8px;
-  background: linear-gradient(90deg, #16171e 25%, #222430 50%, #16171e 75%);
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite;
 }

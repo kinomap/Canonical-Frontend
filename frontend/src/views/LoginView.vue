@@ -61,8 +61,8 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
 </template>
 
 <style scoped>
-.login-divider{text-align:center;color:#aeb5c4;margin:20px 0}
-.form-input:focus-visible,.submit-btn:focus-visible{outline:2px solid #a8c3ff;outline-offset:3px}
+.login-divider{text-align:center;color:var(--ui-secondary);margin:20px 0}
+.form-input:focus-visible,.submit-btn:focus-visible{outline:2px solid var(--ui-control);outline-offset:3px}
 
 .auth-page {
   min-height: 80vh;
@@ -74,13 +74,13 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
 }
 
 .auth-card {
-  background: #181920;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-panel);
   padding: 40px 32px;
   max-width: 420px;
   width: 100%;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+  box-shadow: none;
 }
 
 .auth-header {
@@ -91,22 +91,22 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
 .auth-title {
   font-size: 1.8rem;
   font-weight: 800;
-  color: #ffffff;
+  color: var(--ui-text);
   margin: 0 0 6px 0;
 }
 
 .auth-subtitle {
   font-size: 0.9rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   margin: 0;
 }
 
 .auth-session-alert {
   background: rgba(251, 191, 36, 0.12);
   border: 1px solid rgba(251, 191, 36, 0.35);
-  color: #fbbf24;
+  color: var(--ui-warning);
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--ui-radius);
   font-size: 0.9rem;
   margin-bottom: 20px;
   text-align: center;
@@ -115,9 +115,9 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
 .auth-error-alert {
   background: rgba(239, 68, 68, 0.15);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
+  color: var(--ui-danger);
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--ui-radius);
   font-size: 0.9rem;
   margin-bottom: 20px;
   text-align: center;
@@ -138,14 +138,14 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
 .form-label {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #d1d5db;
+  color: var(--ui-secondary);
 }
 
 .form-input {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  color: #ffffff;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-control);
+  border-radius: var(--ui-radius);
+  color: var(--ui-text);
   padding: 10px 14px;
   font-size: 0.95rem;
   outline: none;
@@ -153,7 +153,7 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
 }
 
 .form-input:focus {
-  border-color: #3b82f6;
+  border-color: var(--ui-control);
 }
 
 .form-remember-row {
@@ -167,17 +167,17 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   cursor: pointer;
 }
 
 .submit-btn {
   width:100%;box-sizing:border-box;min-height:46px;
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: var(--ui-radius);
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
@@ -186,7 +186,8 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--ui-primary);
+  color:var(--ui-on-primary);
 }
 
 .submit-btn:disabled {
@@ -198,11 +199,11 @@ const sessionExpired = computed(() => route.query.reason === 'session_expired')
   text-align: center;
   margin-top: 24px;
   font-size: 0.9rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
 }
 
 .auth-link {
-  color: #3b82f6;
+  color: var(--ui-link);
   text-decoration: none;
   font-weight: 600;
   margin-left: 4px;

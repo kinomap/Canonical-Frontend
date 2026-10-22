@@ -37,7 +37,7 @@ function close() {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
+  backdrop-filter: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -46,9 +46,9 @@ function close() {
 }
 
 .modal-card {
-  background: #1e1e24;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-panel);
   padding: 28px 24px;
   max-width: 360px;
   width: 100%;
@@ -63,8 +63,8 @@ function close() {
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+  background: var(--ui-raised);
+  color: var(--ui-link);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -74,23 +74,23 @@ function close() {
 .modal-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin: 0 0 8px 0;
 }
 
 .modal-message {
   font-size: 0.95rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   margin: 0 0 24px 0;
 }
 
 .modal-btn {
   width: 100%;
   padding: 10px;
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -98,6 +98,7 @@ function close() {
 }
 
 .modal-btn:hover {
-  background: #2563eb;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
 }
 </style>

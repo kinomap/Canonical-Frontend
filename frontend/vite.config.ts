@@ -10,11 +10,14 @@ const __dirname = path.dirname(__filename)
 export default defineConfig({
   plugins: [vue()],
   resolve: {
+    dedupe: ['vue'],
     alias: {
+      'vue': path.resolve(__dirname, './node_modules/vue/dist/vue.runtime.esm-bundler.js'),
       '@': path.resolve(__dirname, './src')
     }
   },
   server: {
+    fs: { allow: ['..'] },
     host: '0.0.0.0',
     hmr: process.env.ENVIRONMENT === 'local' ? {clientPort: 8888, path: '/hmr-public'} : undefined,
     port: 5173,

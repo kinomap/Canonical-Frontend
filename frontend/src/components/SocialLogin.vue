@@ -53,4 +53,4 @@ function login(){
 }
 </script>
 <template><section class="social-login"><button type="button" :disabled="busy||initializing" @click="login">{{tr('Войти через Telegram','Sign in with Telegram')}}</button><p v-if="message" role="alert">{{message}}</p></section></template>
-<style scoped>.social-login{margin:20px 0}.social-login button{width:100%;box-sizing:border-box;min-height:46px;padding:12px;border:0;border-radius:10px;background:#27324a;color:#fff;font-size:1rem;font-weight:700;cursor:pointer}.social-login p{color:#fca5a5;font-size:14px}.social-login button:disabled{opacity:.5}</style>
+<style scoped>.social-login{margin:20px 0}.social-login button{width:100%;box-sizing:border-box;min-height:46px;padding:12px;border:1px solid var(--ui-control);border-radius:var(--ui-radius);background:var(--ui-raised);color:var(--ui-text);font-size:1rem;font-weight:700;cursor:pointer}.social-login p{color:var(--ui-danger);font-size:14px}.social-login button:disabled{opacity:.5}</style>

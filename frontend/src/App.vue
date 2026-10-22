@@ -44,9 +44,10 @@ onUnmounted(() => {
 
 <template>
   <div class="app-wrapper">
+    <a class="skip-link" href="#main-content">Перейти к содержимому</a>
     <AppHeader />
     <p v-if="toastMessage" class="global-toast" role="status" aria-live="polite">{{toastMessage}}</p>
-    <main class="app-main">
+    <main id="main-content" tabindex="-1" class="app-main">
       <RouterView />
     </main>
 
@@ -60,7 +61,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.global-toast{position:fixed;z-index:10000;bottom:24px;left:50%;transform:translateX(-50%);width:min(620px,calc(100vw - 48px));box-sizing:border-box;margin:0;padding:16px 20px;border:1px solid #475569;border-radius:12px;background:#1e293b;color:#f1f5f9;box-shadow:0 12px 40px #0006;line-height:1.5;font-size:14px}
+.global-toast{position:fixed;z-index:10000;bottom:24px;left:50%;transform:translateX(-50%);width:min(620px,calc(100vw - 48px));box-sizing:border-box;margin:0;padding:16px 20px;border:1px solid var(--ui-control);border-radius:var(--ui-radius);background:var(--ui-raised);color:var(--ui-text);box-shadow:0 12px 40px #0006;line-height:1.5;font-size:14px}
 
 .app-wrapper {
   min-height: 100vh;

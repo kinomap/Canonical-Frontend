@@ -1,3 +1,5 @@
+import '../../design-system/tokens.css'
+import '../../design-system/foundation.css'
 import './browserAuth'
 import { createApp } from 'vue'
 import App from './App.vue'

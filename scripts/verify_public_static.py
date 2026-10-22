@@ -18,5 +18,12 @@ try:
  for file in files:
   body=run('exec',name,'wget','-q','-O-','http://127.0.0.1/'+str(file.relative_to(root)))
   assert body==file.read_bytes(),str(file)+' not served byte-for-byte (403/SPA fallback?)'
- print('PASS: actual Nginx delivered',len(files),'avatar/genre assets byte-for-byte; no host port opened')
+ font_root=Path(__file__).resolve().parents[1]/'design-system/fonts'
+ fonts=run('exec',name,'find','/usr/share/nginx/html','-name','Manrope-*.ttf').decode().splitlines()
+ assert fonts,'Self-hosted Manrope missing from image'
+ for asset in fonts:
+  relative=asset.split('/usr/share/nginx/html/',1)[1]
+  body=run('exec',name,'wget','-q','-O-','http://127.0.0.1/'+relative)
+  assert body==(font_root/'Manrope-Variable.ttf').read_bytes(),'Font not served byte-for-byte'
+ print('PASS: actual Nginx delivered',len(files),'avatar/genre assets and',len(fonts),'Manrope asset(s) byte-for-byte; no host port opened')
 finally:subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

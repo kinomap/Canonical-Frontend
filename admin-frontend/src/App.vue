@@ -2,6 +2,7 @@
 import { useRoute, useRouter } from 'vue-router'
 import { computed, ref, watch } from 'vue'
 import ToastContainer from './components/ToastContainer.vue'
+import BrandMark from '../../design-system/BrandMark.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,27 +24,24 @@ const logout = async () => {
     <ToastContainer />
   </div>
   <div v-else class="admin-layout">
+    <a class="skip-link" href="#admin-main">Перейти к содержимому</a>
     <ToastContainer />
-    <header class="mobile-header"><strong>KINOSOTA · Admin</strong><button type="button" aria-controls="admin-navigation" :aria-expanded="mobileNavOpen" @click="mobileNavOpen = !mobileNavOpen">{{ mobileNavOpen ? 'Закрыть меню' : 'Открыть меню' }}</button></header>
+    <header class="mobile-header"><BrandMark /><button type="button" aria-controls="admin-navigation" :aria-expanded="mobileNavOpen" @click="mobileNavOpen = !mobileNavOpen">{{ mobileNavOpen ? 'Закрыть меню' : 'Открыть меню' }}</button></header>
     <aside id="admin-navigation" class="sidebar" :class="{ 'sidebar--open': mobileNavOpen }">
-      <div class="sidebar-header">
-        <div class="brand-icon">K</div>
-        <div class="brand-text">
-          <span class="brand-name">KINOSOTA</span>
-          <span class="brand-sub">ADMIN PANEL</span>
-        </div>
-      </div>
-      <nav class="sidebar-nav">
+      <div class="sidebar-header"><BrandMark /><span class="brand-sub">Управление кинотеатром</span></div>
+      <nav class="sidebar-nav" aria-label="Разделы администрирования">
         <router-link to="/account-security" class="nav-item" active-class="nav-item--active">Безопасность · 2FA</router-link>
         <router-link to="/" class="nav-item" exact-active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
             <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
           </svg>
-          Dashboard
+          Обзор
         </router-link>
 
-        <div class="nav-section-label">Content</div>
+        <div class="nav-section-label">
+          Контент
+        </div>
 
         <router-link to="/movies" class="nav-item" active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -53,7 +51,7 @@ const logout = async () => {
             <line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/>
             <line x1="17" y1="7" x2="22" y2="7"/>
           </svg>
-          Movies
+          Фильмы
         </router-link>
 
         <router-link to="/metadata" class="nav-item" active-class="nav-item--active">
@@ -64,7 +62,7 @@ const logout = async () => {
             <line x1="16" y1="17" x2="8" y2="17"></line>
             <polyline points="10 9 9 9 8 9"></polyline>
           </svg>
-          Metadata
+          Метаданные
         </router-link>
 
         <router-link to="/series" class="nav-item" active-class="nav-item--active">
@@ -73,21 +71,21 @@ const logout = async () => {
             <line x1="8" y1="21" x2="16" y2="21"></line>
             <line x1="12" y1="17" x2="12" y2="21"></line>
           </svg>
-          Series
+          Сериалы
         </router-link>
 
         <router-link to="/series-garbage" class="nav-item" active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
           </svg>
-          Series Garbage
+          Корзина сериалов
         </router-link>
 
         <router-link to="/blocked" class="nav-item" active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
           </svg>
-          Blocked
+          Заблокировано
         </router-link>
 
         <router-link to="/without-poster" class="nav-item" active-class="nav-item--active">
@@ -96,24 +94,24 @@ const logout = async () => {
             <circle cx="8.5" cy="8.5" r="1.5"/>
             <polyline points="21 15 16 10 5 21"/>
           </svg>
-          Without Poster
+          Без постера
         </router-link>
 
         <router-link to="/garbage" class="nav-item" active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
           </svg>
-          Garbage
+          Корзина
         </router-link>
 
         <router-link to="/comments" class="nav-item" active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
-          Comments
+          Комментарии
         </router-link>
 
-        <div class="nav-section-label">Sources</div>
+        <div class="nav-section-label">Источники</div>
 
         <router-link to="/telegram" class="nav-item" active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -122,13 +120,13 @@ const logout = async () => {
           Telegram
         </router-link>
 
-        <div class="nav-section-label">Media Infrastructure</div>
+        <div class="nav-section-label">Медиа-инфраструктура</div>
 
         <router-link to="/media-infrastructure" class="nav-item" active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
-          Observability
+          Мониторинг
         </router-link>
 
         <router-link to="/media-nodes" class="nav-item" active-class="nav-item--active">
@@ -136,7 +134,7 @@ const logout = async () => {
             <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
             <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
           </svg>
-          Media Nodes
+          Медиа-узлы
         </router-link>
 
         <router-link to="/media-sessions" class="nav-item" active-class="nav-item--active">
@@ -146,9 +144,11 @@ const logout = async () => {
           Sessions
         </router-link>
 
-        <router-link to="/ad-studio" class="nav-item"><span>Видео и Реклама (Ad Studio)</span></router-link>
+        <router-link to="/ad-studio" class="nav-item" active-class="nav-item--active"><span>Видео и Реклама (Ad Studio)</span></router-link>
             <router-link to="/audience" class="nav-item" active-class="nav-item--active">Пользователи / Маркетинг / Подписки</router-link>
-        <div class="nav-section-label">System</div>
+        <div class="nav-section-label">
+          Система
+        </div>
 
         <router-link to="/system" class="nav-item" active-class="nav-item--active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -164,7 +164,7 @@ const logout = async () => {
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
-          Security Center
+          Центр безопасности
         </router-link>
       </nav>
       <div class="sidebar-footer">
@@ -173,196 +173,34 @@ const logout = async () => {
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
             <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
           </svg>
-          Logout
+          Выйти
         </button>
       </div>
     </aside>
-    <main class="main-content">
+    <main id="admin-main" tabindex="-1" class="main-content">
       <router-view />
     </main>
   </div>
 </template>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #0f172a;
-  color: #f1f5f9;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.admin-layout {
-  display: flex;
-  min-height: 100vh;
-}
-
-/* ── Sidebar ── */
-.sidebar {
-  width: 240px;
-  background: linear-gradient(180deg, #1a2540 0%, #111827 100%);
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid rgba(255,255,255,0.06);
-  flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.sidebar-header {
-  padding: 20px 20px 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.brand-icon {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  font-weight: 900;
-  color: #0f172a;
-  flex-shrink: 0;
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.brand-name {
-  font-size: 0.9rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: #f8fafc;
-}
-
-.brand-sub {
-  font-size: 0.65rem;
-  letter-spacing: 0.06em;
-  color: #64748b;
-  font-weight: 500;
-}
-
-/* Section labels — NON-CLICKABLE visual dividers */
-.nav-section-label {
-  padding: 16px 16px 6px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #475569;
-  pointer-events: none;
-  user-select: none;
-}
-
-.sidebar-nav {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 12px 0;
-  overflow-y: auto;
-}
-
-/* Navigation items */
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 16px;
-  margin: 1px 8px;
-  color: #94a3b8;
-  text-decoration: none;
-  font-weight: 500;
-  font-size: 0.875rem;
-  border-radius: 8px;
-  transition: all 0.15s ease;
-  border: 1px solid transparent;
-}
-
-.nav-item:hover {
-  color: #f1f5f9;
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.04);
-}
-
-.nav-item--active {
-  color: #38bdf8 !important;
-  background: rgba(56, 189, 248, 0.1) !important;
-  border-color: rgba(56, 189, 248, 0.15) !important;
-  font-weight: 600;
-}
-
-.nav-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  opacity: 0.8;
-}
-
-.nav-item--active .nav-icon {
-  opacity: 1;
-}
-
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-}
-
-.logout-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 9px;
-  background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 600;
-  transition: all 0.15s;
-}
-
-.logout-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.5);
-  color: #ef4444;
-}
-
-/* ── Main content ── */
-.main-content {
-  flex: 1;
-  padding: 32px;
-  overflow-y: auto;
-  min-width: 0;
-}
-
-.mobile-header { display: none; }
-@media (max-width: 760px) {
-  .admin-layout { display: block; }
-  .mobile-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #1a2540; border-bottom: 1px solid #334155; }
-  .mobile-header button { color: #e2e8f0; background: #334155; border: 1px solid #475569; border-radius: 8px; padding: 10px 12px; }
-  .sidebar { display: none; position: relative; width: 100%; height: auto; max-height: 70vh; overflow-y: auto; }
-  .sidebar.sidebar--open { display: flex; }
-  .main-content { width: 100%; padding: 16px; }
-}
+.admin-layout{display:flex;min-height:100vh;background:var(--ui-bg)}
+.sidebar{width:var(--ui-sidebar);background:var(--ui-bg);display:flex;flex-direction:column;border-right:1px solid var(--ui-border);flex-shrink:0;position:sticky;top:0;height:100dvh;overflow:hidden}
+.sidebar-header{padding:24px 20px 20px;display:grid;gap:8px;border-bottom:1px solid var(--ui-border)}
+.brand-sub{font-size:12px;color:var(--ui-muted);padding-left:46px}
+.sidebar-nav{flex:1;display:flex;flex-direction:column;padding:12px 0;overflow-y:auto}
+.nav-section-label{padding:20px 20px 8px;font-size:12px;font-weight:500;color:var(--ui-muted);user-select:none}
+.nav-item{display:flex;align-items:center;gap:10px;min-height:40px;padding:8px 12px;margin:1px 8px;color:var(--ui-secondary);text-decoration:none;font-size:14px;font-weight:500;border-radius:var(--ui-radius);transition:background .15s,color .15s}
+.nav-item:hover{background:var(--ui-surface);color:var(--ui-text)}
+.nav-item--active{background:var(--ui-raised);color:var(--ui-text);font-weight:650}
+.nav-icon{width:16px;height:16px;flex-shrink:0;stroke-width:1.6;opacity:.9}
+.sidebar-footer{padding:12px 16px;border-top:1px solid var(--ui-border)}
+.logout-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:40px;padding:8px 12px;border:1px solid var(--ui-control);border-radius:var(--ui-radius);background:transparent;color:var(--ui-secondary);font-size:14px;font-weight:600}
+.logout-btn:hover{background:var(--ui-raised);color:var(--ui-text)}
+.main-content{flex:1;min-width:0;padding:32px;max-width:1800px;outline:none}
+.main-content h1{font-size:28px;line-height:1.25;letter-spacing:-.035em}
+.main-content h2{letter-spacing:-.02em}
+.mobile-header{display:none}
+@media(max-width:1100px){.main-content{padding:24px}.sidebar{width:216px}}
+@media(max-width:760px){.admin-layout{display:block}.mobile-header{position:sticky;top:0;z-index:90;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;padding:10px 16px;background:var(--ui-bg);border-bottom:1px solid var(--ui-border)}.mobile-header strong{font-size:14px}.mobile-header button{min-height:44px;padding:8px 12px;border:1px solid var(--ui-control);border-radius:var(--ui-radius);background:var(--ui-surface);font-size:12px}.sidebar{display:none;position:relative;width:100%;height:auto;max-height:calc(100dvh - 64px);overflow-y:auto;border-right:0;border-bottom:1px solid var(--ui-border)}.sidebar.sidebar--open{display:flex}.sidebar-header{display:none}.nav-item{min-height:44px}.main-content{width:100%;padding:24px 16px}.main-content h1{font-size:24px}}
 </style>

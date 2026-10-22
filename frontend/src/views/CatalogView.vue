@@ -243,14 +243,14 @@ onMounted(() => {
 .page-title {
   font-size: 1.8rem;
   font-weight: 800;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin: 0;
   letter-spacing: -0.5px;
 }
 
 .catalog-count {
   font-size: 0.9rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
 }
 
 
@@ -280,46 +280,46 @@ onMounted(() => {
   justify-content: center;
   padding: 64px 16px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius-panel);
+  border: 1px solid var(--ui-border);
   margin: 24px 0;
 }
 
 .state-icon {
-  color: #6b7280;
+  color: var(--ui-muted);
   margin-bottom: 16px;
 }
 
 .text-red {
-  color: #ef4444;
+  color: var(--ui-danger);
 }
 
 .state-container h2 {
   font-size: 1.25rem;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin: 0 0 8px 0;
 }
 
 .state-container p {
-  color: #9ca3af;
+  color: var(--ui-secondary);
   font-size: 0.95rem;
   margin: 0 0 16px 0;
 }
 
 .retry-btn {
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
   border: none;
   padding: 8px 20px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius);
   font-weight: 600;
   cursor: pointer;
 }
 
 .skeleton-card {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 12px;
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius);
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -328,13 +328,13 @@ onMounted(() => {
 
 .skeleton-poster {
   aspect-ratio: 2 / 3;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+  background: var(--ui-raised);
+  border-radius: var(--ui-radius);
 }
 
 .skeleton-text {
   height: 14px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--ui-raised);
   border-radius: 4px;
 }
 
@@ -356,10 +356,10 @@ onMounted(() => {
 
 .page-btn {
   padding: 8px 18px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #f3f4f6;
-  border-radius: 8px;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text);
+  border-radius: var(--ui-radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -372,6 +372,6 @@ onMounted(() => {
 
 .page-info {
   font-size: 0.9rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
 }
 </style>

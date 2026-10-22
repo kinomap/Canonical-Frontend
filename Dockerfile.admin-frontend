@@ -5,6 +5,7 @@ ENV VITE_ADMIN_BASE_PATH=${VITE_ADMIN_BASE_PATH}
 WORKDIR /app
 COPY admin-frontend/package.json admin-frontend/package-lock.json ./
 RUN npm ci
+COPY design-system/ /design-system/
 COPY admin-frontend/ ./
 RUN npm run build
 

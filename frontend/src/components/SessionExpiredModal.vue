@@ -64,8 +64,8 @@ const emit = defineEmits<{ confirm: [] }>()
   padding: 16px;
   /* Frosted-glass backdrop */
   background: rgba(7, 8, 12, 0.72);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* ── Card ────────────────────────────────────────────────────────────────── */
@@ -79,12 +79,11 @@ const emit = defineEmits<{ confirm: [] }>()
   width: 100%;
   text-align: center;
 
-  background: rgba(24, 25, 32, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 24px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-panel);
   box-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    none;
 }
 
 /* ── Icon ────────────────────────────────────────────────────────────────── */
@@ -98,27 +97,27 @@ const emit = defineEmits<{ confirm: [] }>()
 
   background: rgba(251, 191, 36, 0.1);
   border: 1.5px solid rgba(251, 191, 36, 0.3);
-  box-shadow: 0 0 24px rgba(251, 191, 36, 0.12);
+  box-shadow: none;
 }
 
 .session-icon {
   width: 32px;
   height: 32px;
-  color: #fbbf24;
+  color: var(--ui-warning);
 }
 
 /* ── Typography ──────────────────────────────────────────────────────────── */
 .session-title {
   font-size: 1.5rem;
   font-weight: 800;
-  color: #f3f4f6;
+  color: var(--ui-text);
   margin: 0;
   letter-spacing: -0.02em;
 }
 
 .session-body {
   font-size: 0.95rem;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   line-height: 1.6;
   margin: 0;
 }
@@ -130,7 +129,7 @@ const emit = defineEmits<{ confirm: [] }>()
   gap: 8px;
   padding: 12px 28px;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--ui-radius);
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
@@ -138,15 +137,15 @@ const emit = defineEmits<{ confirm: [] }>()
   width: 100%;
   justify-content: center;
 
-  color: #fff;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35);
+  color: var(--ui-text);
+  background: var(--ui-surface);
+  box-shadow: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .session-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+  box-shadow: none;
 }
 
 .session-btn:active {

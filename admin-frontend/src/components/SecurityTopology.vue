@@ -94,24 +94,24 @@ const onUp = () => { drag = null }
 </script>
 
 <style scoped>
-.topo-help { color: #94a3b8; font-size: 14px; margin: 4px 0; }
+.topo-help { color: var(--ui-link); font-size: 14px; margin: 4px 0; }
 .topo { display: flex; flex-direction: column; gap: 8px; }
 .topo-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.topo-btn { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-.topo-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-left: 8px; font-size: 12px; color: #94a3b8; }
+.topo-btn { background: var(--ui-raised); color: var(--ui-text); border: 1px solid var(--ui-control); border-radius: var(--ui-radius); padding: 4px 10px; cursor: pointer; }
+.topo-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-left: 8px; font-size: 12px; color: var(--ui-link); }
 .legend-item { display: inline-flex; align-items: center; gap: 4px; }
-.topo-canvas { border: 1px solid #1e293b; border-radius: 10px; background: #0b1220; overflow: hidden; touch-action: none; cursor: grab; min-height: 260px; }
+.topo-canvas { border: 1px solid var(--ui-control); border-radius: var(--ui-radius); background: var(--ui-bg); overflow: hidden; touch-action: none; cursor: grab; min-height: 260px; }
 .topo-svg { width: 100%; height: auto; max-height: 70vh; display: block; }
-.band { fill: rgba(30, 41, 59, .35); stroke: #1e293b; }
-.band-label { fill: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.band { fill: var(--ui-surface); stroke: var(--ui-border); }
+.band-label { fill: var(--ui-link); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .node { cursor: pointer; }
-.node-box { fill: #111827; stroke-width: 1.5; }
-.node.sel .node-box { stroke-width: 3; fill: #1e1b4b; }
+.node-box { fill: var(--ui-on-primary); stroke-width: 1.5; }
+.node.sel .node-box { stroke-width: 3; fill: var(--ui-raised); }
 .node.rc .node-box { stroke-width: 3; stroke-dasharray: 4 3; }
-.node-label { fill: #e2e8f0; font-size: 12.5px; font-weight: 600; }
+.node-label { fill: var(--ui-text); font-size: 12.5px; font-weight: 600; }
 .node-state { font-size: 11.5px; }
 .edge { cursor: pointer; }
-.edge-icon { fill: #0b1220; font-size: 10px; font-weight: 700; pointer-events: none; }
+.edge-icon { fill: var(--ui-on-primary); font-size: 12px; font-weight: 700; pointer-events: none; }
 .dim { opacity: .25; }
-.edge.hl path:first-child { filter: drop-shadow(0 0 3px rgba(129, 140, 248, .8)); }
+.edge.hl path:first-child { filter: drop-shadow(0 0 3px var(--ui-link)); }
 </style>

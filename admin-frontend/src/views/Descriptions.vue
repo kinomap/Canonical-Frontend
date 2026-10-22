@@ -10,10 +10,10 @@
   padding: 24px;
 }
 h1 {
-  color: #f8fafc;
+  color: var(--ui-text);
   margin-bottom: 16px;
 }
 p {
-  color: #94a3b8;
+  color: var(--ui-link);
 }
 </style>

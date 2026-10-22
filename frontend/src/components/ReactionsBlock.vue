@@ -111,27 +111,27 @@ watch(() => props.targetId, () => {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 20px;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-panel);
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #9ca3af;
+  color: var(--ui-secondary);
   font-size: 0.95rem;
   min-width: 48px;
   justify-content: center;
 }
 
 .reaction-btn:hover:not(:disabled) {
-  background: rgba(255,255,255,0.1);
-  border-color: rgba(255,255,255,0.2);
+  background: var(--ui-raised);
+  border-color: var(--ui-border);
   transform: translateY(-1px);
 }
 
 .reaction-btn.active {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.4);
-  color: #fff;
+  background: var(--ui-raised);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
 }
 
 .reaction-btn:disabled {
@@ -148,8 +148,8 @@ watch(() => props.targetId, () => {
 .reactions-skeleton {
   width: 54px;
   height: 34px;
-  border-radius: 20px;
-  background: linear-gradient(90deg, #16171e 25%, #222430 50%, #16171e 75%);
+  border-radius: var(--ui-radius-panel);
+  background: var(--ui-surface);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite;
 }
