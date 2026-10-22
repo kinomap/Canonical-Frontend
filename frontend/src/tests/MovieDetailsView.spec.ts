@@ -6,6 +6,7 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 vi.mock('@/api/client', () => ({
+  adRequest: vi.fn().mockResolvedValue({cue_points:[],plan_token:null}),
   apiClient: {
     getMovie: vi.fn(),
     getAudioTracks: vi.fn(),
@@ -31,6 +32,8 @@ describe('MovieDetailsView.vue', () => {
 
   beforeEach(async () => {
     vi.resetAllMocks()
+    vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue(undefined)
+    vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{})
 
     router = createRouter({
       history: createMemoryHistory(),

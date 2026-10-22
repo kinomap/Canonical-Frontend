@@ -1,0 +1,27 @@
+import {mount,flushPromises} from '@vue/test-utils'
+import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest'
+import AdPlayback from '@/components/AdPlaybackContainer.vue'
+import {pendingCues,type Cue} from '@/utils/adTimeline'
+const {request}=vi.hoisted(()=>({request:vi.fn()}))
+vi.mock('@/api/client',()=>({adRequest:request}))
+const cues:Cue[]=[{id:'pre',kind:'pre',at_sec:0},{id:'m1',kind:'mid',at_sec:30},{id:'m2',kind:'mid',at_sec:60},{id:'post',kind:'post',at_sec:0}]
+const creative={delivery_id:'delivery',media_url:'https://media.test/ads/test',duration_sec:10,skip_after:5,cta_url:'https://example.com',cta_text:'Перейти'}
+let wrappers:any[]=[]
+beforeEach(()=>{
+ vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue(undefined)
+ vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{})
+ vi.spyOn(HTMLMediaElement.prototype,'load').mockImplementation(()=>{})
+ request.mockReset();request.mockImplementation((url:string)=>Promise.resolve(url.includes('/plan/')?{cue_points:cues,plan_token:'plan'}:url.includes('/prepare')?{ad:{...creative}}:{ok:true}))
+})
+afterEach(()=>{wrappers.forEach(x=>x.unmount());wrappers=[];vi.restoreAllMocks()})
+function wrapper(){const main=document.createElement('video');main.src='https://main.test/movie';Object.defineProperty(main,'duration',{value:120});const w=mount(AdPlayback,{props:{main,targetId:'movie',source:'main'}});wrappers.push(w);return {main,w}}
+describe('isolated ad playback',()=>{
+ it('plays pre-roll in a distinct media element and preserves main src/position',async()=>{const {main,w}=wrapper();main.currentTime=12;await flushPromises();expect(w.find('video').attributes('src')).toContain('/ads/');expect(main.src).toContain('main.test');expect(main.currentTime).toBe(12);expect(w.vm.busy).toBe(true);await w.find('video').trigger('playing');await w.find('video').trigger('ended');await flushPromises();expect(w.vm.busy).toBe(false);expect(main.play).toHaveBeenCalled();expect(request.mock.calls.some(x=>x[1]?.body?.includes('impression'))).toBe(true)})
+ it('enforces skip delay and emits only after playback',async()=>{const {w}=wrapper();await flushPromises();let btn=w.find('.ad-actions button');expect(btn.attributes('disabled')).toBeDefined();const video=w.find('video');await video.trigger('playing');(video.element as HTMLVideoElement).currentTime=5;await video.trigger('timeupdate');expect(w.find('.ad-actions button').attributes('disabled')).toBeUndefined();await w.find('.ad-actions button').trigger('click');await flushPromises();expect(w.vm.busy).toBe(false);expect(request.mock.calls.some(x=>x[1]?.body?.includes('skip'))).toBe(true)})
+ it('preloads 15 seconds ahead without an impression',async()=>{request.mockImplementation((url:string)=>Promise.resolve(url.includes('/plan/')?{cue_points:cues.filter(x=>x.kind==='mid'),plan_token:'plan'}:url.includes('/prepare')?{ad:{...creative}}:{ok:true}));const {main,w}=wrapper();await flushPromises();main.currentTime=15;w.vm.tick();await flushPromises();expect(w.find('video').exists()).toBe(true);expect(w.vm.busy).toBe(false);expect(request.mock.calls.filter(x=>x[0].includes('/events/'))).toHaveLength(0)})
+ it('queues unseen crossed mid-rolls and resumes after the queue',async()=>{request.mockImplementation((url:string)=>Promise.resolve(url.includes('/plan/')?{cue_points:cues.filter(x=>x.kind==='mid'),plan_token:'plan'}:url.includes('/prepare')?{ad:{...creative}}:{ok:true}));const {main,w}=wrapper();await flushPromises();main.currentTime=80;w.vm.tick();await flushPromises();expect(w.vm.busy).toBe(true);await w.find('video').trigger('ended');await flushPromises();expect(w.vm.busy).toBe(true);await w.find('video').trigger('ended');await flushPromises();expect(w.vm.busy).toBe(false);w.vm.tick();await flushPromises();expect(w.vm.busy).toBe(false)})
+ it('plays post-roll before resolving end',async()=>{request.mockImplementation((url:string)=>Promise.resolve(url.includes('/plan/')?{cue_points:cues.filter(x=>x.kind==='post'),plan_token:'plan'}:url.includes('/prepare')?{ad:{...creative}}:{ok:true}));const {w}=wrapper();await flushPromises();let ended=false;const p=w.vm.end().then(()=>ended=true);await flushPromises();expect(ended).toBe(false);await w.find('video').trigger('ended');await p;expect(ended).toBe(true)})
+ it('PRO empty plan never prepares or mounts ad media',async()=>{request.mockResolvedValue({cue_points:[],plan_token:null});const {w}=wrapper();await flushPromises();expect(w.find('video').exists()).toBe(false);expect(w.vm.busy).toBe(false);expect(request).toHaveBeenCalledTimes(1)})
+ it('fails open on ad API error without changing main video',async()=>{request.mockRejectedValue(new Error('offline'));const {main,w}=wrapper();await flushPromises();expect(w.vm.busy).toBe(false);expect(main.src).toContain('main.test')})
+ it('seek queue excludes already seen and beyond-end cues',()=>{expect(pendingCues(cues,new Set(['m1']),80,70).map(c=>c.id)).toEqual(['m2']);expect(pendingCues(cues,new Set(),80,50).map(c=>c.id)).toEqual(['m1'])})
+})

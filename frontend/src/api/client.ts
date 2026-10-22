@@ -335,3 +335,6 @@ export const apiClient = {
     })
   },
 }
+
+// Advertising uses the same authenticated/CSRF-wrapped transport as playback.
+export const adRequest = request

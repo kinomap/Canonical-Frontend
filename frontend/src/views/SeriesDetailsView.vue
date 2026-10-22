@@ -278,7 +278,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <VideoPlayer
+        <VideoPlayer :target-id="selectedEpisode?.id" target-type="episode"
           v-else-if="streamUrl"
           :src="streamUrl"
           :poster="series.backdrop_url || series.poster_url || undefined"

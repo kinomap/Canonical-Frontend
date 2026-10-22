@@ -146,7 +146,8 @@ const logout = async () => {
           Sessions
         </router-link>
 
-        <router-link to="/audience" class="nav-item" active-class="nav-item--active">Пользователи / Маркетинг / Подписки</router-link>
+        <router-link to="/ad-studio" class="nav-item"><span>Видео и Реклама (Ad Studio)</span></router-link>
+            <router-link to="/audience" class="nav-item" active-class="nav-item--active">Пользователи / Маркетинг / Подписки</router-link>
         <div class="nav-section-label">System</div>
 
         <router-link to="/system" class="nav-item" active-class="nav-item--active">

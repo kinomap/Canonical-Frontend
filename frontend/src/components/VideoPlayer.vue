@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
+import AdPlaybackContainer from './AdPlaybackContainer.vue'
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = defineProps<{
   src: string;
+  targetId?: string;
+  targetType?: 'movie' | 'episode';
   poster?: string;
   title?: string;
 }>()
@@ -11,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits(['close', 'ended'])
 
 const videoRef = ref<HTMLVideoElement | null>(null)
+const adsRef=ref<InstanceType<typeof AdPlaybackContainer>|null>(null)
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
@@ -66,6 +70,7 @@ function formatTime(seconds: number) {
 }
 
 function togglePlay() {
+  if (adsRef.value?.busy) return
   if (!videoRef.value) return
   if (videoRef.value.paused) {
     videoRef.value.play().catch(() => {})
@@ -75,6 +80,7 @@ function togglePlay() {
 }
 
 function skip(amount: number) {
+  if (adsRef.value?.busy) return
   if (!videoRef.value) return
   videoRef.value.currentTime = Math.max(0, Math.min(videoRef.value.duration || Infinity, videoRef.value.currentTime + amount))
   showControls()
@@ -82,6 +88,7 @@ function skip(amount: number) {
 
 function handleTimeUpdate() {
   if (!videoRef.value || isDragging.value) return
+  adsRef.value?.tick()
   currentTime.value = videoRef.value.currentTime
   
   if (videoRef.value.buffered.length > 0) {
@@ -100,6 +107,7 @@ function handleWaiting() {
 }
 
 function handlePlaying() {
+  if(adsRef.value?.busy){videoRef.value?.pause();return}
   isBuffering.value = false
   isPlaying.value = true
 }
@@ -112,7 +120,8 @@ function handlePause() {
   isPlaying.value = false
 }
 
-function handleEnded() {
+async function handleEnded() {
+  await adsRef.value?.end()
   isPlaying.value = false
   // Playback finished on its own: the owner can release the playback session.
   emit('ended')
@@ -129,6 +138,7 @@ function getFraction(e: MouseEvent | TouchEvent): number {
 }
 
 function onProgressMouseDown(e: MouseEvent | TouchEvent) {
+  if (adsRef.value?.busy) return
   if (!videoRef.value || !duration.value) return
   isDragging.value = true
   dragPosition.value = getFraction(e)
@@ -137,6 +147,7 @@ function onProgressMouseDown(e: MouseEvent | TouchEvent) {
 }
 
 function onDocumentMouseMove(e: MouseEvent | TouchEvent) {
+  if (adsRef.value?.busy) return
   if (!isDragging.value || !duration.value) return
   dragPosition.value = getFraction(e)
   currentTime.value = dragPosition.value * duration.value
@@ -144,6 +155,7 @@ function onDocumentMouseMove(e: MouseEvent | TouchEvent) {
 }
 
 function onDocumentMouseUp(e: MouseEvent | TouchEvent) {
+  if (adsRef.value?.busy) return
   if (!isDragging.value || !videoRef.value || !duration.value) return
   isDragging.value = false
   const frac = getFraction(e)
@@ -243,9 +255,11 @@ onBeforeUnmount(() => {
         @pause="handlePause"
         @ended="handleEnded"
         @click="togglePlay"
-        autoplay
+        :autoplay="!targetId"
+        @seeking="adsRef?.tick()"
       ></video>
       
+      <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" />
       <!-- Buffering overlay -->
       <div class="buf-overlay" :class="{ show: isBuffering }">
         <div class="spinner"></div>

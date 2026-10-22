@@ -252,7 +252,7 @@ onMounted(() => {
           </div>
         </div>
       </div>
-      <VideoPlayer v-else-if="streamUrl" :src="streamUrl" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" />
+      <VideoPlayer :target-id="movie?.id" target-type="movie" v-else-if="streamUrl" :src="streamUrl" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" />
       <!-- Inline player error (non-auth failures only) -->
       <div v-if="playError" class="inline-error" role="alert">
         <span>{{ playError }}</span>
