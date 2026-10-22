@@ -1,4 +1,5 @@
 export interface Genre {
+  artwork?: string | null
   id: number
   name: string
   slug: string

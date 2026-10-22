@@ -53,17 +53,17 @@ describe('GenresView.vue', () => {
     expect(wrapper.find('.genres-error').exists()).toBe(true)
     expect(wrapper.text()).toContain('Network error')
   })
-  it('maps canonical genre slugs to real shipped artwork',async()=>{
+  it('uses explicit canonical artwork from API without guessing filenames',async()=>{
     vi.mocked(apiClient.listGenres).mockResolvedValueOnce([
-      {id:1,name:'Mystery',slug:'mystery'},
-      {id:2,name:'TV',slug:'televizionnyj-fil-m'},
-      {id:3,name:'Fantasy',slug:'fentezi'}
+      {id:1,name:'Детектив',slug:'detektiv',artwork:'/genres/v2/detektiv.jpg'},
+      {id:2,name:'Телевизионный фильм',slug:'televizionnyj-fil-m',artwork:'/genres/v2/televizionnyj-fil-m.jpg'},
+      {id:3,name:'Фэнтези',slug:'fentezi',artwork:'/genres/v2/fentezi.jpg'}
     ])
     const w=mount(GenresView,{global:{plugins:[router]}});await flushPromises()
     const styles=w.findAll('.genre-card-bg').map(c=>c.attributes('style')).join(' ')
-    expect(styles).toContain('/genres/detektiv.jpg')
-    expect(styles).toContain('/genres/televizionnyj-film.jpg')
-    expect(styles).toContain('/genres/fjentezi.jpg')
+    expect(styles).toContain('/genres/v2/detektiv.jpg')
+    expect(styles).toContain('/genres/v2/televizionnyj-fil-m.jpg')
+    expect(styles).toContain('/genres/v2/fentezi.jpg')
   })
 
 })

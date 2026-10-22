@@ -13,7 +13,7 @@ try:
   except subprocess.CalledProcessError:time.sleep(0.2)
  else:raise RuntimeError('Nginx did not become healthy')
  root=Path(__file__).resolve().parents[1]/'frontend/public'
- files=sorted((root/'avatars').glob('*.svg'))+sorted((root/'genres').glob('*.jpg'))
+ files=sorted((root/'avatars').glob('*.svg'))+sorted((root/'genres').rglob('*.jpg'))
  assert len(files)>=26
  for file in files:
   body=run('exec',name,'wget','-q','-O-','http://127.0.0.1/'+str(file.relative_to(root)))

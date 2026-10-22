@@ -1,0 +1,272 @@
+{
+  "origin": "AI-generated cinema genre atlas, 2026-10-22",
+  "processing": "Cropped all labels and grid edges; no text in shipped art. Labels are real UI text, not baked in.",
+  "assets": {
+    "boevik": {
+      "source_cell": 1,
+      "crop": [
+        3,
+        3,
+        305,
+        143
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "977cba75a04920d9547df348c9a3d888b9abd8ae97e713f7979878fc2fe88d1a"
+    },
+    "detektiv": {
+      "source_cell": 2,
+      "crop": [
+        311,
+        3,
+        613,
+        143
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "0f08232da11fc80b981ed89f1d72c9c7c13dc618a3204e8c6e874f7a99e0c3d1"
+    },
+    "dokumentalnyj": {
+      "source_cell": 3,
+      "crop": [
+        619,
+        3,
+        921,
+        143
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "f06ef1032d02b3f505b859a6dec814885430a32cb26bd9b0603f1efd345bb94a"
+    },
+    "drama": {
+      "source_cell": 4,
+      "crop": [
+        927,
+        3,
+        1229,
+        143
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "ad0ffdf0ba1f159e7406122c001a0021f7b884953866d82a2a0fc8555cbc4870"
+    },
+    "fantastika": {
+      "source_cell": 5,
+      "crop": [
+        3,
+        176,
+        305,
+        316
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "9f3999ff1344465445947e776ea52cfceadcf21edafa279f6413bdfea057917c"
+    },
+    "fentezi": {
+      "source_cell": 6,
+      "crop": [
+        311,
+        176,
+        613,
+        316
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "d929018d73b309b7735cf5a6e3a65ea456e7db43da3f5fd37c0e462b00e00f4c"
+    },
+    "istorija": {
+      "source_cell": 7,
+      "crop": [
+        619,
+        176,
+        921,
+        316
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "ca8ddd7a1a7e6901bb91ac6133b9d7750d81362936fadf519aa2b60ff09c9def"
+    },
+    "komedija": {
+      "source_cell": 8,
+      "crop": [
+        927,
+        176,
+        1229,
+        316
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "74f85e4bbe118a6752ab5784bb826973fcd31ee617298af64e6a51d4cd27c487"
+    },
+    "kriminal": {
+      "source_cell": 9,
+      "crop": [
+        3,
+        349,
+        305,
+        488
+      ],
+      "size": [
+        302,
+        139
+      ],
+      "sha256": "291d5be9b243b04122afe339664a36bf11e8322129c3ed01017eaaeb6f2a7294"
+    },
+    "melodrama": {
+      "source_cell": 10,
+      "crop": [
+        311,
+        349,
+        613,
+        488
+      ],
+      "size": [
+        302,
+        139
+      ],
+      "sha256": "1e409131d114d76338b5f58821efd852a24e79cb9254a18ef5c3f24ba25a5136"
+    },
+    "multfilm": {
+      "source_cell": 11,
+      "crop": [
+        619,
+        349,
+        921,
+        488
+      ],
+      "size": [
+        302,
+        139
+      ],
+      "sha256": "4caa16a3991ad2ec31ea8b4292e70cd235ce91324a5eeafb4fb46794c3f02070"
+    },
+    "muzyka": {
+      "source_cell": 12,
+      "crop": [
+        927,
+        349,
+        1229,
+        488
+      ],
+      "size": [
+        302,
+        139
+      ],
+      "sha256": "77e94f4f667190fe247279cd96ceb22e221ddff4630c0d66c64d4d119b35d01e"
+    },
+    "prikljuchenija": {
+      "source_cell": 13,
+      "crop": [
+        3,
+        521,
+        305,
+        661
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "8283a8646c0b16d46932dd25bfcbc013163b330599fe8bb14f2d1e4bec5a6971"
+    },
+    "semejnyj": {
+      "source_cell": 14,
+      "crop": [
+        311,
+        521,
+        613,
+        661
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "ed78e8f3a6ea96d42abafb0c7326ec343b44afe001f67a0fd580ccc738ff3e8d"
+    },
+    "televizionnyj-fil-m": {
+      "source_cell": 15,
+      "crop": [
+        619,
+        521,
+        921,
+        661
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "8ee32a9b47f78d40e3d9a4f11a82d9a29ba179ae67230e43bb4ddf18d00f2bba"
+    },
+    "triller": {
+      "source_cell": 16,
+      "crop": [
+        927,
+        521,
+        1229,
+        661
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "7392de6dabdf806226c04f592946bb10302e87a887dd08b95bb0812c10c64916"
+    },
+    "uzhasy": {
+      "source_cell": 17,
+      "crop": [
+        3,
+        694,
+        305,
+        834
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "618050d9a727a22170a3b354b3aee215ddf5022efb7c200b45625b5d940d3e23"
+    },
+    "vestern": {
+      "source_cell": 18,
+      "crop": [
+        311,
+        694,
+        613,
+        834
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "788ef9eab560b9ce5cccf720c821dd85568cd4cc39b8b52514e98d896e16aa12"
+    },
+    "voennyj": {
+      "source_cell": 19,
+      "crop": [
+        619,
+        694,
+        921,
+        834
+      ],
+      "size": [
+        302,
+        140
+      ],
+      "sha256": "6043c1989f94648d1ab2e8c623615b1b2929b312ac3db41bdcaec7f33ff299b0"
+    }
+  }
+}
