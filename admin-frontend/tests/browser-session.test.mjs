@@ -48,5 +48,5 @@ test('return URL cannot escape admin router or loop to login',()=>{
 })
 test('guard validates server session; upload preflight precedes video transfer',()=>{
  const router=readFileSync(new URL('../src/router/index.ts',import.meta.url),'utf8');assert.match(router,/await axios.get\('\/api\/v1\/auth\/me'/);assert.match(router,/data.role !== 'admin'/)
- const view=readFileSync(new URL('../src/views/AdStudio.vue',import.meta.url),'utf8');assert.ok(view.indexOf("await axios.get('/api/v1/auth/me'")<view.indexOf("await axios.post(base+'/creatives/upload-ticket'"))
+ const view=readFileSync(new URL('../src/views/AdStudio.vue',import.meta.url),'utf8');assert.ok(view.indexOf("await request('/api/v1/auth/me'")<view.indexOf("await request(base+'/creatives/upload-ticket'"))
 })

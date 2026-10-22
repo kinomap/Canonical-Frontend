@@ -21,6 +21,7 @@ const movieId = computed(() => route.params.id as string)
 const movie = ref<MovieDetail | null>(null)
 const audioTracks = ref<AudioTrack[] | null>(null)
 const streamUrl = ref<string | null>(null)
+const trafficId = ref('')
 const shouldPlay = ref(false)
 const playbackStarting = ref(false)
 
@@ -104,6 +105,7 @@ async function handlePlay() {
   if (!streamUrl.value) {
     try {
       const res = await apiClient.startPlayback(movieId.value)
+      trafficId.value = res.traffic_id || ''
       // Use media_url directly (points to Media Worker)
       if (!res.media_url) {
         throw new Error('No media_url returned from backend')
@@ -254,7 +256,7 @@ onMounted(() => {
           </div>
         </div>
       </div>
-      <VideoPlayer :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" />
+      <VideoPlayer :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" />
       <!-- Inline player error (non-auth failures only) -->
       <div v-if="playError" class="inline-error" role="alert">
         <span>{{ playError }}</span>

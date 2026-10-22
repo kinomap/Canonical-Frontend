@@ -24,8 +24,8 @@ test('group selection cannot accidentally apply stale selected videos or exact t
 test('invalid draft cannot reach server preview',()=>{
  for(const change of [{creative_id:''},{targets:[]},{where:'genre'},{minutes:0.5},{minutes:121},{exact:'00:60:00'},{exact:'07:00:00'},{exact:'00:00:00'},{exact:'00:01:00,00:01:00'},{preroll:false}])assert.throws(()=>placementBody({...draft(),...change}))
 })
-test('two modes, visual markers and revision-safe save replace four tabs and comma timings',()=>{
+test('creative tabs retain visual markers and revision-safe saves, without comma timing inputs',()=>{
  const view=readFileSync(new URL('../src/views/AdStudio.vue',import.meta.url),'utf8')
- for(const text of ['Ролики и авто-правила','Визуальная студия таймингов','revision:revision.value','@pointerdown="drag','@keydown.left.prevent','Тест перехода','testTransition','/api/v1/playback/stop','/api/v1/playback/heartbeat'])assert.ok(view.includes(text),text)
+ for(const text of ['Рекламные ролики','Где вставляется','revision:revision.value','@pointerdown="drag','@keydown.left.prevent','Тест перехода','testTransition','/api/v1/playback/stop','/api/v1/playback/heartbeat'])assert.ok(view.includes(text),text)
  for(const text of ['Точные тайминги видео','Настроить показ','через запятую'])assert.ok(!view.includes(text),text)
 })

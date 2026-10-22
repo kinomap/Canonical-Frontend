@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
+import { adRequest } from '@/api/client'
 import AdPlaybackContainer from './AdPlaybackContainer.vue'
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
   src: string;
   requested?: boolean;
+  trafficId?: string;
   targetId?: string;
   targetType?: 'movie' | 'episode';
   poster?: string;
@@ -215,7 +217,26 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
+// Best-effort measured main-video watch time; ads, buffering and seeks do not count.
+let trafficTimer: ReturnType<typeof setInterval> | undefined
+let trafficLast=performance.now(), trafficTotal=0, trafficTick=0, trafficSending=false
+function sampleTraffic() {
+  const now=performance.now(), dt=Math.min(2,Math.max(0,(now-trafficLast)/1000));trafficLast=now
+  const v=videoRef.value
+  if(props.trafficId && props.requested!==false && v && !v.paused && !v.ended && !v.seeking && v.readyState>=3 && !adsRef.value?.busy)trafficTotal+=dt
+}
+async function sendTraffic(keepalive=false) {
+  const id=props.trafficId,v=videoRef.value
+  if(!id || !v || !trafficTotal || (trafficSending && !keepalive))return
+  trafficSending=true
+  try {await adRequest('/ads/traffic/'+id,{method:'POST',keepalive,body:JSON.stringify({watched_total:trafficTotal,position:v.currentTime||0,duration:Number.isFinite(v.duration)&&v.duration>0?v.duration:null})})}catch{/* Analytics must never interrupt playback. */}finally{trafficSending=false}
+}
+watch(()=>props.trafficId,()=>{trafficTotal=0;trafficTick=0;trafficLast=performance.now()})
+function onTrafficPageHide(){sampleTraffic();void sendTraffic(true)}
+
 onMounted(() => {
+  trafficTimer=setInterval(()=>{sampleTraffic();if(++trafficTick%15===0)void sendTraffic()},1000)
+  window.addEventListener('pagehide',onTrafficPageHide)
   document.addEventListener('fullscreenchange', () => {
     isFullscreen.value = !!document.fullscreenElement
   })
@@ -227,6 +248,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  onTrafficPageHide();clearInterval(trafficTimer);window.removeEventListener('pagehide',onTrafficPageHide)
   document.removeEventListener('mousemove', onDocumentMouseMove)
   document.removeEventListener('touchmove', onDocumentMouseMove)
   document.removeEventListener('mouseup', onDocumentMouseUp)

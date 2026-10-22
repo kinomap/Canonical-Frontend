@@ -1,3 +1,4 @@
+function trafficReferrer(): string { try { return typeof document !== 'undefined' && /^https?:/.test(document.referrer) ? new URL(document.referrer).origin : '' } catch { return '' } }
 import type {
   AudioTrack,
   AuthTokenResponse,
@@ -270,10 +271,11 @@ export const apiClient = {
     })
   },
 
-  async startPlayback(movieId: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number }> {
-    return request<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number }>(`/playback/start`, {
+  async startPlayback(movieId: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number, traffic_id?: string }> {
+    return request<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number, traffic_id?: string }>(`/playback/start`, {
       method: 'POST',
       body: JSON.stringify({ movie_id: movieId }),
+      headers: { 'X-View-Referrer': trafficReferrer() },
     })
   },
 
@@ -305,10 +307,11 @@ export const apiClient = {
     })
   },
 
-  async startSeriesPlayback(episodeId: string): Promise<{ media_endpoint: string, playback_token: string, media_url?: string }> {
-    return request<{ media_endpoint: string, playback_token: string, media_url?: string }>(`/series_playback/start`, {
+  async startSeriesPlayback(episodeId: string): Promise<{ media_endpoint: string, playback_token: string, media_url?: string, traffic_id?: string }> {
+    return request<{ media_endpoint: string, playback_token: string, media_url?: string, traffic_id?: string }>(`/series_playback/start`, {
       method: 'POST',
       body: JSON.stringify({ episode_id: episodeId }),
+      headers: { 'X-View-Referrer': trafficReferrer() },
     })
   },
 

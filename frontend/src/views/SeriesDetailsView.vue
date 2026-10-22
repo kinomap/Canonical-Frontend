@@ -20,6 +20,7 @@ const series = ref<SeriesDetail | null>(null)
 const selectedSeason = ref<SeriesSeason | null>(null)
 const selectedEpisode = ref<SeriesEpisode | null>(null)
 const streamUrl = ref<string | null>(null)
+const trafficId = ref('')
 const shouldPlay = ref(false)
 
 const loading = ref(true)
@@ -58,6 +59,7 @@ function isEpisodePlayable(ep: SeriesEpisode): boolean {
 async function preparePlaybackToken(episodeId: string) {
   try {
     const res = await apiClient.startSeriesPlayback(episodeId)
+      trafficId.value = res.traffic_id || ''
     if (res.media_url) {
       streamUrl.value = res.media_url
     } else {
@@ -129,6 +131,7 @@ async function handlePlay() {
   if (!streamUrl.value) {
     try {
       const res = await apiClient.startSeriesPlayback(selectedEpisode.value.id)
+      trafficId.value = res.traffic_id || ''
       if (res.media_url) {
         streamUrl.value = res.media_url
       } else {
@@ -147,6 +150,7 @@ async function startEpisodePlayback(episodeId: string) {
   playError.value = null
   try {
     const res = await apiClient.startSeriesPlayback(episodeId)
+      trafficId.value = res.traffic_id || ''
     if (res.media_url) {
       streamUrl.value = res.media_url
     } else {
@@ -278,7 +282,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <VideoPlayer :target-id="isAuthenticated?selectedEpisode?.id:undefined" target-type="episode"
+        <VideoPlayer :traffic-id="trafficId" :target-id="isAuthenticated?selectedEpisode?.id:undefined" target-type="episode"
           v-show="shouldPlay" :requested="shouldPlay"
           :src="streamUrl||''"
           :poster="series.backdrop_url || series.poster_url || undefined"
