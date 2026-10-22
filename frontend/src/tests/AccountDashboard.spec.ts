@@ -3,6 +3,7 @@ import {mount,flushPromises} from '@vue/test-utils'
 import {setLanguage} from '@/i18n'
 import ProfileView from '@/views/ProfileView.vue'
 import AccountSecurity from '@/components/AccountSecurity.vue'
+import {toastMessage} from '@/lib/toast'
 const mocks=vi.hoisted(()=>({api:vi.fn(),push:vi.fn(),fetchCurrentUser:vi.fn(),setToken:vi.fn(),logout:vi.fn()}))
 vi.mock('@/accountApi',()=>({accountApi:mocks.api}))
 vi.mock('@/stores/auth',()=>({useAuthStore:()=>({user:{value:{username:'viewer'}},isAuthenticated:{value:true},...mocks})}))
@@ -65,8 +66,18 @@ describe('Human profiles, Telegram disconnection and visible MFA',()=>{
   const w=mount(ProfileView);wrappers.push(w);await flushPromises();mocks.api.mockClear()
   await w.findAll('button').find(b=>b.text()==='Отвязать Telegram')!.trigger('click');await flushPromises()
   expect(mocks.api).toHaveBeenCalledWith('/account/telegram/unlink','POST',{})
-  expect(localStorage.getItem('telegram_require_confirmation')).toBeNull();expect(localStorage.getItem('tg_just_unlinked')).toBe('true');
-  expect(mocks.setToken).toHaveBeenCalledWith(null);expect(mocks.push).toHaveBeenCalledWith('/login')
+  expect(localStorage.getItem('telegram_require_confirmation')).toBeNull();expect(localStorage.getItem('tg_just_unlinked')).toBeNull();
+  expect(mocks.setToken).toHaveBeenCalledWith(null);expect(mocks.push).toHaveBeenCalledWith('/');expect(toastMessage.value).toBe('Вы вышли из аккаунта. Чтобы войти под другим номером Telegram, нажмите "Отключить" в сервисном сообщении от Telegram')
   expect(mocks.api.mock.calls.filter(c=>c[0]==='/account')).toHaveLength(0)
  })
+})
+
+it('unlinks password account without signing out or redirecting',async()=>{
+ vi.spyOn(window,'confirm').mockReturnValue(true)
+ let unlinked=false
+ mocks.api.mockImplementation(async(path:string)=>{if(path==='/account')return {...fixture(),telegram_linked:!unlinked};if(path==='/account/telegram/unlink'){unlinked=true;return {ok:true,logout:false}}return []})
+ const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+ localStorage.setItem('tg_just_unlinked','true')
+ await w.findAll('button').find(b=>b.text()==='Отвязать Telegram')!.trigger('click');await flushPromises()
+ expect(mocks.setToken).not.toHaveBeenCalledWith(null);expect(mocks.push).not.toHaveBeenCalled();expect(w.text()).toContain('Telegram отвязан.');expect(localStorage.getItem('tg_just_unlinked')).toBeNull()
 })

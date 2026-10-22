@@ -13,7 +13,6 @@ import { handleChunkLoadError } from './chunkReload'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    {path:'/telegram-confirm',name:'telegram-confirm',component:()=>import('@/views/TelegramConfirmView.vue'),meta:{authPopup:true}},
     {
       path: '/',
       name: 'home',

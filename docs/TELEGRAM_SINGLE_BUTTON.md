@@ -1,13 +1,13 @@
-# Single-button Telegram login
+# Native Telegram login
 
-The login/registration social component renders exactly one Telegram button and, only on failure, a text error. It never renders an account-switch link, detached-account label, action panel or secondary Telegram buttons, regardless of local unlink flags or backend HTTP 409.
+The login card contains username/email, password, the primary sign-in button and exactly one rectangular Telegram button. There are no account-switch, disconnected-account, bot-confirmation or registration controls on /login. Existing site MFA appears only as a second step.
 
-The click opens a popup synchronously. For normal sign-in, that window goes to the standard Telegram OAuth endpoint. With `tg_just_unlinked=true`, or a server `require_fresh_reauth` flag on start, the window opens `/telegram-confirm` and immediately creates a fresh browser-bound one-time challenge. An HTTP 409 from the widget completion hands the same window to this confirmation route automatically. If Telegram has already closed its own window, a replacement is attempted; browser popup blocking leaves only the original login button available for a fresh retry, never an alternate control.
+The official https://telegram.org/js/telegram-widget.js?22 SDK is loaded ahead of a user click; window.Telegram.Login.auth is invoked synchronously by that click. No bot-chat redirect, site confirmation popup or polling is used. Signed payloads are checked server-side with CSRF state, HMAC, five-minute age, replay prevention, rate limits, account status and site MFA intact.
 
-The confirmation route is a separate window, not an inline `/login` panel. It automatically starts the request, displays the Telegram app link and matching verification code, waits for explicit confirmation by the matching sender, and automatically completes after that proof. No extra final “Sign in as” click is required in popup mode. MFA, when needed for this confirmation, is completed within that window.
+Unlink deletes the social binding, clears telegram_id/telegram_username, notification state and pending Telegram challenges. auth_version invalidates old sessions and MFA challenges. Password users stay signed in with a replacement session. Telegram-only users are signed out to the home page with the specified service-message guidance toast. No account history/funds are deleted or auto-merged.
 
-The parent accepts completion only from the exact popup, the site's exact origin and an unpredictable per-window correlation nonce. No JWT, Telegram assertion, challenge token or private value is carried in that completion message. The parent fetches the current user using the backend-issued HttpOnly cookie before navigating. A message alone cannot create a session. Native OAuth still requires the correct popup and exact Telegram origin, with no cached /auth/get fallback. Cancel, timeout and unmount remove listeners and timers.
+Historical acct09_telegram_reauth schema/data is retained for migration/rollback compatibility only; revoked_telegram_auth is no longer consulted or updated. Old forced-reauth cookies and local flags are cleared/ignored. Public bot-login endpoints are no longer registered.
 
-Backend migration acct09_telegram_reauth and its durable revocation rules are unchanged: even a freshly signed silent widget reply cannot authenticate a revoked Telegram identity without explicit fresh consent. This UI change does not automatically reset Telegram's provider cookies or guarantee a phone-number prompt.
+Telegram owns its browser session and decides whether to request a phone number or reuse consent. This release does not force provider logout or promise phone entry after site unlink. The user can disconnect website access using Telegram's service message.
 
-Tests distinguish mocked signed assertions/worker callbacks from a real Telegram app end-to-end login. Production UI checks do not use real user credentials or alter real account bindings.
+QA must distinguish synthetic signed API tests, SDK callback mocks and real browser opening of Telegram from real-user sign-in. No real user's account should be unlinked or funds modified for QA.

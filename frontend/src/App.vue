@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { RouterView, useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import {toastMessage} from '@/lib/toast'
 import SessionExpiredModal from '@/components/SessionExpiredModal.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -43,14 +44,14 @@ onUnmounted(() => {
 
 <template>
   <div class="app-wrapper">
-    <AppHeader v-if="!route.meta.authPopup" />
+    <AppHeader />
+    <p v-if="toastMessage" class="global-toast" role="status" aria-live="polite">{{toastMessage}}</p>
     <main class="app-main">
       <RouterView />
     </main>
 
     <!-- Global session-expired modal — rendered above everything -->
     <SessionExpiredModal
-      v-if="!route.meta.authPopup"
       :visible="sessionExpiredVisible"
       :return-url="sessionReturnUrl"
       @confirm="handleSessionConfirm"
@@ -59,6 +60,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.global-toast{position:fixed;z-index:10000;bottom:24px;left:50%;transform:translateX(-50%);width:min(620px,calc(100vw - 48px));box-sizing:border-box;margin:0;padding:16px 20px;border:1px solid #475569;border-radius:12px;background:#1e293b;color:#f1f5f9;box-shadow:0 12px 40px #0006;line-height:1.5;font-size:14px}
+
 .app-wrapper {
   min-height: 100vh;
   display: flex;

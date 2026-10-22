@@ -88,8 +88,7 @@ async function handleSubmit() {
 
 <SocialLogin v-if="!challenge" @challenge="challenge=$event" />
       <form v-else class="auth-form" @submit.prevent="confirmFactor"><h2>Подтверждение 2FA</h2><label class="form-group">Код 2FA или резервный код<input class="form-input" v-model="otp" autocomplete="one-time-code" maxlength="64" autofocus required /></label><button class="submit-btn" :disabled="loading">Подтвердить вход</button><button type="button" class="submit-btn" @click="challenge='';otp=''">Назад</button></form>
-      <div class="auth-footer"> {{ t("Don't have an account?") }} <router-link to="/register" class="auth-link">{{ t("Create Account") }}</router-link>
-      </div>
+
     </div>
   </div>
 </template>

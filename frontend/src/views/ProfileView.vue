@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import UserAvatar from '@/components/UserAvatar.vue'
+import {showToast} from '@/lib/toast'
+import {clearLegacyTelegramFlags} from '@/lib/telegramLogin'
 import {ref,computed,onMounted,onBeforeUnmount} from 'vue'
 import {useRouter} from 'vue-router'
 import {UserRound, Gem, ShieldCheck, SlidersHorizontal, LogOut, ArrowUpRight, Check, Wallet, Link2} from 'lucide-vue-next'
@@ -24,7 +26,18 @@ function upload(e:Event){const input=e.target as HTMLInputElement,file=input.fil
 function saveSettings(){action(async()=>{await api('/account/settings','PUT',{language:language.value,telegram_notifications:notifications.value});message.value=tr('Настройки сохранены.','Settings saved.')})}
 function startTelegram(){action(async()=>{link.value=await api('/account/telegram/start','POST',{})})}
 function finishTelegram(){action(async()=>{const r=await api('/account/telegram/complete','POST',{state:link.value.state});if(r.status==='linked'){link.value=null;await load()}else message.value=tr('Сначала подтвердите привязку в боте.','Confirm the link in the bot first.')})}
-function unlinkTelegram(){if(!window.confirm(account.value.password_login_available?tr('Отвязать Telegram? Вы останетесь в аккаунте.','Unlink Telegram? You will stay signed in.'):tr('Полностью отвязать Telegram и выйти? Без пароля доступ к этому аккаунту будет потерян.','Fully unlink Telegram and sign out? Without a password, access to this account will be lost.')))return;action(async()=>{const r=await api('/account/telegram/unlink','POST',{});link.value=null;sessionStorage.removeItem('telegram_auth');localStorage.removeItem('telegram_require_confirmation');localStorage.setItem('tg_just_unlinked','true');if(r.telegram_username)localStorage.setItem('tg_unlinked_username',r.telegram_username);else localStorage.removeItem('tg_unlinked_username');if(r.logout){auth.setToken(null);auth.user.value=null;await router.replace('/login');return}await load()})}
+function unlinkTelegram(){
+ if(!window.confirm(account.value.password_login_available?tr('Отвязать Telegram? Вы останетесь в аккаунте.','Unlink Telegram? You will stay signed in.'):tr('Отвязать Telegram и выйти? Без пароля доступ к этому аккаунту будет потерян.','Unlink Telegram and sign out? Without a password, access to this account will be lost.')))return
+ action(async()=>{
+  const r=await api('/account/telegram/unlink','POST',{});link.value=null;clearLegacyTelegramFlags()
+  if(r.logout){
+   auth.setToken(null);auth.user.value=null
+   showToast(tr('Вы вышли из аккаунта. Чтобы войти под другим номером Telegram, нажмите "Отключить" в сервисном сообщении от Telegram','You have signed out. To sign in with another Telegram number, select "Disconnect" in the service message from Telegram'))
+   await router.replace('/');return
+  }
+  await load();message.value=tr('Telegram отвязан.','Telegram unlinked.')
+ })
+}
 function date(s?:string){return s?new Date(s).toLocaleDateString(language.value==='ru'?'ru-RU':'en-US',{day:'numeric',month:'short',year:'numeric'}):'—'}
 function status(s:string){return ({pending:tr('Ожидает оплаты','Pending'),paid:tr('Оплачено','Paid'),expired:tr('Истёк','Expired'),refunded:tr('Возврат','Refunded'),active:tr('Активна','Active'),trial:tr('Пробная','Trial'),canceled:tr('Отменена','Canceled')})[s]||s}
 async function logout(){await auth.logout();router.push('/login')}
