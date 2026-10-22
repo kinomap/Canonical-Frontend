@@ -2,7 +2,7 @@
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { adRequest } from '@/api/client'
 import { pendingCues, type Cue } from '@/utils/adTimeline'
-const props=defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string;requested?:boolean}>()
+const props=withDefaults(defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string;requested?:boolean}>(),{requested:true})
 type Ad={delivery_id:string;media_url:string;duration_sec:number;skip_after:number|null;cta_url:string;cta_text:string}
 const media=ref<HTMLVideoElement|null>(null), active=ref(false), loading=ref(false), ad=ref<Ad|null>(null), elapsed=ref(0), blocked=ref(false)
 const requested=computed(()=>props.requested!==false)

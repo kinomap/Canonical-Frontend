@@ -3,14 +3,14 @@ import { t } from '@/i18n'
 import AdPlaybackContainer from './AdPlaybackContainer.vue'
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   src: string;
   requested?: boolean;
   targetId?: string;
   targetType?: 'movie' | 'episode';
   poster?: string;
   title?: string;
-}>()
+}>(), { requested: true })
 
 const emit = defineEmits(['close', 'ended'])
 
