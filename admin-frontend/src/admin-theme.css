@@ -1,0 +1,260 @@
+/* Admin-only presentation system. Public tokens and all workflow bindings stay intact.
+   UI UX Pro Max: restrained Swiss/minimal style, dense operational layout, AA contrast. */
+:root {
+  color-scheme: dark;
+  --ui-bg:#10141c; --ui-surface:#181e29; --ui-raised:#202a39; --ui-active:#263549;
+  --ui-field:#111824; --ui-border:#303d50; --ui-control:#61738c; --ui-control-hover:#8ca5c5;
+  --ui-text:#edf2fa; --ui-secondary:#b5c2d8; --ui-muted:#a2b0c7;
+  --ui-primary:#2463c5; --ui-primary-hover:#2d72df; --ui-on-primary:#fff;
+  --ui-brand:#9bc8ff; --ui-link:#9bc8ff; --ui-focus:#8fc5ff;
+  --ui-success:#8be0ba; --ui-success-bg:#18372d;
+  --ui-warning:#f4d18b; --ui-warning-bg:#3b301f;
+  --ui-danger:#ffb1bc; --ui-danger-bg:#3d2531;
+  --ui-radius:8px; --ui-radius-panel:10px; --ui-radius-chip:5px;
+  --ui-control-height:44px; --ui-sidebar:248px;
+  --k-accent:var(--ui-link); --k-accent-hover:#bddaff;
+  --ui-shadow-overlay:0 16px 48px #0008;
+}
+body {font-size:14px;line-height:1.5}
+#app .admin-layout {display:flex;min-height:100dvh;background:var(--ui-bg);color:var(--ui-text)}
+#app .sidebar {position:sticky;top:0;display:flex;flex-direction:column;flex:0 0 var(--ui-sidebar);width:var(--ui-sidebar);height:100dvh;overflow:hidden;background:#141b25;border-right:1px solid var(--ui-border)}
+#app .sidebar-header {display:grid;gap:8px;padding:24px 20px 20px;border-bottom:1px solid var(--ui-border)}
+#app .brand-sub {padding-left:46px;font-size:12px;color:var(--ui-muted)}
+#app .sidebar-nav {display:flex;flex:1;min-height:0;flex-direction:column;gap:4px;padding:12px;overflow-y:auto;scrollbar-width:thin}
+#app .nav-section-label {padding:20px 12px 4px;font-size:11px;line-height:1.5;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-muted);user-select:none}
+#app .nav-item {position:relative;display:flex;align-items:center;gap:12px;flex-shrink:0;min-height:44px;margin:0;padding:10px 12px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--ui-secondary);font-size:13px;font-weight:500;line-height:1.45;text-decoration:none;transition:background .15s,color .15s}
+#app .nav-item:hover {background:var(--ui-raised);color:var(--ui-text)}
+#app .nav-item--active {background:#203654;border-color:#385b85;color:#e0eeff;font-weight:700;box-shadow:inset 3px 0 #79b4ff}
+#app .nav-icon {width:19px;height:19px;flex-shrink:0;stroke-width:1.7;opacity:1}
+#app .sidebar-footer {padding:12px;border-top:1px solid var(--ui-border);background:#141b25}
+#app .sidebar-footer .logout-btn {width:100%;background:transparent}
+#app .main-content {flex:1;min-width:0;max-width:none;width:100%;padding:28px 32px 40px;outline:none}
+#admin-main > :first-child {width:100%;min-width:0;max-width:1440px;margin-inline:auto}
+#admin-main :is(.mn-page,.sc-page,.domains-page,.ms-page,.nd-page,.sd-page,.obs-page) {padding:0;max-width:none}
+/* The account-security view has an existing inline outer gutter. */
+#admin-main > main[style] {padding:0!important;max-width:1440px!important}
+#app .mobile-header {display:none}
+#admin-main h1 {margin-top:0;font-size:28px;line-height:1.25;letter-spacing:-.025em;font-weight:750}
+#admin-main h2 {font-size:20px;line-height:1.35;letter-spacing:-.015em;font-weight:700}
+#admin-main h3 {font-size:16px;line-height:1.4;letter-spacing:0;font-weight:700}
+#admin-main :is(.page-header,.page-head,.studio-heading,.mn-header,.ms-header,.sc-header,.obs-header) {margin-bottom:24px;gap:16px}
+#app :is(.muted,.subtitle,.page-subtitle,.hint,.helper-text,.field-hint,.help-text) {color:var(--ui-muted);line-height:1.55}
+#app :is(.eyebrow,.section-label) {color:var(--ui-muted);font-size:11px;letter-spacing:.08em;font-weight:650}
+#app button {display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:44px;min-height:44px;max-width:100%;padding:9px 12px;border:1px solid var(--ui-control);border-radius:8px;background:var(--ui-raised);color:var(--ui-text);font:600 13px/1.4 var(--ui-font);white-space:normal;text-decoration:none;box-shadow:none;transform:none;transition:background .15s,border-color .15s,color .15s;touch-action:manipulation}
+#app button:hover:not(:disabled) {background:var(--ui-active);border-color:var(--ui-control-hover);color:var(--ui-text);transform:none;box-shadow:none}
+#app button:is(.primary,.btn-primary,.btn-submit,.btn-save,.save-btn,.btn-save-sm,.submit-btn,.mn-btn-primary,.ms-btn-pri,.ms-btn--primary,.wizard-next),
+#app .sc-btn:not(.ghost), #app .billing-settings .save-row > button {background:var(--ui-primary);border-color:var(--ui-primary);color:var(--ui-on-primary)}
+#app button:is(.primary,.btn-primary,.btn-submit,.btn-save,.save-btn,.submit-btn,.mn-btn-primary,.ms-btn-pri,.ms-btn--primary):hover:not(:disabled),
+#app .billing-settings .save-row > button:hover:not(:disabled) {background:var(--ui-primary-hover);border-color:var(--ui-primary-hover);color:var(--ui-on-primary)}
+#app button:is(.danger,.danger-text,.btn-danger,.danger-btn,.mn-btn-danger,.ms-btn-danger,.ms-btn--danger,.ms-act-del,.nd-act-delete,.sd-act-del),
+#app button[class*='delete'], #app button[class*='danger'] {color:var(--ui-danger);background:var(--ui-danger-bg);border-color:#ad6477}
+#app button:is(.danger,.danger-text,.btn-danger,.danger-btn):hover:not(:disabled) {background:#52303e;color:#ffd5dd;border-color:#db829a}
+#app button:is(.warning,.btn-warning,.mn-btn-warn) {color:var(--ui-warning);background:var(--ui-warning-bg);border-color:#a38b57}
+#app button:is(.close-btn,.modal-close,.drawer-close,.icon-btn,.mn-close,.ms-close) {padding:8px;background:transparent;min-width:44px}
+#app button:is(.tab,.subtab), #app :is(.tabs,.creative-tabs) > button {background:transparent;color:var(--ui-secondary);border:1px solid transparent;border-radius:8px;padding:10px 14px;min-height:44px}
+#app button:is(.tab,.subtab).active, #app :is(.tabs,.creative-tabs) > button.active {background:#203654;color:#e0eeff;border-color:#527cac;box-shadow:inset 0 -2px #79b4ff}
+#app button:disabled, #app button:disabled:hover {opacity:1;filter:none;background:#263244;border-color:#4b5a73;color:#b1bdd0;cursor:not-allowed;box-shadow:none;transform:none}
+#app :is(button,a,input,select,textarea,[tabindex]):focus-visible {outline:3px solid var(--ui-focus);outline-offset:3px}
+#app input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]), #app select, #app textarea {min-width:0;max-width:100%;min-height:44px;padding:10px 12px;background:var(--ui-field);color:var(--ui-text);border:1px solid var(--ui-control);border-radius:8px;font:400 14px/1.5 var(--ui-font);box-shadow:none}
+#app input::placeholder,#app textarea::placeholder {color:var(--ui-muted);opacity:1}
+#app :is(input,textarea,select):disabled {opacity:1;color:var(--ui-muted);background:var(--ui-raised)}
+#app :is(input[type=checkbox],input[type=radio]) {width:20px;height:20px;accent-color:#549cff;flex-shrink:0}
+#app label {font-size:13px;line-height:1.5;color:var(--ui-secondary)}
+#app code {font-size:12px;color:var(--ui-secondary);background:var(--ui-field);overflow-wrap:anywhere}
+#app pre {font-size:12px;line-height:1.6;max-width:100%;background:var(--ui-field);border:1px solid var(--ui-border);border-radius:8px}
+#app table {width:100%;border-collapse:collapse;font-size:13px;line-height:1.5;color:var(--ui-text);font-variant-numeric:tabular-nums}
+#app th {padding:12px 14px;background:var(--ui-raised);color:var(--ui-secondary);font-size:12px;font-weight:650;letter-spacing:0;text-transform:none;text-align:left;border-bottom:1px solid var(--ui-border)}
+#app td {padding:12px 14px;border-bottom:1px solid var(--ui-border);vertical-align:middle}
+#app tbody tr:hover {background:var(--ui-raised)}
+#app :is(.table-container,.table-scroll,.table-wrap,.tbl-wrap) {max-width:100%;overflow-x:auto;border-radius:8px;scrollbar-width:thin}
+#app :is(.row-actions,.actions,.header-actions,.modal-actions,.form-actions) {gap:8px;flex-wrap:wrap}
+#app :is(.panel,.card,.domain-card,.dashboard-section,.mn-table,.ms-card,.nd-card,.sd-card,.obs-card,.billing-settings,.form-panel) {background:var(--ui-surface);border-color:var(--ui-border);border-radius:10px;box-shadow:none}
+#app :is(.stack,.dashboard-content) {gap:20px}
+#app :is(.two-col,.analytics-grid,.bottom-grid) {gap:16px}
+#app .dashboard-section {padding:20px}
+#app .dashboard-section h2 {font-size:14px;letter-spacing:0;text-transform:none;margin-top:0}
+#app :is(.stat-card,.kpi-card) {padding:16px;background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:10px;min-height:92px}
+#app :is(.stat-value,.kpi-value) {font-size:28px;line-height:1.25;font-weight:750}
+#app .kpi-grid {gap:12px;margin-bottom:20px}
+#app .kpi-grid > article {padding:16px;border-color:var(--ui-border);background:var(--ui-surface);border-radius:10px}
+#app .panel-head {padding:18px 20px}
+#app .filters {padding:0 20px 16px;gap:12px}
+#app .form-panel {padding:20px;gap:16px}
+#app :is(.panel-head,.form-panel) h2 {margin-top:0}
+#app .preview-panel {color:var(--ui-text);background:var(--ui-field)}
+#app .domain-card {padding:20px;margin-bottom:20px}
+#app .domain-card h2 {margin-top:0}
+#app .mn-table {overflow-x:auto}
+#app .mn-row {gap:12px}
+#app .mn-node-name {justify-content:flex-start;background:transparent;border-color:transparent;color:var(--ui-link);padding:0;text-align:left}
+/* Payment geometry: each logical group has its own space, not touching card borders. */
+#app .billing-settings {padding:20px;font-size:14px;border:1px solid var(--ui-border)}
+#app .billing-settings > h2 {font-size:20px;margin:0 0 8px}
+#app .billing-settings form {display:grid;gap:16px}
+#app .billing-settings form > h3 {margin:12px 0 0;font-size:16px}
+#app .billing-settings label {display:block;margin:0;color:var(--ui-secondary);font-size:13px}
+#app .billing-settings :is(input,select) {width:100%;margin-top:6px}
+#app .billing-settings :is(.tariff-grid,.address-grid,.field-grid,.treasury-grid) {gap:16px}
+#app .billing-settings :is(.tariff-card,.address-card,.treasury-card,.config-note) {padding:16px;background:var(--ui-field);border:1px solid var(--ui-border);border-radius:8px;margin:0}
+#app .billing-settings :is(.tariff-card,.address-card,.treasury-card) {display:grid;align-content:start;gap:14px;min-width:0}
+#app .billing-settings :is(.tariff-card,.address-card,.treasury-card) h3 {margin:0}
+#app .billing-settings button {margin:0;font-size:13px}
+#app .billing-settings p {margin:0;line-height:1.6;color:var(--ui-muted)}
+#app .billing-settings .save-row {margin:4px 0 0;padding-top:16px;gap:16px;align-items:center;flex-wrap:wrap}
+#app .billing-settings .field-grid {row-gap:16px}
+#app :is(.modal,.modal-content,.modal-card,.key-modal,.confirm-dialog,.wizard-modal) {max-width:calc(100vw - 32px);max-height:90dvh;overflow-y:auto;background:var(--ui-surface);color:var(--ui-text);border-color:var(--ui-control);border-radius:12px;box-shadow:var(--ui-shadow-overlay)}
+#app .drawer {background:var(--ui-surface);color:var(--ui-text);border-color:var(--ui-border)}
+#app :is(.tabs,.creative-tabs) {gap:8px;padding:0 0 12px;margin-bottom:20px;border-bottom:1px solid var(--ui-border);scrollbar-width:thin}
+#app .studio {font-size:14px}
+#app .studio .panel {padding:20px;background:var(--ui-surface)}
+#app .studio .stats {gap:16px}
+#app .studio .stats > article {background:var(--ui-raised);padding:16px;box-shadow:none}
+#app .studio .save-bar {background:var(--ui-surface);border-color:var(--ui-control)}
+#app .studio .section-heading {gap:16px}
+#app :is(.mn-kpi,.ms-kpi,.obs-kpi,.sc-summary) {background:var(--ui-surface);border-color:var(--ui-border);border-radius:10px}
+#app :is(.page-header,.page-head,.filters,.row,.form-grid,.field-grid,.passport-grid,.panel-head) > * {min-width:0}
+#app :is(.empty,.empty-state) {color:var(--ui-muted);padding:24px 16px}
+@media(min-width:1101px) {#app .mn-row {min-width:1080px}}
+@media(max-width:1100px) {
+  :root {--ui-sidebar:224px}
+  #app .main-content {padding:24px}
+  #app .sidebar-header {padding:20px 16px}
+  #app .nav-item {font-size:12px;padding:10px;gap:10px}
+  #app .billing-settings .treasury-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px) {
+  #app .admin-layout {display:block}
+  #app .mobile-header {position:sticky;top:0;z-index:90;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;padding:10px 16px;background:#141b25;border-bottom:1px solid var(--ui-border)}
+  #app .mobile-header button {font-size:12px}
+  #app .mobile-header .brand-mark {min-width:0}
+  #app .sidebar {display:none;position:relative;top:auto;width:100%;height:auto;max-height:calc(100dvh - 64px);border-right:0;border-bottom:1px solid var(--ui-border)}
+  #app .sidebar.sidebar--open {display:flex}
+  #app .sidebar-header {display:none}
+  #app .sidebar-nav {padding:12px 16px;overflow-y:auto}
+  #app .nav-item {font-size:14px}
+  #app .main-content {padding:24px 16px 32px}
+  #admin-main h1 {font-size:24px}
+  #admin-main h2 {font-size:18px}
+  #app .form-panel,#app .domain-card,#app .dashboard-section,#app .billing-settings,#app .studio .panel {padding:16px}
+  #app .panel-head {padding:16px}
+  #app .filters {padding:0 16px 16px}
+  #app :is(.two-col,.analytics-grid,.bottom-grid), #app .billing-settings :is(.tariff-grid,.address-grid,.field-grid,.treasury-grid) {grid-template-columns:minmax(0,1fr)}
+  #app input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]), #app select,#app textarea {font-size:16px}
+  #app :is(.row-actions,.actions) {gap:8px}
+  #app .audience-page .table-scroll table {min-width:920px}
+  #app :is(.modal,.modal-content,.modal-card,.key-modal,.confirm-dialog,.wizard-modal) {max-height:calc(100dvh - 32px)}
+  #app .studio .save-bar {position:static}
+  #app :is(button,input,select,textarea,[tabindex]) {scroll-margin-top:84px;scroll-margin-bottom:24px}
+}
+@media(prefers-reduced-motion:reduce) {
+  #app *,#app *::before,#app *::after {transition:none!important;animation:none!important;scroll-behavior:auto!important}
+}
+/* Route-specific composition, using the same palette and spacing contract. */
+#app .topo .node-box {fill:var(--ui-field)}
+#app .topo .node.sel .node-box {fill:var(--ui-active)}
+#app .topo .edge-icon {fill:var(--ui-field)}
+#app .topo-help,#app .topo-legend,#app .band-label {color:var(--ui-muted);fill:var(--ui-muted)}
+#app .system-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#app :is(.system-card,.channel-card,.obs-metric-card,.obs-health-card,.obs-session-capacity,.empty-state,.filters-bar) {background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:10px}
+#app table {background:var(--ui-surface)}
+#app .obs-metrics-grid {grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+#app .obs-metric-card {padding:16px}
+#app .obs-section {margin-bottom:24px}
+#app .obs-section-title {font-size:14px;font-weight:700;letter-spacing:0}
+#app .ms-cards {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#app .ms-card-actions {gap:8px}
+#app .channel-card {display:flex;flex-direction:column}
+#app .channel-card .card-actions-polished {margin-top:auto;gap:8px}
+#app .master-session-card {margin:0;padding:20px;border-radius:10px}
+#app .master-session-card .ms-header {margin-bottom:16px}
+#app .master-session-card .ms-info-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+#app .master-session-card .ms-info-row {display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:0}
+#app .master-session-card .ms-label {color:var(--ui-muted);letter-spacing:0}
+#app .master-session-card .ms-workers {flex-wrap:wrap;background:var(--ui-field)}
+#app .master-session-card .dot-ok {background:var(--ui-success)}
+#app .master-session-card .dot-err {background:var(--ui-danger)}
+#app .security-card {padding:20px;background:var(--ui-surface);border-color:var(--ui-border)}
+#app .security-card form {max-width:900px}
+#app .billing-settings .tariff {padding:16px;display:grid;gap:14px;align-content:start;border-color:var(--ui-border);background:var(--ui-field)}
+#app .billing-settings .tariff h4 {margin:0;font-size:15px}
+#app .billing-settings .tariff-grid {align-items:stretch}
+#app .billing-settings .config-note {display:grid;gap:12px}
+#app .billing-settings .config-note > button {justify-self:start}
+#app .billing-settings > p {margin-bottom:16px}
+#app .billing-settings .save-row > button:disabled {background:#263244;border-color:#4b5a73;color:#b1bdd0}
+#app :is(.tabs,.creative-tabs) > button.selected,
+#app button:is(.active,.selected,[aria-selected=true]):not(:disabled) {background:#203654;color:#e0eeff;border-color:#527cac;box-shadow:inset 0 -2px #79b4ff}
+#app .audience .kpis {gap:12px;margin-bottom:20px}
+#app .audience .kpi {padding:16px;min-height:92px;border-radius:10px}
+#app .audience .kpi strong {font-size:28px;margin-top:12px}
+#app .audience .kpi span {font-size:12px;color:var(--ui-muted)}
+#app .audience .form-panel > :is(h2,p) {margin-block:0}
+#app .search-wrap .search-input,#app .search-wrap input {padding-left:38px}
+#app .actions-col {white-space:nowrap}
+#app .actions-col > button + button {margin-left:8px}
+#app .login-container {background:var(--ui-bg)}
+#app .login-card {padding:28px;background:var(--ui-surface);border-color:var(--ui-border)}
+#app .login-title {font-size:26px;letter-spacing:-.02em;margin:0 0 24px}
+@media(max-width:1100px) {
+ #app .ms-cards {grid-template-columns:minmax(0,1fr)}
+ #app .master-session-card .ms-info-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px) {
+ #app .system-grid {grid-template-columns:minmax(0,1fr)}
+ #app .obs-metrics-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+ #app .obs-metric-value {font-size:24px}
+ #app .security-card,#app .master-session-card {padding:16px}
+ #app .master-session-card .ms-info-grid {grid-template-columns:minmax(0,1fr)}
+ #app .master-session-card .ms-info-row {flex-direction:row;justify-content:space-between;flex-wrap:wrap}
+ #app .audience .filters {display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+ #app .audience .filters > label {width:100%;min-width:0}
+ #app .audience .tabs {flex-wrap:wrap;overflow:visible}
+ #app .audience .tabs > button {flex:1 1 100%;justify-content:flex-start;text-align:left}
+ #app .audience .table-scroll table {min-width:920px}
+ #app .audience .kpis {gap:10px}
+ #app .audience .kpi {padding:12px;min-height:84px}
+ #app .audience .kpi strong {font-size:24px;margin-top:8px}
+ #app .billing-settings .save-row {display:flex}
+ #app .billing-settings .save-row > * {width:100%;min-width:0}
+ #app .billing-settings .config-note > button {justify-self:stretch}
+}
+#app .billing-settings :is(.address-card,.tariff,.treasury-card) {grid-template-columns:minmax(0,1fr)}
+#app .billing-settings :is(.address-card,.tariff,.treasury-card) > * {min-width:0;overflow-wrap:anywhere}
+#app .dashboard-page .stat-card {min-width:0}
+#app .dashboard-page .stat-card > div {min-width:0;overflow-wrap:anywhere}
+#app .dashboard-page .stat-value-sm {white-space:normal;overflow-wrap:anywhere}
+@media(max-width:480px) {
+ #app .dashboard-page .stat-card {padding:12px;gap:10px}
+ #app .dashboard-page .stat-icon {width:28px;height:28px;flex-shrink:0}
+}
+
+/* Long account identifiers must not push the drawer close action off-screen. */
+#app .drawer-head > div { min-width: 0; overflow-wrap: anywhere; }
+#app .drawer-head > button { flex-shrink: 0; }
+#app .drawer-head h2 { overflow-wrap: anywhere; }
+
+/* Fixed-layout catalogs reserve a readable title column inside the scroll region. */
+#app :is(.movies-table,.metadata-table,.series-table) { min-width: 1200px; }
+#app .nd-section:has(> .nd-table) { overflow-x: auto; max-width: 100%; }
+#app .nd-info-item { min-width: 0; overflow-wrap: anywhere; }
+
+#app .login-form input { width: 100%; }
+@media(max-width:760px) {
+ #app .modal .filters-row { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; }
+ #app .modal .filter-group { min-width: 0; display: grid; grid-template-columns: 52px minmax(0,1fr); }
+ #app .modal .filter-select { min-width: 0; width: 100%; }
+ #app .sd-header { flex-wrap: wrap; gap: 12px; }
+ #app .sd-title { overflow-wrap: anywhere; }
+}
+
+#app .filters-bar { padding: 16px; gap: 12px; }
+#app table:has(.title-col) { min-width: 1200px; }
+@media(max-width:760px) {
+ #app .page-header { flex-wrap: wrap; gap: 16px; }
+ #app .page-header > .header-right { width: 100%; justify-content: space-between; }
+ #app .filters-bar > input { width: 100%; flex-basis: 100%; }
+}
+
+#app .ms-counters { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 12px; }
+#app .ms-counter { min-width: 0; }
+@media(max-width:760px) { #app .ms-counters { grid-template-columns: repeat(2,minmax(0,1fr)); } }

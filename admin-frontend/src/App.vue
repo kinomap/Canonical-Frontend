@@ -184,49 +184,5 @@ const logout = async () => {
 </template>
 
 <style>
-.admin-layout{display:flex;min-height:100vh;background:var(--ui-bg)}
-.sidebar{width:var(--ui-sidebar);background:var(--ui-bg);display:flex;flex-direction:column;border-right:1px solid var(--ui-border);flex-shrink:0;position:sticky;top:0;height:100dvh;overflow:hidden}
-.sidebar-header{padding:24px 20px 20px;display:grid;gap:8px;border-bottom:1px solid var(--ui-border)}
-.brand-sub{font-size:12px;color:var(--ui-muted);padding-left:46px}
-.sidebar-nav{flex:1;display:flex;flex-direction:column;padding:12px 0;overflow-y:auto}
-.nav-section-label{padding:20px 20px 8px;font-size:12px;font-weight:500;color:var(--ui-muted);user-select:none}
-.nav-item{display:flex;align-items:center;gap:10px;min-height:40px;padding:8px 12px;margin:1px 8px;color:var(--ui-secondary);text-decoration:none;font-size:14px;font-weight:500;border-radius:var(--ui-radius);transition:background .15s,color .15s}
-.nav-item:hover{background:var(--ui-surface);color:var(--ui-text)}
-.nav-item--active{background:var(--ui-raised);color:var(--ui-text);font-weight:650}
-.nav-icon{width:16px;height:16px;flex-shrink:0;stroke-width:1.6;opacity:.9}
-.sidebar-footer{padding:12px 16px;border-top:1px solid var(--ui-border)}
-.logout-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:40px;padding:8px 12px;border:1px solid var(--ui-control);border-radius:var(--ui-radius);background:transparent;color:var(--ui-secondary);font-size:14px;font-weight:600}
-.logout-btn:hover{background:var(--ui-raised);color:var(--ui-text)}
-.main-content{flex:1;min-width:0;padding:32px;max-width:1800px;outline:none}
-.main-content h1{font-size:28px;line-height:1.25;letter-spacing:-.035em}
-.main-content h2{letter-spacing:-.02em}
-.mobile-header{display:none}
-@media(max-width:1100px){.main-content{padding:24px}.sidebar{width:216px}}
-@media(max-width:760px){.admin-layout{display:block}.mobile-header{position:sticky;top:0;z-index:90;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;padding:10px 16px;background:var(--ui-bg);border-bottom:1px solid var(--ui-border)}.mobile-header strong{font-size:14px}.mobile-header button{min-height:44px;padding:8px 12px;border:1px solid var(--ui-control);border-radius:var(--ui-radius);background:var(--ui-surface);font-size:12px}.sidebar{display:none;position:relative;width:100%;height:auto;max-height:calc(100dvh - 64px);overflow-y:auto;border-right:0;border-bottom:1px solid var(--ui-border)}.sidebar.sidebar--open{display:flex}.sidebar-header{display:none}.nav-item{min-height:44px}.main-content{width:100%;padding:24px 16px}.main-content h1{font-size:24px}}
-</style>
-
-<style>
-/* The reference sidebar theme is deliberately limited to Ad Studio. */
-.admin-layout:has(.studio){background:#0a121b;color:#f1f6ff}
-.admin-layout:has(.studio)>.sidebar{width:288px;margin:16px 0 16px 16px;top:16px;height:calc(100dvh - 32px);background:linear-gradient(155deg,#0d1b2a,#09121c 65%);border:1px solid #2c455e;border-radius:14px}
-.admin-layout:has(.studio)>.main-content{padding:32px;max-width:1800px}
-.admin-layout:has(.studio) .sidebar-header{padding:22px 20px 20px;gap:6px;border-bottom:1px solid #23384e}
-.admin-layout:has(.studio) .brand-sub{color:#a5bad3;font-size:13px;line-height:1.4}
-.admin-layout:has(.studio) .sidebar-nav{padding:12px 0;gap:3px;scrollbar-width:thin;scrollbar-color:#34506c transparent}
-.admin-layout:has(.studio) .nav-item{position:relative;min-height:44px;margin:0 12px;padding:6px 10px;gap:12px;border:1px solid transparent;border-radius:9px;color:#c7d8ed;background:#101d2b;font-size:14px;line-height:1.45;overflow-wrap:anywhere}
-.admin-layout:has(.studio) .nav-item:hover{background:#1b324a;border-color:#365575;color:#fff}
-.admin-layout:has(.studio) .nav-item--active{background:linear-gradient(90deg,#143d73,#10233d);border-color:#23589a;color:#fff;box-shadow:inset 3px 0 #35a8ff;font-weight:600}
-.admin-layout:has(.studio) .nav-icon{width:32px;height:32px;flex:0 0 32px;padding:6px;border-radius:7px;background:#182c42;stroke-width:1.7;color:#b9d9fa;opacity:1}
-.admin-layout:has(.studio) .nav-section-label{padding:18px 22px 8px;color:#97badd;font-size:12px;line-height:1.45;letter-spacing:.055em;text-transform:uppercase}
-.admin-layout:has(.studio) .nav-item:is([href$='/ad-studio'],[href$='/audience'],[href$='/account-security'])::before{content:'';display:block;flex:0 0 32px;width:32px;height:32px;border-radius:7px;background-color:#182c42;background-position:center;background-repeat:no-repeat;background-size:21px}
-.admin-layout:has(.studio) .sidebar-footer{padding:14px 16px;border-top:1px solid #23384e}
-.admin-layout:has(.studio) .logout-btn{min-height:44px;border-color:#607e9e;border-radius:8px;color:#dfecfd;background:#0d1722}
-.admin-layout:has(.studio) .logout-btn:hover{background:#1b324a;color:#fff}
-.admin-layout:has(.studio) .sidebar :focus-visible{outline:3px solid #8fcaff;outline-offset:2px}
-@media(max-width:1200px){.admin-layout:has(.studio)>.sidebar{width:248px;margin:12px 0 12px 12px;top:12px;height:calc(100dvh - 24px)}.admin-layout:has(.studio)>.main-content{padding:24px}.admin-layout:has(.studio) .nav-item{margin-inline:8px;gap:10px;padding-inline:8px}.admin-layout:has(.studio) .sidebar-header{padding:20px 16px}}
-@media(max-width:760px){.admin-layout:has(.studio)>.sidebar{width:auto;margin:12px 16px;top:0;height:auto;max-height:calc(100dvh - 88px);border-radius:12px}.admin-layout:has(.studio)>.main-content{padding:24px 16px}.admin-layout:has(.studio) .mobile-header{background:#0c1723;border-color:#2c455e}.admin-layout:has(.studio) .mobile-header button{background:#142a43;border-color:#607e9e;color:#f1f6ff}.admin-layout:has(.studio) .sidebar-nav{padding-block:12px}.admin-layout:has(.studio) .sidebar-header{display:none}}
-
-.admin-layout:has(.studio) .nav-item[href$="/ad-studio"]::before{background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23bddafb%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%223%22%20y%3D%224%22%20width%3D%2218%22%20height%3D%2214%22%20rx%3D%222%22%2F%3E%3Cpath%20d%3D%22M8%2022h8M12%2018v4%22%2F%3E%3C%2Fsvg%3E")}
-.admin-layout:has(.studio) .nav-item[href$="/audience"]::before{background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23bddafb%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%229%22%20cy%3D%227%22%20r%3D%223%22%2F%3E%3Cpath%20d%3D%22M3%2021v-3a6%206%200%200%201%2012%200v3M17%204a3%203%200%200%201%200%206M21%2021v-3a6%206%200%200%200-4-5%22%2F%3E%3C%2Fsvg%3E")}
-.admin-layout:has(.studio) .nav-item[href$="/account-security"]::before{background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23bddafb%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m12%202%209%204v6c0%205-9%2010-9%2010S3%2017%203%2012V6Z%22%2F%3E%3Cpath%20d%3D%22m8%2012%203%203%205-6%22%2F%3E%3C%2Fsvg%3E")}
+@import './admin-theme.css';
 </style>
