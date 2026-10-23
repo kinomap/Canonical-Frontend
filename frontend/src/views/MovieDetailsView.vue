@@ -504,7 +504,7 @@ onMounted(() => {
 
 .reactions-bar {
   display: flex;
-  background: var(--ui-raised);
+  background: transparent;
   border-radius: var(--ui-radius-panel);
   padding: 4px;
   gap: 4px;
