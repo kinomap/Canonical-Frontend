@@ -1,15 +1,17 @@
 <script setup lang="ts">
+import mascot from './brand/kinosota-mascot-3d.webp'
+import icon from './brand/kinosota-icon.svg'
 defineProps<{ compact?: boolean }>()
 </script>
 <template>
   <span class="brand-logo" :class="{ compact }">
-    <span class="logo-emblem" aria-hidden="true"><svg class="logo-svg" viewBox="0 0 40 40" fill="none"><rect x="1" y="1" width="38" height="38" rx="10" fill="var(--ui-raised)"/><circle cx="18" cy="20" r="10" stroke="var(--ui-brand)" stroke-width="2.5"/><path d="M15 14L26 20L15 26V14Z" fill="var(--ui-text)"/><circle cx="31" cy="11" r="2.5" fill="var(--ui-brand)"/><circle cx="32" cy="29" r="2" fill="var(--ui-brand)"/></svg></span>
-    <span v-if="!compact" class="wordmark"><span class="wordmark-highlight">KINO</span>SOTA</span>
+    <span class="logo-emblem" aria-hidden="true"><img class="logo-svg" :src="compact ? icon : mascot" alt="" width="44" height="44" decoding="async" /></span>
+    <span v-if="!compact" class="wordmark"><span class="wordmark-highlight">KINO</span><span class="wordmark-honey">SOTA</span></span>
   </span>
 </template>
 <style scoped>
-.brand-logo{display:inline-flex;align-items:center;gap:10px;white-space:nowrap;user-select:none;line-height:1}
-.logo-emblem{width:36px;height:36px;display:inline-flex;flex-shrink:0}.logo-svg{width:100%;height:100%;display:block}
-.wordmark{font-family:var(--ui-font);font-weight:800;font-size:20px;letter-spacing:-.025em;color:var(--ui-text)}
-.wordmark-highlight{color:var(--ui-brand)}
+.brand-logo{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;user-select:none;line-height:1;max-width:100%}
+.logo-emblem{width:44px;height:44px;display:inline-flex;flex-shrink:0}.logo-svg{width:100%;height:100%;object-fit:contain;display:block}
+.wordmark{font-family:var(--ui-font);font-weight:850;font-size:20px;letter-spacing:-.035em;color:var(--ui-text)}
+.wordmark-highlight{color:#fff8eb}.wordmark-honey{color:#ffce21}.compact .logo-emblem{width:36px;height:36px}
 </style>
