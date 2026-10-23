@@ -31,3 +31,8 @@ API не расширялись: аватар, поддерживаемые по
 История/избранное с account-scoped API и хранилищем в текущей версии отсутствуют; фиктивные вкладки не добавлены. Тема и иные неработающие настройки также не добавлялись.
 
 Браузерный скрипт `scripts/verify_account_layout.mjs`: QA_ORIGIN указывает на локальный readonly preview с существующим authenticated API relay, QA_CDP — порт отдельного тестового Chrome, QA_EVIDENCE — каталог доказательств. Это не обход авторизации публичного сайта; local cookie-session marker работает только совместно с серверным QA relay. Скрипт читает реальные данные, переключает UI, не меняет аккаунты и не проводит платежи. 4 раздела × 5 размеров (1536/1024/768/390/320), нулевые JS errors/broken images/page overflow. Действия записи покрыты компонентными тестами с fixtures.
+
+### PRO billing reference (2026-10-23)
+BillingPanel uses the account cinematic palette with compact benefit/plan cards, blue selected borders and primary actions, distinct network icons, amber Stars, real promo/history states. The free membership CTA only scrolls to existing plans. Desktop account navigation remains reachable while scrolling the billing page; mobile remains in document flow. No prices, payment handlers, APIs, TON validation, invoice polling, wallet proof/MFA, promo payloads or purchase history rules changed. No faux clickable benefit chevrons.
+
+`verify_billing_layout.mjs` captures 5 widths / four page regions against a readonly localhost relay and separate local unavailable/invoice/error fixtures. Fixtures never create real orders, call wallet bridges or submit transfers. Payment action tests use mocks and the real transaction validator without network submission.
