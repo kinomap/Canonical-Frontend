@@ -92,3 +92,46 @@ it('stops initial spinner on failure and retries the account without rendering n
  expect(w.find('#panel-profile').exists()).toBe(true)
  expect(w.find('[role=alert]').exists()).toBe(false)
 })
+
+describe('Reference account layout uses actual backend state',()=>{
+ it('does not claim an unconfigured account is protected and shows only actual sessions',async()=>{
+  mocks.api.mockImplementation(async(path:string)=>path==='/account'?fixture():path==='/account/sessions'?[{current:true,device:'Fixture browser',last_seen_at:'2026-10-23T00:00:00Z'}]:[])
+  const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+  expect(w.get('.private-badge').text()).toBe('2FA не настроена')
+  expect(w.get('.sessions-summary').text()).toContain('Активных сеансов: 1')
+  expect(w.get('.security-summary').text()).toContain('не настроена')
+  expect(w.findAll('.account-summaries button')).toHaveLength(2)
+  expect(w.text()).not.toContain('История просмотров');expect(w.text()).not.toContain('Избранное')
+  await w.get('.sessions-summary').trigger('click');await flushPromises();expect(w.find('#panel-security').exists()).toBe(true)
+ })
+ it('does not manufacture a device count when sessions cannot be loaded',async()=>{
+  mocks.api.mockImplementation(async(path:string)=>{if(path==='/account')return fixture();if(path==='/account/sessions')throw Error('fixture unavailable');return []})
+  const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+  expect(w.find('#panel-profile').exists()).toBe(true);expect(w.get('.sessions-summary').text()).toContain('недоступны');expect(w.text()).not.toContain('Активных сеансов:')
+ })
+ it('shows no observed sessions honestly and never assumes one current device',async()=>{
+  const w=mount(ProfileView);wrappers.push(w);await flushPromises();expect(w.get('.sessions-summary').text()).toContain('не найдено')
+ })
+ it('shows real factor state, Telegram connection and nickname instead of reference identities',async()=>{
+  mocks.api.mockImplementation(async(path:string)=>path==='/account'?{...fixture(),two_factor_enabled:true,telegram_linked:true,telegram_username:'fixture_handle'}:[])
+  const w=mount(ProfileView);wrappers.push(w);await flushPromises();expect(w.get('.private-badge').text()).toBe('2FA включена');expect(w.get('.identity-copy h2').text()).toBe('Cinema fan');expect(w.get('.telegram-handle').text()).toBe('@fixture_handle');expect(w.text()).not.toContain('MysteriumPersonae')
+ })
+ it('requires explicit confirmation before ending other sessions',async()=>{
+  vi.spyOn(window,'confirm').mockReturnValue(false)
+  const w=mount(AccountSecurity);wrappers.push(w);await flushPromises();mocks.api.mockClear()
+  await w.findAll('button').find(b=>b.text()==='Завершить все остальные сеансы')!.trigger('click');await flushPromises();expect(mocks.api).not.toHaveBeenCalled();expect(window.confirm).toHaveBeenCalled()
+ })
+})
+
+it('reveals existing reauthentication fields only for a sensitive identity edit',async()=>{
+ mocks.api.mockImplementation(async(path:string)=>path==='/account'?{...fixture(),two_factor_enabled:true}:[])
+ const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+ expect(w.find('.profile-details input[autocomplete=current-password]').exists()).toBe(false)
+ await w.get('input[autocomplete=username]').setValue('viewer_new')
+ expect(w.find('.profile-details input[autocomplete=current-password]').exists()).toBe(true)
+ await w.get('.profile-details input[autocomplete=current-password]').setValue('fixture-only')
+ await w.get('.profile-details input[autocomplete=one-time-code]').setValue('123456')
+ await w.get('.profile-details').trigger('submit.prevent');await flushPromises()
+ expect(mocks.api).toHaveBeenCalledWith('/account/profile','PATCH',{display_name:'Cinema fan',username:'viewer_new',email:'viewer@example.com',current_password:'fixture-only'},'123456')
+ expect(w.text()).toContain('Профиль обновлён.')
+})

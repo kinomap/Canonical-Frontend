@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+const source=fs.readFileSync(new URL('../../frontend/src/views/ProfileView.vue',import.meta.url),'utf8');
+const vars=Object.fromEntries([...source.matchAll(/--ui-([\w-]+):\s*(#[\da-f]+)/gi)].map(m=>[m[1],m[2]]));
+function luminance(s){if(s.length===4)s='#'+[...s.slice(1)].map(x=>x+x).join('');const rgb=s.slice(1).match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4);return rgb.reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0)}
+function contrast(a,b){const [x,y]=[luminance(a),luminance(b)].sort((a,b)=>b-a);return(x+.05)/(y+.05)}
+test('account reference theme retains AA text, primary and field contrast',()=>{for(const bg of ['bg','surface','field','raised'])for(const fg of ['text','secondary','muted','link'])assert(contrast(vars[fg],vars[bg])>=4.5,`${fg}/${bg}`);assert(contrast(vars.primary,vars['on-primary'])>=4.5);assert(contrast(vars.control,vars.field)>=3);assert(contrast(vars.focus,vars.surface)>=3)});
+test('reference theme is account-scoped and uses real status/observed session data',()=>{assert(source.includes('.account-page{--ui-bg:'));assert(!source.includes(':root{'));assert(source.includes('account.two_factor_enabled'));assert(source.includes("api('/account/sessions')"));assert(source.includes('sessions.length'));assert(!source.includes('1 активное устройство'));assert(source.includes("tr('2FA не настроена'"));assert(source.includes("tr('Сведения о сессиях недоступны.'"))});
