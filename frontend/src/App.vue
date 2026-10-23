@@ -79,6 +79,7 @@ onUnmounted(() => {
 </style>
 
 <style>
-/* The desktop PRO reference is a dedicated account shell. Other tabs keep the storefront header. */
-@media(min-width:1024px){.app-wrapper:has(.account-page.billing-active)>.app-header{display:none}}
+/* All desktop account tabs share one shell and one navigation rail. */
+html:has(.account-page.account-shell){scrollbar-gutter:stable}
+@media(min-width:1024px){.app-wrapper:has(.account-page.account-shell)>.app-header{display:none}}
 </style>
