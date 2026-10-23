@@ -77,7 +77,7 @@ watch(route, () => {
           <template v-if="authStore.isAuthenticated.value">
             <router-link to="/profile" class="profile-btn" :title="t('User Profile')" :aria-label="t('User Profile')">
               <div class="avatar-circle">
-                <UserAvatar :user="authStore.user.value" :size="34" />
+                <UserAvatar :user="authStore.user.value" :size="44" />
 
               </div>
             </router-link>
@@ -140,13 +140,12 @@ watch(route, () => {
 </template>
 
 <style scoped>
-.auth-controls .profile-btn{width:44px;height:44px;padding:4px;box-sizing:border-box;justify-content:center;border-radius:50%}.profile-btn .avatar-circle{width:34px;height:34px;flex-shrink:0}
 
 .app-header {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(13, 14, 18, 0.88);
+  background: #0d0e12;
   backdrop-filter: none;
   border-bottom: 1px solid var(--ui-border);
 }
@@ -294,26 +293,36 @@ watch(route, () => {
 .profile-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  box-shadow: none;
   text-decoration: none;
   color: var(--ui-text);
-  padding: 4px 10px;
-  border-radius: var(--ui-radius-panel);
-  background: var(--ui-raised);
-  border: 1px solid var(--ui-border);
+}
+
+.profile-btn:focus-visible {
+  outline: 2px solid var(--ui-link);
+  outline-offset: 4px;
 }
 
 .avatar-circle {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--ui-primary);
-  color: var(--ui-on-primary);
-  font-weight: 700;
-  font-size: 0.85rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  box-shadow: none;
 }
 
 .user-name {
