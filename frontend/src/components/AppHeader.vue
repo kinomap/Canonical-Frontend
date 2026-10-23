@@ -151,22 +151,27 @@ watch(route, () => {
 }
 
 .header-container {
-  max-width: var(--ui-content-max);
+  width: 100%;
+  max-width: var(--page-frame-max, 1440px);
   margin: 0 auto;
-  padding: 12px 16px;
+  padding: 12px var(--page-frame-gutter, 16px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 24px;
 }
 
 .header-left {
+  flex: 1 0 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 28px;
 }
 
 .brand-link {
+  flex: 0 0 176px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   text-decoration: none;
@@ -231,6 +236,8 @@ watch(route, () => {
 }
 
 .header-right {
+  flex: 0 1 440px;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -238,17 +245,22 @@ watch(route, () => {
 
 .header-search {
   display: none;
-  width: 240px;
+  flex: 1 1 320px;
+  min-width: 160px;
+  width: auto;
 }
 
 @media (min-width: 1024px) {
   .header-search {
     display: block;
-    width: 320px;
+    width: auto;
   }
 }
 
 .auth-controls {
+  flex: 0 0 auto;
+  min-width: 64px;
+  justify-content: flex-end;
   display: none;
   align-items: center;
   gap: 12px;
@@ -400,5 +412,17 @@ watch(route, () => {
   text-align: left;
   padding: 8px 12px;
   cursor: pointer;
+}
+
+@media (min-width: 1024px) and (max-width: 1100px) {
+  .desktop-nav { gap:12px; }
+  .header-left { gap:24px; }
+  .header-container { gap:20px; }
+}
+@media (max-width: 1023px) {
+  .header-right { flex: 0 0 auto; }
+}
+@media (max-width: 639px) {
+  .brand-link { flex-basis:64px; }
 }
 </style>

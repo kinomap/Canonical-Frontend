@@ -79,6 +79,18 @@ onUnmounted(() => {
 </style>
 
 <style>
+
+/* One public-page frame contract: preserve each page's existing content width. */
+.app-wrapper { --page-frame-max:1440px; --page-frame-gutter:16px; }
+.app-wrapper:has(> #main-content > :is(.catalog-page,.home-page)) { --page-frame-max:1280px; }
+.app-wrapper:has(> #main-content > .catalog-page > .catalog-header) { --page-frame-max:1600px; --page-frame-gutter:24px; }
+.app-wrapper:has(> #main-content > .genres-page) { --page-frame-max:1400px; --page-frame-gutter:24px; }
+.app-wrapper:has(> #main-content > :is(.movie-details-page,.series-details-page)) { --page-frame-max:1200px; }
+.app-wrapper > .app-main > :is(.catalog-page,.home-page,.genres-page,.movie-details-page,.series-details-page) {
+  max-width:var(--page-frame-max);
+  padding-inline:var(--page-frame-gutter);
+}
+
 /* All desktop account tabs share one shell and one navigation rail. */
 html:has(.account-page.account-shell){scrollbar-gutter:stable}
 @media(min-width:1024px){.app-wrapper:has(.account-page.account-shell)>.app-header{display:none}}
