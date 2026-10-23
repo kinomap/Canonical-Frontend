@@ -132,4 +132,18 @@ onBeforeUnmount(()=>{disposed=true;password.value='';otp.value=''})
 @media(max-width:1250px){.settings-form{grid-template-columns:1fr}.settings-form .preference-block{padding:24px}.settings-form .language-options{max-width:600px}}
 @media(max-width:640px){.settings-form{gap:16px}.settings-form .preference-block{padding:20px}.settings-form h3{font-size:21px}.settings-save .primary{width:100%}.settings-form .language-options label{padding:14px 10px;gap:8px}.settings-form .language-options span{display:none}}
 @media(prefers-reduced-motion:reduce){.billing-brand{transition:none}}
+
+/* Avatar chooser only: original cast; preserve all account actions and preset IDs. */
+.avatar-card .preset-gallery{display:grid;grid-template-columns:repeat(8,minmax(0,64px));gap:10px;margin:18px 0 20px;max-width:100%}
+.avatar-card .preset-gallery button{position:relative;display:grid;place-items:center;width:100%;aspect-ratio:1;padding:3px;min-height:44px;border:2px solid #334155;border-radius:12px;background:#111b28;cursor:pointer;transition:border-color .15s,background-color .15s}
+.avatar-card .preset-gallery img{width:100%;height:100%;aspect-ratio:1;object-fit:cover;border-radius:7px}
+.avatar-card .preset-gallery button:hover:not(:disabled){border-color:#8dbfff;background:#1b2d43}
+.avatar-card .preset-gallery button[aria-pressed=true]{border-color:#51a5ff;background:#152c46;box-shadow:0 0 0 2px #4d9fff24}
+.avatar-card .preset-gallery button[aria-pressed=true]::after{content:'✓';position:absolute;right:-3px;bottom:-3px;width:18px;height:18px;display:grid;place-items:center;border:2px solid #151d25;border-radius:50%;background:#51a5ff;color:#07111d;font-size:12px;font-weight:800;line-height:1;pointer-events:none}
+.avatar-card .preset-gallery button:focus-visible{outline:3px solid #b7d9ff;outline-offset:3px}
+.avatar-card .preset-gallery button:disabled{opacity:.55;cursor:wait}
+.avatar-card .film-decoration{pointer-events:none}
+.avatar-card .upload-button:focus-within,.avatar-card .camera-button:focus-within{outline:3px solid #b7d9ff;outline-offset:3px}
+@media(max-width:1280px){.avatar-card .preset-gallery{grid-template-columns:repeat(4,minmax(44px,64px));gap:12px}}
+@media(prefers-reduced-motion:reduce){.avatar-card .preset-gallery button{transition:none}}
 </style>
