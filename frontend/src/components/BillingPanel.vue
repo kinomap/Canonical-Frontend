@@ -65,8 +65,8 @@ onBeforeUnmount(()=>{disposed=true;clearInterval(timer);unsubscribe?.();if(dialo
   <p v-if="loading" class="muted" role="status">{{tr('Загружаем тарифы…','Loading plans…')}}</p><p v-else-if="!plans.length" class="notice">{{tr('Тарифы скоро появятся. Обновите страницу позже.','Plans will be available soon. Please check back later.')}}</p>
   <div class="plan-grid" role="group" :aria-label="tr('Выбор тарифа','Choose your plan')"><button v-for="p in plans" :key="p.id" :class="['plan-card',{chosen:selected===p.id,popular:p.days===180}]" :aria-pressed="selected===p.id" @click="choose(p)" :data-days="p.days"><span class="plan-badge" :class="{year:p.days===365}">{{p.days===180?tr('ПОПУЛЯРНЫЙ','POPULAR')+(discount(p)>0?' · −'+discount(p)+'%':''):p.days===365?tr('МАКСИМУМ ВЫГОДЫ','BEST VALUE')+(discount(p)>0?' · −'+discount(p)+'%':''):tr('ЗНАКОМСТВО С PRO','START WITH PRO')}}</span><span class="plan-top"><strong>{{planName(p)}}</strong><span class="radio-check"><Check v-if="selected===p.id" :size="14"/></span></span><span class="plan-caption">{{p.days===30?tr('Базовый старт','A perfect start'):p.days===180?tr('Для тех, кто любит кино','For the love of cinema'):tr('Год больших историй','A year of great stories')}}</span><span class="price-line"><span class="plan-price">{{usd(p.usd)}}</span><s v-if="p.days>30&&plans[0]?.usd">{{usd(Number(plans.find(x=>x.days===30)?.usd||0)*(p.days===180?6:12))}}</s></span><span class="plan-period">{{tr('за весь период · ','for the full period · ')}}{{p.days}} {{tr('дней','days')}}</span><span class="plan-equivalent">{{priceFor(p)?priceFor(p)+' '+(selectedMethod?.symbol||''):tr('Цена валюты настраивается','Currency pricing pending')}}<span v-if="p.stars"> · ★ {{p.stars}}</span></span></button></div>
   </section>
-  <section class="checkout-surface"><div class="section-label"><div><p class="eyebrow">{{tr('КАК ВАМ УДОБНЕЕ','YOUR WAY TO PAY')}}</p><h3>{{tr('Криптовалюта или Telegram Stars','Crypto or Telegram Stars')}}</h3></div><span class="checkout-safe"><LockKeyhole :size="18"/>{{tr('Безопасная оплата','Secure checkout')}}</span></div>
-    <div class="method-grid" role="group" :aria-label="tr('Валюта и сеть','Currency and network')"><button v-for="m in methods" :key="m.id" :aria-pressed="method===m.id" :class="['method',{selected:method===m.id}]" @click="method=m.id"><span :class="['coin','coin-'+m.id]"><BillingPaymentIcon :method="m.id" :symbol="m.symbol"/></span><span><strong>{{m.symbol}}</strong><small>{{m.network}}</small></span><Check v-if="method===m.id" :size="15"/></button></div>
+  <section class="checkout-surface"><div class="payment-methods-block"><div class="section-label"><div><p class="eyebrow">{{tr('КАК ВАМ УДОБНЕЕ','YOUR WAY TO PAY')}}</p><h3>{{tr('Криптовалюта или Telegram Stars','Crypto or Telegram Stars')}}</h3></div><span class="checkout-safe"><LockKeyhole :size="18"/>{{tr('Безопасная оплата','Secure checkout')}}</span></div>
+    <div class="method-grid" role="group" :aria-label="tr('Валюта и сеть','Currency and network')"><button v-for="m in methods" :key="m.id" :aria-pressed="method===m.id" :class="['method',{selected:method===m.id}]" @click="method=m.id"><span :class="['coin','coin-'+m.id]"><BillingPaymentIcon :method="m.id" :symbol="m.symbol"/></span><span><strong>{{m.symbol}}</strong><small>{{m.network}}</small></span><Check v-if="method===m.id" :size="15"/></button></div></div>
     <div class="wallet-row"><Wallet :size="20"/><div><strong>{{tr('TON-кошелёк','TON wallet')}}</strong><small>{{walletLabel||tr('Tonkeeper · Wallet · MyTonWallet','Tonkeeper · Wallet · MyTonWallet')}}</small></div><button v-if="walletLabel" class="icon-button" @click="copy(friendlyTonAddress(account.ton_address))" :aria-label="tr('Скопировать адрес TON','Copy TON address')"><Copy :size="17"/></button><button class="text-button" @click="connect">{{walletLabel?tr('Другой кошелёк','Switch wallet'):tr('Подключить','Connect')}}<ArrowUpRight :size="15"/></button></div>
     <div v-if="walletLabel&&account.two_factor_enabled" class="factor-row"><label>{{tr('Код 2FA для отвязки кошелька','2FA code to unlink wallet')}}<input v-model="otp" autocomplete="one-time-code" maxlength="64"/></label><button class="text-button" @click="disconnect">{{tr('Отвязать','Unlink')}}</button></div>
     <div class="checkout-total"><div><small>{{tr('К оплате · ','Total · ')}}{{chosen?planName(chosen):'—'}}</small><strong>{{selectedMethod?.price?money(selectedMethod.price,selectedMethod.decimals??9)+' '+selectedMethod.symbol:tr('Цена настраивается','Pricing pending')}}</strong><span v-if="selectedMethod?.id==='bep20'" class="muted">Binance-Peg USDT · BNB Smart Chain</span></div><button class="crypto-button" @click="openCrypto"><QrCode :size="19"/>{{tr('Перейти к оплате','Continue to payment')}}<ChevronRight :size="18"/></button></div>
@@ -74,7 +74,7 @@ onBeforeUnmount(()=>{disposed=true;clearInterval(timer);unsubscribe?.();if(dialo
     <p class="checkout-footnote"><ShieldCheck :size="15"/>{{tr('Доступ включится после подтверждения сети или Telegram. Мы не храним ключи от ваших кошельков.','Access activates after confirmation by the network or Telegram. Your wallet keys stay yours.')}}</p>
   </section>
   <form class="promo-surface" @submit.prevent="redeem"><span class="promo-icon"><Ticket :size="25"/></span><div><h3>{{tr('Есть промокод?','Have a promo code?')}}</h3><p>{{tr('Ваш следующий сеанс — с бонусом.','A little extra for your next movie night.')}}</p></div><label class="sr-only" for="cinema-promo">{{tr('Промокод','Promo code')}}</label><input id="cinema-promo" v-model="promo" required maxlength="128" :placeholder="tr('Введите промокод','Enter promo code')"/><button class="secondary" :disabled="busy">{{tr('Активировать','Redeem')}}</button></form>
-  <section class="history-surface"><div class="section-label"><h3>{{tr('Покупки и активации','Purchases & activations')}}</h3><span class="muted">{{total}}</span></div><div v-if="!orders.length&&!activations.length" class="empty-history"><span class="history-illustration" aria-hidden="true"><Clapperboard :size="52"/></span><div><strong>{{tr('Здесь начнётся ваша PRO-история','Your PRO story starts here')}}</strong><p>{{tr('После первой покупки здесь появятся её статус и детали.','Your first purchase and its status will appear here.')}}</p></div></div><div v-else class="table-scroll"><table><thead><tr><th>{{tr('Дата и тариф','Date & plan')}}</th><th>{{tr('Способ и сумма','Method & amount')}}</th><th>{{tr('Статус','Status')}}</th></tr></thead><tbody><tr v-for="o in orders" :key="o.id"><td>{{date(o.created_at)}}<small>PRO · {{o.duration_days}} {{tr('дней','days')}}</small></td><td>{{o.amount_display||o.amount}} {{o.payment?.symbol||o.provider}}<small>{{o.payment?.network}}</small></td><td><span :class="['order-status',effectiveStatus(o)]">{{status(effectiveStatus(o))}}</span><button v-if="effectiveStatus(o)==='pending'" class="text-button" @click="latest=o;modal='invoice'">{{tr('Открыть','Open')}}</button></td></tr><tr v-for="(a,i) in activations" :key="'a'+i"><td>{{date(a.created_at)}}<small>{{a.title}}</small></td><td>{{tr('Активация','Activation')}}<small>{{tr('До ','Until ')}}{{date(a.expires_at)}}</small></td><td>{{status(a.status)}}</td></tr></tbody></table></div><div v-if="total>50" class="pager"><button class="secondary" :disabled="offset===0" @click="offset-=50;history()">{{tr('Назад','Previous')}}</button><button class="secondary" :disabled="offset+50>=total" @click="offset+=50;history()">{{tr('Далее','Next')}}</button></div></section>
+  <section class="history-surface"><div class="section-label"><h3>{{tr('Покупки и активации','Purchases & activations')}}</h3><span class="muted">{{total}}</span></div><div v-if="!orders.length&&!activations.length" class="empty-history"><span class="history-illustration" aria-hidden="true"><img src="/account/pro-history-cinema.webp" alt="" width="194" height="122"/></span><div><strong>{{tr('Здесь начнётся ваша PRO-история','Your PRO story starts here')}}</strong><p>{{tr('После первой покупки здесь появятся её статус и детали.','Your first purchase and its status will appear here.')}}</p></div></div><div v-else class="table-scroll"><table><thead><tr><th>{{tr('Дата и тариф','Date & plan')}}</th><th>{{tr('Способ и сумма','Method & amount')}}</th><th>{{tr('Статус','Status')}}</th></tr></thead><tbody><tr v-for="o in orders" :key="o.id"><td>{{date(o.created_at)}}<small>PRO · {{o.duration_days}} {{tr('дней','days')}}</small></td><td>{{o.amount_display||o.amount}} {{o.payment?.symbol||o.provider}}<small>{{o.payment?.network}}</small></td><td><span :class="['order-status',effectiveStatus(o)]">{{status(effectiveStatus(o))}}</span><button v-if="effectiveStatus(o)==='pending'" class="text-button" @click="latest=o;modal='invoice'">{{tr('Открыть','Open')}}</button></td></tr><tr v-for="(a,i) in activations" :key="'a'+i"><td>{{date(a.created_at)}}<small>{{a.title}}</small></td><td>{{tr('Активация','Activation')}}<small>{{tr('До ','Until ')}}{{date(a.expires_at)}}</small></td><td>{{status(a.status)}}</td></tr></tbody></table></div><div v-if="total>50" class="pager"><button class="secondary" :disabled="offset===0" @click="offset-=50;history()">{{tr('Назад','Previous')}}</button><button class="secondary" :disabled="offset+50>=total" @click="offset+=50;history()">{{tr('Далее','Next')}}</button></div></section>
   <dialog ref="dialog" class="payment-dialog" @cancel.prevent="close" @close="close" @click="($event.target===dialog)&&close()"><div class="dialog-body" v-if="modal"><button class="close-dialog" @click="close" :aria-label="tr('Закрыть','Close')"><X :size="22"/></button>
     <template v-if="modal==='unavailable'"><span class="dialog-emblem violet"><Wallet :size="28"/></span><p class="eyebrow">{{tr('СКОРО БУДЕТ ДОСТУПНО','COMING SOON')}}</p><h2>{{tr('Этот способ оплаты настраивается','This payment method is being set up')}}</h2><p class="muted">{{tr('Приём платежей в этой валюте временно настраивается администратором, выберите другой способ.','The administrator is setting up payments in this currency. Please choose another method.')}}</p><button class="crypto-button full" @click="close">{{tr('Выбрать другой способ','Choose another method')}}</button></template>
     <template v-if="modal==='invoice'&&latest"><span class="dialog-emblem" :class="latest.provider==='stars'?'amber':'violet'"><component :is="latest.provider==='stars'?Star:QrCode" :size="28"/></span><p class="eyebrow">{{tr('ВАШ СЧЁТ','YOUR INVOICE')}}</p><h2>PRO · {{latest.duration_days}} {{tr('дней','days')}}</h2><div class="invoice-amount">{{latest.amount_display}} <span>{{latest.provider==='stars'?'★':latest.payment?.symbol}}</span></div><p class="network-label">{{latest.payment?.network||'Telegram Stars'}}</p>
@@ -127,4 +127,97 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 @media(max-width:960px){.benefit-grid{grid-template-columns:1fr}.plan-grid{grid-template-columns:1fr}.plan-card,.plan-card.chosen{padding:18px 20px}.plan-caption{min-height:0}.plan-badge{min-height:0}.plan-top strong{font-size:22px}.price-line{margin-top:10px}.plan-period{margin-bottom:10px}.checkout-safe{display:none}.membership-strip{flex-wrap:wrap}.membership-expiry{margin-left:76px;text-align:left}.membership-decoration{right:-30px}.billing-intro{align-items:flex-start}.secure-tag{display:none}.section-label{align-items:flex-start}.section-label>.muted{white-space:normal;max-width:100px;text-align:right}.stars-checkout .stars-button{width:100%;margin-left:0}.checkout-total{align-items:flex-start;flex-direction:column}.checkout-total>.crypto-button{width:100%}.empty-history{gap:12px}.history-illustration{width:80px}}
 @media(max-width:640px){.cinema-billing{gap:16px}.billing-intro h2{font-size:27px}.membership-strip{padding:16px;gap:14px}.membership-icon{width:48px;height:48px}.membership-strip strong{font-size:21px}.membership-expiry{margin-left:62px}.section-label{display:block}.section-label>.muted{display:block;margin-top:6px;max-width:none;text-align:left}.section-label h3{font-size:21px}.benefit{padding:16px;align-items:flex-start}.benefit h3{font-size:16px}.checkout-surface,.history-surface{padding:16px}.method-grid{grid-template-columns:1fr}.method,.method.selected{min-height:72px}.wallet-row{flex-wrap:wrap;gap:10px}.wallet-row .text-button{margin-left:auto}.checkout-total strong{font-size:27px}.stars-checkout{padding:14px;gap:12px}.stars-orbit{width:40px;height:40px}.promo-surface{padding:16px;gap:12px}.promo-surface>div{flex-basis:calc(100% - 58px)}.promo-surface input,.promo-surface .secondary{width:100%;flex-basis:100%}.empty-history{display:grid;justify-content:stretch;gap:10px;padding-top:20px}.history-illustration{width:100%;height:74px}.dialog-body{padding:24px 18px}.dialog-body h2{font-size:24px}.invoice-amount{font-size:32px}.factor-row{flex-wrap:wrap}.factor-row label{flex-basis:100%}td,th{padding:12px 6px}.pager{flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+/* Reference geometry: shared vertical rails, fixed icon tracks, equal card rows. */
+.history-illustration img{width:194px;max-width:100%;height:auto;mask-image:radial-gradient(ellipse,#000 35%,transparent 75%)}
+@media(min-width:1024px){
+ .cinema-billing{gap:16px}
+ .billing-intro{min-height:94px;padding:0;align-items:center}
+ .billing-intro h2{font-size:32px;line-height:1.2;margin:4px 0 6px}
+ .billing-intro .muted{font-size:16px}
+ .membership-strip{min-height:102px;padding:18px 30px;gap:20px}
+ .membership-icon{width:68px;height:62px}
+ .membership-strip strong{font-size:24px;line-height:1.25}
+ .membership-expiry{gap:6px}
+ .benefit-grid{gap:16px}
+ .benefit{min-height:100px;padding:16px 18px;gap:24px;align-items:center;display:grid;grid-template-columns:58px minmax(0,1fr)}
+ .benefit-icon{width:58px;height:58px}
+ .benefit h3{font-size:18px;line-height:1.3;margin:0 0 6px}
+ .benefit p{font-size:16px;line-height:1.4}
+ .pricing-section{margin-top:16px;padding-top:16px;gap:16px;scroll-margin-top:24px}
+ .pricing-section>.section-label{min-height:50px;align-items:end}
+ .plan-grid{gap:16px;align-items:stretch}
+ .plan-card{min-height:228px;padding:18px 24px}
+ .plan-card.chosen{padding:17px 23px}
+ .plan-top strong{font-size:24px;line-height:1.3}
+ .plan-price{font-size:36px}
+ .plan-badge,.plan-caption,.plan-period,.plan-equivalent{font-size:14px}
+ .plan-caption{min-height:22px}
+ .plan-period{margin:6px 0 10px}
+ .checkout-surface{padding:22px 30px;gap:20px}
+ .checkout-surface>.section-label{min-height:38px;align-items:center}
+ .checkout-surface .section-label h3{font-size:22px}
+ .method-grid{gap:12px;grid-auto-rows:76px}
+ .method,.method.selected{height:76px;min-height:76px;display:grid;grid-template-columns:48px minmax(0,1fr) 24px;column-gap:20px;row-gap:0;align-items:center;padding:12px}
+ .method.selected{padding:11px;column-gap:20px}
+ .method .coin{width:48px;height:48px}
+ .method>svg{grid-column:3}
+ .method>span:nth-child(2){overflow-wrap:normal}
+ .method strong{line-height:1.4}
+ .method small{line-height:1.4;margin-top:3px}
+ .wallet-row{min-height:82px;padding:16px 0;display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;gap:20px}
+ .wallet-row>.text-button{grid-column:4;font-size:16px;padding:10px 0}
+ .wallet-row>.icon-button{grid-column:3}
+ .checkout-total{min-height:62px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:center}
+ .checkout-total strong{font-size:30px;line-height:1.2;margin-top:4px}
+ .checkout-total .crypto-button{min-width:255px;min-height:54px;font-size:16px}
+ .stars-checkout{min-height:86px;padding:16px 18px;display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:18px}
+ .stars-orbit{width:48px;height:48px}
+ .stars-checkout .stars-button{min-height:50px;min-width:268px;font-size:14px;margin:0;padding:10px 20px}
+ .stars-checkout h4{font-size:18px;line-height:1.3}
+ .stars-checkout p{font-size:14px;line-height:1.4}
+ .checkout-footnote{align-items:center;min-height:22px;line-height:1.5;font-size:14px}
+ .checkout-footnote svg{margin-top:0}
+ .promo-surface{min-height:92px;padding:18px 30px;display:grid;grid-template-columns:56px minmax(0,1fr) 260px 150px;gap:16px}
+ .promo-icon{width:48px;height:48px}
+ .promo-surface h3{font-size:18px}
+ .promo-surface input{width:100%;height:54px}
+ .promo-surface .secondary{height:54px}
+ .history-surface{min-height:192px;padding:22px 30px}
+ .empty-history{min-height:118px;padding:12px 0 0;gap:32px}
+ .history-illustration{width:194px;height:122px;background:none}
+ .empty-history strong{font-size:18px}
+ .empty-history p{font-size:16px}
+}
+@media(min-width:1024px) and (max-width:1199px){
+ .benefit-grid{grid-template-columns:1fr}
+ .billing-intro{flex-wrap:wrap;gap:10px}
+ .billing-intro h2{font-size:28px}
+ .checkout-surface,.history-surface{padding:22px}
+ .method{column-gap:12px}.method.selected{column-gap:12px}
+ .stars-checkout{grid-template-columns:48px minmax(0,1fr)}
+ .stars-checkout .stars-button{grid-column:1 / -1;width:100%}
+ .promo-surface{grid-template-columns:48px minmax(0,1fr);padding:20px 22px}
+ .promo-surface input{grid-column:1 / -1}.promo-surface .secondary{grid-column:1 / -1}
+ .plan-grid{grid-template-columns:1fr}
+ .plan-card{min-height:220px}
+}
+@media(min-width:1200px){.method-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+@media(max-width:640px){.history-illustration img{width:194px;height:74px;object-fit:contain}}
+
+.payment-methods-block{display:grid;gap:16px;min-width:0}
+@media(min-width:1024px){
+ .billing-intro .eyebrow{margin:0;line-height:1.4}.billing-intro .muted{line-height:1.4}.secure-tag{white-space:nowrap;max-width:none;flex-shrink:0}
+ .membership-strip{padding:14px 30px}
+ .benefit{padding:14px 18px}.benefit h3{line-height:1.2}.benefit p{line-height:1.35}
+ .checkout-surface{gap:22px}.payment-methods-block{gap:10px}
+ .payment-methods-block>.section-label{min-height:48px;align-items:center}
+ .payment-methods-block .eyebrow{line-height:18px;margin:0 0 4px}
+ .payment-methods-block h3{line-height:26px}
+ .checkout-total{min-height:58px}.checkout-total strong{line-height:1.1}
+ .checkout-footnote{min-height:24px}
+ .empty-history{display:grid;grid-template-columns:minmax(194px,.9fr) minmax(0,1fr);min-height:118px}
+ .history-illustration{justify-self:end;height:106px}.history-illustration img{height:106px;object-fit:contain}
+}
 </style>

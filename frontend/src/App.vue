@@ -77,3 +77,8 @@ onUnmounted(() => {
   width: 100%;
 }
 </style>
+
+<style>
+/* The desktop PRO reference is a dedicated account shell. Other tabs keep the storefront header. */
+@media(min-width:1024px){.app-wrapper:has(.account-page.billing-active)>.app-header{display:none}}
+</style>
