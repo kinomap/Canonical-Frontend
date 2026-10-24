@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 import { addToast } from '../toast'
 import MediaVpsGuide from './MediaVpsGuide.vue'
@@ -32,6 +32,29 @@ const loadingReleases = ref(false)
 
 // Step 3 — Deploy
 const sshPrivateKey = ref('')
+const hostFingerprint = ref('')
+const identityVerified = ref(false)
+const identityChecking = ref(false)
+const identityError = ref('')
+const deploymentError = ref('')
+watch([host, sshPort, hostFingerprint], () => {
+  identityVerified.value = false
+  identityError.value = ''
+})
+async function verifyIdentity() {
+  identityVerified.value = false
+  identityChecking.value = true
+  identityError.value = ''
+  const target = { host: canonicalizeHost(host.value), port: sshPort.value, fingerprint: hostFingerprint.value.trim() }
+  try {
+    const resp = await axios.post('/api/v1/admin/media/nodes/ssh/verify', target, auth())
+    if (target.host === canonicalizeHost(host.value) && target.port === sshPort.value && target.fingerprint === hostFingerprint.value.trim()) {
+      identityVerified.value = resp.data.verified === true
+    }
+  } catch (err: any) {
+    identityError.value = typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Не удалось проверить ключ сервера. Проверьте адрес, порт и SHA256-отпечаток.'
+  } finally { identityChecking.value = false }
+}
 
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } })
 
@@ -63,10 +86,10 @@ function validateHost(raw: string): string {
 }
 
 const canGoStep2 = computed(() => {
-  return nodeName.value.trim() && host.value.trim() && !validateHost(host.value)
+  return nodeName.value.trim() && host.value.trim() && !validateHost(host.value) && Number.isInteger(sshPort.value) && sshPort.value > 0 && sshPort.value <= 65535 && /^[a-zA-Z_][a-zA-Z0-9_.-]{0,63}[$]?$/.test(sshUsername.value)
 })
 const canGoStep3 = computed(() => Boolean(selectedVersion.value))
-const canDeploy = computed(() => sshPrivateKey.value.trim().length > 50)
+const canDeploy = computed(() => Boolean(identityVerified.value && canGoStep2.value && selectedVersion.value && sshPrivateKey.value.trim().length > 50))
 
 async function loadReleases() {
   loadingReleases.value = true
@@ -97,6 +120,8 @@ async function goToStep2() {
 }
 
 async function startDeploy() {
+  if (!canDeploy.value || deploying.value) return
+  deploymentError.value = ''
   deploying.value = true
   step.value = 4
 
@@ -124,7 +149,7 @@ async function startDeploy() {
       if (err.response?.status === 409) {
         const nodes = await axios.get('/api/v1/admin/media/nodes', auth())
         const existing = nodes.data.find((n: any) =>
-          n.name === nodeName.value || n.hostname === host.value
+          n.name === nodeName.value && n.hostname === canonicalizeHost(host.value)
         )
         if (existing) {
           nodeId = existing.id
@@ -145,6 +170,9 @@ async function startDeploy() {
     const selected = releases.value.find((r: any) => r.version === selectedVersion.value)
     const resp = await axios.post(`/api/v1/admin/media/nodes/${nodeId}/deploy`, {
       ssh_private_key: sshPrivateKey.value,
+      ssh_host_key_fingerprint: hostFingerprint.value.trim(),
+      ssh_port: sshPort.value,
+      ssh_username: sshUsername.value,
       target_version: selected?.version || '',
       target_commit: selected?.commit || '',
     }, auth())
@@ -160,7 +188,8 @@ async function startDeploy() {
   } catch (err: any) {
     sshPrivateKey.value = ''
     deploying.value = false
-    addToast(err.response?.data?.detail || 'Deployment failed', 'error')
+    deploymentError.value = typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Не удалось начать установку. Проверьте данные и повторите попытку.'
+    addToast(deploymentError.value, 'error')
     step.value = 3
   }
 }
@@ -311,6 +340,21 @@ function stageClass(stage: string): string {
         <h3>SSH Access</h3>
         <p class="wiz-hint">Paste the SSH private key for <strong>{{ sshUsername }}@{{ host }}</strong>.
           It is used only for this deployment and never stored.</p>
+        <section class="identity-check" aria-label="Проверка ключа сервера">
+          <h4>1. Подтвердите личность VPS</h4>
+          <p class="wiz-hint">Это ключ самого сервера, а не ваш приватный SSH-ключ. Получите отпечаток через доверенную консоль хостера на этом VPS:</p>
+          <pre>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256</pre>
+          <label>Доверенный SHA256-отпечаток сервера
+            <input v-model="hostFingerprint" placeholder="SHA256:…" spellcheck="false" autocomplete="off" />
+          </label>
+          <button :disabled="identityChecking || !/^SHA256:[A-Za-z0-9+/]{43}=?$/.test(hostFingerprint.trim())" @click="verifyIdentity">
+            {{ identityChecking ? 'Проверяем…' : 'Проверить ключ сервера' }}
+          </button>
+          <p v-if="identityVerified" class="identity-ok" role="status">✓ Ключ сервера подтверждён. Вход по вашему SSH-ключу будет проверен при установке.</p>
+          <p v-if="identityError" class="field-error" role="alert">{{ identityError }}</p>
+        </section>
+        <h4>2. Укажите ключ для входа</h4>
+        <p v-if="deploymentError" class="field-error" role="alert">{{ deploymentError }}</p>
         <label>SSH Private Key (PEM)
           <textarea v-model="sshPrivateKey" rows="6" placeholder="-----BEGIN RSA PRIVATE KEY-----
 ...
@@ -413,6 +457,9 @@ function stageClass(stage: string): string {
 }
 .btn-primary { background: var(--ui-primary) !important; border-color: var(--ui-control) !important; color: var(--ui-on-primary) !important; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.identity-check { border: 1px solid var(--ui-border); padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+.identity-check pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.identity-ok { color: var(--ui-success); font-weight: 600; }
 .btn-deploy { background: var(--ui-success-bg) !important; border-color: var(--ui-success) !important; }
 .wiz-hint { font-size: 0.85rem; color: var(--ui-muted); margin-bottom: 12px; line-height: 1.4; }
 .wiz-loading, .wiz-empty { color: var(--ui-muted); font-size: 0.9rem; padding: 12px 0; }
