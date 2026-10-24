@@ -30,7 +30,7 @@
   "admin-frontend/src/views/Domains.vue": "692125e51f08b552ee24c98d9c72e44d521e0d3859e20588105c55eb89fa926c",
   "admin-frontend/src/views/Comments.vue": "1a3263837f8e09d9704a7f71a8130fe8c4a75c027f8e945181291281f0baf523",
   "admin-frontend/src/views/SeriesGarbage.vue": "63c0003f4f0661a728308924dbc54f2fcf70097e57b91760d05fd5f721e0dbe0",
-  "admin-frontend/src/views/Telegram.vue": "787993db042a2b04c6ff1d9211453723f8a1c18569908305ef39c52971f5f2c9",
+  "admin-frontend/src/views/Telegram.vue": "565e8121e4707fff9f2854a05cb52fa2a08f01017d9a330fae8e67dd831b7ae4",
   "admin-frontend/src/views/SecurityCenter.vue": "8fe11a5d0911edf871d26b308fae01ecb5f75b8f9806f8ca59963e81ed119461",
   "admin-frontend/src/views/MediaNodeDetail.vue": "520a21f4efd4c8e07ee1dbf64012ca041a6b6014061c907283dc5b2164b2a65f",
   "admin-frontend/src/views/Movies.vue": "2b690514fbcb4cbd30db5e8d2c84898ff13f3d44b5b086652706c4b99572b1a8",

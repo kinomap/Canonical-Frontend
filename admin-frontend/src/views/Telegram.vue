@@ -20,6 +20,7 @@ const showAddModal = ref(false)
 const confirmDeleteId = ref<string | null>(null)
 const editingChannel = ref<any | null>(null)
 const editingIsSeries = ref(false)
+const editingIsAd = ref(false)
 
 // Per-channel states
 const syncing = ref<string | null>(null)
@@ -73,6 +74,7 @@ const statusFilter = ref('All') // All, Connected, Not connected
 const addMode = ref('search') // search, manual
 const newChannelId = ref('')
 const newChannelIsSeries = ref(false)
+const newChannelIsAd = ref(false)
 const adding = ref<string | null>(null) // Stores telegram_id being added
 
 const fetchEntities = async () => {
@@ -102,6 +104,7 @@ watch(showAddModal, (val) => {
     searchEntity.value = ''
     newChannelId.value = ''
     newChannelIsSeries.value = false
+    newChannelIsAd.value = false
     addMode.value = 'search'
   }
 })
@@ -153,12 +156,14 @@ const addChannel = async (cid: string) => {
   try {
     await axios.post('/api/v1/admin/telegram/channels', { 
       channel_id: cid,
-      is_series_channel: newChannelIsSeries.value
+      is_series_channel: newChannelIsSeries.value && !newChannelIsAd.value,
+      is_ad_channel: newChannelIsAd.value
     }, auth())
     await fetchChannels()
     if (addMode.value === 'manual') {
       newChannelId.value = ''
       newChannelIsSeries.value = false
+    newChannelIsAd.value = false
     }
     showAddModal.value = false
     addToast(`Channel connected`, 'success')
@@ -186,13 +191,14 @@ const toggleChannelStatus = async (channel: any) => {
 const openEditModal = (channel: any) => {
   editingChannel.value = channel
   editingIsSeries.value = channel.is_series_channel
+  editingIsAd.value = Boolean(channel.is_ad_channel)
 }
 
 const updateChannelSettings = async () => {
   if (!editingChannel.value) return
   const cid = editingChannel.value.channel_id
   try {
-    await axios.put(`/api/v1/admin/telegram/channels/${encodeURIComponent(cid)}`, { is_series_channel: editingIsSeries.value }, auth())
+    await axios.put(`/api/v1/admin/telegram/channels/${encodeURIComponent(cid)}`, { is_series_channel: editingIsSeries.value && !editingIsAd.value, is_ad_channel: editingIsAd.value }, auth())
     await fetchChannels()
     addToast(`Channel settings updated`, 'success')
     editingChannel.value = null
@@ -322,8 +328,8 @@ onMounted(() => {
             <div>
               <div class="channel-name" style="display: flex; align-items: center; gap: 8px;">
                 {{ channel.name || 'Название не сохранено' }}
-                <span class="type-badge" :class="channel.is_series_channel ? 'type-series' : 'type-movie'">
-                  {{ channel.is_series_channel ? 'SERIES' : 'MOVIE' }}
+                <span class="type-badge" :class="channel.is_ad_channel ? 'type-series' : channel.is_series_channel ? 'type-series' : 'type-movie'">
+                  {{ channel.is_ad_channel ? 'AD SOURCE' : channel.is_series_channel ? 'SERIES' : 'MOVIE' }}
                 </span>
               </div>
               <div class="channel-id">
@@ -342,19 +348,23 @@ onMounted(() => {
         </div>
 
         <div class="channel-stats">
-          <div v-if="!channel.is_series_channel || channel.current_movies > 0" class="stat-item stat-highlight">
+          <div v-if="channel.is_ad_channel" class="stat-item stat-highlight">
+            <span class="stat-label">Рекламные ролики · Ad Studio</span>
+            <span class="stat-val stat-val-primary">{{ channel.current_ads?.toLocaleString() ?? '0' }}</span>
+          </div>
+          <div v-if="!channel.is_ad_channel && (!channel.is_series_channel || channel.current_movies > 0)" class="stat-item stat-highlight">
             <span class="stat-label">Фильмы</span>
             <span class="stat-val stat-val-primary">{{ channel.current_movies?.toLocaleString() ?? '—' }}</span>
           </div>
-          <div v-if="channel.is_series_channel || channel.current_series > 0" class="stat-item stat-highlight">
+          <div v-if="!channel.is_ad_channel && (channel.is_series_channel || channel.current_series > 0)" class="stat-item stat-highlight">
             <span class="stat-label">Сериалы</span>
             <span class="stat-val stat-val-primary">{{ channel.current_series?.toLocaleString() ?? '—' }}</span>
           </div>
-          <div v-if="channel.is_series_channel || channel.current_series > 0" class="stat-item">
+          <div v-if="!channel.is_ad_channel && (channel.is_series_channel || channel.current_series > 0)" class="stat-item">
             <span class="stat-label">Эпизоды</span>
             <span class="stat-val">{{ channel.current_episodes?.toLocaleString() ?? '—' }}</span>
           </div>
-          <div class="stat-item" title="Уникальные Telegram-сообщения с активными файлами; это не число фильмов или сериалов.">
+          <div v-if="!channel.is_ad_channel" class="stat-item" title="Уникальные Telegram-сообщения с активными файлами; это не число фильмов или сериалов.">
             <span class="stat-label">Файлы активных источников</span>
             <span class="stat-val">{{ channel.active_physical_resources?.toLocaleString() ?? '—' }}</span>
           </div>
@@ -427,10 +437,14 @@ onMounted(() => {
           <button class="modal-close" @click="showAddModal = false">&times;</button>
         </div>
 
-        <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center;">
+        <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap:wrap; align-items: center;">
           <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #cbd5e1; font-weight: 500;">
-            <input type="checkbox" v-model="newChannelIsSeries" style="width: 16px; height: 16px;" />
+            <input type="checkbox" v-model="newChannelIsSeries" :disabled="newChannelIsAd" style="width: 16px; height: 16px;" />
             <span>Series channel</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#cbd5e1;margin:12px 0 0 16px;">
+            <input type="checkbox" v-model="newChannelIsAd" @change="newChannelIsAd && (newChannelIsSeries = false)" />
+            <span>Канал с рекламными роликами (Ad Source)</span>
           </label>
         </div>
         
@@ -523,11 +537,15 @@ onMounted(() => {
         
         <div class="modal-body" style="padding: 24px 20px;">
           <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #cbd5e1; font-weight: 500;">
-            <input type="checkbox" v-model="editingIsSeries" style="width: 16px; height: 16px;" />
+            <input type="checkbox" v-model="editingIsSeries" :disabled="editingIsAd" style="width: 16px; height: 16px;" />
             <span>Series channel</span>
           </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#cbd5e1;margin:12px 0 0 16px;">
+            <input type="checkbox" v-model="editingIsAd" @change="editingIsAd && (editingIsSeries = false)" />
+            <span>Канал с рекламными роликами (Ad Source)</span>
+          </label>
           <p style="margin-top: 12px; color: #94a3b8; font-size: 0.85rem; line-height: 1.4;">
-            Check this if the channel is dedicated to TV Shows/Series. If unchecked, the channel will be processed as a standard Movie source.
+            Ad Source: видео поступают только в Ad Studio, не в каталог. Series: сериалы. Если оба флажка выключены — фильмы. Для восстановления Media Node её Telegram-аккаунт также должен иметь доступ к рекламному каналу.
           </p>
         </div>
 
