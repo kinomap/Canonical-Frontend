@@ -123,10 +123,11 @@ onMounted(() => {
 
 <style scoped>
 .home-page {
-  max-width: 1280px;
+  max-width: var(--page-frame-max);
   margin: 0 auto;
-  padding: 24px 16px 64px 16px;
+  padding: var(--page-frame-top) var(--page-frame-gutter) 64px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .home-loading {
@@ -150,11 +151,12 @@ onMounted(() => {
 
 .rail-skeleton-cards {
   display: flex;
-  gap: 16px;
+  gap: var(--poster-gap);
+  overflow: hidden;
 }
 
 .card-skeleton {
-  flex: 0 0 180px;
+  flex: 0 0 var(--poster-width);
   aspect-ratio: 2 / 3;
   border-radius: var(--ui-radius);
   background: var(--ui-raised);

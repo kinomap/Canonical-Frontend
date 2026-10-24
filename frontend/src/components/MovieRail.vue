@@ -122,7 +122,7 @@ function handleWheel(event: WheelEvent) {
 
 .rail-track {
   display: flex;
-  gap: 16px;
+  gap: var(--poster-gap);
   overflow-x: auto;
   scroll-behavior: smooth;
   padding-bottom: 12px;
@@ -135,9 +135,9 @@ function handleWheel(event: WheelEvent) {
 }
 
 .rail-item {
-  /* Exactly 5 cards visible with 16px gaps (4 gaps * 16px = 64px) */
-  flex: 0 0 calc((100% - 64px) / 5);
-  max-width: calc((100% - 64px) / 5);
+  /* Rails and catalog grids use the same responsive poster geometry. */
+  flex: 0 0 var(--poster-width);
+  max-width: var(--poster-width);
   scroll-snap-align: start;
 }
 </style>

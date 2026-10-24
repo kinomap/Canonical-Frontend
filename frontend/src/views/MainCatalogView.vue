@@ -212,8 +212,8 @@ onUnmounted(() => {
 .catalog-page {
   width: 100%;
   min-height: 100vh;
-  padding: 32px 24px 64px;
-  max-width: 1600px;
+  padding: var(--page-frame-top) var(--page-frame-gutter) 64px;
+  max-width: var(--page-frame-max);
   margin: 0 auto;
   box-sizing: border-box;
 }
@@ -311,13 +311,13 @@ onUnmounted(() => {
 
 .rail-skeleton-cards {
   display: flex;
-  gap: 16px;
+  gap: var(--poster-gap);
   overflow: hidden;
 }
 
 .skeleton-card {
-  flex: 0 0 calc((100% - 64px) / 5);
-  max-width: calc((100% - 64px) / 5);
+  flex: 0 0 var(--poster-width);
+  max-width: var(--poster-width);
   aspect-ratio: 2 / 3;
   border-radius: var(--ui-radius);
   background: var(--ui-raised);

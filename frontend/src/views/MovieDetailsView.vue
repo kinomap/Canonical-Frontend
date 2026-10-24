@@ -316,9 +316,9 @@ onMounted(() => {
 <style scoped>
 .movie-details-page {
   width: 100%;
-  max-width: 1200px;
+  max-width: var(--page-frame-max);
   margin: 0 auto;
-  padding: 24px 16px 64px 16px;
+  padding: var(--page-frame-top) var(--page-frame-gutter) 64px;
   box-sizing: border-box;
 }
 

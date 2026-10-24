@@ -230,10 +230,11 @@ onMounted(async () => {
 
 <style scoped>
 .genres-page {
-  max-width: 1400px;
+  max-width: var(--page-frame-max);
   margin: 0 auto;
-  padding: 32px 24px 64px 24px;
+  padding: var(--page-frame-top) var(--page-frame-gutter) 64px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .page-header {
@@ -292,27 +293,17 @@ onMounted(async () => {
 
 .genres-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 24px;
 }
 
 .movie-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(var(--poster-columns), minmax(0, 1fr));
+  gap: var(--poster-gap);
 }
 
-@media (min-width: 640px) {
-  .movie-grid {
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  }
-}
 
-@media (min-width: 1024px) {
-  .movie-grid {
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  }
-}
 
 .genre-card {
   position: relative;
@@ -397,7 +388,7 @@ onMounted(async () => {
 
 .genres-loading {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 24px;
 }
 

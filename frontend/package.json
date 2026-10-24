@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:layout": "node scripts/test-page-frame.mjs"
   },
   "dependencies": {
     "@ton/core": "^0.63.1",

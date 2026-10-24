@@ -228,10 +228,11 @@ onMounted(() => {
 
 <style scoped>
 .catalog-page {
-  max-width: 1280px;
+  max-width: var(--page-frame-max);
   margin: 0 auto;
-  padding: 24px 16px 64px 16px;
+  padding: var(--page-frame-top) var(--page-frame-gutter) 64px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .catalog-title-bar {
@@ -258,21 +259,11 @@ onMounted(() => {
 
 .movie-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(var(--poster-columns), minmax(0, 1fr));
+  gap: var(--poster-gap);
 }
 
-@media (min-width: 640px) {
-  .movie-grid {
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  }
-}
 
-@media (min-width: 1024px) {
-  .movie-grid {
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  }
-}
 
 .state-container {
   display: flex;

@@ -1,0 +1,32 @@
+/* Route-independent public shell. Loading, errors and empty pages use the same
+   header/content frame; scrollbar visibility must not move navigation. */
+html { scrollbar-gutter: stable; }
+/* The shared foundation has a 320px body minimum. A classic scrollbar
+   reserves space inside a 320px viewport; do not force horizontal overflow. */
+body { min-width: 0; }
+@supports not (scrollbar-gutter: stable) {
+  html { overflow-y: scroll; }
+}
+.app-wrapper {
+  --page-frame-max: 1440px;
+  --page-frame-gutter: 16px;
+  --page-frame-top: 24px;
+  --poster-columns: 2;
+  --poster-gap: 16px;
+  --poster-width: calc((100% - (var(--poster-columns) - 1) * var(--poster-gap)) / var(--poster-columns));
+}
+@media (min-width: 640px) {
+  .app-wrapper {
+    --page-frame-gutter: 24px;
+    --page-frame-top: 32px;
+    --poster-columns: 3;
+    --poster-gap: 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-wrapper { --poster-columns: 4; }
+}
+@media (min-width: 1280px) {
+  .app-wrapper { --poster-columns: 5; }
+}
