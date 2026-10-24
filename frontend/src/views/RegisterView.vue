@@ -2,6 +2,7 @@
 import { t, messageText, language } from '@/i18n'
 import SocialLogin from '@/components/SocialLogin.vue'
 import { ref } from 'vue'
+import { registrationErrorCode } from '@/utils/registrationError'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -35,7 +36,7 @@ async function handleSubmit() {
     await authStore.register(username.value.trim(), email.value.trim(), password.value)
     router.push('/')
   } catch (err: any) {
-    error.value = err?.message || 'Registration failed'
+    error.value = registrationErrorCode(err?.status)
   } finally {
     loading.value = false
   }
