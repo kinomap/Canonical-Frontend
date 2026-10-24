@@ -6,7 +6,7 @@
   "admin-frontend/src/components/ToastContainer.vue": "0d23eae22f95dce29dddec5e4bef95407ae320ae008088a89336dcc6507de5c0",
   "admin-frontend/src/components/AddMediaNodeWizard.vue": "cb632558ec2c2e877410157b3e52c0cea3b486f184c2baf424e670f2b4ab4f8b",
   "admin-frontend/src/components/MasterSession.vue": "481c80b9c150f8dc5b3d9670a79dfe40b21b2c0cdc056eebd20cc90677a97f20",
-  "admin-frontend/src/components/SessionAuthWizard.vue": "c4a3b550483663be33be892d0614c2e8ea6a9e2f2cebc44330d247b2ec868b9c",
+  "admin-frontend/src/components/SessionAuthWizard.vue": "e6ebce443bef5b749de54ac7e112aa06b523ce4e4f7eee9f41fdb99b9d122f6a",
   "admin-frontend/src/components/AccountSecurity.vue": "d093a68dfce58be7288c51f398248875415172e719c95ed06e938b2d3ec86c02",
   "admin-frontend/src/components/RemoveMediaNodeModal.vue": "28d6fa8800e5e6e8015a3f24394ebd566bd1ce39ad557d3854ba2ed42ceced73",
   "admin-frontend/src/components/ContentAccessSwitch.vue": "2c39874c339ef0984661274b51b670c86fae94c3fb8132427bbc2e6a508516f7",

@@ -7,11 +7,20 @@ const emit=defineEmits<{success:[];cancel:[]}>()
 const sid=ref(props.sessionId||'')
 const busy=ref(false),error=ref('')
 const name=ref(''),account=ref(''),apiId=ref(''),apiHash=ref('')
+// getRandomValues is supported on the private HTTP WireGuard origin too.
+// randomUUID is secure-context-only and prevented the POST from being sent.
+function workerIdentifier(){
+ const bytes=new Uint8Array(16)
+ crypto.getRandomValues(bytes)
+ bytes[6]=(bytes[6]!&0x0f)|0x40;bytes[8]=(bytes[8]!&0x3f)|0x80
+ const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('')
+ return 'worker-'+[hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-')
+}
 async function create(){
  if(busy.value)return
  if(!account.value.trim()||!Number.isInteger(Number(apiId.value))||Number(apiId.value)<=0||!/^[a-fA-F0-9]{32}$/.test(apiHash.value.trim())){error.value='Заполните название аккаунта, API ID и API Hash Worker.';return}
  busy.value=true;error.value=''
- try{const r=await axios.post('/api/v1/admin/media/sessions',{name:name.value||null,account_identifier:account.value.trim(),session_identifier:'worker-'+crypto.randomUUID(),api_id:Number(apiId.value),api_hash:apiHash.value.trim(),max_streams:25},{headers:{Authorization:`Bearer ${localStorage.getItem('admin_token')}`}});sid.value=r.data.id;apiHash.value=''}
+ try{const r=await axios.post('/api/v1/admin/media/sessions',{name:name.value||null,account_identifier:account.value.trim(),session_identifier:workerIdentifier(),api_id:Number(apiId.value),api_hash:apiHash.value.trim(),max_streams:25},{headers:{Authorization:`Bearer ${localStorage.getItem('admin_token')}`}});sid.value=r.data.id;apiHash.value=''}
  catch(e:any){const d=e?.response?.data?.detail;error.value=typeof d==='string'?d:'Не удалось создать Worker. Данные сохранены.'}finally{busy.value=false}
 }
 </script>
