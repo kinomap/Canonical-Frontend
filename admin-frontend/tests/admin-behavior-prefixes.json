@@ -4,7 +4,7 @@
   "admin-frontend/src/components/SecurityTopology.vue": "6c87384b800012446da296eebc237089187840d83d9726f1aa5667fb3b0e126b",
   "admin-frontend/src/components/ChangePassword.vue": "a162cdd4905751548006594c3d80e02096dc12c40f2dc99fee653eb1ff1d997d",
   "admin-frontend/src/components/ToastContainer.vue": "0d23eae22f95dce29dddec5e4bef95407ae320ae008088a89336dcc6507de5c0",
-  "admin-frontend/src/components/AddMediaNodeWizard.vue": "1fd9c988b7cdcebda54e53a2d4fa22dcaacba4948bd36bca7a8ae88284f2026b",
+  "admin-frontend/src/components/AddMediaNodeWizard.vue": "cb632558ec2c2e877410157b3e52c0cea3b486f184c2baf424e670f2b4ab4f8b",
   "admin-frontend/src/components/MasterSession.vue": "481c80b9c150f8dc5b3d9670a79dfe40b21b2c0cdc056eebd20cc90677a97f20",
   "admin-frontend/src/components/SessionAuthWizard.vue": "c4a3b550483663be33be892d0614c2e8ea6a9e2f2cebc44330d247b2ec868b9c",
   "admin-frontend/src/components/AccountSecurity.vue": "d093a68dfce58be7288c51f398248875415172e719c95ed06e938b2d3ec86c02",

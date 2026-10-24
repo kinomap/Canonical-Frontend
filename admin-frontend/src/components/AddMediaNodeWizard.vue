@@ -327,20 +327,22 @@ function stageClass(stage: string): string {
       <!-- Step 4: Deployment Progress -->
       <div v-if="step === 4" class="wizard-body">
         <h3>Deploying {{ nodeName }} to {{ host }}</h3>
+        <div v-if="deploymentStatus?.status === 'FAILED'" class="deploy-error" role="alert">
+          <strong>FAILED</strong> at {{ stageLabels[deploymentStatus.error_stage] || deploymentStatus.error_stage }}
+          <p>{{ deploymentStatus.error_reason }}</p>
+          <p>Исправьте указанную причину и повторите установку этого узла. Backend и Витрина не переустанавливаются. Для повторной попытки введите SSH-ключ заново.</p>
+        </div>
+        <div v-if="deploymentStatus?.status === 'FAILED'" class="wizard-actions">
+          <button @click="step = 3">← Исправить и повторить</button>
+          <button @click="emit('close')">Close</button>
+        </div>
         <div class="deploy-stages">
           <div v-for="s in allStages" :key="s" :class="['deploy-stage', stageClass(s)]">
             <span class="stage-icon">{{ stageIcon(s) }}</span>
             <span class="stage-label">{{ stageLabels[s] || s }}</span>
           </div>
         </div>
-        <div v-if="deploymentStatus?.status === 'FAILED'" class="deploy-error">
-          <strong>FAILED</strong> at {{ stageLabels[deploymentStatus.error_stage] || deploymentStatus.error_stage }}
-          <p>{{ deploymentStatus.error_reason }}</p>
-        </div>
-        <div v-if="deploymentStatus?.status === 'FAILED'" class="wizard-actions">
-          <button @click="step = 3">← Retry</button>
-          <button @click="emit('close')">Close</button>
-        </div>
+
       </div>
 
       <!-- Step 5: Success -->
