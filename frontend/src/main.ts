@@ -1,3 +1,5 @@
+import '../../design-system/password-visibility.css'
+import { installPasswordVisibility } from '../../design-system/password-visibility.js'
 import '../../design-system/tokens.css'
 import '../../design-system/foundation.css'
 import './browserAuth'
@@ -22,6 +24,7 @@ window.addEventListener('vite:preloadError', (event) => {
 const app = createApp(App)
 app.use(router)
 app.mount('#app')
+installPasswordVisibility()
 
 // Bounded first-touch attribution, no raw URL/referrer/query persistence.
 try {
