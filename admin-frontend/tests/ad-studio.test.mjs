@@ -7,3 +7,11 @@ test('Direct upload only to Media Node; backend receives signed metadata',()=>{f
 test('Conflicts disable saving; owner-only detach, confirmation and lease cleanup',()=>{for(const s of ['conflict_count','revision:revision.value','?confirm=true','/targets/','/api/v1/playback/stop','/api/v1/playback/heartbeat','modalKey','onBeforeUnmount'])assert.ok(view.includes(s),s)})
 
 test('Available workflow has reset, five-row pages, search and explicit mid-roll choices',()=>{for(const s of ['Отменить показ везде','reset-placements','affectedPage.value*5','&limit=5','affectedQuery','aria-pressed="unlimited"','midEnabled','50% длительности','На конкретной минуте','Повторять через каждые','scrollIntoView'])assert.ok(view.includes(s),s);assert.ok(!view.includes('Источник временно недоступен; привязка сохранена'));assert.ok(!view.includes('0 — выключен'))})
+
+test('upload checks storage first and shows error/retry inside the active dialog',()=>{
+ assert.ok(view.includes("request(base+'/media-status')"))
+ assert.ok(view.includes('@click="openUpload"'))
+ const modal=view.slice(view.indexOf('<div v-if="uploadOpen"'),view.indexOf('<div v-if="deleteOpen"'))
+ assert.ok(modal.includes('role="alert"')&&modal.includes('Проверить снова'))
+ assert.ok(modal.includes('storageReady!==true'))
+})
