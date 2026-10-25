@@ -6,6 +6,7 @@ import {nodeMediaUrl} from '../utils/adPlacement'
 const base='/api/v1/admin/ads',headers=()=>({Authorization:'Bearer '+(localStorage.getItem('admin_token')||'cookie-session')})
 const creatives=ref<any[]>([]),cid=ref(''),analyticsMode=ref(false),loading=ref(false),busy=ref(false),error=ref(''),notice=ref('')
 const passport=ref<any>(null),definition=ref<any>(null),revision=ref(0),baseline=ref(''),review=ref<any>(null),checking=ref(false),options=ref<any>({genres:[]}),previewUrl=ref('')
+const sourcePreviews=ref<Record<string,string>>({}),sourcePreviewErrors=ref<Record<string,string>>({}),sourcePreviewBusy=ref<Record<string,boolean>>({})
 const sources=ref<any[]>([]),diskStatus=ref<any>(null),syncBusy=ref(false),sourceBusy=ref(false)
 let sourcePoll:ReturnType<typeof setInterval>|null=null,polling=false
 const diskLabels:Record<string,string>={not_installed:'○ Не загружен на Media Node',ready:'✓ Готов на Media Node',pending:'○ Ожидает загрузки',downloading:'↓ Загружается на диск Media Node',error:'✕ Ошибка загрузки',missing:'○ Нет копии на доступной ноде',offline:'Нода недоступна'}
@@ -22,6 +23,14 @@ const telegramCreatives=computed(()=>creatives.value.filter(x=>x.telegram_channe
 const manageableCreatives=computed(()=>creatives.value.filter(x=>!x.telegram_channel_id||x.media?.can_manage))
 const editorUnlocked=computed(()=>!selectedCreative.value?.telegram_channel_id||diskStatus.value?.can_manage===true)
 const selectedCreative=computed(()=>creatives.value.find(x=>x.id===cid.value))
+async function previewSource(id:string){
+ if(sourcePreviewBusy.value[id])return
+ sourcePreviewBusy.value[id]=true;sourcePreviewErrors.value[id]=''
+ try{const {data}=await axios.get(`${base}/creatives/${id}/source-preview`,{headers:headers()});sourcePreviews.value[id]=nodeMediaUrl(data.media_url)}
+ catch(e:any){sourcePreviewErrors.value[id]=e.response?.data?.detail||'Не удалось открыть предпросмотр Telegram'}
+ finally{sourcePreviewBusy.value[id]=false}
+}
+function sourcePreviewFailed(id:string){sourcePreviewErrors.value[id]='Не удалось воспроизвести оригинал из Telegram. Проверьте доступ медиа-сессии к каналу и связь ноды с Telegram; можно повторить предпросмотр.'}
 const snapshot=()=>JSON.stringify({creative:passport.value,definition:definition.value})
 const dirty=computed(()=>!!baseline.value&&snapshot()!==baseline.value)
 const blocked=computed(()=>!editorUnlocked.value||busy.value||loading.value||checking.value||!review.value||review.value.conflict_count>0||!passport.value?.title?.trim()||selectedCreative.value?.status==='deleting')
@@ -100,7 +109,12 @@ onBeforeUnmount(()=>{if(sourcePoll)clearInterval(sourcePoll);document.removeEven
    <p class="muted">1. Загрузите ролик на ноду → 2. Дождитесь «Готов» → 3. Настройте расписание.</p>
    <div v-if="telegramCreatives.length" class="tg-card-grid">
     <article v-for="c in telegramCreatives" :key="c.id" class="tg-card" :data-state="c.media?.state||'not_installed'" :aria-label="c.title">
-     <div class="tg-art" aria-hidden="true"><span>▶</span><small>TELEGRAM · VIDEO</small></div>
+     <div class="tg-preview">
+      <video v-if="sourcePreviews[c.id]" :src="sourcePreviews[c.id]" controls playsinline preload="metadata" :aria-label="'Предпросмотр Telegram: '+c.title" @error="sourcePreviewFailed(c.id)"></video>
+      <button v-else type="button" :disabled="sourcePreviewBusy[c.id]" @click="previewSource(c.id)">{{sourcePreviewBusy[c.id]?'Подключаем Telegram…':'▶ Предпросмотр из Telegram'}}</button>
+      <p v-if="sourcePreviewErrors[c.id]" role="alert" class="preview-error">{{sourcePreviewErrors[c.id]}} <button type="button" @click="previewSource(c.id)">Повторить предпросмотр</button></p>
+      <small>Просмотр через Media Node · не устанавливает ролик на диск</small>
+     </div>
      <div class="tg-card-body"><h3>{{c.title}}</h3><p class="muted">{{sources.find(x=>x.channel_id===c.telegram_channel_id)?.name||c.telegram_channel_id}} · сообщение {{c.telegram_message_id}}</p><p>{{c.duration_sec?.toFixed(1)}} сек · {{((c.byte_size||0)/1048576).toFixed(1)}} MiB</p>
       <p class="tg-state" role="status">{{diskLabels[c.media?.state||'not_installed']||'Проверяем…'}}</p>
       <ul v-if="c.media?.nodes?.length" class="tg-node-list"><li v-for="node in c.media.nodes" :key="node.node_id"><strong>{{node.node_id}}</strong>: {{diskLabels[node.state]||node.state}}<p v-if="node.detail" class="disk-detail">{{node.detail}}</p></li></ul>
@@ -178,5 +192,5 @@ onBeforeUnmount(()=>{if(sourcePoll)clearInterval(sourcePoll);document.removeEven
 @media(max-width:760px){.studio .panel,.studio .timeline-editor{scroll-margin-top:84px}}
 
 .tg-sources{margin:16px 0}.source-list{padding-left:20px;margin:0}.source-list li{margin:8px 0;overflow-wrap:anywhere}.disk-status{border:1px solid var(--line);border-left:4px solid var(--ui-warning);border-radius:8px;background:var(--ui-field);padding:16px;margin-bottom:20px}.disk-status h3{margin:0 0 8px}.disk-status[data-state=ready]{border-left-color:var(--ui-success)}.disk-status[data-state=error]{border-left-color:var(--ui-danger)}.disk-detail{color:var(--ui-danger);overflow-wrap:anywhere}.disk-status button{max-width:100%;white-space:normal}
-.tg-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;margin:20px 0}.tg-card{background:var(--ui-field);border:1px solid var(--line);border-radius:12px;overflow:hidden;max-width:620px;display:flex;flex-direction:column}.tg-art{height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:linear-gradient(130deg,#143c5e,#142332);color:#a9d6ff}.tg-art>span{font-size:30px}.tg-art>small{letter-spacing:.12em;font-size:11px}.tg-card-body{padding:18px;display:flex;flex-direction:column;flex:1}.tg-card h3{margin:0 0 8px;font-size:19px;overflow-wrap:anywhere}.tg-card p,.tg-node-list{overflow-wrap:anywhere}.tg-card .tg-state{font-weight:700;color:var(--ui-warning)}.tg-card[data-state=ready]{border-color:var(--ui-success)}.tg-card[data-state=ready] .tg-state{color:var(--ui-success)}.tg-card[data-state=error]{border-color:var(--ui-danger)}.tg-card[data-state=error] .tg-state{color:var(--ui-danger)}.tg-node-list{padding-left:18px;font-size:14px}.tg-card-actions{display:grid;gap:10px;margin-top:auto;padding-top:12px}.tg-card-actions button{white-space:normal;min-height:44px}.tg-explainer{font-size:14px;border-top:1px solid var(--line);padding-top:16px}
+.tg-preview{padding:12px;background:#101820;display:grid;gap:10px}.tg-preview video{width:100%;aspect-ratio:16/9;max-height:220px;background:#000}.tg-preview small{color:var(--muted)}.preview-error{color:var(--ui-danger);overflow-wrap:anywhere}.tg-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;margin:20px 0}.tg-card{background:var(--ui-field);border:1px solid var(--line);border-radius:12px;overflow:hidden;max-width:620px;display:flex;flex-direction:column}.tg-art{height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:linear-gradient(130deg,#143c5e,#142332);color:#a9d6ff}.tg-art>span{font-size:30px}.tg-art>small{letter-spacing:.12em;font-size:11px}.tg-card-body{padding:18px;display:flex;flex-direction:column;flex:1}.tg-card h3{margin:0 0 8px;font-size:19px;overflow-wrap:anywhere}.tg-card p,.tg-node-list{overflow-wrap:anywhere}.tg-card .tg-state{font-weight:700;color:var(--ui-warning)}.tg-card[data-state=ready]{border-color:var(--ui-success)}.tg-card[data-state=ready] .tg-state{color:var(--ui-success)}.tg-card[data-state=error]{border-color:var(--ui-danger)}.tg-card[data-state=error] .tg-state{color:var(--ui-danger)}.tg-node-list{padding-left:18px;font-size:14px}.tg-card-actions{display:grid;gap:10px;margin-top:auto;padding-top:12px}.tg-card-actions button{white-space:normal;min-height:44px}.tg-explainer{font-size:14px;border-top:1px solid var(--line);padding-top:16px}
 </style>

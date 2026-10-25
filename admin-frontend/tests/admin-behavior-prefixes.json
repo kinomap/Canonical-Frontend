@@ -19,7 +19,7 @@
   "admin-frontend/src/views/Dashboard.vue": "a4595d6ea0040f2178cd7279de3d76a2a1601e96c9292232536350bbce9eb8d0",
   "admin-frontend/src/views/MediaNodes.vue": "cc5bc8e5f9c78bb4cf8dbc9ebc3336b4626e91947a810bdaea8e4d0fd81dc36b",
   "admin-frontend/src/views/MediaInfrastructure.vue": "734026b99f040f066045a41ec28db54599c58ca4d53f5804ab3756a18dd90605",
-  "admin-frontend/src/views/AdStudio.vue": "43d21af0789e8690494dcbb7ed95c29ffcd3c69dbd45a26b896ae741fa4b2e9e",
+  "admin-frontend/src/views/AdStudio.vue": "e932f33bd3958d48b0f91149fc6f8157789c238897af70a8b233bcd188b8d0ae",
   "admin-frontend/src/views/AccountSecurity.vue": "bcb5da532d1e0c4bdbed88a20f1d635b519201c45c11b08c89d857beadf95ee7",
   "admin-frontend/src/views/Audience.vue": "217a6326cc1e1124e2863af31025bcfc26ea7a4c014e083952775fc36d8a295a",
   "admin-frontend/src/views/WithoutPoster.vue": "8c271dfbc2107c8c01bff1f089c9a09aefa11b1f8a05fe06cceeb604d0b36205",

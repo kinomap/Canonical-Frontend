@@ -34,3 +34,11 @@ test('Telegram source cards require explicit disk installation before the unchan
  assert.ok(s.includes("result?.pending_nodes?.length"));
  assert.ok(!s.includes('Расписание можно настроить и сохранить уже сейчас'));
 });
+
+test('Telegram source preview is independent of install and remains on the source card',()=>{
+ const s=readFileSync(new URL('../src/views/AdStudio.vue',import.meta.url),'utf8');
+ assert.ok(s.includes('/source-preview')&&s.includes('<video v-if="sourcePreviews[c.id]"'));
+ const fn=s.slice(s.indexOf('async function previewSource'),s.indexOf('function sourcePreviewFailed'));
+ assert.ok(!fn.includes('media-sync')&&!fn.includes('media_requested'));
+ assert.ok(s.includes('controls playsinline preload="metadata"'));
+});
