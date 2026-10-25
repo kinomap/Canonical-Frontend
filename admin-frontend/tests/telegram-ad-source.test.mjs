@@ -26,19 +26,23 @@ test('Approved schedule/reach/timing blocks and mutation functions remain byte-i
 
 test('Telegram source cards require explicit disk installation before the unchanged editor',()=>{
  const s=readFileSync(new URL('../src/views/AdStudio.vue',import.meta.url),'utf8');
- assert.ok(s.includes('<article v-for="c in telegramCreatives"'));
+ assert.ok(s.includes('<article v-for="c in creatives"'));
  assert.ok(s.includes('!analyticsMode&&editorUnlocked&&passport&&definition'));
  assert.ok(s.includes("diskStatus.value?.can_manage===true"));
- assert.ok(s.includes('Настроить рекламу →')&&s.includes('Удалить с Media Node'));
+ assert.ok(s.includes('Открыть ролик →')&&s.includes('Удалить с Media Node'));
  assert.ok(s.includes('Карточка и оригинал в Telegram останутся'));
  assert.ok(s.includes("result?.pending_nodes?.length"));
  assert.ok(!s.includes('Расписание можно настроить и сохранить уже сейчас'));
 });
 
-test('Telegram source preview is independent of install and remains on the source card',()=>{
+test('Telegram originals and installed media use separate preview routes in a shared detail player',()=>{
  const s=readFileSync(new URL('../src/views/AdStudio.vue',import.meta.url),'utf8');
- assert.ok(s.includes('/source-preview')&&s.includes('<video v-if="sourcePreviews[c.id]"'));
- const fn=s.slice(s.indexOf('async function previewSource'),s.indexOf('function sourcePreviewFailed'));
+ assert.ok(s.includes("?'source-preview':'preview'"));
+ const fn=s.slice(s.indexOf('async function previewSource'),s.indexOf('const snapshot'));
  assert.ok(!fn.includes('media-sync')&&!fn.includes('media_requested'));
- assert.ok(s.includes('controls playsinline preload="metadata"'));
+ assert.ok(s.includes('<AdMediaPreview v-if="sourcePreviews[cid]"'));
+ const player=readFileSync(new URL('../src/components/AdMediaPreview.vue',import.meta.url),'utf8');
+ assert.ok(player.includes('crossorigin="anonymous"')&&player.includes('20000')&&player.includes('onBeforeUnmount(clear)'));
+ assert.ok(s.includes('download_total_bytes')&&s.includes('transfer_phase')&&s.includes('<progress'));
+ assert.ok(s.includes('← Все ролики')&&s.includes('v-if="!cid&&!analyticsMode"'));
 });

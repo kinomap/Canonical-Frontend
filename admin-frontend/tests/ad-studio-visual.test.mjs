@@ -6,7 +6,7 @@ const read=p=>readFileSync(new URL(p,import.meta.url),'utf8');
 const studio=read('../src/views/AdStudio.vue'),app=read('../src/App.vue');
 const sha=s=>createHash('sha256').update(s).digest('hex');
 // Reviewed baseline updated for storage readiness and in-dialog upload errors.
-test('Ad Studio visual release preserves script and template contract',()=>assert.equal(sha(studio.split('<style scoped>')[0]),'e932f33bd3958d48b0f91149fc6f8157789c238897af70a8b233bcd188b8d0ae'));
+test('Ad Studio visual release preserves script and template contract',()=>assert.equal(sha(studio.split('<style scoped>')[0]),'7631b5efa83d663b4c6f029153e6e282e4ae9b865a73e552345934f21e2d89af'));
 test('Ad Studio sidebar theme preserves admin shell behavior',()=>assert.equal(sha(app.split('<style>')[0]),'8ebefcf398f9a3b8c31cb5dc0ed524213803413c5302aba4b96ef1e6045c6014'));
 test('Ad Studio analytics keeps a readable internally scrolling table',()=>{assert.match(studio,/\.table-scroll>table\{min-width:800px/);assert.match(studio,/\.table-scroll\{[^}]*overflow-x:auto/)});
 test('Ad Studio provides mobile scroll offsets and reduced-motion support',()=>{assert.match(studio,/scroll-margin-top:84px/);assert.match(studio,/prefers-reduced-motion:reduce/);assert.match(studio,/focus-visible/)});
