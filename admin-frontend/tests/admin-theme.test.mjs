@@ -19,3 +19,4 @@ test("Dark canvas remains; gradients limited to metric cards",()=>{assert.doesNo
 
 test('Catalog records reflow without forced horizontal width',()=>{assert.doesNotMatch(css,/min-width:\s*1200px/);assert.match(css,/\.responsive-catalog tr\{display:grid/);assert.match(css,/content:attr\(data-label\)/);assert.match(css,/aspect-ratio:2\/3/)});
 test('Explicit account spacing and grouped domain fields',()=>{assert.match(css,/\.security-stack,.audience\)\{display:grid;gap:24px/);assert.match(css,/\.domain-group\{display:grid/);assert.match(css,/--metric-tone:#6ee7b7/)});
+test('Growing tab sets wrap instead of introducing horizontal scroll',()=>assert.match(css,/\.tabs,.creative-tabs\)\{flex-wrap:wrap;overflow:visible/));

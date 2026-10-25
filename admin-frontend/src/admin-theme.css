@@ -465,3 +465,24 @@ body {font-size:14px;line-height:1.6}
  #app .responsive-catalog td button{min-width:0;max-width:100%}
  #app .responsive-data .user-card{min-width:0;width:100%;box-sizing:border-box}
 }
+/* Tabs wrap as content grows, including multi-creative Ad Studio libraries. */
+#app :is(.tabs,.creative-tabs){flex-wrap:wrap;overflow:visible}
+#app .creative-tabs>button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+/* Payment history lives inside Audience, so it must not inherit its 920px floor. */
+#app .audience .billing-settings .table-scroll table{width:100%;min-width:0;table-layout:fixed}
+#app .billing-settings .table-scroll :is(th,td){white-space:normal;overflow-wrap:anywhere;min-width:0}
+@media(max-width:1100px){
+ #app .billing-settings .table-scroll table{display:block}
+ #app .billing-settings .table-scroll thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ #app .billing-settings .table-scroll tbody{display:grid;gap:16px;padding:12px}
+ #app .billing-settings .table-scroll tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:16px;background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:10px}
+ #app .billing-settings .table-scroll td{display:flex;flex-direction:column;gap:6px;padding:0;border:0;min-width:0}
+ #app .billing-settings .table-scroll td::before{font-size:11px;color:var(--ui-muted)}
+ #app .billing-settings .table-scroll td:nth-child(1):not([colspan])::before{content:'Дата / Пользователь'}
+ #app .billing-settings .table-scroll td:nth-child(2)::before{content:'Тариф'}
+ #app .billing-settings .table-scroll td:nth-child(3)::before{content:'Сумма / Сеть'}
+ #app .billing-settings .table-scroll td:nth-child(4)::before{content:'Статус'}
+ #app .billing-settings .table-scroll td:nth-child(5)::before{content:'Подтверждение'}
+ #app .billing-settings .table-scroll td[colspan]{grid-column:1/-1}
+}
+@media(max-width:600px){#app .billing-settings .table-scroll tr{grid-template-columns:minmax(0,1fr)}}
