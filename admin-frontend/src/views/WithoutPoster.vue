@@ -117,7 +117,7 @@ onMounted(fetchWithoutPoster)
 
     <div v-else>
       <div class="table-container">
-        <table class="data-table">
+        <table class="data-table responsive-catalog" role="table">
           <thead>
             <tr>
               <th class="poster-col">Poster</th>
@@ -131,27 +131,27 @@ onMounted(fetchWithoutPoster)
           </thead>
           <tbody>
             <tr v-for="movie in movies" :key="movie.id" class="table-row">
-              <td class="poster-col">
+              <td class="poster-col" data-label="Постер" role="cell">
                 <img v-if="movie.poster_url" :src="movie.poster_url" class="mini-real-poster" />
                 <div v-else class="mini-poster-fallback">
                   <div class="fallback-title">NO</div>
                   <div class="fallback-title">POSTER</div>
                 </div>
               </td>
-              <td class="title-col">
+              <td class="title-col" data-label="Название" role="cell">
                 <div class="title-main" :title="movie.title">{{ movie.title }}</div>
                 <div class="title-sub" :title="movie.original_title">{{ movie.original_title }}</div>
               </td>
-              <td class="year-col">{{ movie.year || '—' }}</td>
-              <td class="tmdb-col">
+              <td class="year-col" data-label="Год" role="cell">{{ movie.year || '—' }}</td>
+              <td class="tmdb-col" data-label="TMDB ID" role="cell">
                 <span v-if="movie.tmdb_id" class="tmdb-badge">{{ movie.tmdb_id }}</span>
                 <span v-else class="missing-badge">No TMDB</span>
               </td>
-              <td class="status-col">
+              <td class="status-col" data-label="Статус" role="cell">
                 <span class="status-pill" :class="'status-' + movie.status">{{ movie.status }}</span>
               </td>
-              <td class="sources-col">{{ movie.telegram_sources_count }}</td>
-              <td class="actions-col">
+              <td class="sources-col" data-label="Источники" role="cell">{{ movie.telegram_sources_count }}</td>
+              <td class="actions-col" data-label="Действия" role="cell">
                 <button class="btn-poster" @click="openPosterModal(movie.id)">Set Poster</button>
                 <button class="btn-view" @click="router.push(`/movies/${movie.id}`)">View</button>
               </td>

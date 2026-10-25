@@ -158,7 +158,7 @@ onMounted(() => {
     </div>
 
     <div class="table-container">
-      <table class="movies-table">
+      <table class="movies-table responsive-catalog" role="table">
         <thead>
           <tr>
             <th>Poster</th>
@@ -180,21 +180,21 @@ onMounted(() => {
             <td colspan="9" class="empty-cell">No movies found matching criteria.</td>
           </tr>
           <tr v-else v-for="movie in movies" :key="movie.id" @click="goToDetail(movie.id)" class="movie-row">
-            <td class="poster-col">
+            <td class="poster-col" data-label="Постер" role="cell">
               <img v-if="movie.poster_url" :src="movie.poster_url" class="mini-real-poster" />
               <div v-else class="mini-poster-fallback">
                 <div class="fallback-title">{{ movie.title }}</div>
                 <div class="fallback-year">{{ movie.year || 'N/A' }}</div>
               </div>
             </td>
-            <td class="title-col">
+            <td class="title-col" data-label="Название" role="cell">
               <div class="title-main">{{ movie.title }}</div>
               <div class="title-sub">{{ movie.original_title }}</div>
             </td>
-            <td>{{ movie.year || '-' }}</td>
-            <td>{{ movie.tmdb_id || '-' }}</td>
-            <td>{{ movie.telegram_sources_count }}</td>
-            <td class="compact-col">
+            <td data-label="Год" role="cell">{{ movie.year || '-' }}</td>
+            <td data-label="TMDB ID" role="cell">{{ movie.tmdb_id || '-' }}</td>
+            <td data-label="Источники" role="cell">{{ movie.telegram_sources_count }}</td>
+            <td class="compact-col" data-label="Постер" role="cell">
               <span v-if="movie.artwork_type === 'frame'" class="badge badge-purple">
                 🖼️ Artwork: Frame
               </span>
@@ -202,13 +202,13 @@ onMounted(() => {
                 {{ movie.poster_status === 'Available' ? '✓ Present' : '⚠ Missing' }}
               </span>
             </td>
-            <td>
+            <td data-label="Статус" role="cell">
               <span class="badge" :class="movie.status === 'available' ? 'badge-green' : 'badge-red'">
                 {{ movie.status }}
               </span>
             </td>
-            <td @click.stop><ContentAccessSwitch kind="movie" :content-id="movie.id" /></td>
-            <td class="actions-col">
+            <td @click.stop data-label="Доступ" role="cell"><ContentAccessSwitch kind="movie" :content-id="movie.id" /></td>
+            <td class="actions-col" data-label="Действия" role="cell">
               <div class="actions-cell">
                 <a 
                   v-if="movie.poster_url"

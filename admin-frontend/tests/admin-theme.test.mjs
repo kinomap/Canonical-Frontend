@@ -15,4 +15,7 @@ for(const [name,fg,bg] of [['body','text','surface'],['muted','muted','raised'],
 test('Dark presentation isolated from public theme with constrained route frame',()=>{assert.match(css,/color-scheme: dark/);assert.match(css,/--ui-content-max:1152px/);assert.match(css,/workspace-bar/);assert.match(css,/--ui-shadow-card:/)});
 test('Ad library tiles do not stretch into two giant columns',()=>{const s=readFileSync(new URL('../src/views/AdStudio.vue',import.meta.url),'utf8');assert.match(s,/auto-fill,minmax\(min\(100%,230px\)/);assert.match(s,/max-width:290px/);assert.match(s,/min-height:112px/)});
 
-test("No gradients or light canvas in admin theme",()=>{assert.doesNotMatch(css,/(?:linear|radial)-gradient/);assert.equal(color("bg"),"#0d131d");assert.equal(color("surface"),"#172130")});
+test("Dark canvas remains; gradients limited to metric cards",()=>{assert.doesNotMatch(css,/radial-gradient/);assert.equal(color("bg"),"#0d131d");assert.equal(color("surface"),"#172130")});
+
+test('Catalog records reflow without forced horizontal width',()=>{assert.doesNotMatch(css,/min-width:\s*1200px/);assert.match(css,/\.responsive-catalog tr\{display:grid/);assert.match(css,/content:attr\(data-label\)/);assert.match(css,/aspect-ratio:2\/3/)});
+test('Explicit account spacing and grouped domain fields',()=>{assert.match(css,/\.security-stack,.audience\)\{display:grid;gap:24px/);assert.match(css,/\.domain-group\{display:grid/);assert.match(css,/--metric-tone:#6ee7b7/)});

@@ -100,7 +100,7 @@ onMounted(fetchBlocked)
 
     <div v-else>
       <div class="table-container">
-        <table class="data-table">
+        <table class="responsive-data record-table data-table">
           <thead>
             <tr>
               <th>Title</th>
@@ -112,14 +112,14 @@ onMounted(fetchBlocked)
           </thead>
           <tbody>
             <tr v-for="movie in movies" :key="movie.id" class="table-row">
-              <td class="cell-title">
+              <td class="cell-title" data-label="Title" role="cell">
                 <span class="title-text">{{ movie.title }}</span>
                 <span v-if="movie.original_title !== movie.title" class="title-orig">{{ movie.original_title }}</span>
               </td>
-              <td class="cell-narrow">{{ movie.year || '—' }}</td>
-              <td class="cell-reason">{{ movie.block_reason || '—' }}</td>
-              <td class="cell-narrow">{{ formatDate(movie.blocked_at) }}</td>
-              <td class="cell-actions">
+              <td class="cell-narrow" data-label="Year" role="cell">{{ movie.year || '—' }}</td>
+              <td class="cell-reason" data-label="Block Reason" role="cell">{{ movie.block_reason || '—' }}</td>
+              <td class="cell-narrow" data-label="Blocked At" role="cell">{{ formatDate(movie.blocked_at) }}</td>
+              <td class="cell-actions" data-label="Actions" role="cell">
                 <button
                   class="btn-unblock"
                   @click="unblock(movie)"

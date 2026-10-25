@@ -37,3 +37,6 @@ or change infrastructure. Never place QA JWTs or private screenshots in Git.
 
 ## Dark palette revision
 User-approved geometry is unchanged. Dark navy canvas, slate panels, recessed dark fields, bright neutral text and semantic tinted statuses. Decorative gradients removed; restrained black elevation shadows. Admin-only color-scheme: dark; public theme unchanged.
+
+## Responsive composition revision
+Labelled catalog records with 2:3 posters, full titles, all actions and no forced horizontal width. Domain fieldsets by task, account and audience panels with explicit vertical separation. Dashboard semantic metric families use restrained tinted gradients. All existing model/event/safety bindings retained.

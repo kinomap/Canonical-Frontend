@@ -329,7 +329,7 @@ onMounted(fetchGarbage)
       </div>
 
       <div class="table-container">
-        <table class="data-table">
+        <table class="responsive-data selectable-data record-table data-table">
           <thead>
             <tr>
               <th class="cell-checkbox">
@@ -347,24 +347,24 @@ onMounted(fetchGarbage)
           </thead>
           <tbody>
             <tr v-for="source in sources" :key="source.id" class="table-row clickable-row" @click="openInspect(source)">
-              <td class="cell-checkbox" @click.stop>
+              <td class="cell-checkbox" @click.stop data-label="Выбрать" role="cell">
                 <input type="checkbox" :value="source.id" v-model="selectedIds" />
               </td>
-              <td>
+              <td data-label="Frame" role="cell">
                 <img v-if="source.poster_url" :src="source.poster_url" class="mini-garbage-frame" />
                 <span v-else class="empty-val">-</span>
               </td>
-              <td class="channel-col">{{ source.channel_id }}</td>
-              <td class="cell-narrow">
+              <td class="channel-col" data-label="Channel" role="cell">{{ source.channel_id }}</td>
+              <td class="cell-narrow" data-label="Message ID" role="cell">
                 <a :href="'https://t.me/' + source.channel_id + '/' + source.message_id" target="_blank" class="tg-link" @click.stop>
                   {{ source.message_id }}
                 </a>
               </td>
-              <td class="cell-narrow">{{ source.raw_caption || 'No Telegram caption' }}</td>
-              <td class="cell-narrow">{{ source.identification_title || '-' }}</td>
-              <td class="cell-narrow">{{ source.identification_year || '-' }}</td>
-              <td class="cell-narrow">{{ formatBytes(source.file_size) }}</td>
-              <td class="cell-actions" @click.stop>
+              <td class="cell-narrow" data-label="Original Caption" role="cell">{{ source.raw_caption || 'No Telegram caption' }}</td>
+              <td class="cell-narrow" data-label="Identification Title" role="cell">{{ source.identification_title || '-' }}</td>
+              <td class="cell-narrow" data-label="Year" role="cell">{{ source.identification_year || '-' }}</td>
+              <td class="cell-narrow" data-label="File Size" role="cell">{{ formatBytes(source.file_size) }}</td>
+              <td class="cell-actions" @click.stop data-label="Actions" role="cell">
                 <button class="btn-primary" @click="openInspect(source)" style="margin-right: 8px;">Inspect</button>
                 <button class="btn-poster" @click="openDeleteModal(source.id)">Delete</button>
               </td>

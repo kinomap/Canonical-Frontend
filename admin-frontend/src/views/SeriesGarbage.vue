@@ -314,7 +314,7 @@ onMounted(fetchGarbage)
             <p class="sub-text">Physical Telegram messages attached to this Series Garbage candidate.</p>
             
             <div class="resources-table-wrapper">
-              <table class="resources-table">
+              <table class="responsive-data record-table resources-table">
                 <thead>
                   <tr>
                     <th>Channel</th>
@@ -327,20 +327,20 @@ onMounted(fetchGarbage)
                 </thead>
                 <tbody>
                   <tr v-for="item in inspectItems" :key="item.id">
-                    <td class="code-val">{{ item.channel_id }}</td>
-                    <td>
+                    <td class="code-val" data-label="Channel" role="cell">{{ item.channel_id }}</td>
+                    <td data-label="Message ID" role="cell">
                       <a :href="'https://t.me/' + item.channel_id + '/' + item.message_id" target="_blank" class="tg-link">
                         {{ item.message_id }}
                       </a>
                     </td>
-                    <td class="input-cell">
+                    <td class="input-cell" data-label="Season" role="cell">
                       <input type="number" v-model.number="item.season_number" min="1" class="small-num-input" />
                     </td>
-                    <td class="input-cell">
+                    <td class="input-cell" data-label="Episode" role="cell">
                       <input type="number" v-model.number="item.episode_number" min="1" class="small-num-input" />
                     </td>
-                    <td class="code-val">{{ formatBytes(item.file_size) }}</td>
-                    <td class="caption-cell" :title="item.raw_caption">{{ item.raw_caption || '-' }}</td>
+                    <td class="code-val" data-label="Size" role="cell">{{ formatBytes(item.file_size) }}</td>
+                    <td class="caption-cell" :title="item.raw_caption" data-label="Raw Caption" role="cell">{{ item.raw_caption || '-' }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -438,7 +438,7 @@ onMounted(fetchGarbage)
       </div>
 
       <div class="table-container">
-        <table class="data-table">
+        <table class="responsive-data selectable-data record-table data-table">
           <thead>
             <tr>
               <th class="cell-checkbox">
@@ -456,25 +456,25 @@ onMounted(fetchGarbage)
           </thead>
           <tbody>
             <tr v-for="source in sources" :key="source.id" class="table-row clickable-row" @click="openInspect(source)">
-              <td class="cell-checkbox" @click.stop>
+              <td class="cell-checkbox" @click.stop data-label="Выбрать" role="cell">
                 <input type="checkbox" :value="source.id" v-model="selectedIds" />
               </td>
-              <td class="channel-col">{{ source.channel_id }}</td>
-              <td class="cell-narrow">
+              <td class="channel-col" data-label="Channel" role="cell">{{ source.channel_id }}</td>
+              <td class="cell-narrow" data-label="Message ID" role="cell">
                 <a :href="'https://t.me/' + source.channel_id + '/' + source.message_id" target="_blank" class="tg-link" @click.stop>
                   {{ source.message_id }}
                 </a>
               </td>
-              <td class="cell-narrow">{{ source.raw_caption || 'No Telegram caption' }}</td>
-              <td class="cell-narrow font-semibold">{{ source.identification_title || '-' }}</td>
-              <td class="cell-narrow">{{ source.identification_year || '-' }}</td>
-              <td class="cell-narrow">
+              <td class="cell-narrow" data-label="Original Caption" role="cell">{{ source.raw_caption || 'No Telegram caption' }}</td>
+              <td class="cell-narrow font-semibold" data-label="Identification Title" role="cell">{{ source.identification_title || '-' }}</td>
+              <td class="cell-narrow" data-label="Year" role="cell">{{ source.identification_year || '-' }}</td>
+              <td class="cell-narrow" data-label="Episodes" role="cell">
                 <span class="resources-badge">{{ source.episode_count || source.episodes_count || 1 }}</span>
               </td>
-              <td class="cell-narrow">
+              <td class="cell-narrow" data-label="Resources" role="cell">
                 <span class="resources-badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa;">{{ source.resource_count || (source.items ? source.items.length : 1) }}</span>
               </td>
-              <td class="cell-actions" @click.stop>
+              <td class="cell-actions" @click.stop data-label="Actions" role="cell">
                 <button class="btn-primary" @click="openInspect(source)" style="margin-right: 8px;">Inspect</button>
                 <button class="btn-poster" @click="openDeleteModal(source.id)">Delete</button>
               </td>

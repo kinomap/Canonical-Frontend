@@ -170,7 +170,7 @@ onMounted(() => {
     </div>
 
     <div class="table-container">
-      <table class="series-table">
+      <table class="series-table responsive-catalog" role="table">
         <thead>
           <tr>
             <th class="poster-col">Poster</th>
@@ -193,33 +193,33 @@ onMounted(() => {
             <td colspan="10" class="empty-cell">No series found matching criteria.</td>
           </tr>
           <tr v-else v-for="s in series" :key="s.id" @click="goToDetail(s.id)" class="series-row">
-            <td class="poster-col">
+            <td class="poster-col" data-label="Постер" role="cell">
               <img v-if="s.poster || s.poster_url" :src="s.poster_url || s.poster" class="mini-real-poster" />
               <div v-else class="mini-poster-fallback">
                 <div class="fallback-title">{{ s.title }}</div>
                 <div class="fallback-year">{{ s.year || 'N/A' }}</div>
               </div>
             </td>
-            <td class="title-col">
+            <td class="title-col" data-label="Название" role="cell">
               <div class="title-main" :title="s.title">{{ s.title }}</div>
               <div class="title-sub" :title="s.original_title">{{ s.original_title }}</div>
             </td>
-            <td class="year-col">{{ s.year || '-' }}</td>
-            <td class="rating-col">{{ s.rating || '-' }}</td>
-            <td class="tmdb-col">{{ s.tmdb_id || '-' }}</td>
-            <td class="sources-col">{{ s.telegram_sources_count }}</td>
-            <td class="compact-col">
+            <td class="year-col" data-label="Год" role="cell">{{ s.year || '-' }}</td>
+            <td class="rating-col" data-label="Рейтинг" role="cell">{{ s.rating || '-' }}</td>
+            <td class="tmdb-col" data-label="TMDB ID" role="cell">{{ s.tmdb_id || '-' }}</td>
+            <td class="sources-col" data-label="Источники" role="cell">{{ s.telegram_sources_count }}</td>
+            <td class="compact-col" data-label="Постер" role="cell">
               <span class="badge" :class="{'badge-green': s.poster_status === 'Available', 'badge-yellow': s.poster_status === 'Missing'}">
                 {{ s.poster_status === 'Available' ? '✓ Present' : '⚠ Missing' }}
               </span>
             </td>
-            <td class="status-col">
+            <td class="status-col" data-label="Статус" role="cell">
               <span class="badge" :class="(s.status === 'available' || s.is_available) ? 'badge-green' : 'badge-red'">
                 {{ (s.status === 'available' || s.is_available) ? 'available' : 'unavailable' }}
               </span>
             </td>
-            <td @click.stop><ContentAccessSwitch kind="series" :content-id="s.id" /></td>
-            <td class="actions-col">
+            <td @click.stop data-label="Доступ" role="cell"><ContentAccessSwitch kind="series" :content-id="s.id" /></td>
+            <td class="actions-col" data-label="Действия" role="cell">
               <div class="actions-cell">
                 <a 
                   v-if="(s.poster || s.poster_url)"

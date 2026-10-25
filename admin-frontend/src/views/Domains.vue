@@ -94,8 +94,8 @@ onBeforeUnmount(()=>{if(pollTimer)clearInterval(pollTimer);privateKey='';keyLoad
   <section class="domain-card">
    <h2>Cloudflare API Token</h2>
    <p>Токен настроен: {{ configured ? 'да' : 'нет' }}. Источник: {{ source === 'database' ? 'зашифрованная БД' : 'окружение' }}.</p>
-   <p>Нужен пользовательский API Token из Cloudflare → My Profile → API Tokens для создания, обновления и удаления DNS-записей Витрины и Медиа-Нод, а также ACME DNS-01 там, где он используется. Не Global API Key, не Cloudflare Tunnel token и не Origin CA key. Сохранённый токен не возвращается в браузер.</p>
-   <p id="cf-token-help">Права: Zone → DNS → Edit и Zone → Zone → Read. Zone Resources: Include → Specific zone → scenrix.com (корневая зона, не watch.scenrix.com). При смене домена включите старую и новую зоны; полный доступ к аккаунту не нужен. Проверка активности токена и чтения зон не подтверждает право изменения DNS.</p>
+   <details class="domain-guide"><summary>Какой токен нужен и какие права выдать</summary><p>Нужен пользовательский API Token из Cloudflare → My Profile → API Tokens для создания, обновления и удаления DNS-записей Витрины и Медиа-Нод, а также ACME DNS-01 там, где он используется. Не Global API Key, не Cloudflare Tunnel token и не Origin CA key. Сохранённый токен не возвращается в браузер.</p>
+   <p id="cf-token-help">Права: Zone → DNS → Edit и Zone → Zone → Read. Zone Resources: Include → Specific zone → scenrix.com (корневая зона, не watch.scenrix.com). При смене домена включите старую и новую зоны; полный доступ к аккаунту не нужен. Проверка активности токена и чтения зон не подтверждает право изменения DNS.</p></details>
    <label for="cf-token">Новый Cloudflare API Token · управление DNS</label>
    <input id="cf-token" aria-describedby="cf-token-help" v-model="token" type="password" autocomplete="off" spellcheck="false" maxlength="512" :disabled="busy" />
    <div class="actions">
@@ -111,20 +111,23 @@ onBeforeUnmount(()=>{if(pollTimer)clearInterval(pollTimer);privateKey='';keyLoad
    <p v-if="!domainState?.production" class="pending">Переключение разрешено только в production Control Plane. Существующий localhost не меняется.</p>
    <p>Только уже развёрнутый Public-only VPS2. Старый основной домен автоматически станет 301-зеркалом. Токен Cloudflare остаётся на Backend; приватный SSH key существует только в памяти операции.</p>
    <button type="button" :disabled="domainSubmitting || operationBusy" @click="loadDomain(true)">Обновить состояние и форму</button>
-   <form @submit.prevent="changeDomain">
+   <form @submit.prevent="changeDomain" class="domain-settings-form">
+    <fieldset class="domain-group"><legend>1. Домены и зеркала</legend>
     <label>Текущий домен на VPS2<input v-model="currentPrimary" required autocomplete="off" placeholder="watch.scenrix.com" /></label>
     <label>Основной домен Витрины<input v-model="primary" required autocomplete="off" /></label>
     <label>Домены-зеркала (до 10, по одному в строке)<textarea v-model="mirrorText" rows="3" autocomplete="off" /></label>
+    </fieldset><fieldset class="domain-group"><legend>2. Подключение к VPS 2</legend>
     <label>Публичный IPv4 VPS2<input v-model="publicIp" required autocomplete="off" /></label>
     <label>SSH port<input v-model.number="sshPort" type="number" min="1" max="65535" required /></label>
     <label>SSH user<input v-model="sshUser" required autocomplete="off" /></label>
     <label>Доверенный SHA256 host-key fingerprint из консоли провайдера<input v-model="sshPin" required autocomplete="off" /></label>
     <label>Адрес Backend в WireGuard<input v-model="controlAddress" required autocomplete="off" /></label>
     <label>Email Let's Encrypt (необязательно)<input v-model="tlsEmail" type="email" autocomplete="off" /></label>
+    </fieldset><fieldset class="domain-group"><legend>3. Подтверждение операции</legend>
     <label>Приватный SSH key · только на время операции<input id="domain-ssh-key" type="file" :disabled="domainSubmitting || operationBusy" @change="readKey" /></label>
     <p>{{ keyLoaded ? 'Ключ загружен в память формы' : 'Ключ не загружен' }}</p>
     <label><input v-model="confirmDomain" type="checkbox" required /> Подтверждаю VPS2 и DNS/TLS/301 изменения. Не использовать IP действующей Media Node.</label>
-    <button type="submit" :disabled="!domainState?.production || domainSubmitting || operationBusy || !keyLoaded || !confirmDomain">Применить домены Витрины</button>
+    <button type="submit" :disabled="!domainState?.production || domainSubmitting || operationBusy || !keyLoaded || !confirmDomain">Применить домены Витрины</button></fieldset>
    </form>
    <p role="status">{{ domainMessage }}</p>
    <div v-if="domainState?.operation" role="status" class="operation-status">
@@ -139,16 +142,17 @@ onBeforeUnmount(()=>{if(pollTimer)clearInterval(pollTimer);privateKey='';keyLoad
    <p>Все активные ноды проходят pinned SSH → DNS Only A → DNS-01 TLS (старый + новый hostname) → Nginx / HTTPS / renewal dry-run. Только затем media_url переключается одной транзакцией. Ноды не переустанавливаются; WireGuard не меняется.</p>
    <p v-if="!nodeState?.production" class="pending">Production-only. Localhost и действующая тестовая нода не изменяются.</p>
    <button :disabled="nodeBusy || nodeSubmitting" @click="loadNodes(true)">Обновить список нод и ревизию</button>
-   <form @submit.prevent="cutoverNodes">
+   <form @submit.prevent="cutoverNodes" class="node-domain-form">
+    <fieldset class="domain-group"><legend>Новый домен и доступ к нодам</legend>
     <label>Новый базовый домен<input id="nodes-base-domain" v-model="nextNodeDomain" required autocomplete="off" list="active-node-zones" /></label>
     <datalist id="active-node-zones"><option v-for="z in zones.filter(z=>z.status==='active')" :key="z.id" :value="z.name" /></datalist>
-    <div v-for="n in nodeState?.nodes || []" :key="n.node_id">
+    <div class="domain-node-access" v-for="n in nodeState?.nodes || []" :key="n.node_id">
      <p>{{ n.node_id }} · {{ n.public_ip }} · {{ n.media_endpoint }} · {{ n.pinned && n.provisioned ? '✓ Зарегистрирован и SSH pin задан' : '✗ Нужен provision / SSH pin' }}</p>
      <label>SSH key для {{ n.node_id }} · только в памяти<input class="node-cutover-key" type="file" :disabled="nodeBusy || nodeSubmitting" @change="readNodeKey($event,n.node_id)" /></label>
      <p>{{ nodeKeys[n.node_id]?.length>=32 ? '✓ Ключ загружен; SSH ещё не проверен' : '✗ Ключ не загружен' }}</p>
     </div>
     <label><input v-model="confirmNodes" type="checkbox" /> Подтверждаю DNS/TLS-переключение всех активных нод.</label>
-    <button id="nodes-cutover-submit" type="submit" :disabled="!nodeReady">Сменить домен нод (Cutover)</button>
+    <button id="nodes-cutover-submit" type="submit" :disabled="!nodeReady">Сменить домен нод (Cutover)</button></fieldset>
    </form>
    <p role="status">{{ nodeMessage }}</p>
    <div v-if="nodeState?.operation" role="status" class="operation-status">
