@@ -33,7 +33,7 @@ const resendAfter=ref(0)
 let resendDeadline=0
 const clock=window.setInterval(()=>{resendAfter.value=Math.max(0,Math.ceil((resendDeadline-Date.now())/1000))},1000)
 const auth = () => ({headers:{Authorization:`Bearer ${localStorage.getItem('admin_token')}`}})
-const message = (e:any) => {const d=e?.response?.data?.detail;return typeof d==='string'?d:typeof d?.message==='string'?d.message+(d.wait_seconds?` Ожидание: ${d.wait_seconds} с.`:''):'Операция не завершена. Данные формы сохранены; текущая сессия не удаляется.'}
+const message = (e:any) => {const d=e?.response?.data?.detail;return typeof d==='string'?d:typeof d?.message==='string'?(d.error_type?d.error_type+': ':'')+d.message+(d.wait_seconds?` Ожидание: ${d.wait_seconds} с.`:''):'Операция не завершена. Данные формы сохранены; текущая сессия не удаляется.'}
 function clearQr() { if(qrSrc.value) URL.revokeObjectURL(qrSrc.value); qrSrc.value='' }
 function stopPoll() { if(timer !== undefined) window.clearTimeout(timer); timer=undefined }
 async function accept(data:any) {
@@ -46,8 +46,9 @@ async function accept(data:any) {
   if(data.resend_after!==undefined){resendAfter.value=data.resend_after;resendDeadline=Date.now()+data.resend_after*1000}
   if(data.identity) identity.value=(data.identity.username?'@'+data.identity.username+' · ':'')+'Telegram ID '+data.identity.user_id
   if(data.delivery) delivery.value=data.delivery.delivery_type==='SentCodeTypeApp'
-    ? 'По ответу Telegram: код отправлен в служебный чат Telegram (777000) на подключённые устройства. Получение сообщения НЕ подтверждено. Если его нет, выберите вход по QR в этом окне.'
+    ? 'По ответу Telegram: код отправлен в служебный чат Telegram (тип: SentCodeTypeApp) на подключённые устройства. Получение сообщения НЕ подтверждено. Если его нет, выберите вход по QR в этом окне.'
     : 'Способ по ответу Telegram: '+(['SentCodeTypeSms','SentCodeTypeCall','SentCodeTypeEmailCode','SentCodeTypeFragmentSms'].includes(data.delivery.delivery_type)?data.delivery.delivery_type:'другой способ')+'. Получение кода НЕ подтверждено.'
+  if(data.delivery) delivery.value += ' Таймаут Telegram: '+(data.delivery.next_send_timeout == null ? 'не указан' : data.delivery.next_send_timeout+' с.')
   if(phase.value==='QR' && data.qr_version && data.qr_version!==qrVersion){clearQr();qrVersion=data.qr_version}
   if(phase.value==='QR' && !qrSrc.value) {
     const r=await axios.get(`${base}/${flow}/qr`,{...auth(),responseType:'blob'})
