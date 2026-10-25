@@ -42,7 +42,7 @@ test('Telegram originals and installed media use separate preview routes in a sh
  assert.ok(!fn.includes('media-sync')&&!fn.includes('media_requested'));
  assert.ok(s.includes('<AdMediaPreview v-if="sourcePreviews[cid]"'));
  const player=readFileSync(new URL('../src/components/AdMediaPreview.vue',import.meta.url),'utf8');
- assert.ok(player.includes('crossorigin="anonymous"')&&player.includes('20000')&&player.includes('onBeforeUnmount(clear)'));
+ assert.ok(player.includes('controls playsinline')&&player.includes('20000')&&player.includes('onBeforeUnmount(clear)'));
  assert.ok(s.includes('download_total_bytes')&&s.includes('transfer_phase')&&s.includes('<progress'));
  assert.ok(s.includes('← Все ролики')&&s.includes('v-if="!cid&&!analyticsMode"'));
 });
