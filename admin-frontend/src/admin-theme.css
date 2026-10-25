@@ -486,3 +486,32 @@ body {font-size:14px;line-height:1.6}
  #app .billing-settings .table-scroll td[colspan]{grid-column:1/-1}
 }
 @media(max-width:600px){#app .billing-settings .table-scroll tr{grid-template-columns:minmax(0,1fr)}}
+
+/* Security evidence retains every column as labelled fields on narrow screens. */
+@media(max-width:1100px){
+ #app .sc-page .tbl{display:block;width:100%;min-width:0;max-width:100%}
+ #app .sc-page .tbl thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ #app .sc-page .tbl tbody{display:grid;gap:16px;padding:12px}
+ #app .sc-page .tbl tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:16px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-surface)}
+ #app .sc-page .tbl td{display:flex;flex-direction:column;gap:6px;min-width:0;white-space:normal;overflow-wrap:anywhere;padding:0;border:0}
+ #app .sc-page .tbl td::before{font-size:11px;color:var(--ui-muted)}
+ #app .sc-page [data-test="exposure-table"] td:nth-child(1):not([colspan])::before{content:"Host"}
+ #app .sc-page [data-test="exposure-table"] td:nth-child(2):not([colspan])::before{content:"Port"}
+ #app .sc-page [data-test="exposure-table"] td:nth-child(3):not([colspan])::before{content:"Listening"}
+ #app .sc-page [data-test="exposure-table"] td:nth-child(4):not([colspan])::before{content:"Exposed"}
+ #app .sc-page [data-test="exposure-table"] td:nth-child(5):not([colspan])::before{content:"Reachable (external)"}
+ #app .sc-page [data-test="exposure-table"] td:nth-child(6):not([colspan])::before{content:"Policy"}
+ #app .sc-page [data-test="exposure-table"] td:nth-child(7):not([colspan])::before{content:"Verified"}
+ #app .sc-page [data-test="checks-table"] td:nth-child(1):not([colspan])::before{content:"ID"}
+ #app .sc-page [data-test="checks-table"] td:nth-child(2):not([colspan])::before{content:"Check"}
+ #app .sc-page [data-test="checks-table"] td:nth-child(3):not([colspan])::before{content:"Result"}
+ #app .sc-page [data-test="checks-table"] td:nth-child(4):not([colspan])::before{content:"Reason"}
+ #app .sc-page [data-test="checks-table"] td:nth-child(5):not([colspan])::before{content:"Verified"}
+ #app .sc-page [data-test="history-table"] td:nth-child(1):not([colspan])::before{content:"Time"}
+ #app .sc-page [data-test="history-table"] td:nth-child(2):not([colspan])::before{content:"Event"}
+ #app .sc-page [data-test="history-table"] td:nth-child(3):not([colspan])::before{content:"Target"}
+ #app .sc-page [data-test="history-table"] td:nth-child(4):not([colspan])::before{content:"Change"}
+ #app .sc-page [data-test="history-table"] td:nth-child(5):not([colspan])::before{content:"Summary"}
+ #app .sc-page .tbl td[colspan]{grid-column:1/-1}
+}
+@media(max-width:600px){#app .sc-page .tbl tr{grid-template-columns:minmax(0,1fr)}}
