@@ -73,6 +73,7 @@ const typeFilter = ref('All') // All, Channels, Groups
 const statusFilter = ref('All') // All, Connected, Not connected
 const addMode = ref('search') // search, manual
 const newChannelId = ref('')
+const membershipInvite = ref('')
 const newChannelIsSeries = ref(false)
 const newChannelIsAd = ref(false)
 const adding = ref<string | null>(null) // Stores telegram_id being added
@@ -103,6 +104,7 @@ watch(showAddModal, (val) => {
   if (!val) {
     searchEntity.value = ''
     newChannelId.value = ''
+    membershipInvite.value = ''
     newChannelIsSeries.value = false
     newChannelIsAd.value = false
     addMode.value = 'search'
@@ -156,12 +158,14 @@ const addChannel = async (cid: string) => {
   try {
     await axios.post('/api/v1/admin/telegram/channels', { 
       channel_id: cid,
+      membership_invite_link: membershipInvite.value.trim() || null,
       is_series_channel: newChannelIsSeries.value && !newChannelIsAd.value,
       is_ad_channel: newChannelIsAd.value
     }, auth())
     await fetchChannels()
     if (addMode.value === 'manual') {
       newChannelId.value = ''
+    membershipInvite.value = ''
       newChannelIsSeries.value = false
     newChannelIsAd.value = false
     }
@@ -437,6 +441,10 @@ onMounted(() => {
           <button class="modal-close" @click="showAddModal = false">&times;</button>
         </div>
 
+        <label style="display:grid;gap:8px;padding:16px 20px;">Приглашение для медиа-сессий · необязательно
+          <input v-model="membershipInvite" type="url" maxlength="256" autocomplete="off" placeholder="https://t.me/+..." />
+          <small>Для закрытого канала — приглашение или общая папка в Sessions. Для публичного канала используется его @username.</small>
+        </label>
         <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap:wrap; align-items: center;">
           <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #cbd5e1; font-weight: 500;">
             <input type="checkbox" v-model="newChannelIsSeries" :disabled="newChannelIsAd" style="width: 16px; height: 16px;" />

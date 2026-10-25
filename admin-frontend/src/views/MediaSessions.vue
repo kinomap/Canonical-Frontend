@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { addToast } from '../toast'
 import SessionAuthWizard from '../components/SessionAuthWizard.vue'
+import MembershipSync from '../components/MembershipSync.vue'
 
 const router = useRouter()
 
@@ -162,6 +163,8 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         <button class="ms-add-btn" @click="wizardMode = 'create'; showWizard = true">+ Add Session</button>
       </div>
     </div>
+
+    <MembershipSync />
 
     <!-- ── Counters ── -->
     <div class="ms-counters" v-if="!loading">
