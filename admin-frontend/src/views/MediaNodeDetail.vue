@@ -322,7 +322,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 
 .nd-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; }
 .nd-title { font-size: 1.5rem; font-weight: 700; color: var(--ui-text); margin: 0; }
-.nd-subtitle { font-size: 0.8rem; color: var(--ui-link); font-family: monospace; }
+.nd-subtitle { font-size: 0.8rem; color: var(--ui-link); font-family:var(--ui-font); }
 .nd-region { background: var(--ui-raised); color: var(--ui-link); padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 12px; margin-left: 0.4rem; }
 .nd-header-badges { display: flex; gap: 0.4rem; }
 
@@ -355,23 +355,23 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 
 .nd-badge, .nd-badge-sm { padding: 0.12rem 0.45rem; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
 .nd-badge-sm { font-size: 12px; padding: 0.08rem 0.35rem; }
-.st-healthy { background: rgba(16,185,129,0.15); color: var(--ui-success); }
+.st-healthy { background: var(--ui-success-bg); color: var(--ui-success); }
 .st-reg { background: var(--ui-raised); color: var(--ui-link); }
-.st-warn { background: rgba(249,115,22,0.15); color: var(--ui-warning); }
+.st-warn { background: var(--ui-danger-bg); color: var(--ui-warning); }
 .st-off { background: var(--ui-raised); color: var(--ui-link); }
-.st-crit { background: rgba(239,68,68,0.15); color: var(--ui-danger); }
+.st-crit { background: var(--ui-danger-bg); color: var(--ui-danger); }
 .st-unk { background: var(--ui-raised); color: var(--ui-link); }
 
 .nd-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .nd-act-btn { padding: 0.45rem 1rem; border-radius: var(--ui-radius); font-size: 0.82rem; font-weight: 500; cursor: pointer; border: 1px solid; background: transparent; }
-.nd-act-enable { color: var(--ui-success); border-color: rgba(16,185,129,0.3); }
-.nd-act-enable:hover { background: rgba(16,185,129,0.1); }
-.nd-act-drain { color: var(--ui-warning); border-color: rgba(251,191,36,0.3); }
-.nd-act-drain:hover { background: rgba(251,191,36,0.1); }
+.nd-act-enable { color: var(--ui-success); border-color: var(--ui-success-bg); }
+.nd-act-enable:hover { background: var(--ui-success-bg); }
+.nd-act-drain { color: var(--ui-warning); border-color: var(--ui-warning-bg); }
+.nd-act-drain:hover { background: var(--ui-warning-bg); }
 .nd-act-disable { color: var(--ui-link); border-color: var(--ui-border); }
 .nd-act-disable:hover { background: var(--ui-raised); }
-.nd-act-delete { color: var(--ui-danger); border-color: rgba(248,113,113,0.3); }
-.nd-act-delete:hover { background: rgba(248,113,113,0.1); }
+.nd-act-delete { color: var(--ui-danger); border-color: var(--ui-danger-bg); }
+.nd-act-delete:hover { background: var(--ui-danger-bg); }
 
 .nd-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .nd-modal { background: var(--ui-raised); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); padding: 1.5rem; max-width: 400px; width: 90%; }
@@ -380,11 +380,11 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .nd-modal-btns { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.2rem; }
 .nd-btn-sec { padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: var(--ui-raised); color: var(--ui-link); border: 1px solid var(--ui-border); cursor: pointer; }
 .nd-btn-pri { padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: var(--ui-primary); color: var(--ui-on-primary); border: none; cursor: pointer; }
-.nd-btn-danger { padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: rgba(239,68,68,0.2); color: var(--ui-danger); border: 1px solid rgba(239,68,68,0.3); cursor: pointer; }
+.nd-btn-danger { padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: var(--ui-danger-bg); color: var(--ui-danger); border: 1px solid var(--ui-danger-bg); cursor: pointer; }
 .nd-sess-warn { color: var(--ui-warning) !important; font-weight: 600; }
 .nd-scale-warn {
   margin-top: 0.6rem; padding: 0.5rem 0.8rem; border-radius: var(--ui-radius);
-  background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.25);
+  background: var(--ui-danger-bg); border: 1px solid var(--ui-danger-bg);
   font-size: 12px; color: var(--ui-warning); font-weight: 500;
 }
 .nd-stale { color: var(--ui-warning); font-style: italic; }

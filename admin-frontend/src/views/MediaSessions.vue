@@ -311,7 +311,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .ms-card-identity { min-width: 0; flex: 1; }
 .ms-session-name { font-weight: 600; color: var(--ui-text); font-size: 0.9rem; }
 .ms-session-meta { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.15rem; flex-wrap: wrap; }
-.ms-session-id { font-size: 12px; color: var(--ui-link); font-family: monospace; }
+.ms-session-id { font-size: 12px; color: var(--ui-link); font-family:var(--ui-font); }
 .ms-tg-tag { font-size: 12px; color: var(--ui-link); }
 .ms-card-badges { display: flex; gap: 0.35rem; flex-shrink: 0; }
 
@@ -327,23 +327,23 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .ms-node-badge { background: var(--ui-raised); color: var(--ui-link); padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 12px; }
 .ms-err-val { color: var(--ui-danger); font-weight: 600; }
 .ms-title-sub { font-size: 12px; color: var(--ui-link); font-weight: 400; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 0.5rem; padding: 0.15rem 0.5rem; border-radius: 4px; background: var(--ui-raised); }
-.ms-badge-unassigned { background: rgba(249,115,22,0.15); color: var(--ui-warning); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
+.ms-badge-unassigned { background: var(--ui-danger-bg); color: var(--ui-warning); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
 
 .ms-badge { padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 12px; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
-.st-h { background: rgba(16,185,129,0.15); color: var(--ui-success); }
-.st-w { background: rgba(249,115,22,0.15); color: var(--ui-warning); }
+.st-h { background: var(--ui-success-bg); color: var(--ui-success); }
+.st-w { background: var(--ui-danger-bg); color: var(--ui-warning); }
 .st-off { background: var(--ui-raised); color: var(--ui-link); }
-.st-c { background: rgba(239,68,68,0.15); color: var(--ui-danger); }
+.st-c { background: var(--ui-danger-bg); color: var(--ui-danger); }
 .st-u { background: var(--ui-raised); color: var(--ui-link); }
 
 .ms-act { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid; background: transparent; }
-.ms-act-en { color: var(--ui-success); border-color: rgba(16,185,129,0.3); }
-.ms-act-dr { color: var(--ui-warning); border-color: rgba(251,191,36,0.3); }
+.ms-act-en { color: var(--ui-success); border-color: var(--ui-success-bg); }
+.ms-act-dr { color: var(--ui-warning); border-color: var(--ui-warning-bg); }
 .ms-act-mv { color: var(--ui-link); border-color: var(--ui-border); }
 .ms-act-dis { color: var(--ui-link); border-color: var(--ui-border); }
-.ms-act-del { color: var(--ui-danger); border-color: rgba(248,113,113,0.3); }
-.ms-act-auth { color: var(--ui-warning); border-color: rgba(251,191,36,0.3); font-weight: 600; }
-.st-auth { background: rgba(251,191,36,0.15); color: var(--ui-warning); }
+.ms-act-del { color: var(--ui-danger); border-color: var(--ui-danger-bg); }
+.ms-act-auth { color: var(--ui-warning); border-color: var(--ui-warning-bg); font-weight: 600; }
+.st-auth { background: var(--ui-warning-bg); color: var(--ui-warning); }
 
 /* ── Modals ── */
 .ms-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: none; }
@@ -361,7 +361,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .ms-btn-sec { padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: var(--ui-raised); color: var(--ui-link); border: 1px solid var(--ui-border); cursor: pointer; }
 .ms-btn-pri { padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: var(--ui-primary); color: var(--ui-on-primary); border: none; cursor: pointer; }
 .ms-btn-pri:disabled { opacity: 0.5; cursor: not-allowed; }
-.ms-btn-danger { padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: rgba(239,68,68,0.2); color: var(--ui-danger); border: 1px solid rgba(239,68,68,0.3); cursor: pointer; }
+.ms-btn-danger { padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: var(--ui-danger-bg); color: var(--ui-danger); border: 1px solid var(--ui-danger-bg); cursor: pointer; }
 .ms-modal-wide { max-width: 540px; }
 .ms-form { display: flex; flex-direction: column; gap: 0.7rem; margin: 0.8rem 0; }
 .ms-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }

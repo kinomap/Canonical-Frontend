@@ -593,7 +593,7 @@ onMounted(fetchGarbage)
 
 .readonly-text {
   color: var(--ui-secondary);
-  font-family: monospace;
+  font-family:var(--ui-font);
   font-size: 0.9rem;
   white-space: pre-wrap;
   word-break: break-word;
@@ -624,7 +624,7 @@ onMounted(fetchGarbage)
 .btn-delete-all {
   background: transparent; color: var(--ui-danger); border: 1px solid var(--ui-danger); padding: 8px 16px; border-radius: var(--ui-radius); font-weight: 600; cursor: pointer; transition: all 0.2s;
 }
-.btn-delete-all:hover { background: rgba(239, 68, 68, 0.1); }
+.btn-delete-all:hover { background: var(--ui-danger-bg); }
 
 .cell-checkbox { width: 40px; text-align: center; }
 .cell-checkbox input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: var(--ui-link); }
@@ -708,8 +708,8 @@ onMounted(fetchGarbage)
 
 .btn-poster {
   padding: 6px 14px;
-  background: rgba(250, 204, 21, 0.15);
-  border: 1px solid rgba(250, 204, 21, 0.3);
+  background: var(--ui-warning-bg);
+  border: 1px solid var(--ui-warning-bg);
   color: var(--ui-warning);
   border-radius: var(--ui-radius);
   cursor: pointer;
@@ -719,7 +719,7 @@ onMounted(fetchGarbage)
   transition: all 0.15s;
 }
 
-.btn-poster:hover { background: rgba(250, 204, 21, 0.25); }
+.btn-poster:hover { background: var(--ui-warning-bg); }
 
 .pagination {
   display: flex;

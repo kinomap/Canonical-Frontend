@@ -271,8 +271,8 @@ onMounted(fetchBlocked)
 
 .btn-unblock {
   padding: 6px 14px;
-  background: rgba(74, 222, 128, 0.15);
-  border: 1px solid rgba(74, 222, 128, 0.3);
+  background: var(--ui-success-bg);
+  border: 1px solid var(--ui-success-bg);
   color: var(--ui-success);
   border-radius: var(--ui-radius);
   cursor: pointer;
@@ -283,7 +283,7 @@ onMounted(fetchBlocked)
 }
 
 .btn-unblock:hover:not(:disabled) {
-  background: rgba(74, 222, 128, 0.25);
+  background: var(--ui-success-bg);
 }
 
 .btn-unblock:disabled { opacity: 0.5; cursor: not-allowed; }

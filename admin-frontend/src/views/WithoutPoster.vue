@@ -336,7 +336,7 @@ onMounted(fetchWithoutPoster)
 }
 
 .missing-badge {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--ui-danger-bg);
   color: var(--ui-danger);
   padding: 2px 8px;
   border-radius: 4px;
@@ -350,14 +350,14 @@ onMounted(fetchWithoutPoster)
   font-weight: 600;
 }
 
-.status-available { background: rgba(74, 222, 128, 0.15); color: var(--ui-success); }
-.status-blocked { background: rgba(239, 68, 68, 0.15); color: var(--ui-danger); }
+.status-available { background: var(--ui-success-bg); color: var(--ui-success); }
+.status-blocked { background: var(--ui-danger-bg); color: var(--ui-danger); }
 .status-unavailable { background: var(--ui-raised); color: var(--ui-link); }
 
 .btn-poster {
   padding: 6px 14px;
-  background: rgba(250, 204, 21, 0.15);
-  border: 1px solid rgba(250, 204, 21, 0.3);
+  background: var(--ui-warning-bg);
+  border: 1px solid var(--ui-warning-bg);
   color: var(--ui-warning);
   border-radius: var(--ui-radius);
   cursor: pointer;
@@ -367,7 +367,7 @@ onMounted(fetchWithoutPoster)
   transition: all 0.15s;
 }
 
-.btn-poster:hover { background: rgba(250, 204, 21, 0.25); }
+.btn-poster:hover { background: var(--ui-warning-bg); }
 
 .btn-view {
   padding: 6px 14px;

@@ -26,14 +26,14 @@ import { toasts } from '../toast'
 .toast {
   padding: 12px 24px;
   border-radius: var(--ui-radius);
-  color: white;
+  color: var(--ui-text);
   font-weight: 500;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ui-shadow-overlay);
   min-width: 250px;
 }
 
-.toast-success { background: var(--ui-success-bg); }
-.toast-error { background: var(--ui-danger-bg); }
+.toast-success { background: var(--ui-success-bg); color:var(--ui-success);border:1px solid #a7f3d0; }
+.toast-error { background: var(--ui-danger-bg); color:var(--ui-danger);border:1px solid #fecdd3; }
 .toast-info { background: var(--ui-primary); color: var(--ui-on-primary); }
 
 .toast-enter-active,

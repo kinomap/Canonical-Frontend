@@ -130,12 +130,12 @@ const statusIcon = (s: string) => {
 }
 
 const capacityColor = computed(() => {
-  if (!data.value) return '#6b7280'
+  if (!data.value) return 'var(--ui-muted)'
   const p = data.value.overview.global_capacity_percent
-  if (p <= 60) return '#10b981'
-  if (p <= 75) return '#f59e0b'
-  if (p <= 85) return '#f97316'
-  return '#ef4444'
+  if (p <= 60) return 'var(--ui-success)'
+  if (p <= 75) return 'var(--ui-warning)'
+  if (p <= 85) return 'var(--ui-warning)'
+  return 'var(--ui-danger)'
 })
 
 const formatMbps = (v: number | null) => {
@@ -385,8 +385,8 @@ onUnmounted(() => {
 }
 .obs-error { color: var(--ui-danger); }
 .obs-error button {
-  padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: rgba(239,68,68,0.15);
-  color: var(--ui-danger); border: 1px solid rgba(239,68,68,0.3); cursor: pointer;
+  padding: 0.4rem 1rem; border-radius: var(--ui-radius); background: var(--ui-danger-bg);
+  color: var(--ui-danger); border: 1px solid var(--ui-danger-bg); cursor: pointer;
 }
 .obs-spinner {
   width: 20px; height: 20px; border: 2px solid var(--ui-border);
@@ -435,10 +435,10 @@ onUnmounted(() => {
 }
 .obs-badge-sm { font-size: 12px; padding: 0.1rem 0.4rem; }
 
-.status-healthy { background: rgba(16,185,129,0.15); color: var(--ui-success); }
-.status-elevated { background: rgba(245,158,11,0.15); color: var(--ui-warning); }
-.status-warning { background: rgba(249,115,22,0.15); color: var(--ui-warning); }
-.status-critical { background: rgba(239,68,68,0.15); color: var(--ui-danger); }
+.status-healthy { background: var(--ui-success-bg); color: var(--ui-success); }
+.status-elevated { background: var(--ui-warning-bg); color: var(--ui-warning); }
+.status-warning { background: var(--ui-danger-bg); color: var(--ui-warning); }
+.status-critical { background: var(--ui-danger-bg); color: var(--ui-danger); }
 .status-unknown { background: var(--ui-raised); color: var(--ui-link); }
 
 .text-warning { color: var(--ui-warning) !important; }
@@ -449,10 +449,10 @@ onUnmounted(() => {
   border-radius: var(--ui-radius); border: 1px solid;
 }
 .obs-scaling-ok {
-  background: rgba(16,185,129,0.06); border-color: rgba(16,185,129,0.2);
+  background: var(--ui-success-bg); border-color: var(--ui-success-bg);
 }
 .obs-scaling-required {
-  background: rgba(249,115,22,0.06); border-color: rgba(249,115,22,0.3);
+  background: var(--ui-danger-bg); border-color: var(--ui-danger-bg);
 }
 .obs-scaling-icon { font-size: 1.5rem; }
 .obs-scaling-status { font-weight: 700; font-size: 0.9rem; color: var(--ui-text); }
@@ -489,11 +489,11 @@ onUnmounted(() => {
   font-weight: 700; font-size: 12px; padding: 0.1rem 0.4rem;
   border-radius: 3px; text-transform: uppercase;
 }
-.obs-alert-warning .obs-alert-severity { background: rgba(245,158,11,0.15); color: var(--ui-warning); }
-.obs-alert-critical .obs-alert-severity { background: rgba(239,68,68,0.15); color: var(--ui-danger); }
+.obs-alert-warning .obs-alert-severity { background: var(--ui-warning-bg); color: var(--ui-warning); }
+.obs-alert-critical .obs-alert-severity { background: var(--ui-danger-bg); color: var(--ui-danger); }
 .obs-alert-category { color: var(--ui-link); font-size: 12px; text-transform: uppercase; }
 .obs-alert-message { color: var(--ui-secondary); flex: 1; }
-.obs-alert-node { color: var(--ui-link); font-size: 12px; font-family: monospace; }
+.obs-alert-node { color: var(--ui-link); font-size: 12px; font-family:var(--ui-font); }
 
 /* ── Recommendations ── */
 .obs-recs-list { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -519,7 +519,7 @@ onUnmounted(() => {
   font-weight: 600; letter-spacing: 0.02em;
 }
 .rec-session { background: var(--ui-raised); color: var(--ui-link); border: 1px solid var(--ui-border); }
-.rec-node { background: rgba(245,158,11,0.15); color: var(--ui-warning); border: 1px solid rgba(245,158,11,0.3); }
+.rec-node { background: var(--ui-warning-bg); color: var(--ui-warning); border: 1px solid var(--ui-warning-bg); }
 .obs-scaling-reasons { margin-top: 0.5rem; }
 .obs-reason { color: var(--ui-link); font-size: 12px; line-height: 1.5; }
 
@@ -540,7 +540,7 @@ onUnmounted(() => {
 .obs-cap-dim { color: var(--ui-link); font-weight: 400; }
 .obs-scale-alert {
   margin-top: 0.75rem; padding: 0.5rem 0.8rem; border-radius: var(--ui-radius);
-  background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.25);
+  background: var(--ui-danger-bg); border: 1px solid var(--ui-danger-bg);
   font-size: 12px; color: var(--ui-warning); font-weight: 500;
 }
 .obs-formula {

@@ -762,9 +762,9 @@ onMounted(() => { fetchDashboardData() })
 }
 
 .stat-icon.total { background: var(--ui-raised); color: var(--ui-link); }
-.stat-icon.available { background: rgba(74, 222, 128, 0.15); color: var(--ui-success); }
-.stat-icon.blocked { background: rgba(239, 68, 68, 0.15); color: var(--ui-danger); }
-.stat-icon.poster { background: rgba(250, 204, 21, 0.15); color: var(--ui-warning); }
+.stat-icon.available { background: var(--ui-success-bg); color: var(--ui-success); }
+.stat-icon.blocked { background: var(--ui-danger-bg); color: var(--ui-danger); }
+.stat-icon.poster { background: var(--ui-warning-bg); color: var(--ui-warning); }
 .stat-icon.tmdb { background: var(--ui-raised); color: var(--ui-link); }
 
 .stat-value {
@@ -846,9 +846,9 @@ onMounted(() => { fetchDashboardData() })
   letter-spacing: 0.05em;
 }
 
-.badge-ok { background: rgba(74, 222, 128, 0.15); color: var(--ui-success); }
-.badge-error { background: rgba(239, 68, 68, 0.15); color: var(--ui-danger); }
-.badge-warn { background: rgba(250, 204, 21, 0.15); color: var(--ui-warning); }
+.badge-ok { background: var(--ui-success-bg); color: var(--ui-success); }
+.badge-error { background: var(--ui-danger-bg); color: var(--ui-danger); }
+.badge-warn { background: var(--ui-warning-bg); color: var(--ui-warning); }
 .badge-unknown { background: var(--ui-raised); color: var(--ui-link); }
 
 .snapshot-card{margin:0 0 24px;padding:16px 20px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-panel);background:var(--ui-surface)}
@@ -861,8 +861,8 @@ onMounted(() => { fetchDashboardData() })
 
 .error-state-sm {
   display: flex; flex-direction: column; align-items: center; gap: 12px;
-  padding: 40px; color: #f87171; background: rgba(248, 113, 113, 0.05);
-  border-radius: 8px; border: 1px solid rgba(248, 113, 113, 0.2);
+  padding: 40px; color: #f87171; background: var(--ui-danger-bg);
+  border-radius: 8px; border: 1px solid var(--ui-danger-bg);
 }
 
 .retry-btn-sm {
@@ -874,4 +874,4 @@ onMounted(() => { fetchDashboardData() })
   font-size: 0.85rem;
   cursor: pointer;
 }
-.retry-btn-sm:hover { background: rgba(248, 113, 113, 0.1); }
+.retry-btn-sm:hover { background: var(--ui-danger-bg); }

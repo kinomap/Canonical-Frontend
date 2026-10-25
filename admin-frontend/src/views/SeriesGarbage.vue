@@ -736,7 +736,7 @@ onMounted(fetchGarbage)
 
 .readonly-text {
   color: var(--ui-secondary);
-  font-family: monospace;
+  font-family:var(--ui-font);
   font-size: 0.875rem;
   white-space: pre-wrap;
   word-break: break-word;
@@ -835,7 +835,7 @@ onMounted(fetchGarbage)
 .provider-id {
   color: var(--ui-link);
   font-size: 12px;
-  font-family: monospace;
+  font-family:var(--ui-font);
 }
 
 .match-overview {
@@ -883,7 +883,7 @@ onMounted(fetchGarbage)
 }
 
 .code-val {
-  font-family: monospace;
+  font-family:var(--ui-font);
   color: var(--ui-secondary);
 }
 
@@ -939,7 +939,7 @@ onMounted(fetchGarbage)
 .btn-delete-all {
   background: transparent; color: var(--ui-danger); border: 1px solid var(--ui-danger); padding: 8px 16px; border-radius: var(--ui-radius); font-weight: 600; cursor: pointer; transition: all 0.2s;
 }
-.btn-delete-all:hover { background: rgba(239, 68, 68, 0.1); }
+.btn-delete-all:hover { background: var(--ui-danger-bg); }
 
 .cell-checkbox { width: 40px; text-align: center; }
 .cell-checkbox input[type="checkbox"] { cursor: pointer; width: 16px; height: 16px; accent-color: var(--ui-link); }
@@ -1037,8 +1037,8 @@ onMounted(fetchGarbage)
 
 .btn-poster {
   padding: 6px 14px;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: var(--ui-danger-bg);
+  border: 1px solid var(--ui-danger-bg);
   color: var(--ui-danger);
   border-radius: var(--ui-radius);
   cursor: pointer;
@@ -1046,7 +1046,7 @@ onMounted(fetchGarbage)
   font-weight: 600;
   transition: all 0.15s;
 }
-.btn-poster:hover { background: rgba(239, 68, 68, 0.25); }
+.btn-poster:hover { background: var(--ui-danger-bg); }
 
 .pagination {
   display: flex;

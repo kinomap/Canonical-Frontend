@@ -446,7 +446,7 @@ function stageClass(stage: string): string {
   border: 1px solid var(--k-border-strong, var(--ui-control)); background: var(--k-surface-sunken, var(--ui-bg)); color: var(--k-text, var(--ui-text));
   font-size: 0.9rem; font-family: var(--ui-font); box-sizing: border-box;
 }
-.wizard-body textarea { font-family: monospace; font-size: 0.8rem; resize: vertical; }
+.wizard-body textarea { font-family:var(--ui-font); font-size: 0.8rem; resize: vertical; }
 .wizard-actions {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
 }
@@ -484,7 +484,7 @@ function stageClass(stage: string): string {
 .wizard-success { text-align: center; padding-top: 20px; }
 .success-icon {
   font-size: 3rem; color: var(--ui-success); margin-bottom: 12px;
-  width: 64px; height: 64px; border-radius: 50%; background: rgba(34,197,94,0.1);
+  width: 64px; height: 64px; border-radius: 50%; background: var(--ui-success-bg);
   display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;
 }
 .success-status { color: var(--ui-success); font-weight: bold; font-size: 1rem; }

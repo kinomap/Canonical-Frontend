@@ -419,9 +419,9 @@ onUnmounted(() => {
   border-radius: var(--ui-radius-panel);
   letter-spacing: 0.5px;
 }
-.st-ok { background: rgba(34, 197, 94, 0.15); color: var(--ui-success); }
-.st-warn { background: rgba(234, 179, 8, 0.15); color: var(--ui-warning); }
-.st-err { background: rgba(239, 68, 68, 0.15); color: var(--ui-danger); }
+.st-ok { background: var(--ui-success-bg); color: var(--ui-success); }
+.st-warn { background: var(--ui-warning-bg); color: var(--ui-warning); }
+.st-err { background: var(--ui-danger-bg); color: var(--ui-danger); }
 
 .ms-loading { display: flex; justify-content: center; padding: 20px; }
 .loading-spinner-sm {
@@ -486,8 +486,8 @@ onUnmounted(() => {
 .ms-error {
   font-size: 12px;
   color: var(--ui-danger);
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: var(--ui-danger-bg);
+  border: 1px solid var(--ui-danger-bg);
   padding: 8px 12px;
   border-radius: var(--ui-radius);
 }
@@ -509,8 +509,8 @@ onUnmounted(() => {
 .ms-btn--primary:hover:not(:disabled) { background: var(--ui-primary); color: var(--ui-on-primary); }
 .ms-btn--outline { background: transparent; color: var(--ui-link); border: 1px solid var(--ui-border); }
 .ms-btn--outline:hover:not(:disabled) { border-color: var(--ui-control); color: var(--ui-link); }
-.ms-btn--warn { background: rgba(234, 179, 8, 0.15); color: var(--ui-warning); border: 1px solid rgba(234, 179, 8, 0.3); }
-.ms-btn--warn:hover:not(:disabled) { background: rgba(234, 179, 8, 0.25); }
+.ms-btn--warn { background: var(--ui-warning-bg); color: var(--ui-warning); border: 1px solid var(--ui-warning-bg); }
+.ms-btn--warn:hover:not(:disabled) { background: var(--ui-warning-bg); }
 
 /* Modal */
 .ms-overlay {

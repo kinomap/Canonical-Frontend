@@ -546,7 +546,7 @@ onUnmounted(() => {
   z-index: 1000; backdrop-filter: none;
 }
 .rm-modal {
-  background: var(--ui-raised); border: 1px solid rgba(239,68,68,0.2);
+  background: var(--ui-raised); border: 1px solid var(--ui-danger-bg);
   border-radius: var(--ui-radius-panel); padding: 1.5rem 2rem; max-width: 640px;
   width: 95%; max-height: 90vh; overflow-y: auto;
 }
@@ -561,15 +561,15 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--ui-border);
 }
 .rm-node-name { font-weight: 600; color: var(--ui-text); }
-.rm-node-host { font-family: monospace; font-size: 0.82rem; color: var(--ui-link); }
-.rm-node-id { font-family: monospace; font-size: 12px; color: var(--ui-link); }
+.rm-node-host { font-family:var(--ui-font); font-size: 0.82rem; color: var(--ui-link); }
+.rm-node-id { font-family:var(--ui-font); font-size: 12px; color: var(--ui-link); }
 
 .rm-loading { display: flex; align-items: center; gap: 0.75rem; padding: 2rem; justify-content: center; color: var(--ui-link); }
 .rm-spinner { width: 18px; height: 18px; border: 2px solid var(--ui-border); border-top-color: var(--ui-control); border-radius: 50%; animation: rmspin 0.8s linear infinite; }
-.rm-spinner-sm { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(251,191,36,0.3); border-top-color: var(--ui-warning); border-radius: 50%; animation: rmspin 0.8s linear infinite; }
+.rm-spinner-sm { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--ui-warning-bg); border-top-color: var(--ui-warning); border-radius: 50%; animation: rmspin 0.8s linear infinite; }
 @keyframes rmspin { to { transform: rotate(360deg); } }
 
-.rm-error-box { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25); border-radius: var(--ui-radius); padding: 1rem; color: var(--ui-danger); text-align: center; }
+.rm-error-box { background: var(--ui-danger-bg); border: 1px solid var(--ui-danger-bg); border-radius: var(--ui-radius); padding: 1rem; color: var(--ui-danger); text-align: center; }
 .rm-error-box p { margin: 0 0 0.8rem; }
 
 .rm-section-title { font-size: 0.85rem; font-weight: 600; color: var(--ui-link); margin: 0 0 0.6rem; text-transform: uppercase; letter-spacing: 0.03em; }
@@ -590,14 +590,14 @@ onUnmounted(() => {
 .rm-db-only { color: var(--ui-success) !important; }
 
 .rm-destructive-warn {
-  background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2);
+  background: var(--ui-danger-bg); border: 1px solid var(--ui-danger-bg);
   border-radius: var(--ui-radius); padding: 1rem; margin-bottom: 1rem;
 }
 .rm-destructive-warn strong { color: var(--ui-danger); font-size: 0.88rem; display: block; margin-bottom: 0.4rem; }
 .rm-destructive-warn p { color: var(--ui-link); font-size: 0.82rem; margin: 0.2rem 0; }
 
 .rm-info-box {
-  background: rgba(52,211,153,0.07); border: 1px solid rgba(52,211,153,0.2);
+  background: var(--ui-success-bg); border: 1px solid var(--ui-success-bg);
   border-radius: var(--ui-radius); padding: 1rem; margin-bottom: 1rem;
 }
 .rm-info-box strong { color: var(--ui-success); font-size: 0.88rem; display: block; margin-bottom: 0.4rem; }
@@ -606,7 +606,7 @@ onUnmounted(() => {
 .rm-ssh { margin-top: 0.5rem; }
 .rm-ssh-info { font-size: 0.82rem; color: var(--ui-link); margin-bottom: 0.8rem; }
 .rm-ssh-input {
-  width: 100%; padding: 0.7rem; border-radius: var(--ui-radius); font-family: monospace;
+  width: 100%; padding: 0.7rem; border-radius: var(--ui-radius); font-family:var(--ui-font);
   font-size: 12px; background: var(--ui-surface); color: var(--ui-text);
   border: 1px solid var(--ui-control); resize: vertical;
 }
@@ -625,7 +625,7 @@ onUnmounted(() => {
 }
 .rm-btn-danger {
   padding: 0.45rem 1.2rem; border-radius: var(--ui-radius); font-size: 0.85rem; font-weight: 600;
-  background: rgba(239,68,68,0.2); color: var(--ui-danger); border: 1px solid rgba(239,68,68,0.3);
+  background: var(--ui-danger-bg); color: var(--ui-danger); border: 1px solid var(--ui-danger-bg);
   cursor: pointer;
 }
 .rm-btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -642,10 +642,10 @@ onUnmounted(() => {
   border-radius: var(--ui-radius); font-size: 0.82rem; color: var(--ui-link);
   background: var(--ui-surface);
 }
-.rm-stage-ok { color: var(--ui-success); background: rgba(16,185,129,0.05); }
-.rm-stage-fail { color: var(--ui-danger); background: rgba(239,68,68,0.08); }
+.rm-stage-ok { color: var(--ui-success); background: var(--ui-success-bg); }
+.rm-stage-fail { color: var(--ui-danger); background: var(--ui-danger-bg); }
 .rm-stage-skip { color: var(--ui-link); background: var(--ui-surface); font-style: italic; }
-.rm-stage-active { color: var(--ui-warning); background: rgba(251,191,36,0.06); }
+.rm-stage-active { color: var(--ui-warning); background: var(--ui-warning-bg); }
 .rm-stage-icon { width: 20px; text-align: center; flex-shrink: 0; }
 .rm-stage-label { font-weight: 500; }
 .rm-stage-badge {
@@ -659,7 +659,7 @@ onUnmounted(() => {
 .rm-completed p { color: var(--ui-link); font-size: 0.85rem; margin-bottom: 1rem; }
 .rm-result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-bottom: 1rem; }
 .rm-result-item { padding: 0.4rem 0.6rem; border-radius: 5px; font-size: 0.8rem; }
-.rm-result-ok { color: var(--ui-success); background: rgba(16,185,129,0.08); }
+.rm-result-ok { color: var(--ui-success); background: var(--ui-success-bg); }
 .rm-result-safe { color: var(--ui-link); background: var(--ui-raised); }
 
 .rm-verify-detail { margin-bottom: 1rem; }
@@ -670,12 +670,12 @@ onUnmounted(() => {
 }
 
 /* ── Failed / Uncertain ── */
-.rm-error-detail { background: rgba(239,68,68,0.08); border-radius: var(--ui-radius); padding: 0.8rem; margin-bottom: 1rem; }
+.rm-error-detail { background: var(--ui-danger-bg); border-radius: var(--ui-radius); padding: 0.8rem; margin-bottom: 1rem; }
 .rm-error-detail p { color: var(--ui-danger); font-size: 0.82rem; margin: 0.2rem 0; }
 .rm-fail-info { color: var(--ui-link); font-size: 0.82rem; margin-top: 0.8rem; }
 
 .rm-uncertain-box {
-  background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.25);
+  background: var(--ui-warning-bg); border: 1px solid var(--ui-warning-bg);
   border-radius: var(--ui-radius); padding: 1.1rem; margin-bottom: 1rem;
 }
 .rm-uncertain-title {

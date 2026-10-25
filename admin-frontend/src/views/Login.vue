@@ -140,10 +140,10 @@ const handleLogin = async () => {
   color: var(--ui-danger);
   font-size: 0.9rem;
   text-align: center;
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--ui-danger-bg);
   padding: 10px;
   border-radius: var(--ui-radius);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  border: 1px solid var(--ui-danger-bg);
 }
 
 .submit-btn {

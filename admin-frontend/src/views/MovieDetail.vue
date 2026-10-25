@@ -671,8 +671,8 @@ const handleAdminDelete = async () => {
   font-weight: 600;
   font-size: 0.9rem;
   padding: 12px 16px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: var(--ui-danger-bg);
+  border: 1px solid var(--ui-danger-bg);
   border-radius: var(--ui-radius);
   text-align: center;
 }
@@ -782,9 +782,9 @@ const handleAdminDelete = async () => {
   font-weight: 600;
   text-transform: uppercase;
 }
-.badge-green { background: rgba(74, 222, 128, 0.2); color: var(--ui-success); }
-.badge-red { background: rgba(239, 68, 68, 0.2); color: var(--ui-danger); }
-.badge-yellow { background: rgba(250, 204, 21, 0.2); color: var(--ui-warning); }
+.badge-green { background: var(--ui-success-bg); color: var(--ui-success); }
+.badge-red { background: var(--ui-danger-bg); color: var(--ui-danger); }
+.badge-yellow { background: var(--ui-warning-bg); color: var(--ui-warning); }
 .badge-purple { background: var(--ui-raised); color: var(--ui-link); }
 .badge-blue { background: var(--ui-raised); color: var(--ui-link); }
 .error-msg { color: var(--ui-danger); }
@@ -1044,13 +1044,13 @@ const handleAdminDelete = async () => {
 
 /* Admin Delete button */
 .admin-delete-btn {
-  background: rgba(239, 68, 68, 0.1) !important;
-  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  background: var(--ui-danger-bg) !important;
+  border: 1px solid var(--ui-danger-bg) !important;
   color: var(--ui-danger) !important;
 }
 
 .admin-delete-btn:hover {
-  background: rgba(239, 68, 68, 0.2) !important;
+  background: var(--ui-danger-bg) !important;
   border-color: rgba(239, 68, 68, 0.5) !important;
   color: var(--ui-danger) !important;
 }
@@ -1064,8 +1064,8 @@ const handleAdminDelete = async () => {
   display: flex;
   gap: 16px;
   align-items: flex-start;
-  background: rgba(239, 68, 68, 0.06);
-  border: 1px solid rgba(239, 68, 68, 0.15);
+  background: var(--ui-danger-bg);
+  border: 1px solid var(--ui-danger-bg);
   border-radius: var(--ui-radius);
   padding: 16px;
   margin-bottom: 20px;

@@ -9,6 +9,8 @@ const router = useRouter()
 const mobileNavOpen = ref(false)
 watch(() => route.fullPath, () => { mobileNavOpen.value = false })
 
+const pageNames: Record<string, string> = {'dashboard':'Обзор','movies':'Фильмы','metadata':'Метаданные','series':'Сериалы','movie-detail':'Карточка фильма','series-detail':'Карточка сериала','ad-studio':'Ad Studio','audience':'Пользователи и развитие','telegram':'Telegram-источники','security-center':'Security Center','account-security':'Безопасность аккаунта','media-nodes':'Медиа-ноды','media-node-detail':'Медиа-нода','media-sessions':'Медиа-сессии','media-session-detail':'Медиа-сессия','media-infrastructure':'Мониторинг','system':'Состояние системы','domains':'Домены','comments':'Комментарии','without-poster':'Без постера','blocked':'Заблокировано','garbage':'Корзина','series-garbage':'Корзина сериалов','descriptions':'Описания'}
+const pageName = computed(() => pageNames[String(route.name)] || 'Управление')
 const isLoginPage = computed(() => route.name === 'login')
 
 const logout = async () => {
@@ -178,6 +180,7 @@ const logout = async () => {
       </div>
     </aside>
     <main id="admin-main" tabindex="-1" class="main-content">
+      <div class="workspace-bar"><div class="workspace-crumb"><span>KINOSOTA</span><span aria-hidden="true">/</span><strong>{{ pageName }}</strong></div><span class="workspace-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Панель администратора</span></div>
       <router-view />
     </main>
   </div>

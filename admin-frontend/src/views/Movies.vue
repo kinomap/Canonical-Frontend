@@ -417,12 +417,12 @@ select {
 }
 
 .error-msg {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--ui-danger-bg);
   color: var(--ui-danger);
   padding: 12px;
   border-radius: var(--ui-radius);
   margin-bottom: 16px;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  border: 1px solid var(--ui-danger-bg);
 }
 
 .badge {
@@ -439,10 +439,10 @@ select {
   color: var(--ui-text);
 }
 
-.badge-green { background: rgba(74, 222, 128, 0.2); color: var(--ui-success); }
-.badge-red { background: rgba(220, 38, 38, 0.15); color: var(--ui-danger); }
+.badge-green { background: var(--ui-success-bg); color: var(--ui-success); }
+.badge-red { background: var(--ui-danger-bg); color: var(--ui-danger); }
 .badge-purple { background: var(--ui-raised); color: var(--ui-link); }
-.badge-yellow { background: rgba(250, 204, 21, 0.2); color: var(--ui-warning); }
+.badge-yellow { background: var(--ui-warning-bg); color: var(--ui-warning); }
 
 .pagination {
   display: flex;
@@ -516,13 +516,13 @@ select {
 }
 
 .btn-poster {
-  background-color: rgba(74, 222, 128, 0.1);
+  background-color: var(--ui-success-bg);
   color: var(--ui-success);
-  border: 1px solid rgba(74, 222, 128, 0.2);
+  border: 1px solid var(--ui-success-bg);
 }
 
 .btn-poster:hover {
-  background-color: rgba(74, 222, 128, 0.2);
+  background-color: var(--ui-success-bg);
 }
 
 .btn-movie {

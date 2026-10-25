@@ -373,12 +373,12 @@ onMounted(() => { fetchSeriesDetail() })
 
 .source-channel {
   color: var(--ui-link);
-  font-family: monospace;
+  font-family:var(--ui-font);
 }
 
 .source-msg {
   color: var(--ui-link);
-  font-family: monospace;
+  font-family:var(--ui-font);
 }
 
 .source-size {
@@ -395,7 +395,7 @@ onMounted(() => { fetchSeriesDetail() })
 }
 
 .source-status.available, .source-status.ACTIVE {
-  background: rgba(74, 222, 128, 0.2);
+  background: var(--ui-success-bg);
   color: var(--ui-success);
 }
 
@@ -418,8 +418,8 @@ onMounted(() => { fetchSeriesDetail() })
   letter-spacing: 0.05em;
 }
 
-.badge-green { background: rgba(74, 222, 128, 0.2); color: var(--ui-success); }
-.badge-red { background: rgba(239, 68, 68, 0.2); color: var(--ui-danger); }
+.badge-green { background: var(--ui-success-bg); color: var(--ui-success); }
+.badge-red { background: var(--ui-danger-bg); color: var(--ui-danger); }
 
 .loading-state {
   text-align: center;
@@ -442,10 +442,10 @@ onMounted(() => { fetchSeriesDetail() })
 }
 
 .error-msg {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--ui-danger-bg);
   color: var(--ui-danger);
   padding: 12px;
   border-radius: var(--ui-radius);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  border: 1px solid var(--ui-danger-bg);
 }
 </style>

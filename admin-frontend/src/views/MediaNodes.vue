@@ -252,8 +252,8 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .mn-btn-primary:hover:not(:disabled) { background: var(--k-accent-hover); }
 .mn-btn-secondary { background: var(--ui-raised); border-color: var(--k-border-strong); color: var(--k-text-secondary); }
 .mn-btn-secondary:hover:not(:disabled) { background: var(--ui-raised); }
-.mn-btn-danger { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.35); color: var(--ui-danger); }
-.mn-btn-danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.2); }
+.mn-btn-danger { background: var(--ui-danger-bg); border-color: rgba(239, 68, 68, 0.35); color: var(--ui-danger); }
+.mn-btn-danger:hover:not(:disabled) { background: var(--ui-danger-bg); }
 .mn-btn-sm { padding: 0.3rem 0.65rem; font-size: 12px; font-weight: 500; border-radius: var(--ui-radius); }
 .mn-link { background: none; border: none; color: var(--k-info); padding: 0 0 0 6px; font-weight: 600; }
 
@@ -268,9 +268,9 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 @keyframes mn-spin { to { transform: rotate(360deg); } }
 
 .mn-banner { padding: 0.7rem 1rem; border-radius: var(--k-radius); font-size: 0.85rem; margin-bottom: 0.9rem; border: 1px solid var(--k-border); }
-.mn-banner-ok { background: rgba(34, 197, 94, 0.08); border-color: rgba(34, 197, 94, 0.3); color: var(--ui-success); }
-.mn-banner-bad { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.3); color: var(--ui-danger); }
-.mn-banner-warn { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.3); color: var(--ui-warning); }
+.mn-banner-ok { background: var(--ui-success-bg); border-color: var(--ui-success-bg); color: var(--ui-success); }
+.mn-banner-bad { background: var(--ui-danger-bg); border-color: var(--ui-danger-bg); color: var(--ui-danger); }
+.mn-banner-warn { background: var(--ui-warning-bg); border-color: var(--ui-warning-bg); color: var(--ui-warning); }
 
 .mn-table { background: var(--k-surface-muted); border: 1px solid var(--k-border); border-radius: var(--k-radius-lg); overflow: hidden; }
 .mn-row {
@@ -292,11 +292,11 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .mn-reasons { margin: 2px 0 0; padding-left: 1rem; width: 100%; color: var(--k-text-muted); font-size: 12px; line-height: 1.4; }
 
 .mn-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: 0.03em; border: 1px solid transparent; }
-.st-ok { background: rgba(34, 197, 94, 0.12); color: var(--ui-success); border-color: rgba(34, 197, 94, 0.3); }
+.st-ok { background: var(--ui-success-bg); color: var(--ui-success); border-color: var(--ui-success-bg); }
 .st-info { background: var(--ui-raised); color: var(--ui-link); border-color: var(--ui-border); }
-.st-warn { background: rgba(245, 158, 11, 0.12); color: var(--ui-warning); border-color: rgba(245, 158, 11, 0.3); }
+.st-warn { background: var(--ui-warning-bg); color: var(--ui-warning); border-color: var(--ui-warning-bg); }
 .st-off { background: var(--ui-raised); color: var(--ui-link); border-color: var(--ui-border); }
-.st-bad { background: rgba(239, 68, 68, 0.12); color: var(--ui-danger); border-color: rgba(239, 68, 68, 0.3); }
+.st-bad { background: var(--ui-danger-bg); color: var(--ui-danger); border-color: var(--ui-danger-bg); }
 .st-unknown { background: var(--ui-raised); color: var(--ui-secondary); border-color: var(--ui-border); }
 
 .mn-overlay { position: fixed; inset: 0; background: var(--ui-surface); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }

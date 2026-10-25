@@ -583,7 +583,7 @@ onMounted(() => {
 .channel-name { font-weight: 600; color: var(--ui-text); font-size: 0.95rem; }
 .channel-id { font-size: 0.8rem; color: var(--ui-link); }
 .status-badge { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: var(--ui-radius); text-transform: uppercase; }
-.badge-active { background: rgba(52, 211, 153, 0.15); color: var(--ui-success); }
+.badge-active { background: var(--ui-success-bg); color: var(--ui-success); }
 .badge-disabled { background: var(--ui-raised); color: var(--ui-link); }
 
 .type-badge { font-size: 12px; font-weight: 800; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.5px; }
@@ -600,8 +600,8 @@ onMounted(() => {
 .error-text { color: var(--ui-danger); max-width: 200px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .test-result { margin: 0 16px 12px; padding: 8px 12px; border-radius: var(--ui-radius); font-size: 0.8rem; }
-.test-ok { background: rgba(52, 211, 153, 0.1); color: var(--ui-success); }
-.test-fail { background: rgba(248, 113, 113, 0.1); color: var(--ui-danger); }
+.test-ok { background: var(--ui-success-bg); color: var(--ui-success); }
+.test-fail { background: var(--ui-danger-bg); color: var(--ui-danger); }
 
 .card-actions-polished { display: flex; gap: 8px; padding: 16px; border-top: 1px solid var(--ui-border); background: rgba(0,0,0,0.1); align-items: center; }
 .primary-act-btn, .secondary-act-btn { flex: 1; padding: 8px 12px; border: none; border-radius: var(--ui-radius); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px; }
@@ -620,7 +620,7 @@ onMounted(() => {
 .menu-item:hover { background: var(--ui-raised); color:var(--ui-text); }
 .menu-divider { height: 1px; background: var(--ui-raised); margin: 4px 0; color:var(--ui-text); }
 .text-danger { color: var(--ui-danger) !important; }
-.text-danger:hover { color: var(--ui-danger); background: rgba(239, 68, 68, 0.1); }
+.text-danger:hover { color: var(--ui-danger); background: var(--ui-danger-bg); }
 
 /* Modal Styles */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--ui-surface); backdrop-filter: none; display: flex; align-items: center; justify-content: center; z-index: 100; }
@@ -665,5 +665,5 @@ onMounted(() => {
 .modal-confirm p { margin: 0 0 20px; color: var(--ui-link); font-size: 0.875rem; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .btn-cancel-confirm { padding: 8px 16px; background: transparent; border: 1px solid var(--ui-control); color: var(--ui-link); border-radius: var(--ui-radius); cursor: pointer; }
-.btn-delete-confirm { padding: 8px 20px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--ui-danger); border-radius: var(--ui-radius); cursor: pointer; font-weight: 700; }
+.btn-delete-confirm { padding: 8px 20px; background: var(--ui-danger-bg); border: 1px solid var(--ui-danger-bg); color: var(--ui-danger); border-radius: var(--ui-radius); cursor: pointer; font-weight: 700; }
 </style>

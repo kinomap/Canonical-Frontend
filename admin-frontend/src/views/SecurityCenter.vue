@@ -336,9 +336,9 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); stopRu
 .sc-btn { background: var(--ui-primary); color: var(--ui-on-primary); border: 0; border-radius: var(--ui-radius); padding: 8px 14px; font-weight: 600; cursor: pointer; }
 .sc-btn:disabled { opacity: .5; cursor: default; }
 .sc-btn.ghost { background: transparent; color: var(--ui-link); border: 1px solid var(--ui-control); padding: 5px 10px; }
-.sc-error { background: rgba(239,68,68,.12); color: var(--ui-danger); padding: 10px 12px; border-radius: var(--ui-radius); margin-bottom: 10px; }
+.sc-error { background: var(--ui-danger-bg); color: var(--ui-danger); padding: 10px 12px; border-radius: var(--ui-radius); margin-bottom: 10px; }
 .sc-info { color: var(--ui-link); margin-bottom: 10px; }
-.sc-warn { background: rgba(245,158,11,.1); color: var(--ui-warning); padding: 10px 12px; border-radius: var(--ui-radius); margin-bottom: 12px; font-size: 13px; }
+.sc-warn { background: var(--ui-warning-bg); color: var(--ui-warning); padding: 10px 12px; border-radius: var(--ui-radius); margin-bottom: 12px; font-size: 13px; }
 .sc-loading { color: var(--ui-link); }
 .sc-progress { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; font-size: 12px; }
 .prog-item { padding: 2px 8px; border-radius: var(--ui-radius); background: var(--ui-raised); }
@@ -364,7 +364,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); stopRu
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th { text-align: left; color: var(--ui-link); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--ui-control); white-space: nowrap; }
 .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--ui-border); vertical-align: top; }
-.row-bad td { background: rgba(239,68,68,.08); }
+.row-bad td { background: var(--ui-danger-bg); }
 .chk { display: inline-flex; gap: 6px; margin-bottom: 8px; font-size: 13px; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .filters select { background: var(--ui-bg); color: var(--ui-text); border: 1px solid var(--ui-control); border-radius: var(--ui-radius); padding: 5px 8px; }

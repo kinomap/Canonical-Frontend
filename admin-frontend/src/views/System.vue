@@ -347,9 +347,9 @@ onMounted(() => { fetchSystemStatus() })
   letter-spacing: 0.05em;
 }
 
-.badge-ok { background: rgba(74, 222, 128, 0.15); color: var(--ui-success); }
-.badge-error { background: rgba(239, 68, 68, 0.15); color: var(--ui-danger); }
-.badge-warn { background: rgba(250, 204, 21, 0.15); color: var(--ui-warning); }
+.badge-ok { background: var(--ui-success-bg); color: var(--ui-success); }
+.badge-error { background: var(--ui-danger-bg); color: var(--ui-danger); }
+.badge-warn { background: var(--ui-warning-bg); color: var(--ui-warning); }
 .badge-unknown { background: var(--ui-raised); color: var(--ui-link); }
 
 .card-unavailable {

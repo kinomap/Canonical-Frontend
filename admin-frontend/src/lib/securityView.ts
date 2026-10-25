@@ -46,16 +46,16 @@ export interface SourceMeta {
 export interface StateMeta { label: string; icon: string; color: string; bg: string }
 
 const STATES: Record<string, StateMeta> = {
-  HEALTHY: { label: 'Healthy', icon: '✓', color: '#22c55e', bg: 'rgba(34,197,94,.12)' },
-  PASS: { label: 'Pass', icon: '✓', color: '#22c55e', bg: 'rgba(34,197,94,.12)' },
-  DEGRADED: { label: 'Degraded', icon: '!', color: '#f59e0b', bg: 'rgba(245,158,11,.12)' },
-  CRITICAL: { label: 'Critical', icon: '✕', color: '#ef4444', bg: 'rgba(239,68,68,.14)' },
-  FAIL: { label: 'Fail', icon: '✕', color: '#ef4444', bg: 'rgba(239,68,68,.14)' },
-  UNKNOWN: { label: 'Unknown', icon: '?', color: '#94a3b8', bg: 'rgba(148,163,184,.12)' },
-  STALE: { label: 'Stale', icon: '⧖', color: '#a78bfa', bg: 'rgba(167,139,250,.12)' },
-  DISABLED: { label: 'Optional / Disabled', icon: '—', color: '#94a3b8', bg: 'rgba(148,163,184,.12)' },
-  MISSING: { label: 'Missing', icon: '∅', color: '#64748b', bg: 'rgba(100,116,139,.14)' },
-  UNAVAILABLE: { label: 'Unavailable', icon: '⊘', color: '#f97316', bg: 'rgba(249,115,22,.12)' },
+  HEALTHY: { label: 'Healthy', icon: '✓', color: 'var(--ui-success)', bg: 'var(--ui-success-bg)' },
+  PASS: { label: 'Pass', icon: '✓', color: 'var(--ui-success)', bg: 'var(--ui-success-bg)' },
+  DEGRADED: { label: 'Degraded', icon: '!', color: 'var(--ui-warning)', bg: 'var(--ui-warning-bg)' },
+  CRITICAL: { label: 'Critical', icon: '✕', color: 'var(--ui-danger)', bg: 'var(--ui-danger-bg)' },
+  FAIL: { label: 'Fail', icon: '✕', color: 'var(--ui-danger)', bg: 'var(--ui-danger-bg)' },
+  UNKNOWN: { label: 'Unknown', icon: '?', color: 'var(--ui-muted)', bg: 'var(--ui-raised)' },
+  STALE: { label: 'Stale', icon: '⧖', color: 'var(--ui-primary)', bg: 'var(--ui-active)' },
+  DISABLED: { label: 'Optional / Disabled', icon: '—', color: 'var(--ui-muted)', bg: 'var(--ui-raised)' },
+  MISSING: { label: 'Missing', icon: '∅', color: 'var(--ui-muted)', bg: 'var(--ui-raised)' },
+  UNAVAILABLE: { label: 'Unavailable', icon: '⊘', color: 'var(--ui-warning)', bg: 'var(--ui-warning-bg)' },
 }
 
 export function stateMeta(state: string | null | undefined): StateMeta {
@@ -63,14 +63,14 @@ export function stateMeta(state: string | null | undefined): StateMeta {
 }
 
 export const SEVERITY_COLORS: Record<string, string> = {
-  CRITICAL: '#ef4444', HIGH: '#f97316', MEDIUM: '#f59e0b', LOW: '#94a3b8', INFO: '#64748b',
+  CRITICAL: 'var(--ui-danger)', HIGH: 'var(--ui-warning)', MEDIUM: 'var(--ui-warning)', LOW: 'var(--ui-muted)', INFO: 'var(--ui-muted)',
 }
 
 export const TRAFFIC_STYLES: Record<string, { color: string; dash: string; width: number; label: string }> = {
-  public: { color: '#38bdf8', dash: '', width: 2, label: 'Public' },
-  private_control: { color: '#818cf8', dash: '6 4', width: 2, label: 'Private control (WireGuard / Docker)' },
-  direct_media: { color: '#34d399', dash: '', width: 3.5, label: 'Direct media (client → node)' },
-  forbidden: { color: '#ef4444', dash: '2 5', width: 1.5, label: 'Must NOT exist (probed)' },
+  public: { color: '#0369a1', dash: '', width: 2, label: 'Public' },
+  private_control: { color: 'var(--ui-primary)', dash: '6 4', width: 2, label: 'Private control (WireGuard / Docker)' },
+  direct_media: { color: 'var(--ui-success)', dash: '', width: 3.5, label: 'Direct media (client → node)' },
+  forbidden: { color: 'var(--ui-danger)', dash: '2 5', width: 1.5, label: 'Must NOT exist (probed)' },
 }
 
 export const LAYERS = ['external', 'edge', 'control', 'private', 'media'] as const

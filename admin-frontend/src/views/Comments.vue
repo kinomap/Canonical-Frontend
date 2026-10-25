@@ -473,7 +473,7 @@ onMounted(() => {
 .text-danger { color: var(--ui-danger) !important; }
 .text-danger:hover {
   color: var(--ui-danger);
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--ui-danger-bg);
 }
 
 .status-pill {
@@ -483,7 +483,7 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.visible-pill { background: rgba(74, 222, 128, 0.15); color: var(--ui-success); }
+.visible-pill { background: var(--ui-success-bg); color: var(--ui-success); }
 .hidden-pill { background: var(--ui-raised); color: var(--ui-link); }
 
 .pagination {
@@ -547,8 +547,8 @@ onMounted(() => {
 
 .btn-delete-confirm {
   padding: 8px 20px;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: var(--ui-danger-bg);
+  border: 1px solid var(--ui-danger-bg);
   color: var(--ui-danger);
   border-radius: var(--ui-radius);
   cursor: pointer;
@@ -557,5 +557,5 @@ onMounted(() => {
   transition: all 0.15s;
 }
 
-.btn-delete-confirm:hover { background: rgba(239, 68, 68, 0.25); }
+.btn-delete-confirm:hover { background: var(--ui-danger-bg); }
 </style>
