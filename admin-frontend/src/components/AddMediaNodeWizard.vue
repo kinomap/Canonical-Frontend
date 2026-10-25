@@ -37,21 +37,30 @@ const identityVerified = ref(false)
 const identityChecking = ref(false)
 const identityError = ref('')
 const deploymentError = ref('')
+let identityGeneration = 0
+let disposed = false
 watch([host, sshPort, hostFingerprint], () => {
+  identityGeneration += 1
   identityVerified.value = false
   identityError.value = ''
-})
+}, { flush: 'sync' })
 async function verifyIdentity() {
+  if (identityChecking.value || disposed) return
+  const generation = ++identityGeneration
   identityVerified.value = false
   identityChecking.value = true
   identityError.value = ''
   const target = { host: canonicalizeHost(host.value), port: sshPort.value, fingerprint: hostFingerprint.value.trim() }
   try {
-    const resp = await axios.post('/api/v1/admin/media/nodes/ssh/verify', target, auth())
-    if (target.host === canonicalizeHost(host.value) && target.port === sshPort.value && target.fingerprint === hostFingerprint.value.trim()) {
+    const resp = await axios.post('/api/v1/admin/media/nodes/ssh/verify', target, { ...auth(), timeout: 15000 })
+    if (!disposed && generation === identityGeneration && target.host === canonicalizeHost(host.value) && target.port === sshPort.value && target.fingerprint === hostFingerprint.value.trim()) {
       identityVerified.value = resp.data.verified === true
+      if (!identityVerified.value) identityError.value = 'Сервер не подтвердил совпадение отпечатка. Установка не запущена.'
+    } else if (!disposed) {
+      identityError.value = 'Адрес или отпечаток изменился во время проверки. Повторите проверку для текущего VPS.'
     }
   } catch (err: any) {
+    if (disposed) return
     identityError.value = typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Не удалось проверить ключ сервера. Проверьте адрес, порт и SHA256-отпечаток.'
   } finally { identityChecking.value = false }
 }
@@ -89,7 +98,18 @@ const canGoStep2 = computed(() => {
   return nodeName.value.trim() && host.value.trim() && !validateHost(host.value) && Number.isInteger(sshPort.value) && sshPort.value > 0 && sshPort.value <= 65535 && /^[a-zA-Z_][a-zA-Z0-9_.-]{0,63}[$]?$/.test(sshUsername.value)
 })
 const canGoStep3 = computed(() => Boolean(selectedVersion.value))
-const canDeploy = computed(() => Boolean(identityVerified.value && canGoStep2.value && selectedVersion.value && sshPrivateKey.value.trim().length > 50))
+const fingerprintValid = computed(() => /^SHA256:[A-Za-z0-9+/]{43}=?$/.test(hostFingerprint.value.trim()))
+const keyEntered = computed(() => sshPrivateKey.value.trim().length > 50)
+const releaseSelected = computed(() => releases.value.some(r => r.version === selectedVersion.value && r.commit))
+const deploymentBlockers = computed(() => [
+  !canGoStep2.value ? 'Проверьте название узла, адрес VPS, SSH-порт и пользователя на шаге 1.' : '',
+  !releaseSelected.value ? 'Выберите доступный релиз на шаге 2.' : '',
+  !fingerprintValid.value ? 'Введите полный SHA256-отпечаток сервера из консоли хостера.' : '',
+  !keyEntered.value ? 'Вставьте полный приватный SSH-ключ для входа на этот VPS.' : '',
+].filter(Boolean))
+const canStartDeploy = computed(() => deploymentBlockers.value.length === 0 && !identityChecking.value && !deploying.value)
+// Final trust gate: no node writes before successful identity verification.
+const canDeploy = computed(() => Boolean(identityVerified.value && deploymentBlockers.value.length === 0))
 
 async function loadReleases() {
   loadingReleases.value = true
@@ -120,8 +140,10 @@ async function goToStep2() {
 }
 
 async function startDeploy() {
-  if (!canDeploy.value || deploying.value) return
+  if (!canStartDeploy.value || disposed) return
   deploymentError.value = ''
+  if (!identityVerified.value) await verifyIdentity()
+  if (disposed || !canDeploy.value || deploying.value) return
   deploying.value = true
   step.value = 4
 
@@ -215,6 +237,8 @@ async function pollDeployment(nodeId: string) {
 }
 
 onUnmounted(() => {
+  disposed = true
+  identityGeneration += 1
   if (pollInterval) clearInterval(pollInterval)
   sshPrivateKey.value = ''
 })
@@ -337,7 +361,7 @@ function stageClass(stage: string): string {
 
       <!-- Step 3: SSH Key & Deploy -->
       <div v-if="step === 3" class="wizard-body">
-        <h3>SSH Access</h3>
+        <h3>SSH-доступ и запуск</h3>
         <p class="wiz-hint">Paste the SSH private key for <strong>{{ sshUsername }}@{{ host }}</strong>.
           It is used only for this deployment and never stored.</p>
         <section class="identity-check" aria-label="Проверка ключа сервера">
@@ -360,10 +384,19 @@ function stageClass(stage: string): string {
 ...
 -----END RSA PRIVATE KEY-----" spellcheck="false" />
         </label>
+        <section id="deployment-readiness" class="deployment-readiness" aria-live="polite" :aria-busy="identityChecking">
+          <strong>{{ identityChecking ? 'Проверяем подлинность VPS… Установка ещё не началась.' : 'Готовность к запуску' }}</strong>
+          <p :class="{ 'identity-ok': identityVerified }">{{ identityVerified ? '✓ Личность VPS подтверждена' : '○ Личность VPS будет проверена перед установкой' }}</p>
+          <p :class="{ 'identity-ok': keyEntered }">{{ keyEntered ? '✓ SSH-ключ введён · доступ проверится при подключении' : '○ Приватный SSH-ключ ещё не введён полностью' }}</p>
+          <ul v-if="deploymentBlockers.length" class="readiness-blockers">
+            <li v-for="reason in deploymentBlockers" :key="reason">{{ reason }}</li>
+          </ul>
+          <p v-else-if="!identityChecking">{{ identityVerified ? 'Можно запускать установку.' : 'Нажмите кнопку ниже: сначала проверим ключ сервера. При несовпадении установка не запустится.' }}</p>
+        </section>
         <div class="wizard-actions">
-          <button @click="step = 2">← Back</button>
-          <button :disabled="!canDeploy" class="btn-primary btn-deploy" @click="startDeploy">
-            🚀 Deploy
+          <button :disabled="identityChecking || deploying" @click="step = 2">← Назад</button>
+          <button :disabled="!canStartDeploy" :aria-busy="identityChecking" aria-describedby="deployment-readiness" class="btn-primary btn-deploy" @click="startDeploy">
+            {{ identityChecking ? 'Проверяем VPS…' : identityVerified ? 'Развернуть Media Node' : 'Проверить VPS и развернуть' }}
           </button>
         </div>
       </div>
@@ -406,6 +439,11 @@ function stageClass(stage: string): string {
 </template>
 
 <style scoped>
+.deployment-readiness { margin-top: 20px; padding: 16px; border: 1px solid var(--k-border-strong, var(--ui-border)); border-radius: 10px; background: var(--k-surface, var(--ui-raised)); }
+.deployment-readiness p { margin: 10px 0 0; line-height: 1.5; }
+.readiness-blockers { margin: 12px 0 0; padding-left: 20px; color: var(--ui-warning, #fbbf24); line-height: 1.6; }
+.wizard-modal .btn-deploy:disabled { background: var(--k-surface, var(--ui-raised)); color: var(--k-text-secondary, var(--ui-muted)); border-color: var(--k-border-strong, var(--ui-border)); opacity: .65; box-shadow: none; cursor: not-allowed; }
+
 .wizard-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.6); z-index: 1000;
