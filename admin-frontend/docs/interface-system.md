@@ -34,3 +34,6 @@ Browser QA must cover every main route at desktop and mobile sizes, plus payment
 and security tabs, upload/source dialogs, password visibility and ad playback.
 Read-only checks must not submit settings, remove creatives, rotate credentials,
 or change infrastructure. Never place QA JWTs or private screenshots in Git.
+
+## Dark palette revision
+User-approved geometry is unchanged. Dark navy canvas, slate panels, recessed dark fields, bright neutral text and semantic tinted statuses. Decorative gradients removed; restrained black elevation shadows. Admin-only color-scheme: dark; public theme unchanged.

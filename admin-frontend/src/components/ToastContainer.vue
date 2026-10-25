@@ -32,8 +32,8 @@ import { toasts } from '../toast'
   min-width: 250px;
 }
 
-.toast-success { background: var(--ui-success-bg); color:var(--ui-success);border:1px solid #a7f3d0; }
-.toast-error { background: var(--ui-danger-bg); color:var(--ui-danger);border:1px solid #fecdd3; }
+.toast-success { background: var(--ui-success-bg); color:var(--ui-success);border:1px solid #32755e; }
+.toast-error { background: var(--ui-danger-bg); color:var(--ui-danger);border:1px solid #8c4c60; }
 .toast-info { background: var(--ui-primary); color: var(--ui-on-primary); }
 
 .toast-enter-active,
