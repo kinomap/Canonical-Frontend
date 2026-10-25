@@ -10,11 +10,12 @@ const collections = ref<HomeCollections | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
-// New-movie notification
-const newMovieCount = ref(0)
+// Background catalog refresh: no notification or user confirmation.
 const knownTotal = ref<number | null>(null)
 const knownLatest = ref<string | null>(null)
-const showNewBanner = ref(false)
+let checking = false
+let disposed = false
+let initialReady = false
 
 const hasAnyMovies = computed(() => {
   if (!collections.value) return false
@@ -36,55 +37,52 @@ async function loadHome(silent = false) {
     error.value = null
   }
   try {
-    const data = await apiClient.getHomeCollections()
+    const data = await apiClient.getHomeCollections(silent)
+    if (disposed) return false
     collections.value = data
-    
-    // We update the baseline from the checkLatest response later, but let's initialize if empty
-    if (knownTotal.value === null && data.newest) {
-      // It's hard to get true "total" from home collections alone, so we'll rely on checkLatest
-      checkForNewMovies(true) // init baseline silently
-    }
+    return true
   } catch (err: any) {
-    if (!silent && !collections.value) {
+    if (!disposed && !silent && !collections.value) {
       error.value = err?.message ?? 'Не удалось загрузить каталог'
     }
+    return false
   } finally {
-    loading.value = false
+    if (!disposed) loading.value = false
   }
 }
 
 // ── Smart refresh (latest-check) ──────────────────────────────────────────────
 async function checkForNewMovies(initOnly = false) {
-  if (document.hidden && !initOnly) return
+  if (disposed || checking || (document.hidden && !initOnly)) return
+  checking = true
   try {
     const check = await apiClient.checkLatest()
+    if (disposed) return
     if (initOnly) {
       knownTotal.value = check.total
       knownLatest.value = check.latest_created_at
       return
     }
-
-    if (knownTotal.value !== null) {
-      const diff = check.total - knownTotal.value
-      if (diff > 0) {
-        newMovieCount.value = diff
-        showNewBanner.value = true
-      }
-    } else {
+    if (document.hidden) return
+    const changed = knownTotal.value === null || check.total !== knownTotal.value || check.latest_created_at !== knownLatest.value
+    // Keep the current rails mounted, without a loader, scrolling or toasts.
+    // Advance the baseline only after successful refresh, so failures retry.
+    if (changed && !(await loadHome(true))) return
+    if (!disposed) {
       knownTotal.value = check.total
+      knownLatest.value = check.latest_created_at
     }
-    
-    // Update latest timestamp
-    knownLatest.value = check.latest_created_at
   } catch {
-    // Silent
+    // Background failures never interrupt the viewer or clear existing movies.
+  } finally {
+    checking = false
   }
 }
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null
 
 function startRefresh() {
-  if (refreshInterval) return
+  if (disposed || document.hidden || refreshInterval) return
   refreshInterval = setInterval(() => checkForNewMovies(), 60_000)
 }
 
@@ -96,6 +94,7 @@ function stopRefresh() {
 }
 
 function handleVisibilityChange() {
+  if (!initialReady || disposed) return
   if (!document.hidden) {
     checkForNewMovies()
     startRefresh()
@@ -104,29 +103,19 @@ function handleVisibilityChange() {
   }
 }
 
-// ── Show new movies ───────────────────────────────────────────────────────────
-async function showNewMovies() {
-  showNewBanner.value = false
-  knownTotal.value = knownTotal.value! + newMovieCount.value
-  newMovieCount.value = 0
-  await loadHome(true) // silently reload the page to get newest movies
-  window.scrollTo({ top: 0, behavior: 'smooth' })
-}
-
-function dismissBanner() {
-  showNewBanner.value = false
-  knownTotal.value = knownTotal.value! + newMovieCount.value
-  newMovieCount.value = 0
-}
-
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  await loadHome()
-  startRefresh()
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  const baseline = checkForNewMovies(true)
+  await loadHome()
+  await baseline
+  if (disposed) return
+  initialReady = true
+  startRefresh()
 })
 
 onUnmounted(() => {
+  disposed = true
   stopRefresh()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
@@ -134,20 +123,6 @@ onUnmounted(() => {
 
 <template>
   <div class="catalog-page">
-    <!-- New-movie notification banner -->
-    <Transition name="slide-down">
-      <div v-if="showNewBanner" class="new-movie-banner" role="alert">
-        <span class="banner-icon">🎬</span>
-        <span class="banner-text">
-          {{ newMovieCount === 1 ? 'Добавлен новый фильм' : `Добавлено новых фильмов: ${newMovieCount}` }}
-        </span>
-        <button class="banner-show-btn" @click="showNewMovies">{{ t("Показать") }}</button>
-        <button class="banner-close-btn" :aria-label="t('Закрыть')" @click="dismissBanner">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-    </Transition>
-
     <!-- Header -->
     <div class="catalog-header">
       <h1 class="catalog-title">
@@ -216,66 +191,6 @@ onUnmounted(() => {
   max-width: var(--page-frame-max);
   margin: 0 auto;
   box-sizing: border-box;
-}
-
-/* ── New movie banner ──────────────────────────────────────────────────────── */
-.new-movie-banner {
-  position: sticky;
-  top: 72px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: linear-gradient(135deg, #1a3a2a 0%, #14532d 100%);
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  border-radius: var(--ui-radius);
-  padding: 12px 16px;
-  margin-bottom: 24px;
-  box-shadow: none;
-}
-
-.banner-icon { font-size: 1.2rem; flex-shrink: 0; }
-.banner-text { color: var(--ui-success); font-size: 0.95rem; font-weight: 500; flex: 1; }
-
-.banner-show-btn {
-  background: rgba(52, 211, 153, 0.2);
-  border: 1px solid rgba(52, 211, 153, 0.5);
-  color: var(--ui-success);
-  padding: 6px 14px;
-  border-radius: var(--ui-radius);
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-  white-space: nowrap;
-}
-
-.banner-show-btn:hover {
-  background: rgba(52, 211, 153, 0.3);
-}
-
-.banner-close-btn {
-  background: none;
-  border: none;
-  color: var(--ui-success);
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  opacity: 0.7;
-  transition: opacity 0.15s;
-  flex-shrink: 0;
-}
-
-.banner-close-btn:hover { opacity: 1; }
-
-/* ── Banner animation ──────────────────────────────────────────────────────── */
-.slide-down-enter-active { animation: slideDown 0.3s ease; }
-.slide-down-leave-active { animation: slideDown 0.2s ease reverse; }
-
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-12px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Catalog header ────────────────────────────────────────────────────────── */

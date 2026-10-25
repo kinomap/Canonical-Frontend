@@ -157,7 +157,8 @@ export const apiClient = {
     return request<PaginatedMovies>(`/movies${queryStr}`, { signal }, 15_000)
   },
 
-  async getHomeCollections(): Promise<HomeCollections> {
+  async getHomeCollections(refresh = false): Promise<HomeCollections> {
+    if (refresh) memoryCache.delete('/movies/home')
     return request<HomeCollections>('/movies/home', undefined, 30_000)
   },
 
