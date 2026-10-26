@@ -1,5 +1,5 @@
 # Private Admin assets; expose only through the Backend's WG gateway.
-FROM node:24-alpine AS admin-builder
+FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS admin-builder
 ARG VITE_ADMIN_BASE_PATH=/admin/
 ENV VITE_ADMIN_BASE_PATH=${VITE_ADMIN_BASE_PATH}
 WORKDIR /app
@@ -9,7 +9,7 @@ COPY design-system/ /design-system/
 COPY admin-frontend/ ./
 RUN npm run build
 
-FROM nginx:alpine AS admin-runtime
+FROM nginx:alpine@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3 AS admin-runtime
 ARG GIT_COMMIT_SHA
 LABEL org.opencontainers.image.revision=${GIT_COMMIT_SHA}
 LABEL io.kinosota.role=private-admin

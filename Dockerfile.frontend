@@ -1,25 +1,25 @@
 # Stage 1: Build Public Frontend
-FROM node:20-alpine AS public-builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS public-builder
 WORKDIR /app
 COPY frontend/package*.json ./
-RUN npm ci || npm install
+RUN npm ci
 COPY design-system/ /design-system/
 COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build Admin Frontend
-FROM node:20-alpine AS admin-builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS admin-builder
 ARG VITE_ADMIN_BASE_PATH=/admin/
 ENV VITE_ADMIN_BASE_PATH=${VITE_ADMIN_BASE_PATH}
 WORKDIR /app
 COPY admin-frontend/package*.json ./
-RUN npm ci || npm install
+RUN npm ci
 COPY design-system/ /design-system/
 COPY admin-frontend/ ./
 RUN npm run build
 
 # Stage 3: Serve both with Nginx
-FROM nginx:alpine
+FROM nginx:alpine@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3
 ARG GIT_COMMIT_SHA=unknown
 LABEL org.opencontainers.image.revision=${GIT_COMMIT_SHA}
 ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
