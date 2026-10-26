@@ -9,6 +9,7 @@ import router, { getPendingNavigation } from './router'
 import { handleChunkLoadError } from './router/chunkReload'
 import './style.css'
 import './styles/pageFrame.css'
+import './styles/showcase.css'
 
 // Vite reports failed preloads of lazy chunks/CSS here (stale build after redeploy).
 // During a route navigation the error is left to propagate to router.onError, which

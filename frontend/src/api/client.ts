@@ -67,6 +67,8 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
+const revalidating = new Set<string>()
+const publicListing = (endpoint: string) => /^\/(?:movies(?:\/home)?|series(?:\/home)?|genres)(?:\?|$)/.test(endpoint)
 const memoryCache = new Map<string, { data: any; expiresAt: number }>()
 
 function getCached<T>(key: string): T | null {
@@ -91,6 +93,14 @@ async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 
   const isGet = !options || !options.method || options.method.toUpperCase() === 'GET'
 
   if (isGet && cacheTtlMs > 0) {
+    const stale = memoryCache.get(endpoint)
+    if (stale && stale.expiresAt <= Date.now() && stale.expiresAt + 60_000 > Date.now() && publicListing(endpoint)) {
+      if (!revalidating.has(endpoint)) {
+        revalidating.add(endpoint)
+        void request<T>(endpoint, options, -cacheTtlMs).catch(() => {}).finally(() => revalidating.delete(endpoint))
+      }
+      return stale.data as T
+    }
     const cached = getCached<T>(endpoint)
     if (cached !== null) {
       return cached
@@ -136,8 +146,8 @@ async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 
   }
 
   const resData = (await response.json()) as T
-  if (isGet && cacheTtlMs > 0) {
-    setCached(endpoint, resData, cacheTtlMs)
+  if (isGet && cacheTtlMs !== 0) {
+    setCached(endpoint, resData, Math.abs(cacheTtlMs))
   }
   return resData
 }

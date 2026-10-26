@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import UserAvatar from './UserAvatar.vue'
 import { t } from '@/i18n'
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { Home, Bell } from 'lucide-vue-next'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import SearchBar from '@/components/SearchBar.vue'
-import BrandLogo from '@/components/BrandLogo.vue'
+import BrandLogo from '@/components/CinemaBrand.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -13,6 +14,15 @@ const authStore = useAuthStore()
 
 const searchQuery = ref('')
 const mobileMenuOpen = ref(false)
+const desktopSearch = ref<InstanceType<typeof SearchBar> | null>(null)
+const mobileSearch = ref<InstanceType<typeof SearchBar> | null>(null)
+async function focusSearch() {
+ if (window.matchMedia('(max-width: 767px)').matches) { mobileMenuOpen.value=true; await nextTick(); mobileSearch.value?.focus() }
+ else desktopSearch.value?.focus()
+}
+function shortcut(event: KeyboardEvent) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase()==='k' && !event.altKey) {event.preventDefault();focusSearch()} }
+onMounted(()=>{window.addEventListener('keydown',shortcut);window.addEventListener('showcase:search',focusSearch)})
+onUnmounted(()=>{window.removeEventListener('keydown',shortcut);window.removeEventListener('showcase:search',focusSearch)})
 
 onMounted(() => {
   if (authStore.token.value && !authStore.user.value) {
@@ -36,6 +46,7 @@ function closeMobileMenu() {
 
 watch(route, () => {
   closeMobileMenu()
+  document.querySelectorAll('.app-header details[open]').forEach(item=>item.removeAttribute('open'))
 })
 </script>
 
@@ -49,38 +60,34 @@ watch(route, () => {
             <BrandLogo />
           </div>
           <div class="mobile-logo">
-            <BrandLogo compact />
+            <BrandLogo />
           </div>
         </router-link>
 
         <!-- Desktop Navigation Links -->
-        <nav class="desktop-nav">
-          <router-link to="/" class="nav-link" :class="{ active: route.path === '/' }">{{ t("Home") }}</router-link>
+        <nav class="desktop-nav" aria-label="Основная навигация">
+          <router-link to="/" class="nav-link" :class="{ active: route.path === '/' }"><Home :size="18" aria-hidden="true" />Главная</router-link>
           <router-link to="/movies" class="nav-link" :class="{ active: route.path.startsWith('/movies') }">{{ t("Movies") }}</router-link>
           <router-link to="/series" class="nav-link" :class="{ active: route.path.startsWith('/series') }">{{ t("Series") }}</router-link>
-          <router-link to="/genres" class="nav-link" :class="{ active: route.path === '/genres' }">{{ t("Genres") }}</router-link>
+          <details class="header-genres"><summary class="nav-link" :class="{active:route.path==='/genres'}">Жанры ▾</summary><div class="genre-dropdown"><router-link v-for="genre in [{name:'Боевик',slug:'boevik'},{name:'Комедия',slug:'komedija'},{name:'Фантастика',slug:'fantastika'},{name:'Ужасы',slug:'uzhasy'},{name:'Триллер',slug:'triller'}]" :key="genre.slug" :to="`/genres?genre=${genre.slug}`">{{genre.name}}</router-link><router-link to="/genres">Все жанры</router-link></div></details>
         </nav>
       </div>
 
       <!-- Right: Search & User Controls -->
       <div class="header-right">
         <div class="header-search">
-          <SearchBar
+          <SearchBar ref="desktopSearch"
             v-model="searchQuery"
-            :placeholder="t('Search movies...')"
+            placeholder="Поиск фильмов, сериалов..."
             @search="handleSearch"
           />
         </div>
 
+        <details class="notification-menu"><summary aria-label="Уведомления"><Bell :size="21" /></summary><div class="genre-dropdown">Центр уведомлений пока недоступен. Новинки — в каталоге.</div></details>
         <!-- Auth Navigation -->
         <div class="auth-controls">
           <template v-if="authStore.isAuthenticated.value">
-            <router-link to="/profile" class="profile-btn" :title="t('User Profile')" :aria-label="t('User Profile')">
-              <div class="avatar-circle">
-                <UserAvatar :user="authStore.user.value" :size="44" />
-
-              </div>
-            </router-link>
+            <details class="profile-menu"><summary class="profile-btn" aria-label="Меню профиля"><UserAvatar :user="authStore.user.value" :size="44" /></summary><div class="genre-dropdown"><router-link to="/profile">Личный кабинет</router-link><button @click="authStore.logout()">Выйти</button></div></details>
           </template>
           <template v-else>
             <router-link to="/login" class="login-btn">{{ t("Sign In") }}</router-link>
@@ -111,14 +118,14 @@ watch(route, () => {
     <!-- Mobile Drawer Menu -->
     <div v-if="mobileMenuOpen" class="mobile-menu-drawer">
       <div class="mobile-search-wrapper">
-        <SearchBar
+        <SearchBar ref="mobileSearch"
           v-model="searchQuery"
-          :placeholder="t('Search movies...')"
+          placeholder="Поиск фильмов, сериалов..."
           @search="handleSearch"
         />
       </div>
 
-      <nav class="mobile-nav">
+      <nav class="mobile-nav" aria-label="Мобильная навигация">
         <router-link to="/" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Home") }}</router-link>
         <router-link to="/movies" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Movies") }}</router-link>
         <router-link to="/series" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Series") }}</router-link>

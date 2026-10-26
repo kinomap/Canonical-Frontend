@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { RouterView, useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import CinemaFooter from '@/components/CinemaFooter.vue'
 import {toastMessage} from '@/lib/toast'
 import SessionExpiredModal from '@/components/SessionExpiredModal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -50,6 +51,7 @@ onUnmounted(() => {
     <main id="main-content" tabindex="-1" class="app-main">
       <RouterView />
     </main>
+    <CinemaFooter v-if="!['/profile','/login','/register'].includes(route.path)" />
 
     <!-- Global session-expired modal — rendered above everything -->
     <SessionExpiredModal

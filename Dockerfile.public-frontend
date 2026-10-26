@@ -6,7 +6,7 @@ RUN npm ci
 COPY design-system/ /design-system/
 COPY frontend/ ./
 ENV VITE_API_BASE_URL=/api/v1
-RUN npm run build
+RUN npm run build && node scripts/generate-seo.mjs
 
 FROM nginx:alpine@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3 AS public-runtime
 ARG GIT_COMMIT_SHA

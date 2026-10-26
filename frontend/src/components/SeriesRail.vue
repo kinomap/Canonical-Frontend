@@ -18,13 +18,13 @@ const railContainer = ref<HTMLElement | null>(null)
 
 function scrollLeft() {
   if (railContainer.value) {
-    railContainer.value.scrollBy({ left: -400, behavior: 'smooth' })
+    railContainer.value.scrollBy({ left: -400, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }
 }
 
 function scrollRight() {
   if (railContainer.value) {
-    railContainer.value.scrollBy({ left: 400, behavior: 'smooth' })
+    railContainer.value.scrollBy({ left: 400, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }
 }
 
@@ -48,7 +48,7 @@ function handleWheel(event: WheelEvent) {
 </script>
 
 <template>
-  <div v-if="seriesList && seriesList.length > 0" class="series-rail">
+  <section v-if="seriesList && seriesList.length > 0" class="series-rail">
     <div class="rail-header">
       <h2 class="rail-title">{{ title }}</h2>
       <div class="rail-header-right">
@@ -60,15 +60,16 @@ function handleWheel(event: WheelEvent) {
             <ChevronRight :size="20" />
           </button>
         </div>
+        <router-link v-if="viewAllLink" :to="viewAllLink" class="rail-view-all">Смотреть все</router-link>
       </div>
     </div>
 
     <div ref="railContainer" class="rail-track" @wheel="handleWheel">
       <div v-for="(seriesItem, index) in seriesList" :key="seriesItem.id" class="rail-item">
-        <SeriesCard :series="seriesItem" :eager="eager && index < 5" />
+        <SeriesCard :series="seriesItem" :eager="eager && index < 6" />
       </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <style scoped>

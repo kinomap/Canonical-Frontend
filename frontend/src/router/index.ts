@@ -1,15 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MainCatalogView from '@/views/MainCatalogView.vue'
-import HomeView from '@/views/HomeView.vue'
-import CatalogView from '@/views/CatalogView.vue'
-import GenresView from '@/views/GenresView.vue'
-import MovieDetailsView from '@/views/MovieDetailsView.vue'
-import LoginView from '@/views/LoginView.vue'
-import RegisterView from '@/views/RegisterView.vue'
-import ProfileView from '@/views/ProfileView.vue'
-import NotFoundView from '@/views/NotFoundView.vue'
+const HomeView = () => import('@/views/HomeView.vue')
+const CatalogView = () => import('@/views/CatalogView.vue')
+const GenresView = () => import('@/views/GenresView.vue')
+const MovieDetailsView = () => import('@/views/MovieDetailsView.vue')
+const LoginView = () => import('@/views/LoginView.vue')
+const RegisterView = () => import('@/views/RegisterView.vue')
+const ProfileView = () => import('@/views/ProfileView.vue')
+const NotFoundView = () => import('@/views/NotFoundView.vue')
 import { createCatalogScrollBehavior } from './catalogNavigation'
 import { handleChunkLoadError } from './chunkReload'
+import { updateRouteSeo } from '@/utils/routeSeo'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -36,7 +37,7 @@ const router = createRouter({
       component: () => import('@/views/SeriesCatalogView.vue'),
     },
     {
-      path: '/series/:id',
+      path: '/series/:id/:slug?',
       name: 'series-details',
       component: () => import('@/views/SeriesDetailsView.vue'),
     },
@@ -46,7 +47,7 @@ const router = createRouter({
       component: GenresView
     },
     {
-      path: '/movies/:id',
+      path: '/movies/:id/:slug?',
       name: 'movie-details',
       component: MovieDetailsView
     },
@@ -100,8 +101,9 @@ export function getPendingNavigation(): string | null {
 router.beforeEach((to) => {
   pendingNavigation = to.fullPath
 })
-router.afterEach(() => {
+router.afterEach((to) => {
   pendingNavigation = null
+  void updateRouteSeo(to.fullPath)
 })
 router.onError((err, to) => {
   const target = to?.fullPath ?? pendingNavigation ?? window.location.pathname + window.location.search

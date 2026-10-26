@@ -1,0 +1,61 @@
+{
+  "hero": [
+    {
+      "file": "hero-640.webp",
+      "width": 640,
+      "height": 82
+    },
+    {
+      "file": "hero-1200.webp",
+      "width": 1200,
+      "height": 153
+    },
+    {
+      "file": "hero-1740.webp",
+      "width": 1740,
+      "height": 222
+    }
+  ],
+  "mascot": [
+    {
+      "file": "mascot-80.webp",
+      "width": 80,
+      "height": 78
+    },
+    {
+      "file": "mascot-144.webp",
+      "width": 144,
+      "height": 140
+    }
+  ],
+  "footer-mascot": [
+    {
+      "file": "footer-mascot-240.webp",
+      "width": 240,
+      "height": 306
+    },
+    {
+      "file": "footer-mascot-400.webp",
+      "width": 400,
+      "height": 510
+    }
+  ],
+  "filmstrip": [
+    {
+      "file": "filmstrip-800.webp",
+      "width": 800,
+      "height": 74
+    },
+    {
+      "file": "filmstrip-1600.webp",
+      "width": 1600,
+      "height": 148
+    }
+  ],
+  "provenance": {
+    "source": "Operator-supplied reference images in the 2026-10-26 renovation request",
+    "hero_reference": "3cedab23-dc0c-4854-b0f0-1881fba98228/image.png",
+    "footer_reference": "4bb8a7dc-2d9e-47b0-9aee-54565da4af84/image.png",
+    "processing": "Cropped decorative scenes; no movie posters baked into UI; responsive WebP exports"
+  }
+}

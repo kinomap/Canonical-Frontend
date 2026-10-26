@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import {contentPath} from '@/utils/contentPath'
 import type { SeriesSummary } from '@/types/movie'
 import { computed, ref } from 'vue'
+import { posterSrcset, posterUrl } from '@/utils/poster'
 
 const props = withDefaults(defineProps<{
   series: SeriesSummary
@@ -34,8 +36,9 @@ const displayYear = computed(() => {
 </script>
 
 <template>
+  <article class="poster-article">
   <router-link
-    :to="`/series/${series.id}`"
+    :to="contentPath('series',series.id,displayTitle)"
     class="series-card"
     :data-id="series.id"
     tabindex="0"
@@ -43,8 +46,11 @@ const displayYear = computed(() => {
     <div class="poster-wrapper">
       <img
         v-if="series.poster_url && !posterError"
-        :src="series.poster_url"
-        :alt="series.title"
+        :src="posterUrl(series.poster_url)"
+        :alt="`Постер сериала «${displayTitle}»`"
+        :srcset="posterSrcset(series.poster_url)"
+        sizes="(max-width:599px) 45vw, (max-width:767px) 30vw, (max-width:1023px) 23vw, (max-width:1439px) 18vw, 240px"
+        width="240" height="360" decoding="async"
         class="poster-img"
         :loading="eager ? 'eager' : 'lazy'"
         :fetchpriority="eager ? 'high' : 'auto'"
@@ -58,6 +64,7 @@ const displayYear = computed(() => {
         </div>
       </div>
 
+      <div class="poster-play" aria-hidden="true"><span>▶</span></div>
       <div class="badges-overlay" v-if="series.rating">
         <span class="badge rating-badge">{{ series.rating.toFixed(1) }}</span>
       </div>
@@ -67,6 +74,7 @@ const displayYear = computed(() => {
       <h3 class="series-title" :title="displayTitle">{{ displayTitle }}</h3>
     </div>
   </router-link>
+  </article>
 </template>
 
 <style scoped>

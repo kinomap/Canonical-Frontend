@@ -22,8 +22,8 @@ describe('TZ35 Unified Search Frontend Integration', () => {
       history: createMemoryHistory(),
       routes: [
         { path: '/', component: { template: '<div>Home</div>' } },
-        { path: '/movies/:id', component: { template: '<div>Movie Details</div>' } },
-        { path: '/series/:id', component: { template: '<div>Series Details</div>' } }
+        { path: '/movies/:id/:slug?', component: { template: '<div>Movie Details</div>' } },
+        { path: '/series/:id/:slug?', component: { template: '<div>Series Details</div>' } }
       ]
     })
   })
@@ -55,8 +55,8 @@ describe('TZ35 Unified Search Frontend Integration', () => {
 
     await flushPromises()
 
-    expect(movieWrapper.find('a').attributes('href')).toBe('/movies/movie-1')
-    expect(seriesWrapper.find('a').attributes('href')).toBe('/series/series-1')
+    expect(movieWrapper.find('a').attributes('href')).toBe('/movies/movie-1/shogun-movie')
+    expect(seriesWrapper.find('a').attributes('href')).toBe('/series/series-1/shogun-series')
     expect(seriesWrapper.text()).toContain(t('СЕРИАЛ'))
   })
 
@@ -80,7 +80,7 @@ describe('TZ35 Unified Search Frontend Integration', () => {
     await new Promise(r => setTimeout(r, 400))
     await flushPromises()
 
-    expect(apiClient.searchMoviesQuick).toHaveBeenCalledWith('Shōgun', 5)
+    expect(apiClient.searchMoviesQuick).toHaveBeenCalledWith('Shōgun', 5, expect.any(AbortSignal))
     expect(wrapper.text()).toContain(t('Сериал'))
 
     const suggestions = wrapper.findAll('.suggestion-item')
@@ -89,6 +89,6 @@ describe('TZ35 Unified Search Frontend Integration', () => {
     await suggestions[1].trigger('click')
     await flushPromises()
 
-    expect(router.currentRoute.value.path).toBe('/series/series-20')
+    expect(router.currentRoute.value.path).toBe('/series/series-20/shogun-series')
   })
 })

@@ -1,3 +1,4 @@
+import {titleSlug} from '@/utils/contentPath'
 import {t} from '../i18n'
 // Genre page content: real backend response shape (fixtures captured from
 // GET /api/v1/genres/{slug} through the frontend Nginx), empty genre, unknown
@@ -55,7 +56,7 @@ describe('GenresView genre content', () => {
     const items = (genreContent as any).items as any[]
     expect(wrapper.findAll('.movie-grid:not(.skeleton-grid) a').length).toBe(items.length)
     for (const item of items) {
-      const href = item.type === 'series' ? `/series/${item.id}` : `/movies/${item.id}`
+      const href = (item.type === 'series' ? `/series/${item.id}` : `/movies/${item.id}`) + '/' + titleSlug(item.title)
       expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(true)
     }
     expect(wrapper.text()).toContain(`${(genreContent as any).total}`)
@@ -72,7 +73,7 @@ describe('GenresView genre content', () => {
     expect(items.some(i => i.type === 'series')).toBe(true)
     expect(items.some(i => i.type === 'movie')).toBe(true)
     for (const item of items) {
-      const href = item.type === 'series' ? `/series/${item.id}` : `/movies/${item.id}`
+      const href = (item.type === 'series' ? `/series/${item.id}` : `/movies/${item.id}`) + '/' + titleSlug(item.title)
       expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(true)
     }
     expect(wrapper.text()).toContain(t('СЕРИАЛ'))

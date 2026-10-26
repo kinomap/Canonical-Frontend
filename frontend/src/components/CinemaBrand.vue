@@ -1,0 +1,1 @@
+<template><span class="cinema-brand"><img src="/cinema/v1/mascot-80.webp" srcset="/cinema/v1/mascot-80.webp 80w, /cinema/v1/mascot-144.webp 144w" sizes="48px" width="48" height="48" alt="" decoding="async" /><span>KINO<span class="brand-gold">SOTA</span></span></span></template>

@@ -1,186 +1,56 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { ref, watch, onUnmounted, onMounted } from 'vue'
+import { ref, watch, onUnmounted, onMounted, useId } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Search, X, Loader2 } from 'lucide-vue-next'
 import { apiClient } from '@/api/client'
 import type { MovieSummary } from '@/types/movie'
-
-const props = defineProps<{
-  modelValue?: string
-  placeholder?: string
-  debounceMs?: number
-}>()
-
-const emit = defineEmits<{
-  (e: 'update:modelValue', val: string): void
-  (e: 'search', val: string): void
-}>()
-
-const router = useRouter()
-const route = useRoute()
-const query = ref(props.modelValue || '')
-const suggestions = ref<MovieSummary[]>([])
-const loading = ref(false)
-const showDropdown = ref(false)
-const searchBarRef = ref<HTMLElement | null>(null)
-
-let timer: ReturnType<typeof setTimeout> | null = null
-
-// Watch external value updates
-watch(
-  () => props.modelValue,
-  (newVal) => {
-    if (newVal !== undefined && newVal !== query.value) {
-      query.value = newVal
-    }
-  }
-)
-
-async function fetchSuggestions(q: string) {
-  if (!q.trim() || q.trim().length < 2) {
-    suggestions.value = []
-    showDropdown.value = false
-    return
-  }
-  
-  loading.value = true
-  showDropdown.value = true
-  try {
-    const res = await apiClient.searchMoviesQuick(q.trim(), 5)
-    suggestions.value = res.items
-  } catch (err) {
-    console.error('Failed to fetch suggestions:', err)
-  } finally {
-    loading.value = false
-  }
+import {posterUrl} from '@/utils/poster'
+import {contentPath,cleanTitle} from '@/utils/contentPath'
+const props = defineProps<{modelValue?: string; placeholder?: string; debounceMs?: number}>()
+const emit = defineEmits<{(e:'update:modelValue',val:string):void;(e:'search',val:string):void}>()
+const router=useRouter(), route=useRoute(), query=ref(props.modelValue || '')
+const suggestions=ref<MovieSummary[]>([]), loading=ref(false), showDropdown=ref(false), failed=ref(false), activeIndex=ref(-1)
+const searchBarRef=ref<HTMLElement|null>(null), inputRef=ref<HTMLInputElement|null>(null), listId=useId()
+let timer:ReturnType<typeof setTimeout>|null=null, controller:AbortController|null=null, generation=0
+watch(()=>props.modelValue,value=>{if(value!==undefined && value!==query.value) query.value=value})
+async function fetchSuggestions(q:string, version:number){
+ if(q.trim().length<2){suggestions.value=[];showDropdown.value=false;loading.value=false;return}
+ controller=new AbortController();loading.value=true;showDropdown.value=true;failed.value=false
+ try {const result=await apiClient.searchMoviesQuick(q.trim(),5,controller.signal);if(version===generation){suggestions.value=result.items;activeIndex.value=-1}}
+ catch(error){if(version===generation && !(error instanceof Error && error.name==='AbortError')){failed.value=true;suggestions.value=[]}}
+ finally{if(version===generation) loading.value=false}
 }
-
-function onInput() {
-  emit('update:modelValue', query.value)
-  
-  if (timer) clearTimeout(timer)
-  timer = setTimeout(() => {
-    const q = query.value.trim()
-    if (route.path === '/movies') {
-      const newQuery = { ...route.query }
-      if (q.length > 0) {
-        newQuery.q = q
-      } else {
-        delete newQuery.q
-      }
-      newQuery.page = '1'
-      router.replace({ path: '/movies', query: newQuery })
-    } else {
-      fetchSuggestions(query.value)
-    }
-  }, props.debounceMs ?? 250)
+function onInput(){
+ emit('update:modelValue',query.value);if(timer)clearTimeout(timer);controller?.abort();const version=++generation
+ suggestions.value=[];activeIndex.value=-1;showDropdown.value=query.value.trim().length>=2;loading.value=showDropdown.value
+ timer=setTimeout(()=>{const q=query.value.trim();if(route.path==='/movies') {const next={...route.query};if(q)next.q=q;else delete next.q;next.page='1';router.replace({path:'/movies',query:next})}fetchSuggestions(q,version)},props.debounceMs??250)
 }
-
-function clear() {
-  query.value = ''
-  emit('update:modelValue', '')
-  suggestions.value = []
-  showDropdown.value = false
-  if (timer) clearTimeout(timer)
-  
-  if (route.path === '/movies') {
-    const newQuery = { ...route.query }
-    delete newQuery.q
-    newQuery.page = '1'
-    router.replace({ path: '/movies', query: newQuery })
-  } else {
-    emit('search', '')
-  }
-}
-
-function onEnter() {
-  if (timer) clearTimeout(timer)
-  showDropdown.value = false
-  emit('search', query.value)
-}
-
-function selectSuggestion(movie: MovieSummary) {
-  showDropdown.value = false
-  query.value = movie.title
-  emit('update:modelValue', movie.title)
-  if (movie.type === 'series') {
-    router.push(`/series/${movie.id}`)
-  } else {
-    router.push(`/movies/${movie.id}`)
-  }
-}
-
-// Handle click outside to close dropdown
-function handleClickOutside(event: MouseEvent) {
-  if (searchBarRef.value && !searchBarRef.value.contains(event.target as Node)) {
-    showDropdown.value = false
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside)
-})
-
-onUnmounted(() => {
-  if (timer) clearTimeout(timer)
-  document.removeEventListener('mousedown', handleClickOutside)
-})
+function clear(){query.value='';emit('update:modelValue','');suggestions.value=[];showDropdown.value=false;loading.value=false;++generation;controller?.abort();if(timer)clearTimeout(timer);if(route.path==='/movies'){const next={...route.query};delete next.q;next.page='1';router.replace({path:'/movies',query:next})}else emit('search','');inputRef.value?.focus()}
+function selectSuggestion(movie:MovieSummary){showDropdown.value=false;query.value=cleanTitle(movie.title);emit('update:modelValue',movie.title);router.push(contentPath(movie.type==='series'?'series':'movie',movie.id,movie.title))}
+function onEnter(){if(timer)clearTimeout(timer);if(activeIndex.value>=0 && suggestions.value[activeIndex.value]){selectSuggestion(suggestions.value[activeIndex.value]!);return}showDropdown.value=false;emit('search',query.value)}
+function move(delta:number){if(!suggestions.value.length)return;showDropdown.value=true;activeIndex.value=(activeIndex.value+delta+suggestions.value.length)%suggestions.value.length}
+function handleClickOutside(event:MouseEvent){if(searchBarRef.value && !searchBarRef.value.contains(event.target as Node))showDropdown.value=false}
+onMounted(()=>document.addEventListener('mousedown',handleClickOutside))
+onUnmounted(()=>{if(timer)clearTimeout(timer);controller?.abort();++generation;document.removeEventListener('mousedown',handleClickOutside)})
+defineExpose({focus:()=>inputRef.value?.focus()})
 </script>
-
 <template>
-  <div class="search-bar" ref="searchBarRef">
-    <Search class="search-icon" :size="18" stroke-width="2" />
-
-    <input
-      v-model="query"
-      type="text"
-      :placeholder="placeholder || 'Search catalog...'"
-      class="search-input"
-      @input="onInput"
-      @keydown.enter="onEnter"
-      @focus="query.trim().length >= 2 && (showDropdown = true)"
-    />
-
-    <button v-if="query" class="clear-btn" :title="t('Clear search')" @click="clear">
-      <X :size="16" stroke-width="2" />
-    </button>
-
-    <!-- Autocomplete Dropdown -->
-    <div v-if="showDropdown && (loading || suggestions.length > 0 || query.trim().length >= 2)" class="search-dropdown">
-      <div v-if="loading" class="dropdown-state">
-        <Loader2 class="spinner" :size="20" stroke-width="2" />
-        <span>{{ t("Searching...") }}</span>
-      </div>
-      
-      <div v-else-if="suggestions.length === 0" class="dropdown-state">
-        <span>{{ t("No results found") }}</span>
-      </div>
-
-      <ul v-else class="suggestions-list">
-        <li 
-          v-for="movie in suggestions" 
-          :key="movie.id" 
-          class="suggestion-item"
-          @click="selectSuggestion(movie)"
-        >
-          <img :src="movie.poster" alt="" class="suggestion-poster" v-if="movie.poster" />
-          <div class="suggestion-info">
-            <h4 class="suggestion-title">
-              {{ movie.title }}
-              <span v-if="movie.type === 'series'" class="type-badge">{{ t("Сериал") }}</span>
-            </h4>
-            <span class="suggestion-meta" v-if="movie.year">{{ movie.year }} <span v-if="movie.rating">★ {{ movie.rating.toFixed(1) }}</span></span>
-          </div>
-        </li>
-      </ul>
-      
-      <!-- See all results link -->
-      <div class="dropdown-footer" v-if="!loading && suggestions.length > 0" @click="onEnter">
-        <span>{{ t("See all results for \"") }}{{ query }}"</span>
-      </div>
-    </div>
+ <div class="search-bar" ref="searchBarRef">
+  <Search class="search-icon" :size="18" aria-hidden="true" />
+  <input ref="inputRef" v-model="query" type="search" role="combobox" aria-label="Поиск фильмов и сериалов" aria-autocomplete="list" :aria-controls="listId" :aria-expanded="showDropdown" :aria-activedescendant="activeIndex>=0 ? `${listId}-${activeIndex}` : undefined" :placeholder="placeholder || 'Поиск фильмов, сериалов...'" class="search-input" @input="onInput" @keydown.enter="onEnter" @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)" @keydown.esc.prevent="showDropdown=false" @focus="query.trim().length>=2 && (showDropdown=true)" />
+  <kbd class="shortcut-key" aria-hidden="true">Ctrl + K</kbd>
+  <button v-if="query" class="clear-btn" :aria-label="t('Clear search')" @click="clear"><X :size="16" /></button>
+  <div v-if="showDropdown" class="search-dropdown">
+   <div v-if="loading" class="dropdown-state" role="status"><Loader2 class="spinner" :size="20" /><span>Поиск…</span></div>
+   <div v-else-if="failed" class="dropdown-state" role="status">Поиск временно недоступен. Попробуйте ещё раз.</div>
+   <div v-else-if="!suggestions.length" class="dropdown-state" role="status">Ничего не найдено</div>
+   <ul :id="listId" role="listbox" aria-label="Результаты поиска" class="suggestions-list">
+    <li v-for="(movie,index) in suggestions" :id="`${listId}-${index}`" :key="`${movie.type}-${movie.id}`" role="option" :aria-selected="activeIndex===index" class="suggestion-item" @mousedown.prevent @click="selectSuggestion(movie)"><img v-if="movie.poster" :src="posterUrl(movie.poster)" :alt="`Постер «${cleanTitle(movie.title)}»`" class="suggestion-poster" width="36" height="54" decoding="async" /><div class="suggestion-info"><span class="suggestion-title">{{cleanTitle(movie.title)}}<span v-if="movie.type==='series'" class="type-badge">{{t("Сериал")}}</span></span><span class="suggestion-meta">{{movie.year}} <span v-if="movie.rating">★ {{movie.rating.toFixed(1)}}</span></span></div></li>
+   </ul>
+   <button v-if="!loading && suggestions.length" class="dropdown-footer" @click="activeIndex=-1;onEnter()">Все результаты по запросу «{{query}}»</button>
   </div>
+ </div>
 </template>
 
 <style scoped>

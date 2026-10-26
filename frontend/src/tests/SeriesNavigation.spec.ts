@@ -1,3 +1,4 @@
+import {titleSlug} from '@/utils/contentPath'
 import {t} from '../i18n'
 // The "Series" tab: header link -> application router -> lazy SeriesCatalogView ->
 // GET /series -> cards; plus browser back/forward and direct URL open.
@@ -70,7 +71,7 @@ describe('Series tab navigation', () => {
     expect(apiClient.listSeries).toHaveBeenCalled()
     const first = (seriesList as any).items[0]
     expect(wrapper.text()).toContain(first.title)
-    expect(wrapper.find(`a[href="/series/${first.id}"]`).exists()).toBe(true)
+    expect(wrapper.find(`a[href="/series/${first.id}/${titleSlug(first.title)}"]`).exists()).toBe(true)
     wrapper.unmount()
   })
 

@@ -164,7 +164,7 @@ onMounted(() => {
 
 
     <!-- Main Content -->
-    <main class="catalog-content">
+    <section class="catalog-content" aria-label="Каталог">
       <!-- Loading Skeletons -->
       <div v-if="loading" class="movie-grid skeleton-grid">
         <div v-for="i in 8" :key="i" class="skeleton-card">
@@ -219,7 +219,7 @@ onMounted(() => {
           @click="changePage(page + 1)"
         > {{ t("Next") }} </button>
       </div>
-    </main>
+    </section>
 
     <!-- Play Notice Modal -->
     <PlayNoticeModal :show="showPlayNotice" @close="showPlayNotice = false" />

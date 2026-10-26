@@ -39,7 +39,7 @@ function onPlay() {
         <span v-if="formattedRuntime" class="hero-badge">{{ formattedRuntime }}</span>
       </div>
 
-      <h1 class="hero-title">{{ movie.title }}</h1>
+      <h2 class="hero-title">{{ movie.title }}</h2>
 
       <div v-if="movie.genres && movie.genres.length" class="hero-genres">
         <span v-for="g in movie.genres" :key="g.id" class="hero-genre-tag">{{ g.name }}</span>

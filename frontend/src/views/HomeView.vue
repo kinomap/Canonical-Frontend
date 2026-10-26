@@ -37,6 +37,7 @@ onMounted(() => {
 
 <template>
   <div class="home-page">
+    <h1 class="sr-only">Подборки фильмов KINOSOTA</h1>
     <!-- Loading State -->
     <div v-if="loading" class="home-loading">
       <div class="hero-skeleton"></div>
