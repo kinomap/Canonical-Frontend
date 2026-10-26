@@ -16,9 +16,14 @@ and film-studio footer. Optimized crop sizes and provenance are recorded in
   reduced-motion behavior and 44px rail controls.
 - Search debounce 250ms; Ctrl/Cmd+K; abort/stale response guard; keyboard selection;
   loading, empty and failure states. No invented notifications or profile identity.
-- Telegram CTA is enabled only with a real `VITE_TELEGRAM_CHANNEL_URL` https t.me
-  URL. Without it the card explicitly says the channel link is pending. Unknown
-  contacts/community/suggestion destinations are not replaced with dead links.
+- Official Telegram destination is `https://t.me/kinosota`, confirmed by the operator.
+  Subscribe / Мы в Telegram / Сообщество share this URL and use
+  `target="_blank" rel="noopener noreferrer"`. Unknown contacts/suggestion
+  destinations remain absent rather than invented.
+- Cinematic finishing: the Hero overlay fades all four edges into #0B0D12.
+  The footer has no hard top border; its background blends from the page canvas.
+  Only bee/filmstrip images receive intersecting horizontal/vertical masks, with
+  standard and WebKit declarations; navigation, CTA and focus rings remain opaque.
 
 ## Images, performance and data
 

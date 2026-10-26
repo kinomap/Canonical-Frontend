@@ -6,6 +6,7 @@ import {buildSeo,serializeJsonLd,safeImage} from '@/utils/seo'
 import {posterUrl,posterSrcset} from '@/utils/poster'
 import SearchBar from '@/components/SearchBar.vue'
 import AppHeader from '@/components/AppHeader.vue'
+import CinemaFooter from '@/components/CinemaFooter.vue'
 import {apiClient} from '@/api/client'
 vi.mock('@/api/client',()=>({apiClient:{searchMoviesQuick:vi.fn(),getMe:vi.fn()}}))
 const origin='https://watch.scenrix.com'
@@ -33,5 +34,15 @@ describe('Showcase search accessibility',()=>{
  it('focuses the visible search with Ctrl+K and Cmd+K',async()=>{
   vi.stubGlobal('matchMedia',()=>({matches:false}));const r=router();await r.push('/');const w=mount(AppHeader,{attachTo:document.body,global:{plugins:[r]}})
   for(const modifier of ['ctrlKey','metaKey']){(document.activeElement as HTMLElement)?.blur();window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',[modifier]:true,cancelable:true}));await flushPromises();expect(document.activeElement).toBe(w.find('input').element)}w.unmount()
+ })
+})
+
+describe('Cinematic finishing and official Telegram',()=>{
+ it('uses the confirmed channel for all three safe external footer links',async()=>{
+  const r=router();await r.push('/');const w=mount(CinemaFooter,{global:{plugins:[r]}})
+  const links=w.findAll('a[href="https://t.me/kinosota"]');expect(links).toHaveLength(3)
+  expect(links.map(a=>a.text())).toEqual(['Мы в Telegram','Сообщество','ПОДПИСАТЬСЯ'])
+  for(const a of links){expect(a.attributes('target')).toBe('_blank');expect(a.attributes('rel')).toBe('noopener noreferrer')}
+  expect(w.find('.telegram-subscribe').exists()).toBe(true);expect(w.text()).not.toContain('скоро появится');w.unmount()
  })
 })
