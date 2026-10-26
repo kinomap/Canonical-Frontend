@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PosterPlay from './PosterPlay.vue'
 import {contentPath} from '@/utils/contentPath'
 import type { SeriesSummary } from '@/types/movie'
 import { computed, ref } from 'vue'
@@ -64,7 +65,7 @@ const displayYear = computed(() => {
         </div>
       </div>
 
-      <div class="poster-play" aria-hidden="true"><span>▶</span></div>
+      <PosterPlay />
       <div class="badges-overlay" v-if="series.rating">
         <span class="badge rating-badge">{{ series.rating.toFixed(1) }}</span>
       </div>
