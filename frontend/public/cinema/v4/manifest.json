@@ -1,0 +1,56 @@
+{
+  "source": "Operator reference supplied in current chat; AI-localized mascot repair, not whole-page generation",
+  "processing": "Single continuous desktop scene, original reel/projector lighting, UI text removed. Localized hero title retouch to CINEMA. Header mascot and header styling unchanged.",
+  "files": [
+    {
+      "file": "footer-interior-1400.webp",
+      "width": 1400,
+      "height": 434,
+      "alpha": true,
+      "bytes": 289102
+    },
+    {
+      "file": "footer-interior-2000.webp",
+      "width": 2000,
+      "height": 620,
+      "alpha": true,
+      "bytes": 477516
+    },
+    {
+      "file": "footer-mobile-scene.webp",
+      "width": 365,
+      "height": 440,
+      "alpha": true,
+      "bytes": 148668
+    },
+    {
+      "file": "footer-mobile-strip.webp",
+      "width": 2000,
+      "height": 215,
+      "alpha": true,
+      "bytes": 65100
+    },
+    {
+      "file": "hero-1200.webp",
+      "width": 1200,
+      "height": 153,
+      "alpha": false,
+      "bytes": 55500
+    },
+    {
+      "file": "hero-1740.webp",
+      "width": 1740,
+      "height": 222,
+      "alpha": false,
+      "bytes": 70026
+    },
+    {
+      "file": "hero-640.webp",
+      "width": 640,
+      "height": 82,
+      "alpha": false,
+      "bytes": 22856
+    }
+  ],
+  "left_fade": "Broader and deeper environment-only shadow falloff; second operator revision. Accepted bee protected, right region x>=600 pixel-identical before encoding; no new generation."
+}

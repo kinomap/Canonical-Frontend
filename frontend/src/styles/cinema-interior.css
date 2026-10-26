@@ -16,13 +16,13 @@
 .home-scene .showcase-hero:after{background:linear-gradient(0deg,#070b0f 0%,#070b0f00 24%,#070b0f00 88%,#070b0f55 100%),linear-gradient(90deg,#070b0f66,#070b0f00 8%,#070b0f00 94%,#070b0f66)}
 .home-scene .quick-categories{margin-top:-6px;padding-bottom:24px;position:relative}
 .home-scene .movie-rail,.home-scene .series-rail{margin-bottom:22px!important}
-/* No opaque panel or rectangle behind the mascot: the side scenes contain real alpha. */
-.cinema-footer{position:relative;isolation:isolate;border:0;background:radial-gradient(ellipse at 4% 55%,#5a2b0718,transparent 35%),radial-gradient(ellipse at 96% 40%,#8c4d0a13,transparent 30%),var(--cinema-canvas);padding-top:82px;margin-top:0;overflow:hidden}
-.footer-stage{position:absolute;inset:0 0 auto;height:490px;z-index:0;pointer-events:none;overflow:hidden}
-.footer-stage-left{position:absolute;left:0;top:0;width:clamp(270px,18.4vw,410px);max-width:none;height:auto;object-fit:contain;mask-image:none;-webkit-mask-image:none}
-.footer-stage-projector{position:absolute;right:0;top:4px;width:clamp(155px,10vw,225px);height:auto;object-fit:contain;opacity:.95}
-.footer-inner{position:relative;z-index:1;max-width:2000px;min-height:330px;box-sizing:border-box;padding:0 clamp(24px,3.4vw,68px);grid-template-columns:32% 11% 11% 12% minmax(0,1fr);gap:2%;align-items:start}
-.footer-brand-block{display:block;position:relative;grid-row:auto;padding-top:30px;padding-left:clamp(220px,14vw,300px)}
+/* Single continuous desktop artwork: no separate projector/filmstrip seam. */
+.cinema-footer{position:relative;isolation:isolate;border:0;background:var(--cinema-canvas);padding-top:clamp(80px,5vw,106px);padding-bottom:clamp(160px,10vw,215px);margin-top:0;overflow:hidden;mask-image:none;-webkit-mask-image:none}
+.footer-stage{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.footer-interior,.footer-interior img{display:block;width:100%;height:100%;max-width:none}
+.footer-interior img{object-fit:fill;mask-image:none;-webkit-mask-image:none}
+.footer-inner{position:relative;z-index:1;max-width:2000px;min-height:300px;box-sizing:border-box;padding:0 clamp(24px,3.4vw,68px);grid-template-columns:32% 11% 11% 12% minmax(0,1fr);gap:2%;align-items:start}
+.footer-brand-block{display:block;position:relative;grid-row:auto;padding-top:36px;padding-left:clamp(220px,14vw,300px)}
 .footer-brand-block .cinema-brand{font-size:clamp(27px,2.5vw,48px);letter-spacing:-1.5px;gap:0}
 .footer-brand-block .cinema-brand img{display:none}
 .footer-brand-block p{font-size:clamp(14px,1.16vw,21px);line-height:1.65;white-space:nowrap;margin:12px 0 20px}
@@ -35,28 +35,24 @@
 .telegram-heading{gap:14px}.telegram-heading h2{font-size:clamp(17px,1.5vw,28px);line-height:1.18}.telegram-icon{width:clamp(44px,3.1vw,58px);height:clamp(44px,3.1vw,58px)}
 .telegram-promo>p{font-size:clamp(14px,1.15vw,21px);line-height:1.55;margin:14px 0 18px;padding-top:8px;border-top:1px solid #f5b80026}
 .telegram-subscribe{min-height:56px;padding:14px 18px;font-size:clamp(14px,1.1vw,20px);border-radius:10px;background:linear-gradient(180deg,#ffd248,#f5b800);box-shadow:0 0 20px #f5b80014}
-.footer-filmstrip{position:relative;z-index:1;display:block;width:100%;height:auto;aspect-ratio:2000/215;margin-top:-10px;object-fit:contain;mask-image:none;-webkit-mask-image:none}
+.footer-filmstrip{display:none;mask-image:none;-webkit-mask-image:none}
 @media(min-width:2000px){.footer-stage{left:calc((100% - 2000px)/2);right:calc((100% - 2000px)/2)}}
-@media(min-width:1024px) and (max-width:1399px){
- .app-header .brand-link{min-width:180px}.app-header .cinema-brand{font-size:23px;gap:8px}.app-header .cinema-brand img{width:52px;height:58px}
- .footer-inner{grid-template-columns:31% 12% 12% 13% minmax(0,1fr);gap:1.5%;padding-inline:24px;min-height:320px}
- .footer-brand-block{padding-left:160px;padding-top:48px}.footer-brand-block .cinema-brand{font-size:27px}.footer-brand-block p{font-size:13px}
- .footer-stage-left{width:250px}.footer-stage-projector{width:140px;opacity:.65}.footer-column{padding-left:10px}.footer-column a,.footer-column button{font-size:13px}.telegram-promo{margin-right:24px;padding:16px}.telegram-heading{gap:8px}.telegram-heading h2{font-size:16px}.telegram-icon{width:36px;height:36px}.telegram-promo>p{font-size:13px}.telegram-subscribe{font-size:12px;padding:12px;min-height:48px}
-}
-@media(max-width:1023px){
- .app-header .brand-link{min-width:0}.app-header .cinema-brand{font-size:24px}.home-scene .showcase-hero{min-height:180px;aspect-ratio:5.8}
- .footer-stage{height:430px}.footer-stage-left{width:295px;left:0}.footer-stage-projector{width:170px;right:0;opacity:.6}
- .cinema-footer{padding-top:48px}.footer-inner{padding:0 32px;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;min-height:0}
- .footer-brand-block{grid-column:1/-1;grid-row:auto;min-height:235px;padding:55px 0 0 245px;box-sizing:border-box}.footer-brand-block .cinema-brand{font-size:38px}.footer-brand-block p{font-size:17px;white-space:normal}
+@media(min-width:1400px) and (max-width:1599px){.cinema-footer{padding-top:72px;padding-bottom:145px}.footer-inner{min-height:280px}.footer-column a,.footer-column button{min-height:32px}.telegram-promo{padding:20px}.telegram-heading{gap:10px}.telegram-heading h2{font-size:20px}.telegram-promo>p{font-size:15px}.telegram-subscribe{font-size:14px}}
+@media(min-width:1024px) and (max-width:1399px){.app-header .brand-link{min-width:180px}.app-header .cinema-brand{font-size:23px;gap:8px}.app-header .cinema-brand img{width:52px;height:58px}}
+@media(max-width:1399px){
+ .cinema-footer{padding-top:48px;padding-bottom:0}.footer-stage{height:350px}.footer-interior{width:320px;height:auto}.footer-interior img{height:auto;object-fit:contain}
+ .footer-inner{padding:0 32px;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;min-height:0}
+ .footer-brand-block{grid-column:1/-1;grid-row:auto;min-height:260px;padding:55px 0 0 285px;box-sizing:border-box}.footer-brand-block .cinema-brand{font-size:38px}.footer-brand-block p{font-size:17px;white-space:normal}
  .footer-column{min-height:0;border-left:0;padding:0}.footer-column h2{font-size:15px}.footer-column a,.footer-column button{font-size:15px;min-height:40px}
  .telegram-promo{grid-column:1/-1;margin:8px 0 0;padding:24px;max-width:540px;justify-self:center;width:100%;box-sizing:border-box}.telegram-heading h2{font-size:23px}.telegram-promo>p{font-size:16px}.telegram-subscribe{font-size:16px}
- .footer-filmstrip{margin-top:24px;min-height:78px;object-fit:cover;object-position:center}
+ .footer-filmstrip{position:relative;z-index:1;display:block;width:100%;height:auto;aspect-ratio:2000/215;margin-top:24px;min-height:78px;object-fit:cover;object-position:center}
 }
+@media(max-width:1023px){.app-header .brand-link{min-width:0}.app-header .cinema-brand{font-size:24px}.home-scene .showcase-hero{min-height:180px;aspect-ratio:5.8}}
 @media(max-width:767px){
  .app-header .header-container{min-height:70px;padding-top:6px!important;padding-bottom:6px!important}.app-header .cinema-brand{font-size:24px;gap:9px}.app-header .cinema-brand img{width:48px;height:54px}
  .home-scene .showcase-hero{aspect-ratio:2.6;min-height:145px;max-height:230px}.home-scene .showcase-hero img{object-position:48% center}
  .home-scene .quick-categories{margin-top:0;padding-top:6px;padding-bottom:24px}.home-scene:before{width:112px;height:380px;top:400px;opacity:.48}.home-scene:after{width:95px;height:380px;top:1050px;opacity:.25}
- .cinema-footer{padding-top:30px}.footer-stage{height:340px}.footer-stage-left{width:190px;left:-12px}.footer-stage-projector{width:100px;top:20px;right:-40px;opacity:.18}
+ .cinema-footer{padding-top:30px}.footer-stage{height:290px}.footer-interior{width:210px;height:auto;margin-left:-12px}
  .footer-inner{padding:0 16px;gap:20px 12px}.footer-brand-block{min-height:230px;padding:62px 0 0 174px}.footer-brand-block .cinema-brand{font-size:25px;letter-spacing:-1px}.footer-brand-block p{font-size:12.5px;line-height:1.65;margin:8px 0 18px}.footer-brand-block .gold-swash{width:140px}
  .footer-column h2{font-size:12px}.footer-column a,.footer-column button{font-size:13px;min-height:44px;overflow-wrap:anywhere}
  .telegram-promo{padding:22px;max-width:none;border-radius:14px;margin-top:12px}.telegram-heading h2{font-size:22px}.telegram-icon{width:48px;height:48px}.telegram-promo>p{font-size:15px}.telegram-subscribe{font-size:15px;min-height:54px}
