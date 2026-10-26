@@ -1,0 +1,64 @@
+/* Public cinema interior. Artwork is separate from semantic text and controls. */
+.app-wrapper{--cinema-canvas:#070b0f;background:var(--cinema-canvas)}
+.app-wrapper:not(:has(.account-page)){--ui-bg:var(--cinema-canvas)}
+.app-wrapper>.app-header{background:linear-gradient(180deg,#070b0f33,#070b0f99),url('/cinema/v3/header-atmosphere.webp') center/100% 100% no-repeat,#070b0f!important;border-bottom-color:#f5b80018!important;box-shadow:0 12px 32px #0005}
+.app-header .header-container{padding-top:8px!important;padding-bottom:8px!important;min-height:82px}
+.app-header .brand-link{flex-basis:auto;min-width:206px}
+.app-header .cinema-brand{gap:12px;font-size:27px;letter-spacing:-1px}
+.app-header .cinema-brand img{width:62px;height:64px;object-fit:contain;filter:drop-shadow(0 4px 12px #f5b80018)}
+.home-scene{position:relative;isolation:isolate;width:100%;background:radial-gradient(ellipse at 50% 0,#0d191c55,transparent 700px)}
+.home-scene .catalog-page{position:relative;z-index:1;max-width:1600px;padding-top:0!important;padding-bottom:40px;background:transparent}
+.home-scene:before,.home-scene:after{content:"";position:absolute;z-index:0;pointer-events:none;width:clamp(110px,12vw,215px);height:540px;background:url('/cinema/v3/catalog-reel.webp') left center/100% auto no-repeat;opacity:.8}
+.home-scene:before{left:0;top:430px}
+.home-scene:after{right:0;top:1110px;transform:scaleX(-1);opacity:.42}
+.home-scene .showcase-hero{z-index:1;margin:0;width:100%;aspect-ratio:1740/222;min-height:210px;max-height:330px;background:var(--cinema-canvas)}
+.home-scene .showcase-hero picture,.home-scene .showcase-hero img{width:100%;height:100%;object-fit:cover;object-position:center}
+.home-scene .showcase-hero:after{background:linear-gradient(0deg,#070b0f 0%,#070b0f00 24%,#070b0f00 88%,#070b0f55 100%),linear-gradient(90deg,#070b0f66,#070b0f00 8%,#070b0f00 94%,#070b0f66)}
+.home-scene .quick-categories{margin-top:-6px;padding-bottom:24px;position:relative}
+.home-scene .movie-rail,.home-scene .series-rail{margin-bottom:22px!important}
+/* No opaque panel or rectangle behind the mascot: the side scenes contain real alpha. */
+.cinema-footer{position:relative;isolation:isolate;border:0;background:radial-gradient(ellipse at 4% 55%,#5a2b0718,transparent 35%),radial-gradient(ellipse at 96% 40%,#8c4d0a13,transparent 30%),var(--cinema-canvas);padding-top:82px;margin-top:0;overflow:hidden}
+.footer-stage{position:absolute;inset:0 0 auto;height:490px;z-index:0;pointer-events:none;overflow:hidden}
+.footer-stage-left{position:absolute;left:0;top:0;width:clamp(270px,18.4vw,410px);max-width:none;height:auto;object-fit:contain;mask-image:none;-webkit-mask-image:none}
+.footer-stage-projector{position:absolute;right:0;top:4px;width:clamp(155px,10vw,225px);height:auto;object-fit:contain;opacity:.95}
+.footer-inner{position:relative;z-index:1;max-width:2000px;min-height:330px;box-sizing:border-box;padding:0 clamp(24px,3.4vw,68px);grid-template-columns:32% 11% 11% 12% minmax(0,1fr);gap:2%;align-items:start}
+.footer-brand-block{display:block;position:relative;grid-row:auto;padding-top:30px;padding-left:clamp(220px,14vw,300px)}
+.footer-brand-block .cinema-brand{font-size:clamp(27px,2.5vw,48px);letter-spacing:-1.5px;gap:0}
+.footer-brand-block .cinema-brand img{display:none}
+.footer-brand-block p{font-size:clamp(14px,1.16vw,21px);line-height:1.65;white-space:nowrap;margin:12px 0 20px}
+.footer-brand-block .gold-swash{width:80%;max-width:210px;border-top-width:3px}
+.footer-column{padding-left:18px;min-height:240px;border-left-color:#ffffff0c}
+.footer-column h2{font-size:clamp(13px,.95vw,19px);margin-top:6px;margin-bottom:14px;letter-spacing:.8px}
+.footer-column h2:after{margin-top:16px;margin-bottom:8px}
+.footer-column a,.footer-column button{font-size:clamp(13px,1.05vw,19px);min-height:34px;line-height:1.45;padding:4px 0}
+.telegram-promo{grid-column:auto;position:relative;margin-right:clamp(18px,3.2vw,70px);padding:clamp(16px,1.8vw,34px);background:linear-gradient(135deg,#080b0be8,#06090ce8);border-color:#f5c72c;box-shadow:0 0 18px #f5b80020,inset 0 0 26px #f5b80004;border-radius:16px}
+.telegram-heading{gap:14px}.telegram-heading h2{font-size:clamp(17px,1.5vw,28px);line-height:1.18}.telegram-icon{width:clamp(44px,3.1vw,58px);height:clamp(44px,3.1vw,58px)}
+.telegram-promo>p{font-size:clamp(14px,1.15vw,21px);line-height:1.55;margin:14px 0 18px;padding-top:8px;border-top:1px solid #f5b80026}
+.telegram-subscribe{min-height:56px;padding:14px 18px;font-size:clamp(14px,1.1vw,20px);border-radius:10px;background:linear-gradient(180deg,#ffd248,#f5b800);box-shadow:0 0 20px #f5b80014}
+.footer-filmstrip{position:relative;z-index:1;display:block;width:100%;height:auto;aspect-ratio:2000/215;margin-top:-10px;object-fit:contain;mask-image:none;-webkit-mask-image:none}
+@media(min-width:2000px){.footer-stage{left:calc((100% - 2000px)/2);right:calc((100% - 2000px)/2)}}
+@media(min-width:1024px) and (max-width:1399px){
+ .app-header .brand-link{min-width:180px}.app-header .cinema-brand{font-size:23px;gap:8px}.app-header .cinema-brand img{width:52px;height:58px}
+ .footer-inner{grid-template-columns:31% 12% 12% 13% minmax(0,1fr);gap:1.5%;padding-inline:24px;min-height:320px}
+ .footer-brand-block{padding-left:160px;padding-top:48px}.footer-brand-block .cinema-brand{font-size:27px}.footer-brand-block p{font-size:13px}
+ .footer-stage-left{width:250px}.footer-stage-projector{width:140px;opacity:.65}.footer-column{padding-left:10px}.footer-column a,.footer-column button{font-size:13px}.telegram-promo{margin-right:24px;padding:16px}.telegram-heading{gap:8px}.telegram-heading h2{font-size:16px}.telegram-icon{width:36px;height:36px}.telegram-promo>p{font-size:13px}.telegram-subscribe{font-size:12px;padding:12px;min-height:48px}
+}
+@media(max-width:1023px){
+ .app-header .brand-link{min-width:0}.app-header .cinema-brand{font-size:24px}.home-scene .showcase-hero{min-height:180px;aspect-ratio:5.8}
+ .footer-stage{height:430px}.footer-stage-left{width:295px;left:0}.footer-stage-projector{width:170px;right:0;opacity:.6}
+ .cinema-footer{padding-top:48px}.footer-inner{padding:0 32px;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;min-height:0}
+ .footer-brand-block{grid-column:1/-1;grid-row:auto;min-height:235px;padding:55px 0 0 245px;box-sizing:border-box}.footer-brand-block .cinema-brand{font-size:38px}.footer-brand-block p{font-size:17px;white-space:normal}
+ .footer-column{min-height:0;border-left:0;padding:0}.footer-column h2{font-size:15px}.footer-column a,.footer-column button{font-size:15px;min-height:40px}
+ .telegram-promo{grid-column:1/-1;margin:8px 0 0;padding:24px;max-width:540px;justify-self:center;width:100%;box-sizing:border-box}.telegram-heading h2{font-size:23px}.telegram-promo>p{font-size:16px}.telegram-subscribe{font-size:16px}
+ .footer-filmstrip{margin-top:24px;min-height:78px;object-fit:cover;object-position:center}
+}
+@media(max-width:767px){
+ .app-header .header-container{min-height:70px;padding-top:6px!important;padding-bottom:6px!important}.app-header .cinema-brand{font-size:24px;gap:9px}.app-header .cinema-brand img{width:48px;height:54px}
+ .home-scene .showcase-hero{aspect-ratio:2.6;min-height:145px;max-height:230px}.home-scene .showcase-hero img{object-position:48% center}
+ .home-scene .quick-categories{margin-top:0;padding-top:6px;padding-bottom:24px}.home-scene:before{width:112px;height:380px;top:400px;opacity:.48}.home-scene:after{width:95px;height:380px;top:1050px;opacity:.25}
+ .cinema-footer{padding-top:30px}.footer-stage{height:340px}.footer-stage-left{width:190px;left:-12px}.footer-stage-projector{width:100px;top:20px;right:-40px;opacity:.18}
+ .footer-inner{padding:0 16px;gap:20px 12px}.footer-brand-block{min-height:230px;padding:62px 0 0 174px}.footer-brand-block .cinema-brand{font-size:25px;letter-spacing:-1px}.footer-brand-block p{font-size:12.5px;line-height:1.65;margin:8px 0 18px}.footer-brand-block .gold-swash{width:140px}
+ .footer-column h2{font-size:12px}.footer-column a,.footer-column button{font-size:13px;min-height:44px;overflow-wrap:anywhere}
+ .telegram-promo{padding:22px;max-width:none;border-radius:14px;margin-top:12px}.telegram-heading h2{font-size:22px}.telegram-icon{width:48px;height:48px}.telegram-promo>p{font-size:15px}.telegram-subscribe{font-size:15px;min-height:54px}
+ .footer-filmstrip{min-height:70px;object-fit:cover;object-position:left;margin-top:20px}
+}

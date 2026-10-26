@@ -1,13 +1,21 @@
 import {describe,it,expect} from 'vitest'
 import {readFileSync} from 'node:fs'
-const showcaseCss=readFileSync('src/styles/showcase.css','utf8')
-describe('Cinematic image edge contracts',()=>{
- it('fades the top/bottom and both sides of the hero without masking semantic content',()=>{
-  expect(showcaseCss).toContain('linear-gradient(180deg,#0B0D12 0%');expect(showcaseCss).toContain('linear-gradient(90deg,#0B0D12 0%')
-  expect(showcaseCss).toContain('pointer-events:none;background:linear-gradient(180deg');expect(showcaseCss).toContain('#0B0D1200 88%')
+const css=readFileSync('src/styles/cinema-interior.css','utf8')
+const files=JSON.parse(readFileSync('public/cinema/v3/manifest.json','utf8')).files
+describe('Cinematic interior composition',()=>{
+ it('ships genuine alpha artwork rather than rectangular mascot thumbnails',()=>{
+  for(const file of files){
+   const data=readFileSync('public/cinema/v3/'+file.file);expect(data.toString('ascii',0,4)).toBe('RIFF');expect(data.toString('ascii',8,12)).toBe('WEBP');expect(data.toString('ascii',12,16)).toBe('VP8X');expect(data[20]&0x10).toBe(0x10)
+  }
+  expect(files.find(f=>f.file==='mascot-160.webp').alpha).toBe(true)
  })
- it('masks only decorative footer images, with standard and WebKit support',()=>{
-  for(const selector of ['.footer-mascot{','.footer-filmstrip{']){const rule=showcaseCss.split(selector)[1]?.split('}')[0];expect(rule).toContain('-webkit-mask-image:');expect(rule).toContain('mask-image:');expect(rule).toContain('mask-composite:intersect')}
-  expect(showcaseCss).toContain('.cinema-footer{background:linear-gradient(180deg,#0B0D12 0px');expect(showcaseCss).toContain('#0B0D12;border-top:0;')
+ it('uses text-free edge scenery for header, catalogue and footer',()=>{
+  for(const art of ['header-atmosphere.webp','catalog-reel.webp'])expect(css).toContain('/cinema/v3/'+art)
+  expect(css).toContain('.home-scene:before,.home-scene:after');expect(css).toContain('pointer-events:none')
+  const footer=readFileSync('src/components/CinemaFooter.vue','utf8');expect(footer).toContain('footer-stage-projector');expect(footer).toContain('aria-hidden="true"');expect(footer).not.toContain('/cinema/v1/footer-mascot')
+ })
+ it('keeps Hero full-bleed and semantic controls separate from artwork',()=>{
+  const home=readFileSync('src/views/MainCatalogView.vue','utf8');expect(home).toContain('<div class="home-scene">');expect(home.indexOf('<ShowcaseHero />')).toBeLessThan(home.indexOf('<div class="catalog-page">'))
+  expect(css).toContain('margin:0;width:100%');expect(css).toContain('.footer-inner{position:relative;z-index:1');expect(css).toContain('mask-image:none')
  })
 })

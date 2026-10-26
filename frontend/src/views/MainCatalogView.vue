@@ -124,8 +124,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="catalog-page">
+  <div class="home-scene">
     <ShowcaseHero />
+    <div class="catalog-page">
     <QuickCategories />
 
     <!-- Loading skeleton -->
@@ -177,6 +178,7 @@ onUnmounted(() => {
           :view-all-link="`/genres?genre=${genreItem.genre.slug}`"
         />
       </template>
+    </div>
     </div>
   </div>
 </template>

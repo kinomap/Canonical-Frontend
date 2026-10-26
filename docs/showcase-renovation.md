@@ -71,3 +71,17 @@ keep Backend/Admin/Node containers untouched, validate the new Nginx configurati
 retain image/config rollback, and verify actual live Security Center results.
 A failed full-suite gate is not waived, and the accepted deploy-kit is not replaced
 until release acceptance succeeds.
+
+
+## Cinema interior correction
+
+The v3 artwork uses a hand-traced transparent mascot silhouette, not a faded square
+thumbnail. Text-free left/right scene crops restore the bee/chair/clapper and cinema
+projector around live footer content. Their own alpha edges blend with the canvas;
+no full reference screenshot, baked navigation or baked Telegram text is used.
+Hero is full-bleed outside the constrained poster grid. Decorative catalogue reels
+are non-interactive pseudo-elements, never additional poster cards. Responsive
+layout keeps artwork separate from focusable navigation and the official Telegram
+links. Existing 2:3 poster geometry and player/Backend/Media Node contracts remain
+unchanged. New assets live under immutable `/cinema/v3/`, with provenance/geometry
+in its manifest.

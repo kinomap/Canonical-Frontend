@@ -1,0 +1,76 @@
+{
+  "source": "User-supplied 2026-10-26 cinematic references",
+  "processing": "Hand-traced alpha mascot; text-free decorative scene crops with smooth alpha edges. No live UI baked into art.",
+  "files": [
+    {
+      "file": "catalog-reel.webp",
+      "width": 192,
+      "height": 480,
+      "alpha": true,
+      "bytes": 4180
+    },
+    {
+      "file": "filmstrip-1000.webp",
+      "width": 1000,
+      "height": 108,
+      "alpha": true,
+      "bytes": 19030
+    },
+    {
+      "file": "filmstrip-2000.webp",
+      "width": 2000,
+      "height": 215,
+      "alpha": true,
+      "bytes": 49950
+    },
+    {
+      "file": "footer-scene-300.webp",
+      "width": 300,
+      "height": 385,
+      "alpha": true,
+      "bytes": 29022
+    },
+    {
+      "file": "footer-scene-480.webp",
+      "width": 480,
+      "height": 616,
+      "alpha": true,
+      "bytes": 50398
+    },
+    {
+      "file": "header-atmosphere.webp",
+      "width": 1740,
+      "height": 91,
+      "alpha": true,
+      "bytes": 2178
+    },
+    {
+      "file": "mascot-160.webp",
+      "width": 160,
+      "height": 171,
+      "alpha": true,
+      "bytes": 14112
+    },
+    {
+      "file": "mascot-80.webp",
+      "width": 80,
+      "height": 85,
+      "alpha": true,
+      "bytes": 5750
+    },
+    {
+      "file": "projector-180.webp",
+      "width": 180,
+      "height": 428,
+      "alpha": true,
+      "bytes": 16792
+    },
+    {
+      "file": "projector-280.webp",
+      "width": 280,
+      "height": 666,
+      "alpha": true,
+      "bytes": 28026
+    }
+  ]
+}
