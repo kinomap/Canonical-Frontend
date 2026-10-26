@@ -3,12 +3,14 @@ import { t } from '@/i18n'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { apiClient } from '@/api/client'
 import type { HomeCollections } from '@/types/movie'
+import { mergeHomeGenreCollections } from '@/utils/homeGenres'
 import MovieRail from '@/components/MovieRail.vue'
 import ShowcaseHero from '@/components/ShowcaseHero.vue'
 import QuickCategories from '@/components/QuickCategories.vue'
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const collections = ref<HomeCollections | null>(null)
+const genreCollections = computed(() => mergeHomeGenreCollections(collections.value?.by_genre))
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -169,9 +171,9 @@ onUnmounted(() => {
         eager
       />
 
-      <template v-if="collections.by_genre && collections.by_genre.length">
+      <template v-if="genreCollections.length">
         <MovieRail
-          v-for="genreItem in collections.by_genre"
+          v-for="genreItem in genreCollections"
           :key="genreItem.genre.id"
           :title="genreItem.genre.name"
           :movies="genreItem.movies"
