@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main, 'feat/player-cloud-*']
-    paths: ['desktop-player/**', '.github/workflows/build-player.yml']
+    paths: ['desktop-player/**', '.github/workflows/build-player.yml', '.gitattributes']
 permissions:
   contents: read
 concurrency:
