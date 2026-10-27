@@ -66,10 +66,11 @@ jobs:
           $env:pythonLocation | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "$env:pythonLocation\Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Native source tests (cloud only)
+        timeout-minutes: 10
         if: matrix.platform != 'linux'
         run: |
           python -m pip install -r requirements.txt PyInstaller==6.16.0 pytest==8.3.5
-          python -m pytest -q
+          python -m pytest -vv -o faulthandler_timeout=60
       - name: Build Windows installer with bundled mpv and DLL inventory
         if: matrix.platform == 'windows'
         shell: pwsh

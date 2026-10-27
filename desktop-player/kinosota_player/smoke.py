@@ -26,7 +26,10 @@ def run_playback_smoke(engine,fixture,report):
                 time.sleep(.1)
             else:raise RuntimeError('Packaged decoder did not initialize')
             assert video in codec.lower(), 'Unexpected video decoder'
-            assert acodec==audio and fmt==pixel, 'Unexpected audio/pixel format'
+            assert acodec==audio, f'Unexpected audio decoder: {acodec}'
+            # mpv reports native endian 10-bit as yuv420p10, not FFmpeg yuv420p10le.
+            expected_formats={'yuv420p10','yuv420p10le'} if pixel=='yuv420p10le' else {pixel}
+            assert fmt in expected_formats, f'Unexpected pixel format: {fmt}'
             engine.command(['set_property','pause',False])
             deadline=time.monotonic()+5
             while time.monotonic()<deadline:
