@@ -15,7 +15,7 @@ def run_playback_smoke(engine,fixture,report):
     results=[]
     try:
         for filename,video,audio,pixel in [('h264.mkv','h.264','aac','yuv420p'),('hevc.mkv','hevc','ac3','yuv420p10le')]:
-            engine.start(f'https://127.0.0.1:{server.server_port}/{filename}',extra_args=['--vo=null','--ao=null','--pause=yes','--tls-ca-file='+str(fixture/'cert.pem')])
+            engine.start(f'https://127.0.0.1:{server.server_port}/{filename}',extra_args=['--vo=null','--ao=null','--pause=yes','--tls-ca-file='+str(fixture/'cert.pem'),'--log-file='+str(report.parent/('mpv-'+filename+'.log'))])
             deadline=time.monotonic()+25
             def prop(name):
                 try:return engine.command(['get_property',name])

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Run only inside a disposable Debian/Ubuntu container/VM, never on an operator host.
 set -eu
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
 [ "${KINOSOTA_DISPOSABLE_QA:-}" = 1 ] || { echo 'Disposable QA environment required' >&2; exit 2; }
 pkg=${1:?Path to candidate deb required}
 apt-get update
@@ -17,7 +18,13 @@ su -s /bin/sh viewer -c 'QT_QPA_PLATFORM=xcb xvfb-run -a timeout 25 kinosota-pla
 qa=/tmp/kinosota-installed-qa
 install -d -o viewer -g viewer "$qa"
 su -s /bin/sh viewer -c "python3 /qa/make_smoke_fixture.py '$qa/fixture'"
-su -s /bin/sh viewer -c "QT_QPA_PLATFORM=xcb xvfb-run -a timeout 90 kinosota-player --playback-smoke-fixture '$qa/fixture' --playback-smoke-report '$qa/playback-smoke.json'"
+result=0
+su -s /bin/sh viewer -c "QT_QPA_PLATFORM=xcb xvfb-run -a timeout 90 kinosota-player --playback-smoke-fixture '$qa/fixture' --playback-smoke-report '$qa/playback-smoke.json'" || result=$?
+if [ "$result" != 0 ]; then
+  cat "$qa/playback-smoke.json" || true
+  if [ -n "${KINOSOTA_QA_REPORT_DIR:-}" ]; then cp "$qa/"*.json "$qa/"*.log "$KINOSOTA_QA_REPORT_DIR/" 2>/dev/null || true; fi
+  exit "$result"
+fi
 python3 -c "import json; assert json.load(open('$qa/playback-smoke.json'))['status']=='PASS'"
 if [ -n "${KINOSOTA_QA_REPORT_DIR:-}" ]; then
   cp "$qa/playback-smoke.json" "$KINOSOTA_QA_REPORT_DIR/playback-smoke-$(. /etc/os-release; echo "$ID-$VERSION_ID").json"

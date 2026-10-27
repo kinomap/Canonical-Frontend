@@ -222,7 +222,14 @@ def main():
             report=sys.argv[sys.argv.index('--playback-smoke-report')+1]
             run_playback_smoke(window.engine,fixture,report)
             return 0
-        except Exception:
+        except Exception as error:
+            import json,traceback
+            failure={'status':'FAIL','error_type':type(error).__name__,'detail':str(error),'traceback':traceback.format_exc()}
+            if '--playback-smoke-report' in sys.argv:
+                destination=Path(sys.argv[sys.argv.index('--playback-smoke-report')+1])
+                destination.parent.mkdir(parents=True,exist_ok=True)
+                destination.write_text(json.dumps(failure,indent=2),encoding='utf-8')
+            if sys.stderr:traceback.print_exc()
             return 1
         finally:window.close()
     if smoke:

@@ -3,7 +3,12 @@ import hashlib,json,os,platform,shutil,subprocess,tempfile
 from pathlib import Path
 from make_smoke_fixture import generate
 ROOT=Path(__file__).resolve().parents[1]
-def run(*args,**kwargs):subprocess.run(list(map(str,args)),check=True,timeout=180,**kwargs)
+def run(*args,**kwargs):
+    try:subprocess.run(list(map(str,args)),check=True,timeout=180,**kwargs)
+    except subprocess.CalledProcessError:
+        report=ROOT/'dist/playback-smoke.json'
+        if report.exists():print(report.read_text(),flush=True)
+        raise
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true':raise RuntimeError('Cloud runner required')
     system=platform.system();out=ROOT/'dist';receipt=out/'playback-smoke.json'
