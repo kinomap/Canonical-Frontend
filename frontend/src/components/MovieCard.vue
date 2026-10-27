@@ -3,7 +3,7 @@ import PosterPlay from './PosterPlay.vue'
 import {contentPath} from '@/utils/contentPath'
 import { t } from '@/i18n'
 import type { MovieSummary } from '@/types/movie'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { posterSrcset, posterUrl } from '@/utils/poster'
 
 const props = withDefaults(defineProps<{
@@ -14,6 +14,7 @@ const props = withDefaults(defineProps<{
 })
 
 const posterError = ref(false)
+watch(() => props.movie.poster, () => { posterError.value = false })
 
 const handlePosterError = () => {
   posterError.value = true
@@ -236,5 +237,6 @@ const displayYear = computed(() => {
   text-overflow: ellipsis;
   text-align: left;
 }
+@media (prefers-reduced-motion: reduce) { .poster-fallback.branded-fallback::after { animation: none; } }
 </style>
 
