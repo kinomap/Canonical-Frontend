@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "kinosota-player"
+version = "0.1.0"
+description = "KINOSOTA desktop catalogue and authenticated mpv playback"
+requires-python = ">=3.11,<3.15"
+dynamic = ["dependencies"]
+[project.scripts]
+kinosota-player = "kinosota_player.app:main"
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+[tool.setuptools.package-data]
+kinosota_player = ["assets/*"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -16,6 +16,7 @@ vi.mock('@/api/client', () => ({
     listGenres: vi.fn(),
     searchMovies: vi.fn(),
     startPlayback: vi.fn(),
+    diagnosePlayback: vi.fn(),
     heartbeatPlayback: vi.fn(),
     stopPlayback: vi.fn(),
     getCurrentUser: vi.fn(),
@@ -32,6 +33,7 @@ describe('MovieDetailsView.vue', () => {
 
   beforeEach(async () => {
     vi.resetAllMocks()
+    vi.mocked(apiClient.diagnosePlayback).mockResolvedValue({state:'available'})
     vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue(undefined)
     vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{})
 
@@ -271,4 +273,78 @@ describe('MovieDetailsView.vue', () => {
     expect(wrapper.find('.not-found-state').exists()).toBe(true)
     expect(wrapper.text()).toContain('Movie Not Found')
   })
+  async function compatibilityFixture() {
+    vi.mocked(apiClient.getMovie).mockResolvedValueOnce({
+      id: 'movie-123', title: 'Codec fixture', year: 2024, poster: null,
+      rating: null, runtime: 90, status: 'available', genres: [], overview: ''
+    } as any)
+    vi.mocked(apiClient.getAudioTracks).mockResolvedValueOnce([])
+    vi.mocked(apiClient.getCurrentUser).mockResolvedValue({id:'u1',username:'viewer'} as any)
+    vi.mocked(apiClient.stopPlayback).mockResolvedValue({ok:true})
+    useAuthStore().setToken('test-token')
+    const w=mount(MovieDetailsView,{global:{plugins:[router]}})
+    await flushPromises()
+    return w
+  }
+
+  it('does not diagnose an idle empty video element as an unsupported codec',async()=>{
+    const w=await compatibilityFixture()
+    w.findComponent({name:'VideoPlayer'}).vm.$emit('media-error',4)
+    await flushPromises()
+    expect(w.find('.compatibility').exists()).toBe(false)
+    expect(w.find('.player-container').exists()).toBe(true)
+    expect(apiClient.stopPlayback).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('renders the structured browser codec warning with the profile link',async()=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.diagnosePlayback).mockResolvedValue({state:'available'})
+    vi.mocked(apiClient.startPlayback).mockRejectedValueOnce(Object.assign(new Error('Unsupported'),{
+      status:409,detail:{code:'BROWSER_MEDIA_UNSUPPORTED'}
+    }))
+    await w.find('.player-container').trigger('click');await flushPromises()
+    expect(w.find('.compatibility').exists()).toBe(true)
+    expect(w.find('.compatibility a').attributes('href')).toBe('/profile#desktop-player')
+    expect(w.find('.inline-error').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it.each([2,3,4])('releases the lease on native video error %s and distinguishes network failure',async(code)=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.startPlayback).mockResolvedValueOnce({
+      session_id:'codec-session',media_url:'https://media.invalid/fixture',heartbeat_interval_seconds:30
+    } as any)
+    await w.find('.player-container').trigger('click');await flushPromises()
+    w.findComponent({name:'VideoPlayer'}).vm.$emit('media-error',code)
+    await flushPromises()
+    expect(apiClient.stopPlayback).toHaveBeenCalledWith('codec-session',{})
+    expect(w.find('.compatibility').exists()).toBe(code===3||code===4)
+    if(code===2)expect(w.text()).toContain('проверьте соединение')
+    w.unmount()
+  })
+
+  it.each([3,4])('confirmed missing file is never advertised as a codec problem (%s)', async(code)=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.startPlayback).mockResolvedValueOnce({session_id:'missing',media_url:'https://media.invalid/fixture'} as any)
+    vi.mocked(apiClient.diagnosePlayback).mockResolvedValueOnce({state:'unavailable',code:'MEDIA_UNAVAILABLE'})
+    await w.find('.player-container').trigger('click');await flushPromises()
+    w.findComponent({name:'VideoPlayer'}).vm.$emit('media-error',code);await flushPromises()
+    expect(w.find('.playback-unavailable').text()).toContain('Фильм больше недоступен на сайте')
+    expect(w.find('.compatibility').exists()).toBe(false)
+    expect(w.find('.playback-unavailable').text()).not.toContain('подписк')
+    w.unmount()
+  })
+  it('a temporary source-check error never claims the film was deleted or codecs are incompatible',async()=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.startPlayback).mockResolvedValueOnce({session_id:'temporary',media_url:'https://media.invalid/fixture'} as any)
+    vi.mocked(apiClient.diagnosePlayback).mockResolvedValueOnce({state:'temporary'})
+    await w.find('.player-container').trigger('click');await flushPromises()
+    w.findComponent({name:'VideoPlayer'}).vm.$emit('media-error',4);await flushPromises()
+    expect(w.find('.playback-unavailable').exists()).toBe(false)
+    expect(w.find('.compatibility').exists()).toBe(false)
+    expect(w.text()).toContain('Попробуйте позднее или проверьте соединение')
+    w.unmount()
+  })
+
 })

@@ -9,6 +9,8 @@ import type { Comment, MovieReaction } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import AudioTracksList from '@/components/AudioTracksList.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
+import PlaybackCompatibility from '@/components/PlaybackCompatibility.vue'
+import PlaybackUnavailable from '@/components/PlaybackUnavailable.vue'
 import ReactionsBlock from '@/components/ReactionsBlock.vue'
 import CommentsBlock from '@/components/CommentsBlock.vue'
 import { Play } from 'lucide-vue-next'
@@ -34,6 +36,9 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const isNotFound = ref(false)
 const descriptionExpanded = ref(false)
+const compatibilityWarning = ref(false)
+const unavailableWarning = ref(false)
+const diagnosing = ref(false)
 const playError = ref<string | null>(null)   // inline error under the player
 const commentError = ref<string | null>(null) // inline error in comments section
 
@@ -100,6 +105,8 @@ async function handlePlay() {
     return
   }
   playError.value = null
+  compatibilityWarning.value = false
+  unavailableWarning.value = false
   if (streamUrl.value) {
     shouldPlay.value = true
     return
@@ -120,8 +127,13 @@ async function handlePlay() {
       // Keep the splash mounted until a usable URL is ready: no empty player gap.
       shouldPlay.value = true
     } catch (err: any) {
+      if (err?.detail?.code === 'MEDIA_UNAVAILABLE' || err?.status === 404 || err?.status === 410) {
+        unavailableWarning.value = true
+      } else if (err?.detail?.code === 'BROWSER_MEDIA_UNSUPPORTED') {
+        await diagnoseFailure(4)
+      }
       // 401 is handled globally by auth:expired → no duplicate message
-      if (err?.status !== 401) {
+      if (err?.status !== 401 && !unavailableWarning.value && err?.detail?.code !== 'BROWSER_MEDIA_UNSUPPORTED') {
         playError.value = err?.message || 'Failed to start playback'
       }
       shouldPlay.value = false
@@ -129,6 +141,30 @@ async function handlePlay() {
       playbackStarting.value = false
     }
   }
+}
+
+async function diagnoseFailure(code: number) {
+  diagnosing.value = true
+  compatibilityWarning.value = false
+  unavailableWarning.value = false
+  playError.value = null
+  try {
+    const result = await apiClient.diagnosePlayback(movieId.value)
+    if (result.state === 'unavailable') unavailableWarning.value = true
+    else if (result.state === 'available' && (code === 3 || code === 4)) compatibilityWarning.value = true
+    else playError.value = 'Не удалось загрузить видео. Попробуйте позднее или проверьте соединение.'
+  } catch (err: any) {
+    if (err?.status !== 401) playError.value = 'Не удалось проверить доступность фильма. Попробуйте позднее.'
+  } finally { diagnosing.value = false }
+}
+
+async function handleMediaError(code: number) {
+  // Do not infer deletion or codecs from an idle player, an ad, or a generic network error.
+  if (!shouldPlay.value || !streamUrl.value || diagnosing.value) return
+  releasePlaybackSession()
+  shouldPlay.value = false
+  streamUrl.value = null
+  await diagnoseFailure(code)
 }
 
 // ── Playback session lease ────────────────────────────────────────────
@@ -252,7 +288,7 @@ onMounted(() => {
     <!-- Details View (YouTube-style) -->
     <div v-else-if="movie" class="yt-layout">
       <!-- Player Area -->
-      <div v-if="!shouldPlay" class="player-container" :aria-busy="playbackStarting" @click="handlePlay">
+      <div v-if="!shouldPlay && !compatibilityWarning && !unavailableWarning && !diagnosing" class="player-container" :aria-busy="playbackStarting" @click="handlePlay">
         <div class="player-splash" :style="{ backgroundImage: `url(${movie.backdrop || movie.poster})` }">
           <div class="player-overlay">
             <div class="play-circle">
@@ -261,9 +297,12 @@ onMounted(() => {
           </div>
         </div>
       </div>
-      <VideoPlayer :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" />
+      <VideoPlayer :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" @media-error="handleMediaError" />
+      <p v-if="diagnosing" role="status">Проверяем доступность фильма…</p>
+      <PlaybackUnavailable v-if="unavailableWarning" />
+      <PlaybackCompatibility v-else-if="compatibilityWarning" />
       <!-- Inline player error (non-auth failures only) -->
-      <div v-if="playError" class="inline-error" role="alert">
+      <div v-if="playError && !compatibilityWarning && !unavailableWarning" class="inline-error" role="alert">
         <span>{{ playError }}</span>
         <button class="inline-error-close" @click="playError = null" :aria-label="t('Dismiss')">&times;</button>
       </div>

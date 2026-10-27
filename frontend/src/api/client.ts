@@ -39,7 +39,8 @@ export interface MovieReaction {
 export class ApiError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
+    public detail?: { code?: string; message?: string; reason?: string }
   ) {
     super(message)
     this.name = 'ApiError'
@@ -128,10 +129,12 @@ async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 
 
   if (!response.ok) {
     let errorDetail = response.statusText
+    let structuredDetail: { code?: string; message?: string; reason?: string } | undefined
     try {
       const data = await response.json()
       if (data && data.detail) {
-        errorDetail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
+        structuredDetail = typeof data.detail === 'object' && !Array.isArray(data.detail) ? data.detail : undefined
+        errorDetail = typeof data.detail === 'string' ? data.detail : structuredDetail?.message || JSON.stringify(data.detail)
       }
     } catch {
       // Body is not JSON
@@ -142,7 +145,7 @@ async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 
     if (response.status === 401) {
       window.dispatchEvent(new CustomEvent('auth:expired'))
     }
-    throw new ApiError(response.status, errorDetail)
+    throw new ApiError(response.status, errorDetail, structuredDetail)
   }
 
   const resData = (await response.json()) as T
@@ -280,6 +283,10 @@ export const apiClient = {
       method: 'POST',
       body: JSON.stringify({ reaction_type }),
     })
+  },
+
+  async diagnosePlayback(movieId: string): Promise<{state: 'available'|'unavailable'|'temporary', code?: string, source_id?: string}> {
+    return request('/playback/diagnose', {method: 'POST', body: JSON.stringify({movie_id: movieId})})
   },
 
   async startPlayback(movieId: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number, traffic_id?: string }> {

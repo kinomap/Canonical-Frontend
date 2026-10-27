@@ -7,7 +7,7 @@ import {toastMessage} from '@/lib/toast'
 const mocks=vi.hoisted(()=>({api:vi.fn(),push:vi.fn(),fetchCurrentUser:vi.fn(),setToken:vi.fn(),logout:vi.fn()}))
 vi.mock('@/accountApi',()=>({accountApi:mocks.api}))
 vi.mock('@/stores/auth',()=>({useAuthStore:()=>({user:{value:{username:'viewer'}},isAuthenticated:{value:true},...mocks})}))
-vi.mock('vue-router',()=>({useRouter:()=>({push:mocks.push,replace:mocks.push})}))
+vi.mock('vue-router',()=>({useRoute:()=>({query:{}}),useRouter:()=>({push:mocks.push,replace:mocks.push})}))
 let wrappers:any[]=[]
 const fixture=()=>({id:'fixture',username:'viewer',email:'viewer@example.com',display_name:'Cinema fan',language:'ru',avatar_preset:0,telegram_notifications:false,password_login_available:true,two_factor_enabled:false,role:'user',created_at:'2026-10-01T00:00:00Z',subscription_status:'free',entitlements:[]})
 beforeEach(()=>{vi.clearAllMocks();setLanguage('ru');wrappers=[];mocks.api.mockImplementation(async(path:string)=>path==='/account'?fixture():path==='/billing/plans'?[]:path.startsWith('/billing/orders')?{items:[],total:0}:[])})

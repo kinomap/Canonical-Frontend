@@ -61,6 +61,7 @@ const router = createRouter({
       name: 'register',
       component: RegisterView
     },
+    { path: '/player', name: 'desktop-player', component: () => import('@/views/DesktopPlayerView.vue') },
     {
       path: '/profile',
       name: 'profile',

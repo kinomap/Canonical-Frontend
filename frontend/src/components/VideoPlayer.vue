@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{
   title?: string;
 }>(), { requested: true })
 
-const emit = defineEmits(['close', 'ended'])
+const emit = defineEmits(['close', 'ended', 'media-error'])
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 const adsRef=ref<InstanceType<typeof AdPlaybackContainer>|null>(null)
@@ -274,6 +274,7 @@ onBeforeUnmount(() => {
         playsinline
         @timeupdate="handleTimeUpdate"
         @loadedmetadata="handleLoadedMetadata"
+        @error="emit('media-error', videoRef?.error?.code || 0)"
         @waiting="handleWaiting"
         @playing="handlePlaying"
         @canplay="handleCanPlay"
