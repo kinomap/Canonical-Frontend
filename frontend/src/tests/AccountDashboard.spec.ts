@@ -156,3 +156,17 @@ it('keyboard navigation includes the new player tab and wraps all menu items',as
  await w.get('#tab-settings').trigger('keydown',{key:'ArrowDown'});await flushPromises()
  expect(w.get('#tab-profile').attributes('aria-selected')).toBe('true')
 })
+
+
+describe('Administrator paid privileges display',()=>{
+ it('labels administrator access truthfully without a fake paid subscription',async()=>{
+  mocks.api.mockImplementation(async(path:string)=>path==='/account'?{...fixture(),role:'admin'}:path==='/desktop/releases'?{can_download:true,access_basis:'administrator',items:[]}:[])
+  const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+  expect(w.text()).toContain('Администратор · полный доступ')
+  await w.get('#tab-player').trigger('click');await flushPromises()
+  expect(w.text()).toContain('ДОСТУП АДМИНИСТРАТОРА')
+  expect(w.text()).toContain('Покупать подписку не нужно')
+  expect(w.find('#player-pair-code').exists()).toBe(true)
+  expect(w.find('.access-note').exists()).toBe(false)
+ })
+})
