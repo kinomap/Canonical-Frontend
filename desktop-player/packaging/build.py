@@ -49,6 +49,8 @@ def main():
                     source=Path(d.locate_file(f))
                     if source.is_file():target=license_out/package/str(f).split('.dist-info/',1)[1];target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
         except md.PackageNotFoundError:pass
+    from package_notices import copy_notices
+    copy_notices(license_out)
     (license_out/'inventory.json').write_text(json.dumps(inventory,indent=2))
     shutil.copy2(ROOT/'packaging/THIRD_PARTY.md',license_out/'NOTICE.md')
     if system=='Linux':
