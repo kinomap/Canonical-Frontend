@@ -20,15 +20,8 @@ def test_real_https_ipc_and_codecs(tmp_path,codec,audio,pixel):
     context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);context.load_cert_chain(cert,key);server.socket=context.wrap_socket(server.socket,server_side=True)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start();engine=Mpv()
     def prop(name):
-        with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
-            s.settimeout(2);s.connect(engine.endpoint);s.sendall((json.dumps({'command':['get_property',name],'request_id':99})+'\n').encode());buf=b''
-            while True:
-                chunk=s.recv(8192)
-                if not chunk:raise AssertionError('mpv IPC closed before property response')
-                buf+=chunk
-                while b'\n' in buf:
-                    line,buf=buf.split(b'\n',1);row=json.loads(line)
-                    if row.get('request_id')==99:return row.get('data')
+        try:return engine.command(['get_property',name])
+        except RuntimeError:return None  # Property is not ready while loading.
     try:
         engine.start(f'https://127.0.0.1:{server.server_port}/movie.mkv?token=fixture-only',extra_args=['--vo=null','--ao=null','--pause=yes','--tls-ca-file='+str(cert),'--log-file='+str(tmp_path/'mpv.log')])
         deadline=time.monotonic()+20

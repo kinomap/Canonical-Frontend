@@ -1,6 +1,6 @@
 """Native catalogue shell; all network work runs outside the UI thread."""
 import sys, time, webbrowser, subprocess
-from .engine import child_environment
+from .engine import child_environment, native_loader
 from pathlib import Path
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QTimer, QSize
 from PySide6.QtGui import QIcon, QPixmap
@@ -211,15 +211,28 @@ def main():
     if '--version' in sys.argv:
         print('KINOSOTA Player 0.1.1');return 0
     app=QApplication(sys.argv);app.setApplicationName('KINOSOTA Player');app.setOrganizationName('KINOSOTA');app.setDesktopFileName('kinosota-player')
-    smoke='--smoke-test' in sys.argv
+    smoke='--smoke-test' in sys.argv or '--playback-smoke-fixture' in sys.argv
     window=Window(restore=not smoke);window.show()
+    if '--playback-smoke-fixture' in sys.argv:
+        from .smoke import run_playback_smoke
+        try:
+            assert not window.windowIcon().isNull()
+            assert window.pages.currentIndex()==0
+            fixture=sys.argv[sys.argv.index('--playback-smoke-fixture')+1]
+            report=sys.argv[sys.argv.index('--playback-smoke-report')+1]
+            run_playback_smoke(window.engine,fixture,report)
+            return 0
+        except Exception:
+            return 1
+        finally:window.close()
     if smoke:
         try:
             assert not window.windowIcon().isNull(), 'Application icon is missing'
             assert window.pages.currentIndex()==0, 'Smoke test must not log in'
             assert window.password.echoMode()==QLineEdit.EchoMode.Password
             assert window.engine.executable, 'mpv is missing'
-            subprocess.run([window.engine.executable,'--no-config','--version'],env=child_environment(),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
+            with native_loader():
+                subprocess.run([window.engine.executable,'--no-config','--version'],env=child_environment(),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
         except Exception:
             window.close();return 1
         QTimer.singleShot(300,window.close)

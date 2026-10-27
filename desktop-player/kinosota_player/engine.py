@@ -1,5 +1,6 @@
 """mpv child process with private JSON IPC. Media tokens never enter argv."""
-import json, os, shutil, socket, subprocess, sys, tempfile, time, uuid
+import json, os, shutil, socket, subprocess, sys, tempfile, time, uuid, threading
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 def child_environment():
@@ -11,6 +12,24 @@ def child_environment():
         else:env.pop('LD_LIBRARY_PATH',None)
         env.pop('LD_LIBRARY_PATH_ORIG',None)
     return env
+
+_spawn_lock=threading.RLock()
+@contextmanager
+def native_loader():
+    """Do not pass PyInstaller's DLL search directory to the mpv child."""
+    with _spawn_lock:
+        if os.name!='nt' or not getattr(sys,'frozen',False):
+            yield
+            return
+        import ctypes
+        kernel=ctypes.windll.kernel32
+        buffer=ctypes.create_unicode_buffer(32768)
+        kernel.GetDllDirectoryW(len(buffer),buffer)
+        previous=buffer.value
+        if not kernel.SetDllDirectoryW(None):raise OSError('Cannot reset child DLL search directory')
+        try:yield
+        finally:
+            if not kernel.SetDllDirectoryW(previous or None):raise OSError('Cannot restore DLL search directory')
 
 class Mpv:
     def __init__(self,executable=None):
@@ -28,7 +47,8 @@ class Mpv:
         self.endpoint=(r'\\.\pipe\kinosota-'+uuid.uuid4().hex) if os.name=='nt' else str(Path(self.directory.name)/'mpv.sock')
         args=[self.executable,'--no-config','--idle=once','--force-window=yes','--keep-open=no',
               '--terminal=no','--osc=yes','--title=KINOSOTA Player','--input-ipc-server='+self.endpoint,*extra_args]
-        self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+        with native_loader():
+            self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0)
         try:
             for _ in range(100):
