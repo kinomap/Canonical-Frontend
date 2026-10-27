@@ -6,13 +6,13 @@ import {useAuthStore} from '@/stores/auth'
 const route=useRoute(),auth=useAuthStore()
 const emit=defineEmits<{(e:'open-billing'):void}>()
 type Release={os:string;ready:boolean;version:string|null;sha256:string|null;download_url:string|null}
-const releases=ref<Release[]>([]),allowed=ref(false),loading=ref(true),error=ref(''),message=ref(''),busy=ref('')
+const releases=ref<Release[]>([]),allowed=ref(false),loading=ref(true),error=ref(''),message=ref(''),busy=ref(''),accessBasis=ref<string|null>(null)
 const pairCode=ref(typeof route.query.player_code==='string'?route.query.player_code.toUpperCase():'')
 const names:Record<string,string>={windows:'Windows',macos:'macOS',linux:'Linux'}
 const profileTarget=computed(()=>'/profile?tab=player'+(pairCode.value?'&player_code='+encodeURIComponent(pairCode.value):''))
 const platformHelp:Record<string,string>={windows:'Установщик Windows',macos:'Приложение для macOS',linux:'Пакет .deb для Linux'}
 const pairingValid=computed(()=>/^[A-Z2-9]{8}$/.test(pairCode.value))
-async function load(){loading.value=true;error.value='';try{const data=await accountApi('/desktop/releases');releases.value=data.items;allowed.value=data.can_download}catch{error.value='Не удалось проверить версии приложения. Повторите позже.'}finally{loading.value=false}}
+async function load(){loading.value=true;error.value='';try{const data=await accountApi('/desktop/releases');releases.value=data.items;allowed.value=data.can_download;accessBasis.value=data.access_basis||null}catch{error.value='Не удалось проверить версии приложения. Повторите позже.'}finally{loading.value=false}}
 async function download(item:Release){
  if(!item.download_url||busy.value)return
  busy.value=item.os;error.value=''
@@ -28,7 +28,8 @@ onMounted(load)
 </script>
 <template>
  <section id="desktop-player" class="desktop-player" aria-labelledby="desktop-player-title">
-  <header class="player-intro"><img src="/brand/icon-128.png" alt="" width="72" height="72"/><div><span class="privilege">ПРИВИЛЕГИЯ PRO</span><h2 id="desktop-player-title">KINOSOTA Player</h2><p>Ваш кинотеатр на компьютере</p></div></header>
+  <header class="player-intro"><img src="/brand/icon-128.png" alt="" width="72" height="72"/><div><span class="privilege">{{accessBasis==='administrator'?'ДОСТУП АДМИНИСТРАТОРА':'ПРИВИЛЕГИЯ PRO'}}</span><h2 id="desktop-player-title">KINOSOTA Player</h2><p>Ваш кинотеатр на компьютере</p></div></header>
+  <p v-if="accessBasis==='administrator'" class="admin-access" role="status">Все возможности плеера доступны вам как администратору. Покупать подписку не нужно.</p>
   <p class="lead">Ищите фильмы в каталоге и смотрите их в отдельном приложении. Плеер на базе mpv поддерживает больше форматов, чем браузер.</p>
   <div class="player-guide" aria-label="Как начать смотреть"><h3>Как пользоваться плеером</h3><ol><li><strong>Установите приложение</strong><span>Выберите вашу операционную систему ниже и откройте скачанный установщик.</span></li><li><strong>Войдите в аккаунт</strong><span>В плеере введите логин и пароль от KINOSOTA. Или выберите «Войти через аккаунт в браузере» и подтвердите код в этом разделе.</span></li><li><strong>Найдите фильм и смотрите</strong><span>Введите название в поиске плеера, выберите фильм и нажмите «Смотреть».</span></li></ol></div>
   <div v-if="!loading&&!allowed" class="access-note"><strong>Скачивание и просмотр — с платной подпиской</strong><p>Информация о приложении доступна всем. Для скачивания и подключения нужен аккаунт с действующей платной подпиской.</p><router-link v-if="!auth.isAuthenticated.value" class="action" :to="{path:'/login',query:{redirect:profileTarget}}">Войти в аккаунт</router-link><button v-else-if="route.path==='/profile'" @click="emit('open-billing')">Открыть подписку и оплату</button><router-link v-else class="action" to="/profile?tab=billing">Открыть подписку и оплату</router-link></div>
