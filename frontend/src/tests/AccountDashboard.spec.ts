@@ -166,7 +166,7 @@ describe('Administrator paid privileges display',()=>{
   await w.get('#tab-player').trigger('click');await flushPromises()
   expect(w.text()).toContain('ДОСТУП АДМИНИСТРАТОРА')
   expect(w.text()).toContain('Покупать подписку не нужно')
-  expect(w.find('#player-pair-code').exists()).toBe(true)
+  expect(w.find('#player-pair-code').exists()).toBe(false)
   expect(w.find('.access-note').exists()).toBe(false)
  })
 })

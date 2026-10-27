@@ -180,3 +180,16 @@ def test_short_titles_keep_full_poster_cell():
         assert rect.width()>=view.gridSize().width()-2
         assert rect.height()>=view.gridSize().height()-2
     view.close()
+
+
+def test_small_login_scrolls_instead_of_overlapping_fields():
+    from PySide6.QtWidgets import QScrollArea
+    app=QApplication.instance() or QApplication([])
+    w=Window(api=Api(),engine=Engine(),vault=Vault(),restore=False)
+    w.resize(800,640);w.show();app.processEvents()
+    assert isinstance(w.pages.widget(0),QScrollArea)
+    assert w.identity.geometry().bottom()<w.password.geometry().top()
+    assert w.password.geometry().bottom()<w.otp.geometry().top()
+    assert w.otp.geometry().bottom()<w.remember.geometry().top()
+    assert w.pages.widget(0).verticalScrollBar().maximum()>0
+    w.close();app.processEvents()

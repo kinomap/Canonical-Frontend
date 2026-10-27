@@ -4,6 +4,7 @@ import { RouterView, useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import CinemaFooter from '@/components/CinemaFooter.vue'
 import {toastMessage} from '@/lib/toast'
+import DesktopAuthorizeModal from '@/components/DesktopAuthorizeModal.vue'
 import SessionExpiredModal from '@/components/SessionExpiredModal.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -28,10 +29,10 @@ function handleAuthExpired() {
 
 function handleSessionConfirm() {
   sessionExpiredVisible.value = false
-  authStore.logout()
-  // Redirect to /login and carry return URL so the user lands back here after login
-  const redirect = sessionReturnUrl.value !== '/login' ? sessionReturnUrl.value : '/'
-  router.push({ path: '/login', query: { redirect, reason: 'session_expired' } })
+  // The form has established a new cookie session; keep the current page.
+  window.dispatchEvent(new CustomEvent('auth:restored'))
+  router.go(0)
+
 }
 
 onMounted(() => {
@@ -53,6 +54,7 @@ onUnmounted(() => {
     </main>
     <CinemaFooter v-if="!['/profile','/login','/register'].includes(route.path)" />
 
+    <DesktopAuthorizeModal />
     <!-- Global session-expired modal — rendered above everything -->
     <SessionExpiredModal
       :visible="sessionExpiredVisible"

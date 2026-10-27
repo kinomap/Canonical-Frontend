@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import {ref,onMounted,onBeforeUnmount} from 'vue'
 import {useAuthStore} from '@/stores/auth'
-import {useRouter} from 'vue-router'
+import {useRouter,useRoute} from 'vue-router'
 import {tr} from '@/i18n'
 import {loadTelegramLogin,clearLegacyTelegramFlags,type TelegramUser} from '@/lib/telegramLogin'
-const emit=defineEmits<{challenge:[string]}>()
-const auth=useAuthStore(),router=useRouter(),busy=ref(false),initializing=ref(true),message=ref('')
+const props=defineProps<{inline?:boolean}>()
+const emit=defineEmits<{challenge:[string];success:[]}>()
+const route=useRoute(),auth=useAuthStore(),router=useRouter(),busy=ref(false),initializing=ref(true),message=ref('')
 let disposed=false,attempt=0,botId='',sdk:Awaited<ReturnType<typeof loadTelegramLogin>>|undefined
 let timer:ReturnType<typeof setTimeout>|undefined
 onBeforeUnmount(()=>{disposed=true;attempt++;clearTimeout(timer)})
@@ -45,7 +46,7 @@ function login(){
       auth.setToken('cookie-session')
       if(!await auth.fetchCurrentUser()){auth.setToken(null);throw new Error('Вход не подтверждён. Повторите попытку.')}
       clearLegacyTelegramFlags()
-      if(!disposed)await router.push('/')
+      if(!disposed){if(props.inline)emit('success');else await router.push(typeof route.query.redirect==='string'&&route.query.redirect.startsWith('/')&&!route.query.redirect.startsWith('//')?route.query.redirect:'/')}
     }catch(e:any){if(!disposed)message.value=e.message}finally{if(!disposed)busy.value=false}
   }
   try{sdk.auth({bot_id:botId,request_access:'write'},user=>{void complete(user)})}

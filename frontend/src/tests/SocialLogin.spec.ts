@@ -4,7 +4,7 @@ import {setLanguage} from '@/i18n'
 import SocialLogin from '@/components/SocialLogin.vue'
 const m=vi.hoisted(()=>({push:vi.fn(),fetchCurrentUser:vi.fn(),setToken:vi.fn()}))
 vi.mock('@/stores/auth',()=>({useAuthStore:()=>m}))
-vi.mock('vue-router',()=>({useRouter:()=>({push:m.push})}))
+vi.mock('vue-router',()=>({useRoute:()=>({query:{}}),useRouter:()=>({push:m.push})}))
 let w:any,callback:any,sdk:any
 const response=(data:any,ok=true)=>({ok,json:async()=>data}) as Response
 const user={id:12345,auth_date:123,hash:'fixture',first_name:'Fixture'}

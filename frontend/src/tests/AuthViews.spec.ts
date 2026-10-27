@@ -83,7 +83,7 @@ describe('Auth Views & Store', () => {
     expect(router.currentRoute.value.path).toBe('/')
   })
 
-  it.each(['/profile', '/movies', '//external.invalid'])('successful login lands on Home even with redirect=%s', async (redirect) => {
+  it.each(['/profile', '/movies', '//external.invalid'])('successful login preserves safe return paths and rejects external redirect=%s', async (redirect) => {
     await router.push({ path: '/login', query: { redirect } })
     vi.mocked(apiClient.login).mockResolvedValueOnce({ access_token: 'cookie-session', token_type: 'bearer', user: { id: 'u-1', username: 'viewer', role: 'user', status: 'active' } } as any)
     const wrapper = mount(LoginView, { global: { plugins: [router] } })
@@ -91,7 +91,7 @@ describe('Auth Views & Store', () => {
     await wrapper.get('.social-login button').trigger('click')
     telegramCallback({id:123,auth_date:123,hash:'fixture',first_name:'Fixture'})
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/')
+    expect(router.currentRoute.value.path).toBe(redirect.startsWith('//')?'/':redirect)
     wrapper.unmount()
   })
 

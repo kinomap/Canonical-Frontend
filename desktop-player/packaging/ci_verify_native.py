@@ -39,5 +39,5 @@ def main():
         else:raise RuntimeError('Linux uses disposable distro installation checks')
     digest=hashlib.sha256(installer.read_bytes()).hexdigest()
     (out/'SHA256SUMS').write_text(digest+'  '+installer.name+'\n',encoding='utf-8')
-    (out/'candidate.json').write_text(json.dumps({'published':False,'version':'0.1.2','commit':os.environ['GITHUB_SHA'],'run_id':os.environ['GITHUB_RUN_ID'],'system':system,'architecture':platform.machine(),'filename':installer.name,'size':installer.stat().st_size,'sha256':digest,'install_playback_uninstall':'PASS','signing':'not-verified'},indent=2),encoding='utf-8')
+    (out/'candidate.json').write_text(json.dumps({'published':False,'version':'0.1.3','commit':os.environ['GITHUB_SHA'],'run_id':os.environ['GITHUB_RUN_ID'],'system':system,'architecture':platform.machine(),'filename':installer.name,'size':installer.stat().st_size,'sha256':digest,'install_playback_uninstall':'PASS','signing':'not-verified'},indent=2),encoding='utf-8')
 if __name__=='__main__':main()

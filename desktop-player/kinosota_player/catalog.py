@@ -58,16 +58,16 @@ class TileDelegate(QStyledItemDelegate):
             p.drawPixmap(poster,scaled,QRectF(x,y,poster.width(),poster.height()))
         else:
             gradient=QLinearGradient(poster.topLeft(),poster.bottomRight());gradient.setColorAt(0,QColor('#262344'));gradient.setColorAt(.55,QColor('#101c2a'));gradient.setColorAt(1,QColor('#080e12'));p.fillRect(poster,gradient)
-            p.setPen(QColor('#aab4c7'));p.setFont(QFont('Arial',10));p.drawText(poster.adjusted(16,24,-16,-24),Qt.AlignmentFlag.AlignTop|Qt.AlignmentFlag.AlignHCenter,'K I N O S O T A')
-            p.setPen(QColor('#f4f5f7'));p.setFont(QFont('Arial',15,QFont.Weight.Bold));p.drawText(poster.adjusted(18,62,-18,-32),Qt.AlignmentFlag.AlignCenter|Qt.TextFlag.TextWordWrap,movie.get('title',''))
+            p.setPen(QColor('#aab4c7'));p.setFont(QFont('Manrope',10));p.drawText(poster.adjusted(16,24,-16,-24),Qt.AlignmentFlag.AlignTop|Qt.AlignmentFlag.AlignHCenter,'K I N O S O T A')
+            p.setPen(QColor('#f4f5f7'));p.setFont(QFont('Manrope',15,QFont.Weight.Bold));p.drawText(poster.adjusted(18,62,-18,-32),Qt.AlignmentFlag.AlignCenter|Qt.TextFlag.TextWordWrap,movie.get('title',''))
         if selected:
             p.fillRect(poster,QColor(0,0,0,75));c=poster.center();p.setPen(QPen(QColor('#ffcc32'),1));p.setBrush(QColor('#090e12'));p.drawEllipse(c,27,27)
             p.setPen(Qt.PenStyle.NoPen);p.setBrush(QColor('#ffffff'));p.drawPolygon(QPolygonF([QPointF(c.x()-6,c.y()-10),QPointF(c.x()-6,c.y()+10),QPointF(c.x()+12,c.y())]))
         rating=movie.get('rating')
         if rating:
-            badge=QRectF(poster.right()-46,poster.top()+8,38,26);p.setPen(QPen(QColor('#806624'),1));p.setBrush(QColor('#10151e'));p.drawRoundedRect(badge,6,6);p.setPen(QColor('#ffdc6c'));p.setFont(QFont('Arial',10,QFont.Weight.Bold));p.drawText(badge,Qt.AlignmentFlag.AlignCenter,f'{float(rating):.1f}')
+            badge=QRectF(poster.right()-46,poster.top()+8,38,26);p.setPen(QPen(QColor('#806624'),1));p.setBrush(QColor('#10151e'));p.drawRoundedRect(badge,6,6);p.setPen(QColor('#ffdc6c'));p.setFont(QFont('Manrope',10,QFont.Weight.Bold));p.drawText(badge,Qt.AlignmentFlag.AlignCenter,f'{float(rating):.1f}')
         p.setClipping(False);p.setPen(QPen(QColor('#ffd34d' if selected else '#303943'),2 if selected else 1));p.setBrush(Qt.BrushStyle.NoBrush);p.drawRoundedRect(poster,10,10)
-        p.setPen(QColor('#f3f5f7'));font=QFont('Arial',11,QFont.Weight.DemiBold);p.setFont(font)
+        p.setPen(QColor('#f3f5f7'));font=QFont('Manrope',11,QFont.Weight.DemiBold);p.setFont(font)
         title=movie.get('title','');metrics=p.fontMetrics();maxw=int(width);words=title.split();lines=[];line=''
         for word in words:
             trial=(line+' '+word).strip()
@@ -77,7 +77,7 @@ class TileDelegate(QStyledItemDelegate):
         for i,text in enumerate(lines[:2]):
             if i==1 and len(lines)>2:text+='…'
             p.drawText(QRectF(r.left(),poster.bottom()+12+i*20,width,21),Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,metrics.elidedText(text,Qt.TextElideMode.ElideRight,maxw))
-        p.setPen(QColor('#9faebe'));p.setFont(QFont('Arial',10));meta=' · '.join(str(movie.get(k)) for k in ('year','quality') if movie.get(k));p.drawText(QRectF(r.left(),poster.bottom()+56,width,20),Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,meta);p.restore()
+        p.setPen(QColor('#9faebe'));p.setFont(QFont('Manrope',10));meta=' · '.join(str(movie.get(k)) for k in ('year','quality') if movie.get(k));p.drawText(QRectF(r.left(),poster.bottom()+56,width,20),Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,meta);p.restore()
 
 class PosterGrid(QListWidget):
     def __init__(self,origin,parent=None):
