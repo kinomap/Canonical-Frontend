@@ -20,7 +20,7 @@ class Api:
             raise ValueError('A plain HTTPS origin is required')
         self.origin=origin.rstrip('/');self.token='';self.lock=threading.RLock()
         self.client=httpx.Client(base_url=self.origin+'/api/v1/',timeout=20,follow_redirects=False,transport=transport,
-            headers={'User-Agent':'KINOSOTA-Player/0.1.1','Accept':'application/json'})
+            headers={'User-Agent':'KINOSOTA-Player/0.1.2','Accept':'application/json'})
     def request(self,method,path,body=None,extra_headers=None):
         if not path.startswith('/') or path.startswith('//') or '://' in path:raise ValueError('Relative API path required')
         with self.lock:
@@ -34,6 +34,8 @@ class Api:
                 detail=data.get('detail',{}) if isinstance(data,dict) else {}
                 code=detail.get('code','') if isinstance(detail,dict) else str(detail)
                 if r.status_code==401:self.token=''
+                if r.status_code==503 and path.startswith('/desktop/playback/'):
+                    raise ApiError(503,code,'Медиасервер временно недоступен. Приложение продолжает работать — попробуйте открыть фильм чуть позже.')
                 if code=='MEDIA_UNAVAILABLE':raise ApiError(r.status_code,code,'Фильм больше недоступен на сайте. Попробуйте позднее — возможно, он появится снова.')
                 if code=='MFA_REQUIRED':raise ApiError(403,code,'Введите код из приложения-аутентификатора.')
                 raise ApiError(r.status_code,code)
