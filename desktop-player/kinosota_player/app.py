@@ -1,5 +1,6 @@
 """Native catalogue shell; all network work runs outside the UI thread."""
-import sys, time, webbrowser
+import sys, time, webbrowser, subprocess
+from .engine import child_environment
 from pathlib import Path
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QTimer, QSize
 from PySide6.QtGui import QIcon, QPixmap
@@ -207,9 +208,20 @@ class Window(QMainWindow):
         self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close();event.accept()
 
 def main():
+    if '--version' in sys.argv:
+        print('KINOSOTA Player 0.1.1');return 0
     app=QApplication(sys.argv);app.setApplicationName('KINOSOTA Player');app.setOrganizationName('KINOSOTA');app.setDesktopFileName('kinosota-player')
     smoke='--smoke-test' in sys.argv
     window=Window(restore=not smoke);window.show()
-    if smoke:QTimer.singleShot(300,window.close)
+    if smoke:
+        try:
+            assert not window.windowIcon().isNull(), 'Application icon is missing'
+            assert window.pages.currentIndex()==0, 'Smoke test must not log in'
+            assert window.password.echoMode()==QLineEdit.EchoMode.Password
+            assert window.engine.executable, 'mpv is missing'
+            subprocess.run([window.engine.executable,'--no-config','--version'],env=child_environment(),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
+        except Exception:
+            window.close();return 1
+        QTimer.singleShot(300,window.close)
     return app.exec()
 if __name__=='__main__':raise SystemExit(main())

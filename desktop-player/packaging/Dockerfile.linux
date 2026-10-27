@@ -1,0 +1,9 @@
+# Native amd64/arm64 Linux candidate, built on Debian 12 / glibc 2.36.
+FROM python:3.11-slim-bookworm@sha256:90d117a7f1ef6535dc75831e1a9184725757fede0d4d424d7977fb5429d50610
+RUN apt-get update && apt-get install -y --no-install-recommends binutils mpv ffmpeg openssl libxcb-cursor0 libxkbcommon-x11-0 libegl1 libgl1 libdbus-1-3 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 gnome-keyring xvfb xauth desktop-file-utils fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt PyInstaller==6.16.0 pytest==8.3.5
+COPY . .
+ENV QT_QPA_PLATFORM=offscreen
+RUN python -m pytest -q && python packaging/build.py && dist/kinosota-player/kinosota-player --smoke-test && dpkg-deb --info dist/kinosota-player.deb

@@ -95,3 +95,28 @@ def test_missing_media_message_is_not_a_codec_or_subscription_error():
     assert 'Фильм больше недоступен на сайте' in str(err.value)
     assert 'кодек' not in str(err.value) and 'подписк' not in str(err.value)
     api.close()
+
+
+def test_frozen_mpv_restores_original_loader_path(monkeypatch):
+    from kinosota_player.engine import child_environment
+    from kinosota_player import engine
+    monkeypatch.setattr(engine.sys,'frozen',True,raising=False)
+    monkeypatch.setattr(engine.sys,'platform','linux')
+    monkeypatch.setenv('LD_LIBRARY_PATH','/tmp/_MEI_123')
+    monkeypatch.setenv('LD_LIBRARY_PATH_ORIG','/trusted/system/lib')
+    assert child_environment()['LD_LIBRARY_PATH']=='/trusted/system/lib'
+    assert 'LD_LIBRARY_PATH_ORIG' not in child_environment()
+    monkeypatch.delenv('LD_LIBRARY_PATH_ORIG')
+    assert 'LD_LIBRARY_PATH' not in child_environment()
+    assert engine.os.environ['LD_LIBRARY_PATH']=='/tmp/_MEI_123'
+
+
+def test_ipc_waits_for_matching_acknowledgement():
+    import time
+    parts=iter([b'{"event":"idle"}\n{"request_',b'id":"request","error":"success","data":42}\n'])
+    assert Mpv._response(lambda:next(parts),'request',time.monotonic()+1)==42
+
+@pytest.mark.parametrize('data,exception',[(b'',OSError),(b'{"request_id":"r","error":"invalid parameter"}\n',RuntimeError),(b'x'*1048577,OSError)])
+def test_ipc_rejects_failure_without_echoing_media_token(data,exception):
+    import time
+    with pytest.raises(exception):Mpv._response(lambda:data,'r',time.monotonic()+1)
