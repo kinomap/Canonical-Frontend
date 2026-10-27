@@ -116,7 +116,8 @@ def test_ipc_waits_for_matching_acknowledgement():
     parts=iter([b'{"event":"idle"}\n{"request_',b'id":"request","error":"success","data":42}\n'])
     assert Mpv._response(lambda:next(parts),'request',time.monotonic()+1)==42
 
-@pytest.mark.parametrize('data,exception',[(b'',OSError),(b'{"request_id":"r","error":"invalid parameter"}\n',RuntimeError),(b'x'*1048577,OSError)])
+# Short IDs keep the 1 MiB payload out of Windows PYTEST_CURRENT_TEST and CI log lines.
+@pytest.mark.parametrize('data,exception',[(b'',OSError),(b'{"request_id":"r","error":"invalid parameter"}\n',RuntimeError),(b'x'*1048577,OSError)],ids=['closed','rejected','oversize'])
 def test_ipc_rejects_failure_without_echoing_media_token(data,exception):
     import time
     with pytest.raises(exception):Mpv._response(lambda:data,'r',time.monotonic()+1)
