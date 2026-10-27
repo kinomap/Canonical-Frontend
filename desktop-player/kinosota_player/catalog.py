@@ -42,6 +42,9 @@ class Posters:
         self.cache.clear()
 
 class TileDelegate(QStyledItemDelegate):
+    def sizeHint(self,option,index):
+        # Text-based native hints vary by Qt/OS and collapse short-title posters.
+        return self.parent().gridSize()
     def paint(self,p,option,index):
         movie=index.data(Qt.ItemDataRole.UserRole) or {};r=QRectF(option.rect).adjusted(9,8,-9,-8)
         width=r.width();poster=QRectF(r.left(),r.top(),width,width*1.5)

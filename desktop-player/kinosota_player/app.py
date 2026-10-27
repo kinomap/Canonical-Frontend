@@ -200,7 +200,9 @@ class Window(QMainWindow):
             def done(result):
                 if generation!=self.play_generation:return
                 self.message.setText('Фильм больше недоступен на сайте. Попробуйте позднее — возможно, он появится снова.' if result.get('state')=='unavailable' else 'Не удалось воспроизвести видео. Проверьте соединение и повторите позднее.')
-            self.work(lambda:self.api.request('POST','/playback/diagnose',{'movie_id':movie}),done,self.show_error)
+            def fail(error):
+                if generation==self.play_generation:self.show_error(error)
+            self.work(lambda:self.api.request('POST','/playback/diagnose',{'movie_id':movie}),done,fail)
     def show_error(self,error):
         if isinstance(error,ApiError):
             self.message.setText(str(error))
