@@ -98,6 +98,18 @@ jobs:
               "$distro" sh /qa/verify_install_linux.sh /reports/kinosota-player.deb
           done
           python packaging/ci_linux_receipt.py
+      - name: Preserve installed-smoke candidates (unpublished, source tests still required)
+        if: matrix.platform != 'linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unpublished-installed-smoke-${{ matrix.platform }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            desktop-player/dist/*.exe
+            desktop-player/dist/*.dmg
+            desktop-player/dist/*.json
+            desktop-player/dist/SHA256SUMS
       - name: Native source tests (cloud only)
         timeout-minutes: 5
         if: matrix.platform != 'linux'

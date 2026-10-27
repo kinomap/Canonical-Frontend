@@ -12,8 +12,7 @@ def main():
     out = Path("dist")
     out.mkdir(exist_ok=True)
     log = out / "source-tests.log"
-    command = [sys.executable, "-u", "-m", "pytest", "-vv", "-s",
-               "-o", "faulthandler_timeout=45"]
+    command = [sys.executable, "-u", "-m", "pytest", "-q"]
     print("Native source interpreter:", sys.executable, flush=True)
     options = {"start_new_session": True} if os.name != "nt" else {}
     timed_out = False
