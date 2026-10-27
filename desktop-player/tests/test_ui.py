@@ -164,3 +164,19 @@ def test_poster_requests_reject_local_and_untrusted_sources():
         assert not w.results.posters.url(bad)
     assert w.results.posters.url('/artwork/a.jpg')=='https://watch.scenrix.com/artwork/a.jpg'
     w.close();app.processEvents()
+
+
+def test_short_titles_keep_full_poster_cell():
+    qapp=QApplication.instance() or QApplication([])
+    from kinosota_player.catalog import PosterGrid
+    from PySide6.QtWidgets import QListWidgetItem
+    from PySide6.QtCore import Qt
+    view=PosterGrid('https://watch.scenrix.com');view.resize(1200,700)
+    for title in ['Up','Matchbox','A']:
+        item=QListWidgetItem(title);item.setData(Qt.ItemDataRole.UserRole,{'title':title});view.addItem(item)
+    view.show();qapp.processEvents()
+    for i in range(view.count()):
+        rect=view.visualItemRect(view.item(i))
+        assert rect.width()>=view.gridSize().width()-2
+        assert rect.height()>=view.gridSize().height()-2
+    view.close()
