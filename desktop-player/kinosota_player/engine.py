@@ -46,7 +46,7 @@ class Mpv:
         self.directory=tempfile.TemporaryDirectory(prefix='kinosota-player-')
         self.endpoint=(r'\\.\pipe\kinosota-'+uuid.uuid4().hex) if os.name=='nt' else str(Path(self.directory.name)/'mpv.sock')
         args=[self.executable,'--no-config','--idle=once','--force-window=yes','--keep-open=no',
-              '--terminal=no','--osc=yes','--title=KINOSOTA Player','--input-ipc-server='+self.endpoint,*extra_args]
+              '--terminal=no','--autofit=88%x88%','--autofit-larger=88%x88%','--osc=yes','--title=KINOSOTA Player','--input-ipc-server='+self.endpoint,*extra_args]
         with native_loader():
             self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0)

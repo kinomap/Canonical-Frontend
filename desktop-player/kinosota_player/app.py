@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBo
 from .api import Api, ApiError
 from .credentials import SessionVault
 from .engine import Mpv
+from .catalog import PosterGrid
 ASSET=Path(__file__).parent/'assets'/'drone.png'
 STYLE='''
 QWidget{background:#090e12;color:#f0f2f5;font:15px "Arial";}
@@ -20,8 +21,8 @@ QLineEdit{background:#131b22;border:1px solid #46505b;border-radius:8px;padding:
 QLineEdit:focus{border:2px solid #ffc400;} QPushButton{padding:12px 18px;border:1px solid #46505b;border-radius:8px;min-height:22px;}
 QPushButton:hover{background:#26313a;} QPushButton:focus{border:2px solid #ffcf32;}
 QPushButton#primary{background:#ffc400;color:#111;font-weight:700;border:1px solid #ffcf32;}
-QPushButton:disabled{color:#737c85;background:#141a20;} QListWidget{border:1px solid #2d3840;border-radius:8px;padding:8px;background:#10171d;}
-QListWidget::item{padding:15px;border-bottom:1px solid #25313b;} QListWidget::item:selected{background:#3a3219;color:#ffe175;}
+QPushButton:disabled{color:#737c85;background:#141a20;} QListWidget{border:0;padding:0;background:#090e12;outline:0;}
+QListWidget::item{padding:0;border:0;background:transparent;} QListWidget::item:selected{background:transparent;} QScrollBar:vertical{background:#10171d;width:10px;border:0;} QScrollBar::handle:vertical{background:#46505b;border-radius:5px;min-height:30px;}
 QCheckBox{padding:6px;} QCheckBox::indicator{width:20px;height:20px;border:1px solid #778391;border-radius:4px;background:#11191f;} QCheckBox::indicator:checked{background:#ffc400;border-color:#ffc400;}
 '''
 class Signals(QObject):
@@ -43,9 +44,9 @@ def button(text,fn,primary=False):
 class Window(QMainWindow):
     def __init__(self,api=None,engine=None,vault=None,restore=True):
         super().__init__();self.api=api or Api();self.engine=engine or Mpv();self.vault=vault or SessionVault()
-        self.pool=QThreadPool(self);self.pool.setMaxThreadCount(3);self.jobs=set();self.session='';self.playing_movie='';self.closed=False;self.epoch=0;self.play_generation=0
+        self.pool=QThreadPool(self);self.pool.setMaxThreadCount(3);self.jobs=set();self.session='';self.playing_movie='';self.closed=False;self.epoch=0;self.play_generation=0;self.search_generation=0;self.search_running=False;self.search_queued=False;self.pending_stops=[]
         self.page=1;self.query='';self.total_pages=1;self.pair=None;self.pair_until=0;self.pending_poll=False;self.pending_beat=False;self.busy=False
-        self.setWindowTitle('KINOSOTA Player');self.setWindowIcon(QIcon(str(ASSET)));self.resize(1080,740);self.setMinimumSize(760,600)
+        self.setWindowTitle('KINOSOTA Player');self.setWindowIcon(QIcon(str(ASSET)));self.resize(1240,840);self.setMinimumSize(760,600)
         root=QWidget();layout=QVBoxLayout(root);layout.setContentsMargins(28,24,28,24);layout.setSpacing(20)
         head=QHBoxLayout();icon=label('');icon.setPixmap(QPixmap(str(ASSET)).scaled(56,56,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));head.addWidget(icon);head.addWidget(label('KINOSOTA  /  PLAYER','brand'));head.addStretch();head.addWidget(label('DESKTOP · PRO','muted'));layout.addLayout(head)
         self.pages=QStackedWidget();layout.addWidget(self.pages,1)
@@ -84,10 +85,14 @@ class Window(QMainWindow):
         page=QWidget();v=QVBoxLayout(page);v.setSpacing(16)
         top=QHBoxLayout();self.account_label=label('','muted');top.addWidget(self.account_label);top.addStretch();top.addWidget(button('Выйти',self.logout));v.addLayout(top)
         row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Найти фильм по названию…');self.search.setAccessibleName('Поиск фильмов');self.search.setMaxLength(100);self.search.returnPressed.connect(self.new_search);row.addWidget(self.search,1);self.search_button=button('Найти',self.new_search,True);row.addWidget(self.search_button);v.addLayout(row)
-        middle=QHBoxLayout();self.results=QListWidget();self.results.setAccessibleName('Результаты поиска');self.results.setIconSize(QSize(40,40));self.results.itemDoubleClicked.connect(self.play);self.results.currentItemChanged.connect(self.selection);middle.addWidget(self.results,3)
-        info=QVBoxLayout()
-        self.selected_title=label('Выберите фильм','hero',True);info.addWidget(self.selected_title);info.addWidget(label('Видео откроется в отдельном окне mpv.\nПробел — пауза · F — полный экран\nСтрелки — перемотка · Q — закрыть','muted',True));info.addStretch()
-        self.play_button=button('Смотреть',self.play,True);self.play_button.setEnabled(False);info.addWidget(self.play_button);info.addWidget(button('Пауза / продолжить',self.pause));info.addWidget(button('Остановить',self.stop));middle.addLayout(info,2);v.addLayout(middle,1)
+        self.search_button.hide();self.search.setClearButtonEnabled(True)
+        self.search.setPlaceholderText('Поиск фильмов — название или латиница…')
+        self.search_timer=QTimer(self);self.search_timer.setSingleShot(True);self.search_timer.setInterval(250);self.search_timer.timeout.connect(self.new_search)
+        self.search.textEdited.connect(self.schedule_search)
+        self.results=PosterGrid(self.api.origin);self.results.itemClicked.connect(self.play);self.results.itemActivated.connect(self.play);v.addWidget(self.results,1)
+        # Compatibility handles stay off-layout: no redundant side panel or controls.
+        self.play_button=QPushButton(self);self.play_button.hide();self.play_button.setEnabled(False)
+        self.selected_title=QLabel(self);self.selected_title.hide();self.results.currentItemChanged.connect(self.selection)
         pagination=QHBoxLayout();self.prev=button('← Назад',lambda:self.change_page(-1));self.next=button('Далее →',lambda:self.change_page(1));self.page_label=label('','muted');pagination.addWidget(self.prev);pagination.addWidget(self.page_label);pagination.addStretch();pagination.addWidget(self.next);v.addLayout(pagination)
         self.pages.addWidget(page)
     def login(self):
@@ -105,32 +110,46 @@ class Window(QMainWindow):
         self.account_label.setText('Аккаунт: '+account.get('username','')+' · PRO');self.message.setText('Вход выполнен. Выберите фильм.')
         if self.remember.isChecked() and not self.vault.save(self.api.token):self.message.setText('Вход выполнен. Защищённое хранилище недоступно: сессия останется только в памяти.')
         self.new_search()
-    def new_search(self):self.query=self.search.text().strip();self.page=1;self.load_results()
+    def schedule_search(self,*args):
+        self.search_generation+=1;self.search_timer.start()
+    def new_search(self):
+        self.search_timer.stop();self.search_generation+=1;self.query=self.search.text().strip();self.page=1;self.load_results()
     def change_page(self,delta):
-        self.page=max(1,min(self.total_pages,self.page+delta));self.load_results()
+        self.search_generation+=1;self.page=max(1,min(self.total_pages,self.page+delta));self.load_results()
     def load_results(self):
-        self.search_button.setEnabled(False);self.prev.setEnabled(False);self.next.setEnabled(False);self.message.setText('Загружаем каталог…')
-        page,query=self.page,self.query
+        if self.search_running:self.search_queued=True;return
+        self.search_running=True;self.search_queued=False
+        self.prev.setEnabled(False);self.next.setEnabled(False);self.message.setText('Ищем фильмы…' if self.query else 'Загружаем каталог…')
+        page,query,generation=self.page,self.query,self.search_generation
+        def current():return generation==self.search_generation and (page,query)==(self.page,self.query)
+        def finish():
+            self.search_running=False
+            if self.search_queued:self.search_queued=False;self.load_results()
         def done(data):
-            self.search_button.setEnabled(True)
-            if (page,query)!=(self.page,self.query):return
-            self.results.clear();self.total_pages=data.get('total_pages',1)
-            for movie in data.get('items',[]):
-                text=movie['title']+'\n'+str(movie.get('year') or 'Год не указан')+'  ·  '+str(movie.get('quality') or 'Качество не указано')
-                item=QListWidgetItem(QIcon(str(ASSET)),text);item.setData(Qt.ItemDataRole.UserRole,movie);self.results.addItem(item)
-            self.prev.setEnabled(page>1);self.next.setEnabled(page<self.total_pages);self.page_label.setText(f'Страница {page} / {self.total_pages}')
-            self.message.setText('Ничего не найдено. Попробуйте другое название.' if not self.results.count() else f'Найдено: {data.get("total",self.results.count())}')
-        def fail(e):self.search_button.setEnabled(True);self.show_error(e)
+            if current():
+                self.results.clear();self.total_pages=max(1,data.get('total_pages',1))
+                for movie in data.get('items',[]):
+                    item=QListWidgetItem(movie['title']);item.setData(Qt.ItemDataRole.UserRole,movie);item.setToolTip(movie['title']);item.setData(Qt.ItemDataRole.AccessibleTextRole,movie['title']);self.results.addItem(item)
+                    self.results.posters.load(movie.get('poster') or movie.get('poster_url'))
+                self.prev.setEnabled(page>1);self.next.setEnabled(page<self.total_pages);self.page_label.setText(f'{page} / {self.total_pages}');self.message.setText('Ничего не найдено. Попробуйте другое название.' if not self.results.count() else f'Найдено: {data.get("total",self.results.count())}')
+            finish()
+        def fail(e):
+            if current():self.prev.setEnabled(page>1);self.next.setEnabled(page<self.total_pages);self.show_error(e)
+            finish()
         self.work(lambda:self.api.search(query,page),done,fail)
     def selection(self,item,previous=None):
         self.play_button.setEnabled(bool(item) and not self.busy)
         self.selected_title.setText(item.data(Qt.ItemDataRole.UserRole)['title'] if item else 'Выберите фильм')
     def play(self,*args):
-        item=self.results.currentItem()
+        item=args[0] if args and isinstance(args[0],QListWidgetItem) else self.results.currentItem()
         if not item or self.busy:return
-        movie=item.data(Qt.ItemDataRole.UserRole);self.stop();self.busy=True;self.play_button.setEnabled(False);self.message.setText('Открываем фильм…')
+        self.results.setCurrentItem(item)
+        movie=item.data(Qt.ItemDataRole.UserRole);self.stop(release=False);self.busy=True;self.play_button.setEnabled(False);self.message.setText('Открываем фильм…')
         epoch=self.epoch;generation=self.play_generation
         def start():
+            # Finish our previous lease before asking for another stream slot.
+            self.release_pending()
+            if self.closed or epoch!=self.epoch or generation!=self.play_generation:raise RuntimeError('Cancelled')
             session=self.api.start(movie['id'])
             try:
                 if self.closed or epoch!=self.epoch or generation!=self.play_generation:raise RuntimeError('Cancelled')
@@ -150,10 +169,17 @@ class Window(QMainWindow):
         self.work(start,done,fail)
     def pause(self):
         if self.engine.alive():self.work(lambda:self.engine.command(['cycle','pause']))
-    def stop(self):
+    def release_pending(self):
+        # One API lock serializes stop/start with heartbeat; never end another user's lease.
+        with self.api.lock if hasattr(self.api,'lock') else __import__('contextlib').nullcontext():
+            for sid in list(self.pending_stops):
+                self.api.stop(sid)
+                if sid in self.pending_stops:self.pending_stops.remove(sid)
+    def stop(self,release=True):
         self.play_generation+=1;self.busy=False;self.play_button.setEnabled(bool(self.results.currentItem()));self.pending_beat=False
         self.lease_timer.stop();sid=self.session;self.session='';self.playing_movie='';self.engine.stop()
-        if sid:self.work(lambda:self.api.stop(sid),fail=lambda e:None)
+        if sid:self.pending_stops.append(sid)
+        if release and self.pending_stops:self.work(self.release_pending,fail=lambda e:None)
     def beat(self):
         if not self.session or self.pending_beat:return
         self.pending_beat=True;sid=self.session
@@ -182,7 +208,7 @@ class Window(QMainWindow):
                 self.vault.clear();self.stop();self.pages.setCurrentIndex(0)
         else:self.message.setText('Не удалось выполнить действие. Проверьте установку mpv и соединение.')
     def logout(self):
-        self.epoch+=1;self.busy=False;self.pending_beat=False;self.pending_poll=False;self.login_button.setEnabled(True)
+        self.search_timer.stop();self.search_generation+=1;self.search_running=False;self.search_queued=False;self.results.posters.clear();self.epoch+=1;self.busy=False;self.pending_beat=False;self.pending_poll=False;self.login_button.setEnabled(True)
         self.stop();self.pair_timer.stop();self.vault.clear();self.pages.setCurrentIndex(0);self.results.clear()
         self.work(self.api.logout,lambda _:self.message.setText('Вы вышли из аккаунта. Сайт также может запросить повторный вход.'))
     def start_pair(self):
@@ -205,11 +231,11 @@ class Window(QMainWindow):
         def fail(e):self.pending_poll=False;self.pair_timer.stop();self.show_error(e)
         self.work(lambda:self.api.request('POST','/desktop/pairing/exchange',{'device_code':code}),done,fail)
     def closeEvent(self,event):
-        self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close();event.accept()
+        self.search_timer.stop();self.results.posters.clear();self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close();event.accept()
 
 def main():
     if '--version' in sys.argv:
-        print('KINOSOTA Player 0.1.1');return 0
+        print('KINOSOTA Player 0.1.2');return 0
     app=QApplication(sys.argv);app.setApplicationName('KINOSOTA Player');app.setOrganizationName('KINOSOTA');app.setDesktopFileName('kinosota-player')
     smoke='--smoke-test' in sys.argv or '--playback-smoke-fixture' in sys.argv
     window=Window(restore=not smoke);window.show()
