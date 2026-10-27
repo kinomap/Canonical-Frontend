@@ -13,9 +13,9 @@ const fixture=()=>({id:'fixture',username:'viewer',email:'viewer@example.com',di
 beforeEach(()=>{vi.clearAllMocks();setLanguage('ru');wrappers=[];mocks.api.mockImplementation(async(path:string)=>path==='/account'?fixture():path==='/billing/plans'?[]:path.startsWith('/billing/orders')?{items:[],total:0}:[])})
 afterEach(()=>wrappers.forEach(w=>w.unmount()))
 describe('Modular account dashboard',()=>{
- it('has exactly four isolated Russian tabs and eight avatar presets',async()=>{
+ it('has five isolated Russian tabs and eight avatar presets',async()=>{
   const w=mount(ProfileView);wrappers.push(w);await flushPromises()
-  expect(w.findAll('[role=tab]').map(x=>x.text())).toEqual(['Профиль','PRO подписка и оплата','Безопасность и 2FA','Настройки'])
+  expect(w.findAll('[role=tab]').map(x=>x.text())).toEqual(['Профиль','PRO подписка и оплата','KINOSOTA Player','Безопасность и 2FA','Настройки'])
   expect(w.findAll('.preset-gallery button')).toHaveLength(8)
   expect(w.text()).not.toContain('Member Since');expect(w.text()).not.toContain('Email Address')
   await w.get('#tab-billing').trigger('click');expect(w.find('#panel-profile').exists()).toBe(false);expect(w.find('#panel-billing').exists()).toBe(true)
@@ -24,7 +24,7 @@ describe('Modular account dashboard',()=>{
  it('switches all account labels and persists the selected language',async()=>{
   const w=mount(ProfileView);wrappers.push(w);await flushPromises();await w.get('#tab-settings').trigger('click')
   await w.findAll('input[type=radio]')[1].trigger('change')
-  expect(w.findAll('[role=tab]').map(x=>x.text())).toEqual(['Profile','PRO & Billing','Security & 2FA','Settings'])
+  expect(w.findAll('[role=tab]').map(x=>x.text())).toEqual(['Profile','PRO & Billing','KINOSOTA Player','Security & 2FA','Settings'])
   expect(localStorage.getItem('kinosota_language')).toBe('en');expect(w.text()).toContain('Interface language');expect(w.text()).not.toContain('Настройки')
   await w.get('#panel-settings form').trigger('submit.prevent');await flushPromises()
   expect(mocks.api).toHaveBeenCalledWith('/account/settings','PUT',{language:'en',telegram_notifications:false})
@@ -134,4 +134,39 @@ it('reveals existing reauthentication fields only for a sensitive identity edit'
  await w.get('.profile-details').trigger('submit.prevent');await flushPromises()
  expect(mocks.api).toHaveBeenCalledWith('/account/profile','PATCH',{display_name:'Cinema fan',username:'viewer_new',email:'viewer@example.com',current_password:'fixture-only'},'123456')
  expect(w.text()).toContain('Профиль обновлён.')
+})
+
+
+it('renders player only in its own main-content menu panel',async()=>{
+ const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+ expect(w.findComponent({name:'DesktopPlayerCard'}).exists()).toBe(false)
+ expect(w.find('#desktop-player').exists()).toBe(false)
+ await w.get('#tab-player').trigger('click');await flushPromises()
+ expect(w.find('#panel-profile').exists()).toBe(false)
+ expect(w.find('#panel-player #desktop-player').exists()).toBe(true)
+ expect(w.find('.account-content #panel-player').exists()).toBe(true)
+ await w.get('#tab-profile').trigger('click');await flushPromises()
+ expect(w.find('#desktop-player').exists()).toBe(false)
+})
+
+it('keyboard navigation includes the new player tab and wraps all menu items',async()=>{
+ const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+ await w.get('#tab-profile').trigger('keydown',{key:'End'});await flushPromises()
+ expect(w.get('#tab-settings').attributes('aria-selected')).toBe('true')
+ await w.get('#tab-settings').trigger('keydown',{key:'ArrowDown'});await flushPromises()
+ expect(w.get('#tab-profile').attributes('aria-selected')).toBe('true')
+})
+
+
+describe('Administrator paid privileges display',()=>{
+ it('labels administrator access truthfully without a fake paid subscription',async()=>{
+  mocks.api.mockImplementation(async(path:string)=>path==='/account'?{...fixture(),role:'admin'}:path==='/desktop/releases'?{can_download:true,access_basis:'administrator',items:[]}:[])
+  const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+  expect(w.text()).toContain('Администратор · полный доступ')
+  await w.get('#tab-player').trigger('click');await flushPromises()
+  expect(w.text()).toContain('ДОСТУП АДМИНИСТРАТОРА')
+  expect(w.text()).toContain('Покупать подписку не нужно')
+  expect(w.find('#player-pair-code').exists()).toBe(true)
+  expect(w.find('.access-note').exists()).toBe(false)
+ })
 })
