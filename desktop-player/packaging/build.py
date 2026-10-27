@@ -25,7 +25,9 @@ def main():
         cmd+=['--icon',str(icon)]
     if system!='Linux':
         if not args.mpv_bundle or not args.mpv_sha256:p.error('Reviewed native mpv bundle and SHA256 required; never use MSX_Player.exe')
-        bundle=args.mpv_bundle.resolve();exe=bundle/('mpv.exe' if system=='Windows' else 'mpv')
+        from verify_bundle import validate_directory
+        bundle=args.mpv_bundle.resolve();validate_directory(bundle,system)
+        exe=bundle/('mpv.exe' if system=='Windows' else 'mpv')
         if not exe.is_file() or hashlib.sha256(exe.read_bytes()).hexdigest()!=args.mpv_sha256:p.error('mpv digest does not match')
         if not (bundle/'LICENSES').is_dir():p.error('mpv bundle must include LICENSES, source/source-offer and dependency notices')
         cmd+=['--add-data',str(bundle)+os.pathsep+'mpv']
@@ -39,7 +41,7 @@ def main():
         if folder.is_dir():shutil.copytree(folder,license_out/'PySide6-Qt',dirs_exist_ok=True)
     import importlib.metadata as md
     inventory=[]
-    for package in ['PySide6','PySide6_Essentials','PySide6_Addons','shiboken6','httpx','keyring','SecretStorage']:
+    for package in ['PySide6','PySide6_Essentials','PySide6_Addons','shiboken6','httpx','keyring','SecretStorage','cryptography','cffi','certifi','httpcore','anyio','idna','h11','jeepney','jaraco.classes','jaraco.context','jaraco.functools','more-itertools']:
         try:
             d=md.distribution(package);inventory.append({'name':package,'version':d.version})
             for f in d.files or []:
@@ -47,6 +49,8 @@ def main():
                     source=Path(d.locate_file(f))
                     if source.is_file():target=license_out/package/str(f).split('.dist-info/',1)[1];target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
         except md.PackageNotFoundError:pass
+    from package_notices import copy_notices
+    copy_notices(license_out)
     (license_out/'inventory.json').write_text(json.dumps(inventory,indent=2))
     shutil.copy2(ROOT/'packaging/THIRD_PARTY.md',license_out/'NOTICE.md')
     if system=='Linux':
@@ -57,17 +61,23 @@ def main():
         arch=subprocess.check_output(['dpkg','--print-architecture'],text=True).strip()
         libc=platform.libc_ver()[1]
         if not libc:raise RuntimeError('Cannot determine minimum glibc version')
-        (stage/'DEBIAN/control').write_text(f'Package: kinosota-player\nVersion: 0.1.0\nArchitecture: {arch}\nMaintainer: KINOSOTA\nDepends: libc6 (>= {libc}), mpv (>= 0.35), libxcb-cursor0, libxkbcommon-x11-0, libegl1, libgl1, libdbus-1-3, gnome-keyring\nSection: video\nPriority: optional\nDescription: KINOSOTA desktop catalogue and authenticated mpv player\n Paid subscription required for playback.\n')
+        (stage/'DEBIAN/control').write_text(f'Package: kinosota-player\nVersion: 0.1.1\nArchitecture: {arch}\nMaintainer: KINOSOTA\nDepends: libc6 (>= {libc}), mpv (>= 0.35), libxcb-cursor0, libxkbcommon-x11-0, libegl1, libgl1, libdbus-1-3, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-render-util0, libxcb-xinerama0, libxcb-xkb1, gnome-keyring\nSection: video\nPriority: optional\nDescription: KINOSOTA desktop catalogue and authenticated mpv player\n Paid subscription required for playback.\n')
         wrapper=stage/'usr/bin/kinosota-player';wrapper.write_text('#!/bin/sh\nexec /opt/kinosota-player/kinosota-player "$@"\n');wrapper.chmod(0o755)
         (stage/'usr/share/applications/kinosota-player.desktop').write_text('[Desktop Entry]\nType=Application\nName=KINOSOTA Player\nComment=KINOSOTA catalogue and playback\nExec=kinosota-player\nIcon=kinosota-player\nTerminal=false\nCategories=AudioVideo;Video;Player;\nStartupWMClass=kinosota-player\n')
         shutil.copy2(ROOT/'kinosota_player/assets/drone.png',stage/'usr/share/icons/hicolor/512x512/apps/kinosota-player.png')
+        docs=stage/'usr/share/doc/kinosota-player';docs.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(ROOT/'README.md',docs/'README.md')
+        shutil.copy2(ROOT/'packaging/THIRD_PARTY.md',docs/'copyright')
         run('dpkg-deb','--root-owner-group','--build',stage,out/'kinosota-player.deb')
     elif system=='Windows':
         run('ISCC.exe',ROOT/'packaging/windows.iss')
     elif system=='Darwin':
         # Signing and notarization remain release gates, never fabricate them here.
         app=out/(name+'.app')
-        run('hdiutil','create','-volname','KINOSOTA Player','-srcfolder',app,'-ov','-format','UDZO',out/'KINOSOTA-Player.dmg')
+        dmg_stage=ROOT/'build/dmg';shutil.rmtree(dmg_stage,ignore_errors=True);dmg_stage.mkdir(parents=True)
+        shutil.copytree(app,dmg_stage/app.name,symlinks=True)
+        (dmg_stage/'Applications').symlink_to('/Applications')
+        run('hdiutil','create','-volname','KINOSOTA Player','-srcfolder',dmg_stage,'-ov','-format','UDZO',out/'KINOSOTA-Player.dmg')
     else:p.error('Unsupported native build OS')
     print('Candidate built. NOT published; native installation, playback and release checks are still required.')
 if __name__=='__main__':main()

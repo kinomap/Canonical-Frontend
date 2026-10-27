@@ -5,12 +5,12 @@ import {accountApi} from '@/accountApi'
 import {useAuthStore} from '@/stores/auth'
 const route=useRoute(),auth=useAuthStore()
 const emit=defineEmits<{(e:'open-billing'):void}>()
-type Release={os:string;ready:boolean;version:string|null;sha256:string|null;download_url:string|null}
+type Release={os:string;ready:boolean;version:string|null;sha256:string|null;download_url:string|null;channel?:string|null;architecture?:string|null;signing?:string|null}
 const releases=ref<Release[]>([]),allowed=ref(false),loading=ref(true),error=ref(''),message=ref(''),busy=ref(''),accessBasis=ref<string|null>(null)
 const pairCode=ref(typeof route.query.player_code==='string'?route.query.player_code.toUpperCase():'')
 const names:Record<string,string>={windows:'Windows',macos:'macOS',linux:'Linux'}
 const profileTarget=computed(()=>'/profile?tab=player'+(pairCode.value?'&player_code='+encodeURIComponent(pairCode.value):''))
-const platformHelp:Record<string,string>={windows:'Установщик Windows',macos:'Приложение для macOS',linux:'Пакет .deb для Linux'}
+const platformHelp:Record<string,string>={windows:'Windows · x86_64 · установщик .exe',macos:'macOS · Apple Silicon (M1 и новее) · .dmg. Не для Intel Mac.',linux:'Linux · x86_64 · Debian 12 / Ubuntu 24.04 · .deb'}
 const pairingValid=computed(()=>/^[A-Z2-9]{8}$/.test(pairCode.value))
 async function load(){loading.value=true;error.value='';try{const data=await accountApi('/desktop/releases');releases.value=data.items;allowed.value=data.can_download;accessBasis.value=data.access_basis||null}catch{error.value='Не удалось проверить версии приложения. Повторите позже.'}finally{loading.value=false}}
 async function download(item:Release){
@@ -19,7 +19,7 @@ async function download(item:Release){
  try{
   const headers:Record<string,string>={};const token=localStorage.getItem('tg_stream_access_token');if(token&&token!=='cookie-session')headers.Authorization='Bearer '+token
   const response=await fetch(item.download_url,{headers,credentials:'same-origin',cache:'no-store'})
-  if(!response.ok)throw new Error(response.status===403?'Для скачивания нужна действующая платная подписка.':'Сборка пока недоступна. Повторите позже.')
+  if(!response.ok)throw new Error(response.status===401?'Сессия истекла. Войдите в аккаунт заново.':response.status===403?'Для скачивания нужна действующая платная подписка.':'Сборка пока недоступна. Повторите позже.')
   const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=item.os==='windows'?'KINOSOTA-Player-Setup.exe':item.os==='macos'?'KINOSOTA-Player.dmg':'kinosota-player.deb';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000)
  }catch(e:any){error.value=e.message||'Не удалось скачать приложение.'}finally{busy.value=''}
 }
@@ -31,7 +31,10 @@ onMounted(load)
   <header class="player-intro"><img src="/brand/icon-128.png" alt="" width="72" height="72"/><div><span class="privilege">{{accessBasis==='administrator'?'ДОСТУП АДМИНИСТРАТОРА':'ПРИВИЛЕГИЯ PRO'}}</span><h2 id="desktop-player-title">KINOSOTA Player</h2><p>Ваш кинотеатр на компьютере</p></div></header>
   <p v-if="accessBasis==='administrator'" class="admin-access" role="status">Все возможности плеера доступны вам как администратору. Покупать подписку не нужно.</p>
   <p class="lead">Ищите фильмы в каталоге и смотрите их в отдельном приложении. Плеер на базе mpv поддерживает больше форматов, чем браузер.</p>
-  <div class="player-guide" aria-label="Как начать смотреть"><h3>Как пользоваться плеером</h3><ol><li><strong>Установите приложение</strong><span>Выберите вашу операционную систему ниже и откройте скачанный установщик.</span></li><li><strong>Войдите в аккаунт</strong><span>В плеере введите логин и пароль от KINOSOTA. Или выберите «Войти через аккаунт в браузере» и подтвердите код в этом разделе.</span></li><li><strong>Найдите фильм и смотрите</strong><span>Введите название в поиске плеера, выберите фильм и нажмите «Смотреть».</span></li></ol></div>
+  <div class="download-heading"><h3>Установить на компьютер</h3><p class="notice">{{allowed?'Выберите вашу операционную систему.':'Установщики доступны с платной подпиской.'}}</p></div>
+  <p v-if="loading" role="status">Проверяем доступные версии…</p>
+  <div v-else class="downloads"><article v-for="item in releases" :key="item.os" class="platform"><h4>{{names[item.os]}}</h4><p class="notice">{{platformHelp[item.os]}}</p><p class="release-state">{{item.ready?(item.channel==='preview'?'Тестовая версия ':'Версия ')+item.version:'Сборка ещё не опубликована'}}</p><p v-if="item.ready&&item.channel==='preview'&&item.os!=='linux'" class="notice">Тестовая сборка без подписи издателя{{item.os==='macos'?' и notarization':''}}. Если ОС блокирует установку, не отключайте защиту.</p><button v-if="allowed&&item.ready" :aria-label="'Скачать установщик для '+names[item.os]" :disabled="!!busy" @click="download(item)">{{busy===item.os?'Скачиваем…':'Скачать установщик'}}</button><span v-else>{{allowed?'Скачивание появится после публикации':'Доступно с платной подпиской'}}</span><p v-if="item.os==='linux'&&item.ready" class="notice">Установка: <code>sudo apt install ./kinosota-player.deb</code></p></article></div>
+  <div class="player-guide" aria-label="Как начать смотреть"><h3>Как пользоваться плеером</h3><ol><li><strong>Установите приложение</strong><span>Выберите вашу операционную систему и откройте скачанный установщик.</span></li><li><strong>Войдите в аккаунт</strong><span>В плеере введите логин и пароль от KINOSOTA. Или выберите «Войти через аккаунт в браузере» и подтвердите код в этом разделе.</span></li><li><strong>Найдите фильм и смотрите</strong><span>Введите название в поиске плеера, выберите фильм и нажмите «Смотреть».</span></li></ol></div>
   <div v-if="!loading&&!allowed" class="access-note"><strong>Скачивание и просмотр — с платной подпиской</strong><p>Информация о приложении доступна всем. Для скачивания и подключения нужен аккаунт с действующей платной подпиской.</p><router-link v-if="!auth.isAuthenticated.value" class="action" :to="{path:'/login',query:{redirect:profileTarget}}">Войти в аккаунт</router-link><button v-else-if="route.path==='/profile'" @click="emit('open-billing')">Открыть подписку и оплату</button><router-link v-else class="action" to="/profile?tab=billing">Открыть подписку и оплату</router-link></div>
   <form v-if="auth.isAuthenticated.value&&allowed" class="pairing" @submit.prevent="approve">
    <div><h3>Подключить приложение по коду</h3><p id="pair-help">Этот способ нужен только для входа через браузер. В открытом плеере нажмите «Войти через аккаунт в браузере». Его код появится здесь автоматически или введите 8 символов вручную.</p></div>
@@ -39,9 +42,6 @@ onMounted(load)
    <p class="notice">Подтверждайте только код своего плеера. Если код истёк, начните вход через браузер в приложении заново.</p>
   </form>
   <p v-if="message" class="success" role="status">{{message}}</p><div v-if="error" class="error" role="alert">{{error}} <button type="button" @click="load">Повторить проверку версий</button></div>
-  <div class="download-heading"><h3>Установить на компьютер</h3><p class="notice">{{allowed?'Выберите вашу операционную систему.':'Установщики доступны с платной подпиской.'}}</p></div>
-  <p v-if="loading" role="status">Проверяем доступные версии…</p>
-  <div v-else class="downloads"><article v-for="item in releases" :key="item.os" class="platform"><h4>{{names[item.os]}}</h4><p class="notice">{{platformHelp[item.os]}}</p><p class="release-state">{{item.ready?'Версия '+item.version:'Сборка ещё не опубликована'}}</p><button v-if="allowed&&item.ready" :disabled="!!busy" @click="download(item)">{{busy===item.os?'Скачиваем…':'Скачать установщик'}}</button><span v-else>{{allowed?'Скачивание появится после публикации':'Доступно с платной подпиской'}}</span><p v-if="item.os==='linux'&&item.ready" class="notice">Установка: <code>sudo apt install ./kinosota-player.deb</code></p></article></div>
   <details class="player-help"><summary>Совместимость и удаление приложения</summary><p>Поддержка кодеков зависит от сборки mpv. Плеер не восстанавливает удалённые, повреждённые или недоступные источники.</p><p>Удаление: Windows — «Установленные приложения»; macOS — удалить приложение из Applications; Linux — через менеджер пакетов. Перед удалением выйдите из аккаунта в приложении, чтобы удалить сохранённую сессию.</p></details>
  </section>
 </template>

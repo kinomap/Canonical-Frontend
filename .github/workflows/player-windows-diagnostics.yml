@@ -1,0 +1,39 @@
+name: Player Windows source-test isolation
+on:
+  push:
+    branches: ['feat/player-cloud-0.1.1']
+    paths: ['.github/workflows/player-windows-diagnostics.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  client-scope:
+    name: Windows client scope - ${{ matrix.scope }}
+    runs-on: windows-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {scope: api-and-vault, expression: 'not mpv and not ipc and not frozen'}
+          - {scope: ipc-units, expression: '(mpv or ipc) and not frozen'}
+          - {scope: frozen-loader, expression: 'frozen'}
+    defaults:
+      run:
+        working-directory: desktop-player
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install isolated client test dependencies
+        shell: pwsh
+        run: '& "$env:pythonLocation\python.exe" -m pip install --disable-pip-version-check --timeout 30 httpx==0.28.1 pytest==8.3.5'
+      - name: Run client scope without MSYS2 DLLs in PATH
+        timeout-minutes: 2
+        shell: pwsh
+        env:
+          TEST_EXPRESSION: ${{ matrix.expression }}
+        run: '& "$env:pythonLocation\python.exe" -u -m pytest -vv -s tests/test_client.py -k "$env:TEST_EXPRESSION"'

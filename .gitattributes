@@ -1,0 +1,2 @@
+# Preserve upstream license bytes used by the provenance SHA-256 verifier.
+desktop-player/packaging/third-party/** -text

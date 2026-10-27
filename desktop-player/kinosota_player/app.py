@@ -1,5 +1,6 @@
 """Native catalogue shell; all network work runs outside the UI thread."""
-import sys, time, webbrowser
+import sys, time, webbrowser, subprocess
+from .engine import child_environment, native_loader
 from pathlib import Path
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QTimer, QSize
 from PySide6.QtGui import QIcon, QPixmap
@@ -207,9 +208,40 @@ class Window(QMainWindow):
         self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close();event.accept()
 
 def main():
+    if '--version' in sys.argv:
+        print('KINOSOTA Player 0.1.1');return 0
     app=QApplication(sys.argv);app.setApplicationName('KINOSOTA Player');app.setOrganizationName('KINOSOTA');app.setDesktopFileName('kinosota-player')
-    smoke='--smoke-test' in sys.argv
+    smoke='--smoke-test' in sys.argv or '--playback-smoke-fixture' in sys.argv
     window=Window(restore=not smoke);window.show()
-    if smoke:QTimer.singleShot(300,window.close)
+    if '--playback-smoke-fixture' in sys.argv:
+        from .smoke import run_playback_smoke
+        try:
+            assert not window.windowIcon().isNull()
+            assert window.pages.currentIndex()==0
+            fixture=sys.argv[sys.argv.index('--playback-smoke-fixture')+1]
+            report=sys.argv[sys.argv.index('--playback-smoke-report')+1]
+            run_playback_smoke(window.engine,fixture,report)
+            return 0
+        except Exception as error:
+            import json,traceback
+            failure={'status':'FAIL','error_type':type(error).__name__,'detail':str(error),'traceback':traceback.format_exc()}
+            if '--playback-smoke-report' in sys.argv:
+                destination=Path(sys.argv[sys.argv.index('--playback-smoke-report')+1])
+                destination.parent.mkdir(parents=True,exist_ok=True)
+                destination.write_text(json.dumps(failure,indent=2),encoding='utf-8')
+            if sys.stderr:traceback.print_exc()
+            return 1
+        finally:window.close()
+    if smoke:
+        try:
+            assert not window.windowIcon().isNull(), 'Application icon is missing'
+            assert window.pages.currentIndex()==0, 'Smoke test must not log in'
+            assert window.password.echoMode()==QLineEdit.EchoMode.Password
+            assert window.engine.executable, 'mpv is missing'
+            with native_loader():
+                subprocess.run([window.engine.executable,'--no-config','--version'],env=child_environment(),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
+        except Exception:
+            window.close();return 1
+        QTimer.singleShot(300,window.close)
     return app.exec()
 if __name__=='__main__':raise SystemExit(main())

@@ -1,4 +1,4 @@
-# KINOSOTA Player — candidate 0.1.0
+# KINOSOTA Player — candidate 0.1.1
 
 New source implementation, not a modification of MSX_Player.exe. Python 3.11–3.14,
 PySide6 native catalogue shell, mpv playback in its own OS window. The site login
@@ -49,6 +49,25 @@ KINOSOTA_PLAYER_RELEASE_DIR). A valid release.json must explicitly have
 `published: true`, a version, and artifacts with exact filename, size and sha256.
 Absent/unpublished/corrupt artifacts fail closed. Do not publish candidate builds.
 The public page always lists all platforms, honestly marking unpublished ones.
+
+## Linux 0.1.1 candidate
+
+Build the pinned Debian 12 image (not a package frozen on the operator workstation):
+
+```sh
+docker build -t kinosota-player-build:0.1.1 -f packaging/Dockerfile.linux .
+```
+
+The amd64 candidate targets Debian 12 and compatible newer Debian/Ubuntu desktop
+systems (glibc >= 2.36, mpv >= 0.35); ARM, Fedora/RPM, Ubuntu 22.04 and hardware
+video acceleration are not claimed tested. Install with `sudo apt install
+./kinosota-player.deb`, not `dpkg -i` alone: mpv and required desktop libraries
+are installed through the distribution's signed package repositories.
+`--smoke-test` checks the login window, icon and external mpv loader without
+restoring a session or contacting production. `--version` is also offline.
+Use `packaging/verify_install_linux.sh` only in a disposable environment with
+KINOSOTA_DISPOSABLE_QA=1; it installs, launches as a non-root user on X11 and
+removes the package. A container test is not a claim of full VM/device coverage.
 
 Pending release gates: native Windows/macOS builds/icon verification/signatures, clean Linux
 VM installation and uninstall tests, full site + player staging end-to-end test,

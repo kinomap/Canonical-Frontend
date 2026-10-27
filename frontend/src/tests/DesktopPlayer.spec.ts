@@ -14,7 +14,7 @@ async function render(component:any,query=''){
  await router.push('/player'+query);await router.isReady()
  const wrapper=mount(component,{global:{plugins:[router]}});await flushPromises();return wrapper
 }
-beforeEach(()=>{vi.clearAllMocks();signed.value=false;mocks.api.mockResolvedValue(rows())})
+beforeEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();signed.value=false;mocks.api.mockResolvedValue(rows())})
 describe('Desktop player privilege',()=>{
  it('shows all platforms to guests without download or pairing controls',async()=>{
   const w=await render(DesktopPlayerCard);expect(w.findAll('.platform')).toHaveLength(3);expect(w.text()).toContain('KINOSOTA Player')
@@ -23,6 +23,19 @@ describe('Desktop player privilege',()=>{
  it('paid account never receives a fake ready download',async()=>{
   signed.value=true;mocks.api.mockResolvedValue(rows(true,false));const w=await render(DesktopPlayerCard)
   expect(w.find('.platform button').exists()).toBe(false);expect(w.text()).toContain('Сборка ещё не опубликована');expect(w.find('form').exists()).toBe(true);w.unmount()
+ })
+ it('published Linux remains visible but locked for non-paying accounts',async()=>{
+  mocks.api.mockResolvedValue(rows(false,true));const w=await render(DesktopPlayerCard)
+  const linux=w.findAll('.platform')[2];expect(linux.text()).toContain('sudo apt install');expect(linux.text()).toContain('Доступно с платной подпиской');expect(linux.find('button').exists()).toBe(false);w.unmount()
+ })
+ it('paid account can download only the published Linux platform',async()=>{
+  signed.value=true;const data=rows(true,false);data.items[2]={os:'linux',ready:true,version:'0.1.1',sha256:null,download_url:'/api/v1/desktop/download/linux'};mocks.api.mockResolvedValue(data)
+  const w=await render(DesktopPlayerCard);expect(w.findAll('.platform button')).toHaveLength(1);expect(w.findAll('.platform')[2].text()).toContain('Версия 0.1.1');w.unmount()
+ })
+ it.each([[401,'Сессия истекла'],[403,'нужна действующая платная подписка']])('does not save a package when download authorization returns %s',async(status,text)=>{
+  signed.value=true;mocks.api.mockResolvedValue(rows(true,true));const blob=vi.fn();const request=vi.fn().mockResolvedValue({ok:false,status,blob});vi.stubGlobal('fetch',request)
+  const w=await render(DesktopPlayerCard);await w.findAll('.platform')[2].get('button').trigger('click');await flushPromises()
+  expect(request).toHaveBeenCalledWith('/api/v1/desktop/download/linux',expect.objectContaining({credentials:'same-origin',cache:'no-store'}));expect(blob).not.toHaveBeenCalled();expect(w.get('[role=alert]').text()).toContain(text);w.unmount()
  })
  it('pairing requires explicit confirmation of a valid code',async()=>{
   signed.value=true;mocks.api.mockResolvedValue(rows(true,false));const w=await render(DesktopPlayerCard,'?player_code=ABCDEFGH')

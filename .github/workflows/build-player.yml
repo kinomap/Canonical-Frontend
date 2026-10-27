@@ -1,0 +1,154 @@
+name: KINOSOTA Player cloud build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'feat/player-cloud-*']
+    paths: ['desktop-player/**', '.github/workflows/build-player.yml', '.gitattributes']
+permissions:
+  contents: read
+concurrency:
+  group: player-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+jobs:
+  native:
+    name: ${{ matrix.platform }} install + playback + uninstall
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: linux, runner: ubuntu-24.04}
+          - {platform: windows, runner: windows-latest}
+          - {platform: macos, runner: macos-latest}
+    defaults:
+      run:
+        working-directory: desktop-player
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        if: matrix.platform != 'linux'
+        with:
+          python-version: '3.11'
+      - name: MSYS2 native UCRT mpv and decoder toolchain
+        id: msys2
+        if: matrix.platform == 'windows'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-mpv
+            mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-openssl
+      - name: Configure Windows native tools
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          MSYS_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          "$env:MSYS_ROOT\ucrt64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $inno = "${env:ProgramFiles(x86)}\Inno Setup 6"
+          if (!(Test-Path "$inno\ISCC.exe")) { throw 'Inno Setup 6 is missing from Windows runner' }
+          $inno | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install macOS native tools
+        if: matrix.platform == 'macos'
+        run: brew install mpv ffmpeg dylibbundler
+      - name: Restore selected CPython ahead of MSYS2 Python
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $env:pythonLocation | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "$env:pythonLocation\Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install native Python dependencies (cloud only)
+        timeout-minutes: 5
+        if: matrix.platform != 'linux'
+        run: python -m pip install --disable-pip-version-check --timeout 30 -r requirements.txt PyInstaller==6.16.0 pytest==8.3.5
+      - name: Build Windows installer with bundled mpv and DLL inventory
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          MSYS_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: python packaging/ci_bundle.py --prefix "$env:MSYS_ROOT\ucrt64"
+      - name: Build macOS native DMG with bundled dylibs
+        if: matrix.platform == 'macos'
+        run: python packaging/ci_bundle.py
+      - name: Install actual Win/mac candidate, decode HTTPS fixture, verify IPC and uninstall
+        if: matrix.platform != 'linux'
+        run: python packaging/ci_verify_native.py
+      - name: Build Linux in cloud Debian 12 container
+        if: matrix.platform == 'linux'
+        run: |
+          docker build --progress=plain -f packaging/Dockerfile.linux -t player-cloud:ci .
+          mkdir -p dist
+          id=$(docker create player-cloud:ci)
+          docker cp "$id:/src/dist/kinosota-player.deb" dist/kinosota-player.deb
+          docker rm "$id"
+      - name: Install Linux package on clean Debian and Ubuntu; playback and purge
+        if: matrix.platform == 'linux'
+        run: |
+          for distro in debian:12-slim ubuntu:24.04; do
+            docker run --rm -e KINOSOTA_DISPOSABLE_QA=1 -e KINOSOTA_QA_REPORT_DIR=/reports \
+              -v "$PWD/dist:/reports" -v "$PWD/packaging:/qa:ro" \
+              "$distro" sh /qa/verify_install_linux.sh /reports/kinosota-player.deb
+          done
+          python packaging/ci_linux_receipt.py
+      - name: Preserve installed-smoke candidates (unpublished, source tests still required)
+        if: matrix.platform != 'linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unpublished-installed-smoke-${{ matrix.platform }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            desktop-player/dist/*.exe
+            desktop-player/dist/*.dmg
+            desktop-player/dist/*.json
+            desktop-player/dist/SHA256SUMS
+      - name: Native source tests (cloud only)
+        timeout-minutes: 5
+        if: matrix.platform != 'linux'
+        run: python packaging/ci_source_tests.py
+      - name: Upload green native candidate and receipts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: player-0.1.1-${{ matrix.platform }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            desktop-player/dist/*.deb
+            desktop-player/dist/*.exe
+            desktop-player/dist/*.dmg
+            desktop-player/dist/*.json
+            desktop-player/dist/SHA256SUMS
+      - name: Upload diagnostics (no credentials or production media)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: player-diagnostics-${{ matrix.platform }}-${{ github.sha }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            desktop-player/build/*.txt
+            desktop-player/dist/*smoke*.json
+            desktop-player/dist/mpv-*.log
+            desktop-player/dist/source-tests.log
+  verify-candidates:
+    needs: native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: player-0.1.1-*-${{ github.sha }}
+          path: candidates
+      - name: Verify all three native SHA-256 receipts; do not publish automatically
+        run: python3 desktop-player/packaging/ci_verify_candidates.py candidates
