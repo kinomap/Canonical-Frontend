@@ -9,7 +9,9 @@ def make(tmp_path,extra=None):
  manifest={'system':'Windows','architecture':'x86_64','sources':['https://example.invalid/source'], 'files':{k:hashlib.sha256(v).hexdigest() for k,v in files.items()}}
  p=tmp_path/'bundle.zip'
  with zipfile.ZipFile(p,'w') as z:
-  for k,v in files.items():z.writestr(k,v)
+  for k,v in files.items():
+   # Preserve hostile raw ZIP names: ZipInfo normalizes os.sep on Windows.
+   info=zipfile.ZipInfo(k);info.filename=k;z.writestr(info,v)
   z.writestr('bundle.json',json.dumps(manifest))
  return p,hashlib.sha256(p.read_bytes()).hexdigest()
 def test_valid_bundle_extracts_hashed_regular_files(tmp_path):

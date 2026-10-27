@@ -13,6 +13,10 @@ def unpack(archive,expected,output,system):
     with zipfile.ZipFile(archive) as z:
         files={};total=0;seen=set()
         for item in z.infolist():
+            # ZipInfo may normalize Windows separators or truncate at NUL.
+            # Check the original archive name before trusting its normalized name.
+            raw=item.orig_filename
+            if '\x00' in raw or chr(92) in raw or raw!=item.filename:raise ValueError('Unsafe bundle path')
             path=PurePosixPath(item.filename)
             if '\\' in item.filename or ':' in item.filename or path.is_absolute() or '..' in path.parts or not path.parts:raise ValueError('Unsafe bundle path')
             normalized=str(path).casefold()
