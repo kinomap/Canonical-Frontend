@@ -20,7 +20,7 @@ class Api:
             raise ValueError('A plain HTTPS origin is required')
         self.origin=origin.rstrip('/');self.token='';self.lock=threading.RLock()
         self.client=httpx.Client(base_url=self.origin+'/api/v1/',timeout=20,follow_redirects=False,transport=transport,
-            headers={'User-Agent':'KINOSOTA-Player/0.1.3','Accept':'application/json'})
+            headers={'User-Agent':'KINOSOTA-Player/0.1.4','Accept':'application/json'})
     def request(self,method,path,body=None,extra_headers=None):
         if not path.startswith('/') or path.startswith('//') or '://' in path:raise ValueError('Relative API path required')
         with self.lock:
@@ -47,6 +47,7 @@ class Api:
         if not token or token=='cookie-session':raise ApiError(0,message='Сервер не вернул сессию приложения.')
         self.token=token
         return self.access()
+    def account(self):return self.request('GET','/account')
     def access(self):return self.request('GET','/desktop/access')
     def search(self,query='',page=1):
         self.access()
