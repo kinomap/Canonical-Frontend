@@ -12,6 +12,8 @@ def test_portable_and_source_preview_cannot_uninstall_system_package(monkeypatch
 
 def test_linux_removal_is_fixed_package_and_not_shell(monkeypatch):
     monkeypatch.setattr(sys,'frozen',True,raising=False);monkeypatch.setattr(sys,'executable','/opt/kinosota-player/kinosota-player')
+    # Simulate a resolved Linux install path even when this source test runs on Windows.
+    monkeypatch.setattr(Path,'resolve',lambda p:p)
     monkeypatch.setattr(Path,'is_file',lambda p:True)
     assert uninstall_command('Linux')==['/usr/bin/pkexec','/usr/bin/dpkg','--remove','kinosota-player']
 
