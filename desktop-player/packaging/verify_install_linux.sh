@@ -31,9 +31,16 @@ if [ -n "${KINOSOTA_QA_REPORT_DIR:-}" ]; then
 fi
 # No real credentials or production API calls; smoke mode never restores a session.
 [ -z "$(find /home/viewer -type f -not -path '*/.cache/*' -not -name '.bash*' -not -name '.profile' -print)" ]
+test -f /usr/share/metainfo/com.kinosota.Player.metainfo.xml
+grep -q 'desktop-id' /usr/share/metainfo/com.kinosota.Player.metainfo.xml
+grep -q 'Actions=Uninstall' /usr/share/applications/kinosota-player.desktop
+grep -q 'Exec=kinosota-player --uninstall' /usr/share/applications/kinosota-player.desktop
+# Match the GUI's fixed dpkg remove path; never open interactive authorization in CI.
+dpkg --remove kinosota-player
 DEBIAN_FRONTEND=noninteractive apt-get purge -y kinosota-player
 [ ! -e /usr/bin/kinosota-player ]
 [ ! -e /opt/kinosota-player/kinosota-player ]
 [ ! -e /usr/share/applications/kinosota-player.desktop ]
 [ ! -e /usr/share/icons/hicolor/512x512/apps/kinosota-player.png ]
+[ ! -e /usr/share/metainfo/com.kinosota.Player.metainfo.xml ]
 echo 'INSTALL_GUI_ICON_UNINSTALL_PASS'

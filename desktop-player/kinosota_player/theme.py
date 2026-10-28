@@ -38,3 +38,16 @@ QCheckBox{padding:4px;font-size:14px;} QCheckBox::indicator{width:20px;height:20
 '''
 
 PREMIUM_STYLE += '/* Native density: logical pixels, no hidden/clipped login controls. */\nQWidget{font-size:14px;}\nQLabel#brand{font-size:24px;} QLabel#hero{font-size:32px;}\nQLabel#loginTitle{font-size:27px;font-weight:700;padding-bottom:4px;}\nQLabel#hint{font-size:12px;color:#aab5bf;} QLabel#fieldLabel{font-size:13px;color:#d0d6dc;}\nQLabel#message{font-size:12px;padding:0 4px;}\nQLineEdit{padding:8px 11px;min-height:20px;border-radius:10px;}\nQPushButton{padding:7px 13px;min-height:20px;border-radius:8px;}\nQCheckBox{font-size:12px;padding:4px 0;} QCheckBox::indicator{width:16px;height:16px;}\nQFrame#card{border-radius:20px;}\nQWidget#scrim{background:rgba(0,0,0,165);}\nQFrame#settingsPanel{background:#10171d;border:1px solid #5f522f;border-radius:16px;}\nQLabel#drawerTitle{font-size:24px;font-weight:700;}\nQLabel#eyebrow{color:#dcc16d;font-size:11px;font-weight:700;padding-top:8px;padding-bottom:4px;}\nQLabel#accountValue{font-size:13px;padding:5px;color:#f5f6f7;}\nQFrame#divider{background:#2c363e;}\nQComboBox{background:#0b1217;border:1px solid #46525c;border-radius:8px;padding:8px;min-height:20px;}\nQComboBox:focus{border:2px solid #ffd400;} QComboBox QAbstractItemView{background:#17212a;color:#f5f6f7;selection-background-color:#463e22;}\n'
+
+PREMIUM_STYLE += """
+QFrame#settingsPanel{background:#0c1319;border:1px solid #766335;border-radius:18px;}
+QFrame#settingsRail{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #191c18,stop:1 #090e12);border-right:1px solid #343b3e;border-top-left-radius:18px;border-bottom-left-radius:18px;}
+QFrame#settingsCard{background:#101b23;border:1px solid #2d414e;border-radius:14px;}
+QLabel#sectionTitle{font-size:19px;font-weight:700;} QLabel#railBrand{font-size:20px;font-weight:800;}
+QLabel#railAccount{color:#dde4e9;padding:10px 0;} QLabel#hint{color:#b5c1cb;}
+QPushButton#settingsNav{text-align:left;padding:12px 10px;border:1px solid transparent;min-height:24px;}
+QPushButton#settingsNav:checked{background:#332e1a;border-color:#a88a24;color:#ffe28b;}
+QPushButton#settingsNav:focus{border-color:#ffe28b;}
+QPushButton#danger{color:#ffb0ab;border-color:#a64640;background:#25181b;} QPushButton#danger:hover{background:#432124;}
+QScrollArea{border:0;background:transparent;}
+"""
