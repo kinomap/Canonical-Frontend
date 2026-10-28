@@ -61,10 +61,14 @@ def main():
         arch=subprocess.check_output(['dpkg','--print-architecture'],text=True).strip()
         libc=platform.libc_ver()[1]
         if not libc:raise RuntimeError('Cannot determine minimum glibc version')
-        (stage/'DEBIAN/control').write_text(f'Package: kinosota-player\nVersion: 0.1.4\nArchitecture: {arch}\nMaintainer: KINOSOTA\nDepends: libc6 (>= {libc}), mpv (>= 0.35), libxcb-cursor0, libxkbcommon-x11-0, libegl1, libgl1, libdbus-1-3, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-render-util0, libxcb-xinerama0, libxcb-xkb1, gnome-keyring\nSection: video\nPriority: optional\nDescription: KINOSOTA desktop catalogue and authenticated mpv player\n Paid subscription required for playback.\n')
+        from linux_metadata import write_metadata
+        write_metadata(stage,'0.1.5',arch,libc)
         wrapper=stage/'usr/bin/kinosota-player';wrapper.write_text('#!/bin/sh\nexec /opt/kinosota-player/kinosota-player "$@"\n');wrapper.chmod(0o755)
-        (stage/'usr/share/applications/kinosota-player.desktop').write_text('[Desktop Entry]\nType=Application\nName=KINOSOTA Player\nComment=KINOSOTA catalogue and playback\nExec=kinosota-player\nIcon=kinosota-player\nTerminal=false\nCategories=AudioVideo;Video;Player;\nStartupWMClass=kinosota-player\n')
-        shutil.copy2(ROOT/'kinosota_player/assets/drone.png',stage/'usr/share/icons/hicolor/512x512/apps/kinosota-player.png')
+        from PySide6.QtGui import QImage
+        from PySide6.QtCore import Qt
+        image=QImage(str(ROOT/'kinosota_player/assets/drone.png'))
+        for size in (128,256,512):
+            if not image.scaled(size,size,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation).save(str(stage/f'usr/share/icons/hicolor/{size}x{size}/apps/kinosota-player.png')):raise RuntimeError('Cannot export Linux icon')
         docs=stage/'usr/share/doc/kinosota-player';docs.mkdir(parents=True,exist_ok=True)
         shutil.copy2(ROOT/'README.md',docs/'README.md')
         shutil.copy2(ROOT/'packaging/THIRD_PARTY.md',docs/'copyright')
@@ -74,9 +78,15 @@ def main():
     elif system=='Darwin':
         # Signing and notarization remain release gates, never fabricate them here.
         app=out/(name+'.app')
+        import plistlib
+        info=app/'Contents/Info.plist'
+        with info.open('rb') as stream: data=plistlib.load(stream)
+        data.update({'CFBundleName':'KINOSOTA Player','CFBundleDisplayName':'KINOSOTA Player','CFBundleShortVersionString':'0.1.5','CFBundleVersion':'0.1.5','NSHumanReadableCopyright':'KINOSOTA. Third-party notices included in the application.'})
+        with info.open('wb') as stream: plistlib.dump(data,stream)
         dmg_stage=ROOT/'build/dmg';shutil.rmtree(dmg_stage,ignore_errors=True);dmg_stage.mkdir(parents=True)
         shutil.copytree(app,dmg_stage/app.name,symlinks=True)
         (dmg_stage/'Applications').symlink_to('/Applications')
+        (dmg_stage/'INSTALL.txt').write_text('KINOSOTA Player\n\n1. Drag kinosota-player.app to Applications.\n2. Open KINOSOTA Player from Applications.\n3. Sign in with your KINOSOTA website account.\n\nRemoval: quit the app and move it from Applications to Trash.\nDo not disable Gatekeeper or remove quarantine attributes.\nThis preview is not notarized. If blocked, wait for a signed release.\n',encoding='utf-8')
         run('hdiutil','create','-volname','KINOSOTA Player','-srcfolder',dmg_stage,'-ov','-format','UDZO',out/'KINOSOTA-Player.dmg')
     else:p.error('Unsupported native build OS')
     print('Candidate built. NOT published; native installation, playback and release checks are still required.')

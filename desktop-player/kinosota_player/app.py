@@ -271,8 +271,11 @@ class Window(QMainWindow):
 
 def main():
     if '--version' in sys.argv:
-        print('KINOSOTA Player 0.1.4');return 0
+        print('KINOSOTA Player 0.1.5');return 0
     app=QApplication(sys.argv);app.setApplicationName('KINOSOTA Player');app.setOrganizationName('KINOSOTA');app.setDesktopFileName('kinosota-player')
+    if '--uninstall' in sys.argv:
+        from .installation import show_uninstall
+        show_uninstall(language=Preferences().get('interface_language'));return 0
     smoke='--smoke-test' in sys.argv or '--playback-smoke-fixture' in sys.argv
     window=Window(restore=not smoke);window.show()
     if '--playback-smoke-fixture' in sys.argv:

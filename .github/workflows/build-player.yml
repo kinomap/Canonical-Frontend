@@ -117,7 +117,7 @@ jobs:
       - name: Upload green native candidate and receipts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: player-0.1.4-${{ matrix.platform }}-${{ github.sha }}
+          name: player-0.1.5-${{ matrix.platform }}-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -148,7 +148,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: player-0.1.4-*-${{ github.sha }}
+          pattern: player-0.1.5-*-${{ github.sha }}
           path: candidates
       - name: Verify all three native SHA-256 receipts; do not publish automatically
         run: python3 desktop-player/packaging/ci_verify_candidates.py candidates
