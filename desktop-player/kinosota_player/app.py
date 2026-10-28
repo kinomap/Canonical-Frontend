@@ -6,11 +6,13 @@ from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QTimer, 
 from PySide6.QtGui import QIcon, QPixmap, QFontDatabase
 from .theme import CinemaBackdrop, PREMIUM_STYLE
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,
- QLineEdit,QPushButton,QStackedWidget,QListWidget,QListWidgetItem,QCheckBox,QFormLayout,QFrame,QScrollArea)
+ QLineEdit,QPushButton,QStackedWidget,QListWidget,QListWidgetItem,QCheckBox,QFormLayout,QFrame,QScrollArea,QSizePolicy)
 from .api import Api, ApiError
 from .credentials import SessionVault
 from .engine import Mpv
 from .catalog import PosterGrid
+from .preferences import Preferences,translate,movie_title
+from .settings import SettingsDrawer
 ASSET=Path(__file__).parent/'assets'/'drone.png'
 STYLE=PREMIUM_STYLE
 
@@ -30,17 +32,26 @@ def button(text,fn,primary=False):
     if primary:b.setObjectName('primary')
     b.clicked.connect(fn);return b
 
+class StatusLabel(QLabel):
+    def __init__(self,window):
+        super().__init__();self.window=window;self.raw='';self.setObjectName('message');self.setTextFormat(Qt.TextFormat.PlainText);self.setWordWrap(True);self.setFixedHeight(36)
+    def setText(self,text):
+        self.raw=text;super().setText(translate(text,self.window.language));self.setToolTip(translate(text,self.window.language))
+
 class Window(QMainWindow):
-    def __init__(self,api=None,engine=None,vault=None,restore=True):
+    def __init__(self,api=None,engine=None,vault=None,restore=True,preferences=None):
         super().__init__();[QFontDatabase.addApplicationFont(str(font)) for font in (ASSET.parent/'fonts').glob('*.ttf')];self.api=api or Api();self.engine=engine or Mpv();self.vault=vault or SessionVault()
+        self.preferences=preferences or Preferences();self.language=self.preferences.get("interface_language");self.title_language=self.preferences.get("title_language");self.bound=[];self.account={}
         self.pool=QThreadPool(self);self.pool.setMaxThreadCount(3);self.jobs=set();self.session='';self.playing_movie='';self.closed=False;self.epoch=0;self.play_generation=0;self.search_generation=0;self.search_running=False;self.search_queued=False;self.pending_stops=[]
         self.page=1;self.query='';self.total_pages=1;self.pair=None;self.pair_until=0;self.pending_poll=False;self.pending_beat=False;self.busy=False
         self.setWindowTitle('KINOSOTA Player');self.setWindowIcon(QIcon(str(ASSET)));self.resize(1240,840);self.setMinimumSize(760,600)
-        root=CinemaBackdrop();self.backdrop=root;layout=QVBoxLayout(root);layout.setContentsMargins(28,24,28,24);layout.setSpacing(20)
-        head=QHBoxLayout();icon=label('');icon.setPixmap(QPixmap(str(ASSET)).scaled(56,56,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));head.addWidget(icon);head.addWidget(self.brand_label());head.addStretch();head.addWidget(label('DESKTOP · PRO','muted'));layout.addLayout(head)
+        root=CinemaBackdrop();self.backdrop=root;layout=QVBoxLayout(root);layout.setContentsMargins(24,16,24,12);layout.setSpacing(10);self.root_layout=layout
+        head=QHBoxLayout();icon=label('');icon.setPixmap(QPixmap(str(ASSET)).scaled(40,40,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));head.addWidget(icon);head.addWidget(self.brand_label());head.addStretch();head.addWidget(label('DESKTOP · PRO','hint'));self.settings_button=button('',self.open_settings);head.addWidget(self.settings_button);layout.addLayout(head)
         self.pages=QStackedWidget();layout.addWidget(self.pages,1)
-        self.make_login();self.make_catalog();self.message=label('','message',True);self.message.setAccessibleName('Статус приложения');layout.addWidget(self.message)
+        self.make_login();self.make_catalog();self.message=StatusLabel(self);layout.addWidget(self.message)
         self.setCentralWidget(root);self.setStyleSheet(PREMIUM_STYLE)
+        self.drawer=SettingsDrawer(root,self.preferences);self.drawer.languageChanged.connect(self.set_language);self.drawer.titlesChanged.connect(self.set_title_language);self.drawer.refreshRequested.connect(self.refresh_account);self.drawer.signOutRequested.connect(self.logout)
+        self.retranslate();self.pages.currentChanged.connect(lambda _:self.adapt_layout())
         self.pair_timer=QTimer(self);self.pair_timer.setInterval(5000);self.pair_timer.timeout.connect(self.poll_pair)
         self.lease_timer=QTimer(self);self.lease_timer.timeout.connect(self.beat)
         self.process_timer=QTimer(self);self.process_timer.setInterval(1000);self.process_timer.timeout.connect(self.check_process);self.process_timer.start()
@@ -60,33 +71,62 @@ class Window(QMainWindow):
             self.jobs.discard(job)
             if not self.closed and epoch==self.epoch:(fail or self.show_error)(error)
         job.signals.done.connect(finish);job.signals.failed.connect(failure);self.pool.start(job)
+    def text(self,text,name='',wrap=False):
+        x=label(translate(text,self.language),name,wrap);self.bound.append((x,text));return x
     def make_login(self):
-        page=QWidget();outer=QHBoxLayout(page);outer.setSpacing(32);outer.setContentsMargins(8,8,8,8)
-        copy=QVBoxLayout();copy.addStretch(4);copy.addWidget(label('Ваш личный\nкинотеатр.','hero'));copy.addWidget(label('Каталог KINOSOTA и просмотр через mpv.\nВойдите аккаунтом сайта и выбирайте кино.','muted',True));copy.addWidget(label('Windows · macOS · Linux','muted'));copy.addStretch();outer.addLayout(copy,1)
-        card=QFrame();card.setObjectName('card');card.setMaximumWidth(560);card.setMinimumHeight(740);v=QVBoxLayout(card);v.setContentsMargins(28,28,28,28);v.setSpacing(16)
-        v.addWidget(label('Вход в KINOSOTA','hero'));v.addWidget(label('Приложение доступно с платной подпиской.','muted',True))
-        self.identity=QLineEdit();self.identity.setPlaceholderText('Логин или email');self.identity.setAccessibleName('Логин или email')
-        self.password=QLineEdit();self.password.setPlaceholderText('Пароль');self.password.setEchoMode(QLineEdit.EchoMode.Password);self.password.setAccessibleName('Пароль')
-        self.otp=QLineEdit();self.otp.setPlaceholderText('Если включена двухфакторная защита');self.otp.setAccessibleName('Код 2FA');self.otp.setMaxLength(32)
-        form=QFormLayout();form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows);form.addRow('Логин или email',self.identity);form.addRow('Пароль',self.password);form.addRow('Код 2FA',self.otp);v.addLayout(form)
-        self.remember=QCheckBox('Запомнить вход в защищённом хранилище ОС');self.remember.setChecked(bool(self.vault.backend));v.addWidget(self.remember)
-        self.login_button=button('Войти',self.login,True);v.addWidget(self.login_button);self.password.returnPressed.connect(self.login)
-        v.addWidget(label('или','muted'));v.addWidget(button('Войти через аккаунт в браузере  →',self.start_pair))
-        self.pair_label=label('','muted',True);v.addWidget(self.pair_label);outer.addWidget(card,1,Qt.AlignmentFlag.AlignVCenter);scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame);scroll.setWidget(page);self.pages.addWidget(scroll)
+        page=QWidget();outer=QHBoxLayout(page);outer.setSpacing(28);outer.setContentsMargins(0,0,0,0)
+        self.hero_copy=QWidget();copy=QVBoxLayout(self.hero_copy);copy.setContentsMargins(8,0,8,8);copy.addStretch(4);copy.addWidget(self.text('Ваш личный\nкинотеатр.','hero'));copy.addSpacing(8);copy.addWidget(self.text('Каталог KINOSOTA и просмотр через mpv.\nВойдите аккаунтом сайта и выбирайте кино.','muted',True));copy.addSpacing(10);copy.addWidget(label('Windows · macOS · Linux','hint'));copy.addStretch();outer.addWidget(self.hero_copy,1)
+        self.login_card=card=QFrame();card.setObjectName('card');card.setMaximumWidth(480);card.setSizePolicy(QSizePolicy.Policy.Preferred,QSizePolicy.Policy.Maximum);v=QVBoxLayout(card);self.login_layout=v;v.setContentsMargins(24,22,24,22);v.setSpacing(8)
+        v.addWidget(self.text('Вход в KINOSOTA','loginTitle'));v.addWidget(self.text('Приложение доступно с платной подпиской.','hint',True));v.addSpacing(4)
+        self.identity=QLineEdit();self.password=QLineEdit();self.password.setEchoMode(QLineEdit.EchoMode.Password);self.otp=QLineEdit();self.otp.setMaxLength(32)
+        for title,field in [('Логин или email',self.identity),('Пароль',self.password),('Код 2FA',self.otp)]:
+            l=self.text(title,'fieldLabel');l.setBuddy(field);v.addWidget(l);v.addWidget(field)
+        self.remember=QCheckBox();self.remember.setChecked(bool(self.vault.backend));v.addWidget(self.remember)
+        self.login_button=button('',self.login,True);v.addWidget(self.login_button);self.password.returnPressed.connect(self.login);self.otp.returnPressed.connect(self.login)
+        self.browser_button=button('',self.start_pair);v.addWidget(self.browser_button)
+        self.pair_label=self.text('','hint',True);self.pair_label.hide();v.addWidget(self.pair_label);outer.addWidget(card,1,Qt.AlignmentFlag.AlignVCenter);self.pages.addWidget(page)
     def make_catalog(self):
-        page=QWidget();v=QVBoxLayout(page);v.setSpacing(16)
-        top=QHBoxLayout();self.account_label=label('','muted');top.addWidget(self.account_label);top.addStretch();top.addWidget(button('Выйти',self.logout));v.addLayout(top)
-        row=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('Найти фильм по названию…');self.search.setAccessibleName('Поиск фильмов');self.search.setMaxLength(100);self.search.returnPressed.connect(self.new_search);row.addWidget(self.search,1);self.search_button=button('Найти',self.new_search,True);row.addWidget(self.search_button);v.addLayout(row)
-        self.search_button.hide();self.search.setClearButtonEnabled(True)
-        self.search.setPlaceholderText('Поиск фильмов — название или латиница…')
-        self.search_timer=QTimer(self);self.search_timer.setSingleShot(True);self.search_timer.setInterval(250);self.search_timer.timeout.connect(self.new_search)
-        self.search.textEdited.connect(self.schedule_search)
-        self.results=PosterGrid(self.api.origin);self.results.itemClicked.connect(self.play);self.results.itemActivated.connect(self.play);v.addWidget(self.results,1)
-        # Compatibility handles stay off-layout: no redundant side panel or controls.
-        self.play_button=QPushButton(self);self.play_button.hide();self.play_button.setEnabled(False)
-        self.selected_title=QLabel(self);self.selected_title.hide();self.results.currentItemChanged.connect(self.selection)
-        pagination=QHBoxLayout();self.prev=button('← Назад',lambda:self.change_page(-1));self.next=button('Далее →',lambda:self.change_page(1));self.page_label=label('','muted');pagination.addWidget(self.prev);pagination.addWidget(self.page_label);pagination.addStretch();pagination.addWidget(self.next);v.addLayout(pagination)
+        page=QWidget();v=QVBoxLayout(page);v.setContentsMargins(0,0,0,0);v.setSpacing(8)
+        row=QHBoxLayout();self.search=QLineEdit();self.search.setMaximumWidth(480);self.search.setMaxLength(100);self.search.returnPressed.connect(self.new_search);row.addWidget(self.search,3);row.addStretch(1);self.account_label=label('','hint');row.addWidget(self.account_label);v.addLayout(row)
+        self.search_button=button('Найти',self.new_search,True);self.search_button.hide();self.search.setClearButtonEnabled(True)
+        self.search_timer=QTimer(self);self.search_timer.setSingleShot(True);self.search_timer.setInterval(250);self.search_timer.timeout.connect(self.new_search);self.search.textEdited.connect(self.schedule_search)
+        self.results=PosterGrid(self.api.origin);self.results.title_language=self.title_language;self.results.itemClicked.connect(self.play);self.results.itemActivated.connect(self.play);v.addWidget(self.results,1)
+        self.play_button=QPushButton(self);self.play_button.hide();self.play_button.setEnabled(False);self.selected_title=QLabel(self);self.selected_title.hide();self.results.currentItemChanged.connect(self.selection)
+        pagination=QHBoxLayout();self.prev=button('',lambda:self.change_page(-1));self.next=button('',lambda:self.change_page(1));self.page_label=label('','hint');pagination.addWidget(self.prev);pagination.addStretch();pagination.addWidget(self.page_label);pagination.addStretch();pagination.addWidget(self.next);v.addLayout(pagination)
         self.pages.addWidget(page)
+    def retranslate(self):
+        for widget,text in self.bound:widget.setText(translate(text,self.language))
+        for widget,text in [(self.settings_button,'Настройки'),(self.login_button,'Войти'),(self.browser_button,'Войти через аккаунт в браузере  →'),(self.remember,'Запомнить вход в защищённом хранилище ОС'),(self.prev,'← Назад'),(self.next,'Далее →')]:widget.setText(translate(text,self.language))
+        for widget,text in [(self.identity,'Логин или email'),(self.password,'Пароль'),(self.otp,'Если включена двухфакторная защита'),(self.search,'Поиск фильмов — название или латиница…')]:widget.setPlaceholderText(translate(text,self.language));widget.setAccessibleName(translate(text,self.language))
+        self.message.setText(self.message.raw);self.drawer.retranslate(self.language);self.refresh_titles();self.adapt_layout()
+    def set_language(self,language):
+        self.preferences.set('interface_language',language);self.language=language;self.drawer.ui_language.blockSignals(True);self.drawer.ui_language.setCurrentIndex(self.drawer.ui_language.findData(language));self.drawer.ui_language.blockSignals(False);self.retranslate()
+    def set_title_language(self,language):
+        self.preferences.set('title_language',language);self.title_language=language;self.drawer.title_language.blockSignals(True);self.drawer.title_language.setCurrentIndex(self.drawer.title_language.findData(language));self.drawer.title_language.blockSignals(False);self.refresh_titles()
+    def refresh_titles(self):
+        self.results.title_language=self.title_language
+        for i in range(self.results.count()):
+            item=self.results.item(i);title=movie_title(item.data(Qt.ItemDataRole.UserRole),self.title_language);item.setText(title);item.setToolTip(title);item.setData(Qt.ItemDataRole.AccessibleTextRole,title)
+        self.selection(self.results.currentItem());self.results.viewport().update()
+    def open_settings(self):
+        self.drawer.signout.setVisible(self.pages.currentIndex()==1);self.drawer.refresh.setVisible(self.pages.currentIndex()==1)
+        self.drawer.present()
+        if self.pages.currentIndex()==1:self.refresh_account()
+    def refresh_account(self):
+        if self.drawer.state=='Загружаем аккаунт…':return
+        self.drawer.update_account(state='Загружаем аккаунт…')
+        def done(data):self.account=dict(data);self.drawer.update_account(data)
+        def fail(error):
+            if isinstance(error,ApiError) and error.status==401:self.show_error(error)
+            else:self.drawer.update_account(state='Не удалось загрузить аккаунт. Повторите.')
+        self.work(lambda:self.api.account(),done,fail)
+    def adapt_layout(self):
+        if not hasattr(self,'login_card'):return
+        compact=self.height()<720;self.hero_copy.setVisible(self.width()>=940)
+        self.login_layout.setSpacing(5 if compact else 9);self.login_layout.setContentsMargins(22,14 if compact else 24,22,14 if compact else 24)
+        self.results.resize_tiles()
+    def resizeEvent(self,event):
+        super().resizeEvent(event);self.adapt_layout()
     def login(self):
         if self.busy:return
         identity=self.identity.text().strip();password=self.password.text();otp=self.otp.text().strip()
@@ -99,7 +139,7 @@ class Window(QMainWindow):
     def signed_in(self,account):
         if not self.remember.isChecked():self.vault.clear()
         self.pair_timer.stop();self.pair=None;self.pair_label.clear();self.pages.setCurrentIndex(1);self.backdrop.set_catalog(True)
-        self.account_label.setText('Аккаунт: '+account.get('username','')+' · PRO');self.message.setText('Вход выполнен. Выберите фильм.')
+        self.account=dict(account);self.drawer.update_account(self.account);self.account_label.setText(account.get('username',''));self.account_label.setToolTip(account.get('username',''));self.message.setText('Вход выполнен. Выберите фильм.')
         if self.remember.isChecked() and not self.vault.save(self.api.token):self.message.setText('Вход выполнен. Защищённое хранилище недоступно: сессия останется только в памяти.')
         self.new_search()
     def schedule_search(self,*args):
@@ -121,7 +161,7 @@ class Window(QMainWindow):
             if current():
                 self.results.clear();self.total_pages=max(1,data.get('total_pages',1))
                 for movie in data.get('items',[]):
-                    item=QListWidgetItem(movie['title']);item.setData(Qt.ItemDataRole.UserRole,movie);item.setToolTip(movie['title']);item.setData(Qt.ItemDataRole.AccessibleTextRole,movie['title']);self.results.addItem(item)
+                    title=movie_title(movie,self.title_language);item=QListWidgetItem(title);item.setData(Qt.ItemDataRole.UserRole,movie);item.setToolTip(title);item.setData(Qt.ItemDataRole.AccessibleTextRole,title);self.results.addItem(item)
                     self.results.posters.load(movie.get('poster') or movie.get('poster_url'))
                 self.prev.setEnabled(page>1);self.next.setEnabled(page<self.total_pages);self.page_label.setText(f'{page} / {self.total_pages}');self.message.setText('Ничего не найдено. Попробуйте другое название.' if not self.results.count() else f'Найдено: {data.get("total",self.results.count())}')
             finish()
@@ -131,7 +171,7 @@ class Window(QMainWindow):
         self.work(lambda:self.api.search(query,page),done,fail)
     def selection(self,item,previous=None):
         self.play_button.setEnabled(bool(item) and not self.busy)
-        self.selected_title.setText(item.data(Qt.ItemDataRole.UserRole)['title'] if item else 'Выберите фильм')
+        self.selected_title.setText(movie_title(item.data(Qt.ItemDataRole.UserRole),self.title_language) if item else translate('Выберите фильм',self.language))
     def play(self,*args):
         item=args[0] if args and isinstance(args[0],QListWidgetItem) else self.results.currentItem()
         if not item or self.busy:return
@@ -155,7 +195,7 @@ class Window(QMainWindow):
         def done(data):
             if generation!=self.play_generation:
                 self.work(lambda:self.api.stop(data['session_id']),fail=lambda e:None);return
-            self.busy=False;self.play_button.setEnabled(True);self.session=data['session_id'];self.playing_movie=movie['id'];self.lease_timer.start(max(5,data.get('heartbeat_interval_seconds',20))*1000);self.message.setText('Воспроизводится: '+movie['title'])
+            self.busy=False;self.play_button.setEnabled(True);self.session=data['session_id'];self.playing_movie=movie['id'];self.lease_timer.start(max(5,data.get('heartbeat_interval_seconds',20))*1000);self.message.setText('Воспроизводится: '+movie_title(movie,self.title_language))
         def fail(e):
             if generation==self.play_generation:self.busy=False;self.play_button.setEnabled(True);self.show_error(e)
         self.work(start,done,fail)
@@ -199,9 +239,10 @@ class Window(QMainWindow):
         if isinstance(error,ApiError):
             self.message.setText(str(error))
             if error.status==401:
-                self.vault.clear();self.stop();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False)
+                self.epoch+=1;self.search_timer.stop();self.search_generation+=1;self.search_running=False;self.search_queued=False;self.pair_timer.stop();self.pair=None;self.pending_poll=False;self.login_button.setEnabled(True);self.drawer.dismiss();self.account={};self.drawer.update_account({});self.results.posters.clear();self.results.clear();self.password.clear();self.otp.clear();self.vault.clear();self.stop();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False);self.identity.setFocus()
         else:self.message.setText('Не удалось выполнить действие. Проверьте установку mpv и соединение.')
     def logout(self):
+        self.drawer.dismiss();self.account={};self.drawer.update_account({})
         self.search_timer.stop();self.search_generation+=1;self.search_running=False;self.search_queued=False;self.results.posters.clear();self.epoch+=1;self.busy=False;self.pending_beat=False;self.pending_poll=False;self.login_button.setEnabled(True)
         self.stop();self.pair_timer.stop();self.vault.clear();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False);self.results.clear()
         self.work(self.api.logout,lambda _:self.message.setText('Вы вышли из аккаунта. Сайт также может запросить повторный вход.'))
@@ -210,7 +251,7 @@ class Window(QMainWindow):
         self.epoch+=1
         self.pair_timer.stop();self.pair=None
         def done(data):
-            self.pair=data['device_code'];self.pair_until=time.monotonic()+data['expires_in'];self.pair_label.setText('Подтвердите вход в открывшемся окне браузера.\nВводить код не нужно.');self.message.setText('Ожидаем подтверждение входа в браузере…');webbrowser.open(data['verification_uri']);self.pair_timer.start()
+            self.pair=data['device_code'];self.pair_until=time.monotonic()+data['expires_in'];self.message.setText('Ожидаем подтверждение входа в браузере…');webbrowser.open(data['verification_uri']);self.pair_timer.start()
         self.work(lambda:self.api.request('POST','/desktop/pairing/start',{}),done)
     def poll_pair(self):
         if not self.pair:return
@@ -225,11 +266,12 @@ class Window(QMainWindow):
         def fail(e):self.pending_poll=False;self.pair_timer.stop();self.show_error(e)
         self.work(lambda:self.api.request('POST','/desktop/pairing/exchange',{'device_code':code}),done,fail)
     def closeEvent(self,event):
+        self.drawer.dismiss()
         self.search_timer.stop();self.results.posters.clear();self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close();event.accept()
 
 def main():
     if '--version' in sys.argv:
-        print('KINOSOTA Player 0.1.3');return 0
+        print('KINOSOTA Player 0.1.4');return 0
     app=QApplication(sys.argv);app.setApplicationName('KINOSOTA Player');app.setOrganizationName('KINOSOTA');app.setDesktopFileName('kinosota-player')
     smoke='--smoke-test' in sys.argv or '--playback-smoke-fixture' in sys.argv
     window=Window(restore=not smoke);window.show()

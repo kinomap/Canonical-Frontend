@@ -121,3 +121,16 @@ def test_ipc_waits_for_matching_acknowledgement():
 def test_ipc_rejects_failure_without_echoing_media_token(data,exception):
     import time
     with pytest.raises(exception):Mpv._response(lambda:data,'r',time.monotonic()+1)
+
+
+def test_account_uses_existing_authenticated_profile_endpoint():
+    import httpx
+    from kinosota_player.api import Api
+    seen=[]
+    def handle(request):
+        seen.append((request.method,request.url.path,request.headers.get('Authorization')))
+        return httpx.Response(200,json={'username':'viewer','email':'viewer@example.com','subscription_status':'free'})
+    api=Api(transport=httpx.MockTransport(handle));api.token='fixture-token'
+    assert api.account()['subscription_status']=='free'
+    assert seen==[('GET','/api/v1/account','Bearer fixture-token')]
+    api.close()

@@ -182,14 +182,86 @@ def test_short_titles_keep_full_poster_cell():
     view.close()
 
 
-def test_small_login_scrolls_instead_of_overlapping_fields():
+def test_login_fits_without_scrolling_at_supported_sizes(tmp_path):
     from PySide6.QtWidgets import QScrollArea
+    from PySide6.QtCore import QSettings
+    from kinosota_player.preferences import Preferences
     app=QApplication.instance() or QApplication([])
-    w=Window(api=Api(),engine=Engine(),vault=Vault(),restore=False)
-    w.resize(800,640);w.show();app.processEvents()
-    assert isinstance(w.pages.widget(0),QScrollArea)
-    assert w.identity.geometry().bottom()<w.password.geometry().top()
-    assert w.password.geometry().bottom()<w.otp.geometry().top()
-    assert w.otp.geometry().bottom()<w.remember.geometry().top()
-    assert w.pages.widget(0).verticalScrollBar().maximum()>0
+    prefs=Preferences(QSettings(str(tmp_path/'prefs.ini'),QSettings.Format.IniFormat))
+    w=Window(api=Api(),engine=Engine(),vault=Vault(),restore=False,preferences=prefs)
+    for language in ('ru','en'):
+        w.set_language(language)
+        for width,height in [(760,600),(800,640),(1024,768),(1240,840),(1440,900),(1920,1080)]:
+            w.resize(width,height);w.show()
+            for _ in range(4):app.processEvents()
+            assert (w.width(),w.height())==(width,height)
+            assert not w.pages.widget(0).findChildren(QScrollArea)
+            controls=[w.identity,w.password,w.otp,w.remember,w.login_button,w.browser_button]
+            previous_bottom=-1
+            for c in controls:
+                point=c.mapTo(w,c.rect().topLeft())
+                assert point.y()>previous_bottom
+                assert point.y()+c.height()<=w.message.y()
+                assert point.x()>=0 and point.x()+c.width()<=w.width()
+                assert c.height()>=28 or c is w.remember
+                previous_bottom=point.y()+c.height()-1
+    w.close();app.processEvents()
+
+
+def test_two_complete_rows_at_supported_sizes(tmp_path):
+    from PySide6.QtWidgets import QListWidgetItem
+    from PySide6.QtCore import QSettings
+    from kinosota_player.preferences import Preferences
+    app=QApplication.instance() or QApplication([])
+    w=Window(api=Api(),engine=Engine(),vault=Vault(),restore=False,preferences=Preferences(QSettings(str(tmp_path/'p.ini'),QSettings.Format.IniFormat)))
+    w.pages.setCurrentIndex(1)
+    for i in range(30):
+        item=QListWidgetItem('Title');item.setData(Qt.ItemDataRole.UserRole,{'id':str(i),'title':'Очень длинное название фильма для проверки переноса'});w.results.addItem(item)
+    for size in [(760,600),(800,640),(1024,768),(1240,840),(1440,900),(1920,1080)]:
+        w.resize(*size);w.show()
+        for _ in range(6):app.processEvents()
+        g=w.results;cols=g.viewport().width()//g.gridSize().width();last=g.visualItemRect(g.item(cols*2-1))
+        assert last.bottom()<g.viewport().height(),(size,g.gridSize(),last,g.viewport().size())
+        assert g.gridSize().height()*2<=g.viewport().height()
+        assert w.search.width()<w.pages.width()*.85
+    w.close();app.processEvents()
+
+
+def test_language_preferences_and_provider_title_fallback(tmp_path):
+    from PySide6.QtCore import QSettings
+    from kinosota_player.preferences import Preferences,movie_title,translate,TEXT
+    p=Preferences(QSettings(str(tmp_path/'p.ini'),QSettings.Format.IniFormat));p.set('interface_language','en');p.set('title_language','ru')
+    q=Preferences(QSettings(str(tmp_path/'p.ini'),QSettings.Format.IniFormat));assert q.get('interface_language')=='en' and q.get('title_language')=='ru'
+    m={'title':'Сказка','original_title':'Original','title_en':'Fairy Tale'}
+    assert movie_title(m,'ru')=='Сказка' and movie_title(m,'en')=='Fairy Tale'
+    del m['title_en'];assert movie_title(m,'en')=='Original'
+    del m['original_title'];assert movie_title(m,'en')=='Сказка'
+    assert all(translate(k,'en')==v for k,v in TEXT.items())
+
+
+def test_drawer_is_in_window_and_focus_contained(tmp_path):
+    from PySide6.QtCore import QSettings
+    from PySide6.QtTest import QTest
+    from kinosota_player.preferences import Preferences
+    app=QApplication.instance() or QApplication([])
+    w=Window(api=Api(),engine=Engine(),vault=Vault(),restore=False,preferences=Preferences(QSettings(str(tmp_path/'p.ini'),QSettings.Format.IniFormat)));w.resize(760,600);w.show();app.processEvents();w.settings_button.setFocus();w.open_settings()
+    w.drawer.animation.setCurrentTime(180);app.processEvents()
+    assert w.drawer.parentWidget() is w.backdrop and not w.drawer.isWindow()
+    for _ in range(16):
+        QTest.keyClick(app.focusWidget(),Qt.Key.Key_Tab);assert w.drawer.panel.isAncestorOf(app.focusWidget())
+    w.drawer.update_account({'username':'admin','email':'a@example.com','subscription_status':'free'})
+    assert w.drawer.fields['subscription_status'].text()=='Бесплатная' # admin is not a made-up paid subscription
+    w.set_language('en');assert w.drawer.fields['subscription_status'].text()=='Free'
+    QTest.keyClick(app.focusWidget(),Qt.Key.Key_Escape);assert not w.drawer.isVisible() and app.focusWidget() is w.settings_button
+    w.close();app.processEvents()
+
+
+def test_expired_session_closes_settings_and_clears_private_data(tmp_path):
+    from PySide6.QtCore import QSettings
+    from kinosota_player.preferences import Preferences
+    app=QApplication.instance() or QApplication([])
+    w=Window(api=Api(),engine=Engine(),vault=Vault(),restore=False,preferences=Preferences(QSettings(str(tmp_path/'p.ini'),QSettings.Format.IniFormat)));w.show();app.processEvents();w.drawer.update_account({'email':'a@example.com'});w.drawer.present();w.pages.setCurrentIndex(1)
+    w.show_error(ApiError(401));app.processEvents()
+    assert w.pages.currentIndex()==0 and not w.drawer.isVisible() and not w.account and not w.drawer.account
+    assert w.results.count()==0
     w.close();app.processEvents()
