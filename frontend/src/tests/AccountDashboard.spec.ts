@@ -170,3 +170,13 @@ describe('Administrator paid privileges display',()=>{
   expect(w.find('.access-note').exists()).toBe(false)
  })
 })
+
+describe('Account expiry rendering',()=>{
+ it('never renders the broken retry-error screen for an expired session',async()=>{
+  mocks.api.mockRejectedValue(Object.assign(new Error('Операция не выполнена. Проверьте данные и повторите попытку.'),{status:401}))
+  const w=mount(ProfileView);wrappers.push(w);await flushPromises()
+  expect(w.find('.notice.error').exists()).toBe(false)
+  expect(w.text()).not.toContain('Повторить загрузку')
+  expect(mocks.logout).not.toHaveBeenCalled()
+ })
+})

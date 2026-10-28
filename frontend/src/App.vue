@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { RouterView, useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import CinemaFooter from '@/components/CinemaFooter.vue'
@@ -35,9 +35,8 @@ function handleSessionConfirm() {
 
 }
 
-onMounted(() => {
-  window.addEventListener('auth:expired', handleAuthExpired)
-})
+// Register before RouterView children mount and start their first account request.
+window.addEventListener('auth:expired', handleAuthExpired)
 
 onUnmounted(() => {
   window.removeEventListener('auth:expired', handleAuthExpired)
