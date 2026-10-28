@@ -77,16 +77,21 @@ def test_abnormal_mpv_exit_diagnoses_absence_instead_of_reporting_success():
 
 def test_live_search_debounces_and_clearing_restores_catalog():
     from PySide6.QtTest import QTest
+    import time
+    def wait_for(predicate,timeout=2):
+        deadline=time.monotonic()+timeout
+        while not predicate() and time.monotonic()<deadline:QTest.qWait(20)
+        return predicate()
     app=QApplication.instance() or QApplication([])
     w=Window(api=Api(),engine=Engine(),vault=Vault(),restore=False)
     calls=[];w.work=lambda fn,done=None,fail=None:calls.append((w.query,done,fail))
     w.search.setFocus();QTest.keyClicks(w.search,'duna');QTest.qWait(100)
     assert calls==[]
     # Wait for the observable timer result, not a narrow wall-clock deadline on loaded native runners.
-    assert QTest.qWaitFor(lambda:len(calls)==1,2000) and calls[0][0]=='duna'
+    assert wait_for(lambda:len(calls)==1) and calls[0][0]=='duna'
     calls[0][1]({'items':[],'total':0,'total_pages':1})
     w.search.clear();w.schedule_search()
-    assert QTest.qWaitFor(lambda:len(calls)==2,2000)
+    assert wait_for(lambda:len(calls)==2)
     assert calls[-1][0]==''
     calls[-1][1]({'items':[]});w.close();app.processEvents()
 
