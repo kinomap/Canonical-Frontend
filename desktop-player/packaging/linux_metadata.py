@@ -14,6 +14,8 @@ def write_metadata(stage,version,architecture,libc):
     developer=ET.SubElement(component,'developer',{'id':'com.kinosota'});ET.SubElement(developer,'name').text='KINOSOTA'
     description=ET.SubElement(component,'description');ET.SubElement(description,'p').text='Browse the KINOSOTA catalogue, choose Russian or English interface and movie titles, and watch with the native mpv player. Playback requires an eligible account.'
     child('launchable','kinosota-player.desktop',{'type':'desktop-id'});child('url','https://watch.scenrix.com/player',{'type':'homepage'});child('icon','kinosota-player',{'type':'stock'});child('pkgname','kinosota-player')
+    categories=ET.SubElement(component,'categories')
+    for category in ['AudioVideo','Video','Player']:ET.SubElement(categories,'category').text=category
     releases=ET.SubElement(component,'releases');ET.SubElement(releases,'release',{'version':version,'date':'2026-10-28','type':'development'})
     ET.indent(component);ET.ElementTree(component).write(stage/'usr/share/metainfo/com.kinosota.Player.metainfo.xml',encoding='utf-8',xml_declaration=True)
     # Refresh discovery caches only; never start a GUI as root or guess a desktop user.

@@ -32,6 +32,7 @@ def test_linux_metadata_maps_installed_package_to_desktop_and_graphical_removal(
     root=ET.parse(tmp_path/'usr/share/metainfo/com.kinosota.Player.metainfo.xml').getroot()
     assert root.findtext('launchable')=='kinosota-player.desktop' and root.findtext('pkgname')=='kinosota-player'
     assert root.findtext('developer/name')=='KINOSOTA'
+    assert [c.text for c in root.findall('categories/category')]==['AudioVideo','Video','Player']
     desktop=(tmp_path/'usr/share/applications/kinosota-player.desktop').read_text()
     assert 'Exec=kinosota-player --uninstall' in desktop and 'Actions=Uninstall;' in desktop
     for script in ['postinst','postrm']:
