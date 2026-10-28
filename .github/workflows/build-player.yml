@@ -2,7 +2,7 @@ name: KINOSOTA Player cloud build
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'feat/player-cloud-*']
+    branches: [main, 'feat/player-cloud-*', 'feat/player-premium-*']
     paths: ['desktop-player/**', '.github/workflows/build-player.yml', '.gitattributes']
 permissions:
   contents: read

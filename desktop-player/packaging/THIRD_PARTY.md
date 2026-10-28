@@ -17,3 +17,7 @@ Do not publish any platform until dependency licensing and security review,
 native install/uninstall, real HTTPS playback and account revocation tests pass.
 Windows Authenticode and macOS Developer ID + notarization require owner-managed
 signing identities. Build scripts do not claim to sign or notarize a candidate.
+
+## Manrope font
+
+Bundled static Manrope font weights are distributed under SIL OFL 1.1. The full notice is shipped with the application at kinosota_player/assets/fonts/OFL.txt. See assets/SOURCES.md for origin and conversion details.

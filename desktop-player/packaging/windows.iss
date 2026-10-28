@@ -2,7 +2,7 @@
 [Setup]
 AppId={{75E1F526-17EE-46D1-A76F-B49889A80145}
 AppName=KINOSOTA Player
-AppVersion=0.1.2
+AppVersion=0.1.3
 DefaultDirName={localappdata}\Programs\KINOSOTA Player
 DefaultGroupName=KINOSOTA Player
 PrivilegesRequired=lowest

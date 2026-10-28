@@ -148,35 +148,8 @@ describe('LoginView – session_expired query-param banner', () => {
 // ── Suite 3: SessionExpiredModal component ────────────────────────────────────
 import SessionExpiredModal from '@/components/SessionExpiredModal.vue'
 
-describe('SessionExpiredModal', () => {
-  it('renders correctly when visible=true', async () => {
-    const wrapper = mount(SessionExpiredModal, {
-      props: { visible: true, returnUrl: '/movies/abc' }
-    })
-    await flushPromises()
-
-    expect(wrapper.find('.session-overlay').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Session Expired')
-    expect(wrapper.text()).toContain('Sign In Again')
-  })
-
-  it('does NOT render overlay when visible=false', async () => {
-    const wrapper = mount(SessionExpiredModal, {
-      props: { visible: false, returnUrl: '/' }
-    })
-    await flushPromises()
-
-    expect(wrapper.find('.session-overlay').exists()).toBe(false)
-  })
-
-  it('emits confirm when "Sign In Again" button is clicked', async () => {
-    const wrapper = mount(SessionExpiredModal, {
-      props: { visible: true, returnUrl: '/movies/xyz' }
-    })
-    await flushPromises()
-
-    await wrapper.find('.session-btn').trigger('click')
-
-    expect(wrapper.emitted('confirm')).toHaveLength(1)
-  })
+describe('SessionExpiredModal',()=>{
+ it('renders the actual sign-in form immediately',async()=>{const w=mount(SessionExpiredModal,{props:{visible:true,returnUrl:'/profile'},global:{stubs:{teleport:true,SignInForm:{template:'<form class="signin-stub" />'}}}});await flushPromises();expect(w.find('.session-overlay').exists()).toBe(true);expect(w.find('.signin-stub').exists()).toBe(true);expect(w.text()).toContain('Войдите, чтобы продолжить');w.unmount()})
+ it('is hidden when the session is valid',()=>{const w=mount(SessionExpiredModal,{props:{visible:false,returnUrl:'/'},global:{stubs:{teleport:true}}});expect(w.find('.session-overlay').exists()).toBe(false);w.unmount()})
+ it('signals restoration only after successful authentication',async()=>{const w=mount(SessionExpiredModal,{props:{visible:true,returnUrl:'/profile'},global:{stubs:{teleport:true,SignInForm:{template:`<button class="restored" @click="$emit('success')">Sign in</button>`}}}});await w.get('.restored').trigger('click');expect(w.emitted('confirm')).toHaveLength(1);w.unmount()})
 })

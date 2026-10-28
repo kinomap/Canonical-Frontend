@@ -1,0 +1,1 @@
+Installed from elayadesign/ai-design-skills, commit ded7efc9d5c02761c41a03caf3b78f9259ab8828. Upstream MIT license is retained beside SKILL.md. Applied to the existing native UI only where relevant. Owner-requested cinematic gradient backgrounds take precedence over the skill default of flat backgrounds.

@@ -7,6 +7,12 @@ export async function accountApi(path: string, method = 'GET', body?: unknown, o
  if(!['GET','HEAD','OPTIONS'].includes(method.toUpperCase())&&csrf)headers['X-CSRF-Token']=csrf
  if (!(body instanceof FormData) && body!==undefined) headers['Content-Type']='application/json'
  const r=await fetch('/api/v1'+path,{method,headers,credentials:'same-origin',body:body===undefined?undefined:body instanceof FormData?body:JSON.stringify(body),cache:'no-store'})
+ // A rejected account session is an authentication state, never a generic account error.
+ // The shared transport has already attempted refresh before returning this 401.
+ if(r.status===401){
+  window.dispatchEvent(new CustomEvent('auth:expired'))
+  throw Object.assign(new Error(tr('Войдите, чтобы продолжить','Sign in to continue')),{status:401,code:'SESSION_EXPIRED'})
+ }
  const d=await r.json().catch(()=>({}))
  if(!r.ok){const code=typeof d.detail==='string'?d.detail:'';const messages:Record<string,string>={PAYMENT_METHOD_UNAVAILABLE:tr('Этот способ оплаты временно настраивается. Выберите другой.','This payment method is being set up. Choose another.'),CHAIN_UNAVAILABLE:tr('Сеть оплаты временно недоступна. Средства не отправлены. Повторите позже.','The payment network is temporarily unavailable. No funds were sent. Try again later.'),PAYMENT_ADDRESS_INVALID:tr('Проверьте адрес и выбранную сеть.','Check the address and network.'),PAYMENT_AMOUNT_POOL_EXHAUSTED:tr('Свободные счета временно недоступны. Выберите другой способ.','Invoices are temporarily unavailable. Choose another method.')};const e=new Error(messages[code]||errorText(code)) as Error & {code:string};e.code=typeof d.detail==='string'?d.detail:'';throw e}
  return d

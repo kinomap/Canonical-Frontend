@@ -22,7 +22,7 @@ describe('Desktop player privilege',()=>{
  })
  it('paid account never receives a fake ready download',async()=>{
   signed.value=true;mocks.api.mockResolvedValue(rows(true,false));const w=await render(DesktopPlayerCard)
-  expect(w.find('.platform button').exists()).toBe(false);expect(w.text()).toContain('Сборка ещё не опубликована');expect(w.find('form').exists()).toBe(true);w.unmount()
+  expect(w.find('.platform button').exists()).toBe(false);expect(w.text()).toContain('Сборка ещё не опубликована');expect(w.find('form').exists()).toBe(false);w.unmount()
  })
  it('published Linux remains visible but locked for non-paying accounts',async()=>{
   mocks.api.mockResolvedValue(rows(false,true));const w=await render(DesktopPlayerCard)
@@ -37,12 +37,7 @@ describe('Desktop player privilege',()=>{
   const w=await render(DesktopPlayerCard);await w.findAll('.platform')[2].get('button').trigger('click');await flushPromises()
   expect(request).toHaveBeenCalledWith('/api/v1/desktop/download/linux',expect.objectContaining({credentials:'same-origin',cache:'no-store'}));expect(blob).not.toHaveBeenCalled();expect(w.get('[role=alert]').text()).toContain(text);w.unmount()
  })
- it('pairing requires explicit confirmation of a valid code',async()=>{
-  signed.value=true;mocks.api.mockResolvedValue(rows(true,false));const w=await render(DesktopPlayerCard,'?player_code=ABCDEFGH')
-  expect(mocks.api.mock.calls.filter(c=>c[0].endsWith('/approve'))).toHaveLength(0)
-  expect((w.get('input').element as HTMLInputElement).value).toBe('ABCDEFGH')
-  await w.get('form').trigger('submit');await flushPromises();expect(mocks.api).toHaveBeenCalledWith('/desktop/pairing/approve','POST',{code:'ABCDEFGH'});expect(w.text()).toContain('Устройство подтверждено');w.unmount()
- })
+ it('profile has no manual pairing code even for an old client URL',async()=>{signed.value=true;mocks.api.mockResolvedValue(rows(true,false));const w=await render(DesktopPlayerCard,'?player_code=ABCDEFGH');expect(w.find('input').exists()).toBe(false);expect(mocks.api.mock.calls.filter(c=>c[0].endsWith('/approve'))).toHaveLength(0);w.unmount()})
  it('failed release loading is an error and retry, not a fake download',async()=>{
   mocks.api.mockRejectedValue(new Error('offline'));const w=await render(DesktopPlayerCard);expect(w.get('[role=alert]').text()).toContain('Не удалось проверить');expect(w.find('.platform button').exists()).toBe(false);w.unmount()
  })

@@ -1,0 +1,38 @@
+"""Cinematic surfaces painted at device resolution; images contain no controls."""
+from pathlib import Path
+from PySide6.QtCore import Qt, QRectF
+from PySide6.QtGui import QPainter,QPixmap,QColor,QLinearGradient,QRadialGradient
+from PySide6.QtWidgets import QWidget
+ASSETS=Path(__file__).parent/'assets'
+class CinemaBackdrop(QWidget):
+    def __init__(self):
+        super().__init__();self.catalog=False
+        self.scene=QPixmap(str(ASSETS/'cinema-login.jpg'));self.header=QPixmap(str(ASSETS/'cinema-header.jpg'))
+    def set_catalog(self,value):self.catalog=value;self.update()
+    def paintEvent(self,event):
+        p=QPainter(self);p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.fillRect(self.rect(),QColor('#070b0e'));w,h=self.width(),self.height()
+        image=self.header if self.catalog else self.scene
+        target=QRectF(0,0,w,200) if self.catalog else QRectF(0,80,w*.64,h-80)
+        if not image.isNull():
+            scaled=image.scaled(int(target.width()),int(target.height()),Qt.AspectRatioMode.KeepAspectRatioByExpanding,Qt.TransformationMode.SmoothTransformation)
+            p.drawPixmap(target,scaled,QRectF((scaled.width()-target.width())/2,0,target.width(),target.height()))
+        if self.catalog:
+            fade=QLinearGradient(0,55,0,215);fade.setColorAt(0,QColor(7,11,14,40));fade.setColorAt(1,QColor('#070b0e'));p.fillRect(self.rect(),fade)
+        else:
+            shade=QLinearGradient(0,0,w,0);shade.setColorAt(0,QColor(7,11,14,12));shade.setColorAt(.38,QColor(7,11,14,40));shade.setColorAt(.65,QColor('#070b0e'));p.fillRect(self.rect(),shade)
+            fade=QLinearGradient(0,h*.55,0,h);fade.setColorAt(0,QColor(7,11,14,0));fade.setColorAt(.7,QColor(7,11,14,225));fade.setColorAt(1,QColor('#070b0e'));p.fillRect(self.rect(),fade)
+        glow=QRadialGradient(w*.95,120,w*.38);glow.setColorAt(0,QColor(255,170,18,27));glow.setColorAt(1,QColor(255,170,18,0));p.fillRect(self.rect(),glow)
+PREMIUM_STYLE='''
+QWidget{color:#f5f6f7;font:16px "Manrope";background:transparent;}
+QLabel{background:transparent;} QLabel#brand{font-size:30px;font-weight:700;} QLabel#hero{font-size:36px;font-weight:700;} QLabel#muted{color:#b4bac1;} QLabel#message{color:#ffdc65;padding:8px;font-size:14px;}
+QFrame#card{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #191c1c,stop:.45 #101619,stop:1 #090e12);border:1px solid #65502a;border-radius:24px;}
+QLineEdit{background:#0b1217;border:1px solid #3c464e;border-radius:12px;padding:12px;min-height:24px;selection-background-color:#ffd000;selection-color:#101010;}
+QLineEdit:focus{border:2px solid #ffd400;} QPushButton{background:#10181d;padding:12px 16px;border:1px solid #5e542c;border-radius:8px;min-height:22px;}
+QPushButton:hover{background:#222a2d;border-color:#ffd400;} QPushButton:pressed{background:#31312a;} QPushButton:focus{border:2px solid #ffdc65;}
+QPushButton#primary{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffe94a,stop:.45 #ffd400,stop:1 #ffb800);color:#11120e;font-weight:700;border:1px solid #ffe04a;}
+QPushButton#primary:hover{background:#ffe650;} QPushButton:disabled{color:#8a929b;background:#1b2228;border-color:#323c44;}
+QListWidget{border:0;padding:0;background:#070b0e;outline:0;} QListWidget::item{padding:0;border:0;background:transparent;} QListWidget::item:selected{background:transparent;}
+QScrollBar:vertical{background:#10171d;width:10px;border:0;} QScrollBar::handle:vertical{background:#46505b;border-radius:4px;min-height:32px;}
+QCheckBox{padding:4px;font-size:14px;} QCheckBox::indicator{width:20px;height:20px;border:1px solid #778391;border-radius:4px;background:#11191f;} QCheckBox::indicator:checked{background:#ffd400;border-color:#ffd400;image:url(none);}
+'''

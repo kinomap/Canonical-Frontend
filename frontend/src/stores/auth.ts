@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import type { User } from '@/types/movie'
-import { apiClient } from '@/api/client'
+import { apiClient, ApiError } from '@/api/client'
 import {setLanguage} from '@/i18n'
 
 const TOKEN_KEY = 'tg_stream_access_token'
@@ -51,10 +51,8 @@ export function useAuthStore() {
       const u = await apiClient.getCurrentUser(token.value)
       setUser(u)
       return u
-    } catch {
-      // Token invalid or expired
-      setToken(null)
-      setUser(null)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) window.dispatchEvent(new CustomEvent('auth:expired'))
       return null
     } finally {
       loading.value = false
