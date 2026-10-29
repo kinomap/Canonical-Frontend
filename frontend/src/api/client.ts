@@ -289,10 +289,10 @@ export const apiClient = {
     return request('/playback/diagnose', {method: 'POST', body: JSON.stringify({movie_id: movieId})})
   },
 
-  async startPlayback(movieId: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number, traffic_id?: string }> {
+  async startPlayback(movieId: string, sourceId?: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number, traffic_id?: string }> {
     return request<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number, traffic_id?: string }>(`/playback/start`, {
       method: 'POST',
-      body: JSON.stringify({ movie_id: movieId }),
+      body: JSON.stringify({ movie_id: movieId, ...(sourceId ? {source_id: sourceId} : {}) }),
       headers: { 'X-View-Referrer': trafficReferrer() },
     })
   },

@@ -347,4 +347,29 @@ describe('MovieDetailsView.vue', () => {
     w.unmount()
   })
 
+  it('shows ordered split parts and binds each playback to its own source', async () => {
+    vi.mocked(apiClient.getMovie).mockResolvedValueOnce({
+      id:'movie-123',title:'Палмер',original_title:'Palmer',year:2021,poster:null,
+      rating:null,runtime:110,quality:'SD',status:'available',genres:[],overview:'',
+      backdrop:null,tmdb_id:458220,mime_type:'video/mp4',file_size:993820947,
+      parts:[{source_id:'part-1',number:1,total:2},{source_id:'part-2',number:2,total:2}]
+    })
+    vi.mocked(apiClient.getAudioTracks).mockResolvedValue([])
+    vi.mocked(apiClient.getCurrentUser).mockResolvedValue({id:'u1',username:'viewer'} as any)
+    vi.mocked(apiClient.stopPlayback).mockResolvedValue({ok:true})
+    vi.mocked(apiClient.startPlayback).mockResolvedValue({session_id:'parts-session',media_endpoint:'/media',playback_token:'fixture',node_id:'n',media_url:'/fixture.mp4',heartbeat_interval_seconds:30})
+    useAuthStore().setToken('test-token')
+    const wrapper=mount(MovieDetailsView,{global:{plugins:[router]}})
+    await flushPromises()
+    expect(wrapper.findAll('.movie-part-buttons button').map(b=>b.text())).toEqual(['Часть 1 из 2','Часть 2 из 2'])
+    expect(apiClient.startPlayback).not.toHaveBeenCalled()
+    await wrapper.find('.player-container').trigger('click');await flushPromises()
+    expect(apiClient.startPlayback).toHaveBeenLastCalledWith('movie-123','part-1')
+    await wrapper.findAll('.movie-part-buttons button')[1]!.trigger('click');await flushPromises()
+    expect(apiClient.stopPlayback).toHaveBeenCalledWith('parts-session')
+    expect(apiClient.startPlayback).toHaveBeenLastCalledWith('movie-123','part-2')
+    expect(wrapper.findAll('.movie-part-buttons button')[1]!.attributes('aria-pressed')).toBe('true')
+    wrapper.unmount()
+  })
+
 })

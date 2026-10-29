@@ -20,6 +20,7 @@ export interface MovieSummary {
 }
 
 export interface MovieDetail extends MovieSummary {
+  parts?: {source_id: string, number: number, total: number}[]
   overview: string
   backdrop: string | null
   tmdb_id: number | null
