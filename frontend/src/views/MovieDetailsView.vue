@@ -29,6 +29,8 @@ const movie = ref<MovieDetail | null>(null)
 const audioTracks = ref<AudioTrack[] | null>(null)
 const streamUrl = ref<string | null>(null)
 const trafficId = ref('')
+const selectedSourceId = ref<string | undefined>(undefined)
+const selectedPart = computed(() => movie.value?.parts?.find(p => p.source_id === selectedSourceId.value))
 const shouldPlay = ref(false)
 const playbackStarting = ref(false)
 
@@ -73,6 +75,7 @@ async function fetchData() {
   try {
     const movieData = await apiClient.getMovie(movieId.value)
     movie.value = movieData
+    selectedSourceId.value = movieData.parts?.[0]?.source_id
 
     // Fetch audio tracks
     try {
@@ -116,7 +119,9 @@ async function handlePlay() {
   shouldPlay.value = true
   if (!streamUrl.value) {
     try {
-      const res = await apiClient.startPlayback(movieId.value)
+      const res = selectedSourceId.value
+        ? await apiClient.startPlayback(movieId.value, selectedSourceId.value)
+        : await apiClient.startPlayback(movieId.value)
       trafficId.value = res.traffic_id || ''
       // Use media_url directly (points to Media Worker)
       if (!res.media_url) {
@@ -206,8 +211,24 @@ function releasePlaybackSession(opts: { keepalive?: boolean } = {}) {
   apiClient.stopPlayback(id, opts).catch(() => { /* lease expiry is the fallback */ })
 }
 
+async function selectPart(sourceId: string) {
+  if (playbackStarting.value) return
+  const id = playbackSessionId.value
+  endSessionLease()
+  playbackSessionId.value = null
+  // Stop allocation before requesting the next part, even on a one-slot node.
+  if (id) await apiClient.stopPlayback(id).catch(() => {})
+  selectedSourceId.value = sourceId
+  shouldPlay.value = false
+  streamUrl.value = null
+  await handlePlay()
+}
+
 function handlePlaybackEnded() {
   releasePlaybackSession()
+  shouldPlay.value = false
+  streamUrl.value = null
+  // An explicit next-part button avoids promising seamless concatenation.
 }
 
 // Tab closed, navigated away or backgrounded by a mobile OS. `pagehide` fires
@@ -287,6 +308,15 @@ onMounted(() => {
 
     <!-- Details View (YouTube-style) -->
     <div v-else-if="movie" class="yt-layout">
+      <section v-if="movie.parts?.length" class="movie-parts" aria-label="Части фильма">
+        <p>Фильм разделён на {{ movie.parts.length }} части. Выберите часть для просмотра.</p>
+        <div class="movie-part-buttons">
+          <button v-for="part in movie.parts" :key="part.source_id" type="button"
+            :aria-pressed="selectedSourceId === part.source_id" :disabled="playbackStarting"
+            @click="selectPart(part.source_id)">Часть {{ part.number }} из {{ part.total }}</button>
+        </div>
+        <p v-if="selectedPart" role="status">Выбрана часть {{ selectedPart.number }} из {{ selectedPart.total }}</p>
+      </section>
       <!-- Player Area -->
       <div v-if="!shouldPlay && !compatibilityWarning && !unavailableWarning && !diagnosing" class="player-container" :aria-busy="playbackStarting" @click="handlePlay">
         <div class="player-splash" :style="{ backgroundImage: `url(${movie.backdrop || movie.poster})` }">
@@ -297,7 +327,7 @@ onMounted(() => {
           </div>
         </div>
       </div>
-      <VideoPlayer :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" @media-error="handleMediaError" />
+      <VideoPlayer :key="selectedSourceId || movieId" :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" @media-error="handleMediaError" />
       <p v-if="diagnosing" role="status">Проверяем доступность фильма…</p>
       <PlaybackUnavailable v-if="unavailableWarning" />
       <PlaybackCompatibility v-else-if="compatibilityWarning" />
@@ -921,4 +951,12 @@ onMounted(() => {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+.movie-parts { padding: 16px; background: #181818; border-radius: 8px; }
+.movie-parts p { margin: 0 0 12px; text-wrap: pretty; }
+.movie-part-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.movie-part-buttons button { padding: 8px 12px; border: 1px solid #666; border-radius: 8px; background: #272727; color: white; font-size: 16px; line-height: 24px; font-weight: 600; cursor: pointer; }
+.movie-part-buttons button[aria-pressed="true"] { background: #313131; border-color: white; }
+.movie-part-buttons button:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+.movie-part-buttons button:disabled { opacity: .5; cursor: wait; }
+
 </style>
