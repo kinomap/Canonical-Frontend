@@ -62,3 +62,10 @@ describe('Watch history persistence',()=>{
   v.currentTime=600;await w.get('video').trigger('ended');await flushPromises();expect(JSON.parse(mocks.request.mock.calls.at(-1)![1].body).ended).toBe(true)
  })
 })
+
+
+it('caps page size to the actual bounded grid on ultra-wide and tall displays',()=>{
+ for(const [w,h] of [[4000,300],[2000,3000],[8000,8000]]){
+  const c=historyCapacity(w,h);expect(c.size).toBe(c.columns*c.rows);expect(c.columns).toBeLessThanOrEqual(10);expect(c.rows).toBeLessThanOrEqual(6)
+ }
+})

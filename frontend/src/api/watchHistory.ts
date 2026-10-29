@@ -21,5 +21,6 @@ export function createHistoryWriter(send?: typeof adRequest) {
 export function historyCapacity(width: number, height: number) {
   const columns = Math.max(1, Math.floor((width + 16) / 156))
   const rows = Math.max(1, Math.floor((height + 16) / 216))
-  return {columns:Math.min(columns, 10), rows:Math.min(rows, 6), size:Math.min(60,columns*rows)}
+  const visibleColumns=Math.min(columns,10), visibleRows=Math.min(rows,6)
+  return {columns:visibleColumns, rows:visibleRows, size:visibleColumns*visibleRows}
 }
