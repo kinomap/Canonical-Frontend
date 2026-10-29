@@ -142,7 +142,8 @@ const openInspect = async (source: any) => {
     channel_id: item.channel_id,
     message_id: item.message_id,
     season_number: item.season_number || source.identification_season || 1,
-    episode_number: item.episode_number || source.identification_episode || 1,
+    episode_number: item.episode_number,
+    review_reason: item.review_reason,
     file_size: item.file_size,
     mime_type: item.mime_type,
     raw_caption: item.raw_caption
@@ -337,7 +338,9 @@ onMounted(fetchGarbage)
                       <input type="number" v-model.number="item.season_number" min="1" class="small-num-input" />
                     </td>
                     <td class="input-cell" data-label="Episode" role="cell">
-                      <input type="number" v-model.number="item.episode_number" min="1" class="small-num-input" />
+                      <span v-if="item.episode_number == null">Сборник: отдельные серии не поддерживаются</span>
+                      <input v-else type="number" v-model.number="item.episode_number" min="1" class="small-num-input" />
+                      <p v-if="item.review_reason" class="sub-text">{{ item.review_reason }}</p>
                     </td>
                     <td class="code-val" data-label="Size" role="cell">{{ formatBytes(item.file_size) }}</td>
                     <td class="caption-cell" :title="item.raw_caption" data-label="Raw Caption" role="cell">{{ item.raw_caption || '-' }}</td>
@@ -466,10 +469,10 @@ onMounted(fetchGarbage)
                 </a>
               </td>
               <td class="cell-narrow" data-label="Original Caption" role="cell">{{ source.raw_caption || 'No Telegram caption' }}</td>
-              <td class="cell-narrow font-semibold" data-label="Identification Title" role="cell">{{ source.identification_title || '-' }}</td>
+              <td class="cell-narrow font-semibold" data-label="Identification Title" role="cell">{{ source.identification_title || '-' }}<p v-if="source.review_reason" class="sub-text">{{ source.review_reason }}</p></td>
               <td class="cell-narrow" data-label="Year" role="cell">{{ source.identification_year || '-' }}</td>
               <td class="cell-narrow" data-label="Episodes" role="cell">
-                <span class="resources-badge">{{ source.episode_count || source.episodes_count || 1 }}</span>
+                <span class="resources-badge">{{ source.episode_count === 0 ? "Не определены" : (source.episode_count ?? source.episodes_count ?? 1) }}</span>
               </td>
               <td class="cell-narrow" data-label="Resources" role="cell">
                 <span class="resources-badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa;">{{ source.resource_count || (source.items ? source.items.length : 1) }}</span>
