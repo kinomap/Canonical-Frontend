@@ -29,7 +29,7 @@
   "admin-frontend/src/views/Blocked.vue": "713c0162538b3f89779060c0a2c10c172b0c47af17b8894e39e2faf289ddeba9",
   "admin-frontend/src/views/Domains.vue": "d37f70aeea2af3901ebe5df7051dc4aaf91829885d957edc9b9252e7f57798ab",
   "admin-frontend/src/views/Comments.vue": "1a3263837f8e09d9704a7f71a8130fe8c4a75c027f8e945181291281f0baf523",
-  "admin-frontend/src/views/SeriesGarbage.vue": "352e7471d4cb87450f786fab2deb95839e811910ec2e19655afb69fdfbc42120",
+  "admin-frontend/src/views/SeriesGarbage.vue": "0ac8aad625c775dbec75f76d99f5a59dd3965165fac3b7d8c5549b782c36440e",
   "admin-frontend/src/views/Telegram.vue": "db80517b3959cbd49c57914f9223419833195926b2285a1a309f04152cefa72a",
   "admin-frontend/src/views/SecurityCenter.vue": "8fe11a5d0911edf871d26b308fae01ecb5f75b8f9806f8ca59963e81ed119461",
   "admin-frontend/src/views/MediaNodeDetail.vue": "520a21f4efd4c8e07ee1dbf64012ca041a6b6014061c907283dc5b2164b2a65f",
