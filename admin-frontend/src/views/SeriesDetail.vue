@@ -9,6 +9,20 @@ const router = useRouter()
 const series = ref<any>(null)
 const loading = ref(true)
 const error = ref('')
+const manualOverview=ref(''),posterUrl=ref(''),posterFile=ref<File|null>(null),saving=ref(false),editError=ref(''),saved=ref('')
+const onFile=(e:Event)=>{posterFile.value=(e.target as HTMLInputElement).files?.[0]||null}
+async function saveMetadata(reset=false){
+ saving.value=true;editError.value='';saved.value=''
+ try{await axios.patch(`/api/v1/admin/series/${route.params.id}/metadata`,{manual_overview:reset?null:manualOverview.value});await fetchSeriesDetail();saved.value=reset?'Восстановлено описание провайдера':'Описание сохранено'}
+ catch(e:any){editError.value=e.response?.data?.detail||'Не удалось сохранить описание'}finally{saving.value=false}
+}
+async function savePoster(cache=false){
+ saving.value=true;editError.value='';saved.value=''
+ try{if(cache)await axios.post(`/api/v1/admin/series/${route.params.id}/poster/cache`)
+ else{const data=new FormData();if(posterFile.value)data.append('file',posterFile.value);else data.append('url',posterUrl.value.trim());await axios.post(`/api/v1/admin/series/${route.params.id}/poster`,data)}
+ await fetchSeriesDetail();posterUrl.value='';posterFile.value=null;saved.value='Постер сохранён'}
+ catch(e:any){editError.value=e.response?.data?.detail||'Не удалось сохранить постер. Попробуйте загрузить файл.'}finally{saving.value=false}
+}
 
 const goBack = () => {
   if (window.history.state?.back) {
@@ -32,6 +46,7 @@ const fetchSeriesDetail = async () => {
       headers: { Authorization: `Bearer ${token}` }
     })
     series.value = res.data
+    manualOverview.value=res.data.manual_overview??res.data.overview??''
   } catch (err: any) {
     if (err.response?.status === 401 || err.response?.status === 403) {
       localStorage.removeItem('admin_token')
@@ -117,6 +132,22 @@ onMounted(() => { fetchSeriesDetail() })
           <p class="overview"><span class="meta-label">Overview:</span><br/>{{ series.overview || 'No overview available.' }}</p>
         </div>
       </div>
+
+      <section class="metadata-editor" aria-labelledby="metadata-editor-title">
+        <h2 id="metadata-editor-title">Редактирование метаданных</h2>
+        <p>Изменения относятся к карточке сериала. Нумерация серий, источники и идентичность провайдера не меняются.</p>
+        <p v-if="editError" role="alert">{{editError}}</p><p v-if="saved" role="status">{{saved}}</p>
+        <form @submit.prevent="saveMetadata(false)">
+          <label for="series-overview">Описание сериала</label><textarea id="series-overview" v-model="manualOverview" rows="6" maxlength="20000" :disabled="saving" />
+          <div class="edit-actions"><button type="submit" :disabled="saving">Сохранить описание</button><button type="button" :disabled="saving||!series.manual_overview" @click="saveMetadata(true)">Вернуть описание провайдера</button></div>
+        </form>
+        <form @submit.prevent="savePoster(false)">
+          <h3>Постер сериала</h3>
+          <label for="series-poster-url">URL изображения провайдера</label><input id="series-poster-url" v-model="posterUrl" type="url" placeholder="https://image.tmdb.org/…" :disabled="saving||!!posterFile" />
+          <label for="series-poster-file">Или загрузить JPEG, PNG, WebP до 8 МБ</label><input id="series-poster-file" type="file" accept="image/jpeg,image/png,image/webp" :disabled="saving" @change="onFile" />
+          <div class="edit-actions"><button type="submit" :disabled="saving||(!posterUrl.trim()&&!posterFile)">Сохранить постер</button><button type="button" :disabled="saving" @click="savePoster(true)">Сохранить текущий постер на сервере</button></div>
+        </form>
+      </section>
 
       <div class="seasons-section">
         <h2>Seasons & Episodes</h2>
@@ -448,4 +479,8 @@ onMounted(() => { fetchSeriesDetail() })
   border-radius: var(--ui-radius);
   border: 1px solid var(--ui-danger-bg);
 }
+</style>
+
+<style scoped>
+.metadata-editor{padding:24px;margin:24px 0;border:1px solid var(--border-color,#313131);border-radius:12px;background:var(--bg-card,#181818)}.metadata-editor form{display:grid;gap:12px;margin-top:24px}.metadata-editor :is(textarea,input){box-sizing:border-box;max-width:100%;width:100%;padding:12px;background:var(--bg-primary,#131209);color:inherit;border:1px solid var(--border-color,#313131);border-radius:8px;font:inherit}.edit-actions{display:flex;gap:12px;flex-wrap:wrap}.edit-actions button{min-height:44px;padding:8px 12px;border:1px solid var(--border-color,#313131);border-radius:8px;background:var(--bg-card,#1f1f1f);color:inherit;font:inherit;cursor:pointer}.edit-actions button:disabled{opacity:.5;cursor:default}.metadata-editor :focus-visible{outline:2px solid #a5a0ff;outline-offset:2px}.metadata-editor p{line-height:24px;color:var(--text-secondary,#b5b5b5)}@media(max-width:600px){.metadata-editor{padding:16px}.edit-actions{display:grid}.detail-header{min-width:0}.info-container{min-width:0}}
 </style>
