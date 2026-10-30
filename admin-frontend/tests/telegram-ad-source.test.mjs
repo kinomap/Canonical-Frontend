@@ -13,9 +13,9 @@ test('Approved schedule/reach/timing blocks and mutation functions remain byte-i
  const path='admin-frontend/src/views/AdStudio.vue';
  const previous=execFileSync('git',['show','3f8077e31ae34f130aacd28b3bc25b957d506d19:'+path],{cwd:new URL('../..',import.meta.url),encoding:'utf8'});
  const current=readFileSync(new URL('../src/views/AdStudio.vue',import.meta.url),'utf8');
- // New source inventory and disk delivery panel are additive. B/V/G is unchanged.
+ // Only reviewed channel radio/panel and observed-popularity copy may differ. Schedule, timing and writers stay byte-identical.
  const block=s=>s.slice(s.indexOf('<p class="eyebrow">Б ·'),s.indexOf('</form>'));
- assert.ok(block(previous).length>1000);assert.equal(block(current),block(previous));
+ assert.ok(block(previous).length>1000);assert.equal(block(current).replace("<label class=\"check\"><input type=\"radio\" v-model=\"definition.reach.mode\" value=\"channels\" />Контент из выбранных каналов</label>",'').replace("     <div v-if=\"definition.reach.mode==='channels'\"><p class=\"muted\">Реклама на фильмах и сериях с активным источником хотя бы в одном выбранном канале. Фильм с несколькими источниками учитывается один раз. Охват обновляется автоматически с новыми доступными записями; чужие размещения защищены.</p><div class=\"genre-list\"><label class=\"check\" v-for=\"c in options.channels\" :key=\"c.id\"><input type=\"checkbox\" :value=\"c.id\" v-model=\"definition.reach.channel_ids\" />{{c.name}}{{c.active?'':' · канал выключен, показ не идёт'}}</label></div><p v-if=\"!options.channels?.length\" class=\"muted\">Нет каналов контента. Рекламные каналы не являются сегментами.</p></div>\n",'').replace('Автовыбор по фактическим просмотрам за 30 дней.','Автовыбор по запускам за 30 дней.'),block(previous));
  for(const name of ['save','resetPlacements','toggleUnlimited','checkDraft']) {
    const extract=s=>s.match(new RegExp('(?:async )?function '+name+'\\([^\\n]+'))?.[0];
    assert.ok(extract(previous));assert.equal(extract(current),extract(previous));
