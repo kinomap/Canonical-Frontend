@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { t } from '@/i18n'
+import { t, tr } from '@/i18n'
 import { adRequest } from '@/api/client'
+import {createHistoryWriter} from '@/api/watchHistory'
 import AdPlaybackContainer from './AdPlaybackContainer.vue'
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
   src: string;
+  historySessionId?: string;
+  initialPosition?: number;
   requested?: boolean;
   trafficId?: string;
   targetId?: string;
@@ -101,9 +104,26 @@ function handleTimeUpdate() {
   }
 }
 
+let resumeApplied=false, mainPlayed=false, historyEnded=false, lastHistorySave=0
+let historyWriter=createHistoryWriter()
+const historySaveError=ref(false)
+async function saveHistory(keepalive=false){
+ const v=videoRef.value,id=props.historySessionId
+ if(!id||!v||!mainPlayed||!Number.isFinite(v.duration)||v.duration<=0)return
+ lastHistorySave=Date.now()
+ try{await historyWriter(id,v.currentTime,v.duration,historyEnded,keepalive);historySaveError.value=false}catch{historySaveError.value=true}
+}
+watch(()=>props.historySessionId,()=>{historyWriter=createHistoryWriter();mainPlayed=false;historyEnded=false;lastHistorySave=0;historySaveError.value=false})
+watch(()=>props.src,()=>{resumeApplied=false})
+function handleSeeked(){if(videoRef.value&&!videoRef.value.ended)historyEnded=false;void saveHistory()}
 function handleLoadedMetadata() {
   if (!videoRef.value) return
   duration.value = videoRef.value.duration
+  if(!resumeApplied&&Number.isFinite(duration.value)&&duration.value>0){
+   resumeApplied=true
+   const position=props.initialPosition||0
+   if(Number.isFinite(position)&&position>0){videoRef.value.currentTime=Math.min(position,Math.max(0,duration.value-0.1));currentTime.value=videoRef.value.currentTime}
+  }
 }
 
 function handleWaiting() {
@@ -114,6 +134,7 @@ function handlePlaying() {
   if(adsRef.value?.busy){videoRef.value?.pause();return}
   isBuffering.value = false
   isPlaying.value = true
+  mainPlayed=true;historyEnded=false;void saveHistory()
 }
 
 function handleCanPlay() {
@@ -121,10 +142,12 @@ function handleCanPlay() {
 }
 
 function handlePause() {
+  void saveHistory()
   isPlaying.value = false
 }
 
 async function handleEnded() {
+  historyEnded=true;void saveHistory(true)
   await adsRef.value?.end()
   isPlaying.value = false
   // Playback finished on its own: the owner can release the playback session.
@@ -232,11 +255,13 @@ async function sendTraffic(keepalive=false) {
   try {await adRequest('/ads/traffic/'+id,{method:'POST',keepalive,body:JSON.stringify({watched_total:trafficTotal,position:v.currentTime||0,duration:Number.isFinite(v.duration)&&v.duration>0?v.duration:null})})}catch{/* Analytics must never interrupt playback. */}finally{trafficSending=false}
 }
 watch(()=>props.trafficId,()=>{trafficTotal=0;trafficTick=0;trafficLast=performance.now()})
-function onTrafficPageHide(){sampleTraffic();void sendTraffic(true)}
+function onTrafficPageHide(){sampleTraffic();void sendTraffic(true);void saveHistory(true)}
+function onHistoryVisibility(){if(document.visibilityState==='hidden')void saveHistory(true)}
 
 onMounted(() => {
-  trafficTimer=setInterval(()=>{sampleTraffic();if(++trafficTick%15===0)void sendTraffic()},1000)
+  trafficTimer=setInterval(()=>{if((isPlaying.value||historySaveError.value)&&!adsRef.value?.busy&&Date.now()-lastHistorySave>=5000)void saveHistory();sampleTraffic();if(++trafficTick%15===0)void sendTraffic()},1000)
   window.addEventListener('pagehide',onTrafficPageHide)
+  document.addEventListener('visibilitychange',onHistoryVisibility)
   document.addEventListener('fullscreenchange', () => {
     isFullscreen.value = !!document.fullscreenElement
   })
@@ -248,6 +273,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange',onHistoryVisibility)
   onTrafficPageHide();clearInterval(trafficTimer);window.removeEventListener('pagehide',onTrafficPageHide)
   document.removeEventListener('mousemove', onDocumentMouseMove)
   document.removeEventListener('touchmove', onDocumentMouseMove)
@@ -265,6 +291,7 @@ onBeforeUnmount(() => {
     @mouseleave="handleMouseLeave"
     @click="showControls"
   >
+    <p v-if="historySaveError" class="history-save-notice" role="status">{{tr('Не удалось сохранить позицию. Повторим автоматически.','Could not save your position. Retrying automatically.')}}</p>
     <div class="video-wrap">
       <video 
         ref="videoRef"
@@ -283,6 +310,7 @@ onBeforeUnmount(() => {
         @click="togglePlay"
         :autoplay="!targetId"
         @seeking="adsRef?.tick()"
+        @seeked="handleSeeked"
       ></video>
       
       <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" :requested="requested" />
@@ -550,3 +578,5 @@ input[type="range"].vol-slider::-webkit-slider-thumb {
   margin-left: 8px;
 }
 </style>
+
+<style scoped>.history-save-notice{position:absolute;top:8px;left:8px;right:8px;z-index:30;background:#181818e6;color:#fff;padding:8px 12px;font-size:12px;border:1px solid #313131;border-radius:8px;pointer-events:none}</style>

@@ -4,6 +4,7 @@ import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { listingHistoryBack, returnToListing } from '@/router/catalogNavigation'
 import { apiClient, ApiError } from '@/api/client'
+import {getResume} from '@/api/watchHistory'
 import type { AudioTrack, MovieDetail } from '@/types/movie'
 import type { Comment, MovieReaction } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
@@ -29,6 +30,8 @@ const movie = ref<MovieDetail | null>(null)
 const audioTracks = ref<AudioTrack[] | null>(null)
 const streamUrl = ref<string | null>(null)
 const trafficId = ref('')
+const historySessionId=ref(''),resumePosition=ref(0)
+let resumeLoaded=false, disposed=false
 const selectedSourceId = ref<string | undefined>(undefined)
 const selectedPart = computed(() => movie.value?.parts?.find(p => p.source_id === selectedSourceId.value))
 const shouldPlay = ref(false)
@@ -115,14 +118,22 @@ async function handlePlay() {
     return
   }
   playbackStarting.value = true
-  // Mount the ad player now; resolve the main stream in parallel.
-  shouldPlay.value = true
+  // Resolve the saved source before mounting ads/player (multipart must not mount twice).
   if (!streamUrl.value) {
     try {
+      if(!resumeLoaded){
+        const saved=await getResume(movieId.value)
+        resumeLoaded=true
+        if(saved?.item?.available&&!saved.item.completed){selectedSourceId.value=saved.item.source_id||undefined;resumePosition.value=saved.item.position}
+      }
+      if(disposed)return
+      shouldPlay.value=true
       const res = selectedSourceId.value
         ? await apiClient.startPlayback(movieId.value, selectedSourceId.value)
         : await apiClient.startPlayback(movieId.value)
+      if(disposed){void apiClient.stopPlayback(res.session_id,{keepalive:true}).catch(()=>{});return}
       trafficId.value = res.traffic_id || ''
+      historySessionId.value=res.session_id
       // Use media_url directly (points to Media Worker)
       if (!res.media_url) {
         throw new Error('No media_url returned from backend')
@@ -218,6 +229,7 @@ async function selectPart(sourceId: string) {
   playbackSessionId.value = null
   // Stop allocation before requesting the next part, even on a one-slot node.
   if (id) await apiClient.stopPlayback(id).catch(() => {})
+  resumeLoaded=true;resumePosition.value=0
   selectedSourceId.value = sourceId
   shouldPlay.value = false
   streamUrl.value = null
@@ -242,6 +254,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  disposed=true
   window.removeEventListener('pagehide', handlePageHide)
   releasePlaybackSession({ keepalive: true })
 })
@@ -255,7 +268,7 @@ onMounted(() => {
   if (!currentUser.value && token.value) {
     fetchCurrentUser()
   }
-  fetchData()
+  void fetchData().then(()=>{if(route.query.watch==='1'&&movie.value)void handlePlay()})
 })
 </script>
 
@@ -327,7 +340,7 @@ onMounted(() => {
           </div>
         </div>
       </div>
-      <VideoPlayer :key="selectedSourceId || movieId" :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" @media-error="handleMediaError" />
+      <VideoPlayer :key="selectedSourceId || movieId" :history-session-id="historySessionId" :initial-position="resumePosition" :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" @media-error="handleMediaError" />
       <p v-if="diagnosing" role="status">Проверяем доступность фильма…</p>
       <PlaybackUnavailable v-if="unavailableWarning" />
       <PlaybackCompatibility v-else-if="compatibilityWarning" />

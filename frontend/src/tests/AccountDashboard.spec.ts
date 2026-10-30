@@ -13,9 +13,9 @@ const fixture=()=>({id:'fixture',username:'viewer',email:'viewer@example.com',di
 beforeEach(()=>{vi.clearAllMocks();setLanguage('ru');wrappers=[];mocks.api.mockImplementation(async(path:string)=>path==='/account'?fixture():path==='/billing/plans'?[]:path.startsWith('/billing/orders')?{items:[],total:0}:[])})
 afterEach(()=>wrappers.forEach(w=>w.unmount()))
 describe('Modular account dashboard',()=>{
- it('has five isolated Russian tabs and eight avatar presets',async()=>{
+ it('has six isolated Russian tabs and eight avatar presets',async()=>{
   const w=mount(ProfileView);wrappers.push(w);await flushPromises()
-  expect(w.findAll('[role=tab]').map(x=>x.text())).toEqual(['Профиль','PRO подписка и оплата','KINOSOTA Player','Безопасность и 2FA','Настройки'])
+  expect(w.findAll('[role=tab]').map(x=>x.text())).toEqual(['Профиль','История просмотров','PRO подписка и оплата','KINOSOTA Player','Безопасность и 2FA','Настройки'])
   expect(w.findAll('.preset-gallery button')).toHaveLength(8)
   expect(w.text()).not.toContain('Member Since');expect(w.text()).not.toContain('Email Address')
   await w.get('#tab-billing').trigger('click');expect(w.find('#panel-profile').exists()).toBe(false);expect(w.find('#panel-billing').exists()).toBe(true)
@@ -24,7 +24,7 @@ describe('Modular account dashboard',()=>{
  it('switches all account labels and persists the selected language',async()=>{
   const w=mount(ProfileView);wrappers.push(w);await flushPromises();await w.get('#tab-settings').trigger('click')
   await w.findAll('input[type=radio]')[1].trigger('change')
-  expect(w.findAll('[role=tab]').map(x=>x.text())).toEqual(['Profile','PRO & Billing','KINOSOTA Player','Security & 2FA','Settings'])
+  expect(w.findAll('[role=tab]').map(x=>x.text())).toEqual(['Profile','Watch history','PRO & Billing','KINOSOTA Player','Security & 2FA','Settings'])
   expect(localStorage.getItem('kinosota_language')).toBe('en');expect(w.text()).toContain('Interface language');expect(w.text()).not.toContain('Настройки')
   await w.get('#panel-settings form').trigger('submit.prevent');await flushPromises()
   expect(mocks.api).toHaveBeenCalledWith('/account/settings','PUT',{language:'en',telegram_notifications:false})
@@ -101,7 +101,7 @@ describe('Reference account layout uses actual backend state',()=>{
   expect(w.get('.sessions-summary').text()).toContain('Активных сеансов: 1')
   expect(w.get('.security-summary').text()).toContain('не настроена')
   expect(w.findAll('.account-summaries button')).toHaveLength(2)
-  expect(w.text()).not.toContain('История просмотров');expect(w.text()).not.toContain('Избранное')
+  expect(w.get('#tab-history').text()).toContain('История просмотров');expect(w.text()).not.toContain('Избранное')
   await w.get('.sessions-summary').trigger('click');await flushPromises();expect(w.find('#panel-security').exists()).toBe(true)
  })
  it('does not manufacture a device count when sessions cannot be loaded',async()=>{
