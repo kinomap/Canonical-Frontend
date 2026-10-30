@@ -12,6 +12,7 @@ import AudioTracksList from '@/components/AudioTracksList.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import PlaybackCompatibility from '@/components/PlaybackCompatibility.vue'
 import PlaybackUnavailable from '@/components/PlaybackUnavailable.vue'
+import PlaybackSubscription from '@/components/PlaybackSubscription.vue'
 import ReactionsBlock from '@/components/ReactionsBlock.vue'
 import CommentsBlock from '@/components/CommentsBlock.vue'
 import { Play } from 'lucide-vue-next'
@@ -36,6 +37,7 @@ const selectedSourceId = ref<string | undefined>(undefined)
 const selectedPart = computed(() => movie.value?.parts?.find(p => p.source_id === selectedSourceId.value))
 const shouldPlay = ref(false)
 const playbackStarting = ref(false)
+const subscriptionRequired = ref(false)
 
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -111,6 +113,7 @@ async function handlePlay() {
     return
   }
   playError.value = null
+  subscriptionRequired.value = false
   compatibilityWarning.value = false
   unavailableWarning.value = false
   if (streamUrl.value) {
@@ -127,7 +130,6 @@ async function handlePlay() {
         if(saved?.item?.available&&!saved.item.completed){selectedSourceId.value=saved.item.source_id||undefined;resumePosition.value=saved.item.position}
       }
       if(disposed)return
-      shouldPlay.value=true
       const res = selectedSourceId.value
         ? await apiClient.startPlayback(movieId.value, selectedSourceId.value)
         : await apiClient.startPlayback(movieId.value)
@@ -143,13 +145,15 @@ async function handlePlay() {
       // Keep the splash mounted until a usable URL is ready: no empty player gap.
       shouldPlay.value = true
     } catch (err: any) {
-      if (err?.detail?.code === 'MEDIA_UNAVAILABLE' || err?.status === 404 || err?.status === 410) {
+      if (err?.status === 403 && err?.detail?.code === 'entitlement_required' && err?.detail?.entitlement === 'content:premium') {
+        subscriptionRequired.value = true
+      } else if (err?.detail?.code === 'MEDIA_UNAVAILABLE' || err?.status === 404 || err?.status === 410) {
         unavailableWarning.value = true
       } else if (err?.detail?.code === 'BROWSER_MEDIA_UNSUPPORTED') {
         await diagnoseFailure(4)
       }
       // 401 is handled globally by auth:expired → no duplicate message
-      if (err?.status !== 401 && !unavailableWarning.value && err?.detail?.code !== 'BROWSER_MEDIA_UNSUPPORTED') {
+      if (err?.status !== 401 && !subscriptionRequired.value && !unavailableWarning.value && err?.detail?.code !== 'BROWSER_MEDIA_UNSUPPORTED') {
         playError.value = err?.message || 'Failed to start playback'
       }
       shouldPlay.value = false
@@ -331,7 +335,7 @@ onMounted(() => {
         <p v-if="selectedPart" role="status">Выбрана часть {{ selectedPart.number }} из {{ selectedPart.total }}</p>
       </section>
       <!-- Player Area -->
-      <div v-if="!shouldPlay && !compatibilityWarning && !unavailableWarning && !diagnosing" class="player-container" :aria-busy="playbackStarting" @click="handlePlay">
+      <div v-if="!shouldPlay && !subscriptionRequired && !compatibilityWarning && !unavailableWarning && !diagnosing" class="player-container" :aria-busy="playbackStarting" @click="handlePlay">
         <div class="player-splash" :style="{ backgroundImage: `url(${movie.backdrop || movie.poster})` }">
           <div class="player-overlay">
             <div class="play-circle">
@@ -340,6 +344,7 @@ onMounted(() => {
           </div>
         </div>
       </div>
+      <PlaybackSubscription v-if="subscriptionRequired" :poster="movie.backdrop || movie.poster || undefined" />
       <VideoPlayer :key="selectedSourceId || movieId" :history-session-id="historySessionId" :initial-position="resumePosition" :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" @media-error="handleMediaError" />
       <p v-if="diagnosing" role="status">Проверяем доступность фильма…</p>
       <PlaybackUnavailable v-if="unavailableWarning" />
