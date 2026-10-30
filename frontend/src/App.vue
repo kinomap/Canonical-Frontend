@@ -4,6 +4,7 @@ import { RouterView, useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import CinemaFooter from '@/components/CinemaFooter.vue'
 import {toastMessage} from '@/lib/toast'
+import {warmCatalogLink} from '@/router/catalogViews'
 import DesktopAuthorizeModal from '@/components/DesktopAuthorizeModal.vue'
 import SessionExpiredModal from '@/components/SessionExpiredModal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -44,7 +45,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-wrapper">
+  <div class="app-wrapper" @pointerover="warmCatalogLink" @focusin="warmCatalogLink" @touchstart.passive="warmCatalogLink">
     <a class="skip-link" href="#main-content">Перейти к содержимому</a>
     <AppHeader />
     <p v-if="toastMessage" class="global-toast" role="status" aria-live="polite">{{toastMessage}}</p>

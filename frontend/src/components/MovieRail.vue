@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
 import { ref } from 'vue'
+import { useNearViewport } from '@/composables/useNearViewport'
 import type { MovieSummary } from '@/types/movie'
 import MovieCard from '@/components/MovieCard.vue'
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
@@ -15,6 +16,8 @@ const props = withDefaults(defineProps<{
 })
 
 const railContainer = ref<HTMLElement | null>(null)
+const section = ref<HTMLElement | null>(null)
+const ready = useNearViewport(section, props.eager)
 
 function scrollLeft() {
   if (railContainer.value) {
@@ -48,7 +51,7 @@ function handleWheel(event: WheelEvent) {
 </script>
 
 <template>
-  <section v-if="movies && movies.length > 0" class="movie-rail">
+  <section v-if="movies && movies.length > 0" class="movie-rail" ref="section">
     <div class="rail-header">
       <h2 class="rail-title">{{ title }}</h2>
       <div class="rail-header-right">
@@ -64,15 +67,17 @@ function handleWheel(event: WheelEvent) {
       </div>
     </div>
 
-    <div ref="railContainer" class="rail-track" @wheel="handleWheel">
+    <div v-if="ready" ref="railContainer" class="rail-track" @wheel="handleWheel">
       <div v-for="(movie, index) in movies" :key="movie.id" class="rail-item">
-        <MovieCard :movie="movie" :eager="eager && index < 6" />
+        <MovieCard :movie="movie" :eager="eager && index < 2" />
       </div>
     </div>
+    <div v-else class="rail-placeholder" aria-hidden="true"></div>
   </section>
 </template>
 
 <style scoped>
+.rail-placeholder { height: calc(var(--poster-width) * 1.5 + 86px); }
 .movie-rail {
   margin-bottom: 36px;
 }

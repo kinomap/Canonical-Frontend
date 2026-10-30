@@ -5,6 +5,7 @@ import { t } from '@/i18n'
 import type { MovieSummary } from '@/types/movie'
 import { computed, ref, watch } from 'vue'
 import { posterSrcset, posterUrl } from '@/utils/poster'
+import { useNearViewport } from '@/composables/useNearViewport'
 
 const props = withDefaults(defineProps<{
   movie: MovieSummary
@@ -13,6 +14,9 @@ const props = withDefaults(defineProps<{
   eager: false
 })
 
+const card = ref<HTMLElement | null>(null)
+const nearViewport = useNearViewport(card, props.eager)
+const showPoster = computed(() => props.eager || nearViewport.value)
 const posterError = ref(false)
 watch(() => props.movie.poster, () => { posterError.value = false })
 
@@ -39,7 +43,7 @@ const displayYear = computed(() => {
 </script>
 
 <template>
-  <article class="poster-article">
+  <article ref="card" class="poster-article">
   <router-link
     :to="contentPath(movie.type==='series'?'series':'movie',movie.id,displayTitle)"
     class="movie-card"
@@ -49,9 +53,9 @@ const displayYear = computed(() => {
     <div class="poster-wrapper">
       <img
         v-if="movie.poster && !posterError"
-        :src="posterUrl(movie.poster)"
+        :src="showPoster ? posterUrl(movie.poster) : undefined"
         :alt="`Постер фильма «${displayTitle}»`"
-        :srcset="posterSrcset(movie.poster)"
+        :srcset="showPoster ? posterSrcset(movie.poster) : undefined"
         sizes="(max-width:599px) 45vw, (max-width:767px) 30vw, (max-width:1023px) 23vw, (max-width:1439px) 18vw, 240px"
         width="240" height="360" decoding="async"
         class="poster-img"
@@ -149,7 +153,7 @@ const displayYear = computed(() => {
   height: 100%;
   background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.05), transparent);
   transform: skewX(-20deg);
-  animation: shine 6s infinite;
+  animation: none;
 }
 
 @keyframes shine {
