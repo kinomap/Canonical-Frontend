@@ -16,7 +16,7 @@
   "admin-frontend/src/views/Login.vue": "80e23eecf17d247adc219819ca3ffd0f8ad5d3fc8c95284a4783aec0c602c512",
   "admin-frontend/src/views/Garbage.vue": "8435f04bd1f9c8a40398366d664fe9802d272bfd6ef3d0d33e284e3975eae671",
   "admin-frontend/src/views/Metadata.vue": "4dd11e128e86cbffea16922e74ba52f8707f3686d599009add97889da66ae1e3",
-  "admin-frontend/src/views/Dashboard.vue": "a3e244d08593d9c0476b8fa280db6e272dc7b5bb2d58ae69f0465e9a2ad2331e",
+  "admin-frontend/src/views/Dashboard.vue": "5e183c34b107c47c2b24aec6d911c15a879e302266bf38804ad2bf032dd76e51",
   "admin-frontend/src/views/MediaNodes.vue": "cc5bc8e5f9c78bb4cf8dbc9ebc3336b4626e91947a810bdaea8e4d0fd81dc36b",
   "admin-frontend/src/views/MediaInfrastructure.vue": "536ec168be22e77366583c2f9f65773e223abcb201e83e465b46dcd44926f724",
   "admin-frontend/src/views/AdStudio.vue": "a2aff887aca042f8391d8b6b0b5fea9eba3e6753e4c8d03e56c8b272532e15b2",

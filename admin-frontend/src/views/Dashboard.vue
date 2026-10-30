@@ -93,8 +93,12 @@ const fetchCatalogData = async () => {
   }
 
   try {
-    const res = await axios.get('/api/v1/admin/dashboard/catalog', { headers: { Authorization: `Bearer ${token}` } })
-    catalogStats.value = res.data
+    const [res, canonical] = await Promise.all([
+      axios.get('/api/v1/admin/dashboard/catalog', { headers: { Authorization: `Bearer ${token}` } }),
+      axios.get('/api/v1/admin/catalog', { params: { limit: 1 }, headers: { Authorization: `Bearer ${token}` } }),
+    ])
+    // The mixed canonical card must count the exact same index it opens.
+    catalogStats.value = { ...res.data, catalog_total: canonical.data.total }
   } catch (err: any) {
     if (err.response?.status === 401 || err.response?.status === 403) {
       localStorage.removeItem('admin_token')
@@ -196,7 +200,7 @@ onMounted(() => { fetchDashboardData() })
               </svg>
             </div>
             <div>
-              <div class="stat-value">{{ catalogStats.movies_total.toLocaleString() }}</div>
+              <div class="stat-value">{{ catalogStats.catalog_total.toLocaleString() }}</div>
               <div class="stat-label">Canonical Metadata · Фильмы и сериалы</div>
             </div>
           </div>
