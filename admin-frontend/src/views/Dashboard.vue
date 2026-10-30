@@ -197,7 +197,7 @@ onMounted(() => { fetchDashboardData() })
             </div>
             <div>
               <div class="stat-value">{{ catalogStats.movies_total.toLocaleString() }}</div>
-              <div class="stat-label">Canonical Movies / Metadata</div>
+              <div class="stat-label">Canonical Metadata · Фильмы и сериалы</div>
             </div>
           </div>
 
@@ -294,8 +294,8 @@ onMounted(() => { fetchDashboardData() })
               </svg>
             </div>
             <div>
-              <div class="stat-value text-yellow">{{ catalogStats.movies_without_poster.toLocaleString() }}</div>
-              <div class="stat-label">Without Poster</div>
+              <div class="stat-value text-yellow">{{ (catalogStats.catalog_without_poster ?? catalogStats.movies_without_poster).toLocaleString() }}</div>
+              <div class="stat-label">Без постера · фильмы и сериалы</div>
             </div>
           </div>
 
