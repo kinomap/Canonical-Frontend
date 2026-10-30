@@ -1,8 +1,9 @@
+import { catalogViews } from './catalogViews'
 import { createRouter, createWebHistory } from 'vue-router'
 import MainCatalogView from '@/views/MainCatalogView.vue'
 const HomeView = () => import('@/views/HomeView.vue')
-const CatalogView = () => import('@/views/CatalogView.vue')
-const GenresView = () => import('@/views/GenresView.vue')
+const CatalogView = catalogViews['/movies']
+const GenresView = catalogViews['/genres']
 const MovieDetailsView = () => import('@/views/MovieDetailsView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const RegisterView = () => import('@/views/RegisterView.vue')
@@ -34,7 +35,7 @@ const router = createRouter({
     {
       path: '/series',
       name: 'series-catalog',
-      component: () => import('@/views/SeriesCatalogView.vue'),
+      component: catalogViews['/series'],
     },
     {
       path: '/series/:id/:slug?',

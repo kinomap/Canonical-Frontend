@@ -82,14 +82,27 @@ function getCached<T>(key: string): T | null {
 }
 
 function setCached(key: string, data: any, ttlMs: number): void {
+  memoryCache.delete(key)
   memoryCache.set(key, { data, expiresAt: Date.now() + ttlMs })
+  while (memoryCache.size > 128) memoryCache.delete(memoryCache.keys().next().value!)
 }
 
 export function clearClientCache(): void {
   memoryCache.clear()
 }
 
+const inFlight = new Map<string, Promise<unknown>>()
 async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 0): Promise<T> {
+  const share = (!options?.method || options.method === 'GET') && !options?.signal && cacheTtlMs > 0
+  if (!share) return performRequest<T>(endpoint, options, cacheTtlMs)
+  const key = endpoint + ':' + (localStorage.getItem('tg_stream_access_token') || '')
+  const pending = inFlight.get(key)
+  if (pending) return pending as Promise<T>
+  const work = performRequest<T>(endpoint, options, cacheTtlMs)
+  inFlight.set(key, work)
+  try { return await work } finally { if (inFlight.get(key) === work) inFlight.delete(key) }
+}
+async function performRequest<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 0): Promise<T> {
   const url = `${BASE_URL}${endpoint}`
   const isGet = !options || !options.method || options.method.toUpperCase() === 'GET'
 

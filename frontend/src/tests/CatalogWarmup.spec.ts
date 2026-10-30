@@ -1,0 +1,6 @@
+import {afterEach,it,expect,vi} from 'vitest'
+import {catalogViews,warmCatalogLink} from '@/router/catalogViews'
+afterEach(()=>{vi.restoreAllMocks();document.body.innerHTML='';Object.defineProperty(navigator,'connection',{configurable:true,value:undefined})})
+function intent(href:string){document.body.innerHTML=`<a href="${href}"><span>Go</span></a>`;const target=document.querySelector('span')!;const e=new Event('pointerover',{bubbles:true});target.addEventListener('pointerover',warmCatalogLink);target.dispatchEvent(e)}
+it('warms only a same-origin catalog module once, without API prefetch',()=>{const load=vi.spyOn(catalogViews,'/movies').mockResolvedValue({} as any);intent('/movies?sort=popular');intent('/movies');expect(load).toHaveBeenCalledTimes(1);intent('https://outside.test/series');expect(load).toHaveBeenCalledTimes(1)})
+it('respects data saver and 2G connections',()=>{const load=vi.spyOn(catalogViews,'/series').mockResolvedValue({} as any);Object.defineProperty(navigator,'connection',{configurable:true,value:{saveData:true}});intent('/series');expect(load).not.toHaveBeenCalled();Object.defineProperty(navigator,'connection',{configurable:true,value:{effectiveType:'2g'}});intent('/series');expect(load).not.toHaveBeenCalled()})
