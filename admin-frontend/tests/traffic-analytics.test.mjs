@@ -7,3 +7,5 @@ test('analytics filters exact video, genre, serving channel and period with page
 test('pending filters do not change old page selection; stale results and teardown fenced',()=>{for(const x of ['appliedParams','fingerprint','searchGeneration++','g===generation','onBeforeUnmount','Фильтры изменены','load(true)'])assert.ok(s.includes(x),x)})
 test('measured definitions, unknown history and genre overlap are explicit',()=>{for(const x of ['Канал не определён','сумма долей может превышать 100%','Запуски авторизации отдельно','Удержание','retention_sample','role="alert"','Повторить','focus-visible'])assert.ok(s.includes(x),x)})
 test('channel ad scope stays an explicit setting with existing preview and save protection',()=>{for(const x of ['value="channels"','channel_ids','options.channels','conflict_count','Какие фильмы затрагивает сейчас','TrafficAnalytics'])assert.ok(view.includes(x),x)})
+
+test('mobile ranking keeps readable columns inside a horizontal scroller',()=>{assert.ok(s.includes('.traffic table{width:100%;min-width:800px'));assert.ok(s.includes('.traffic tbody th{min-width:220px'));assert.ok(s.includes('overflow:auto'))})
