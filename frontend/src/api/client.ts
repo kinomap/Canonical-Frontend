@@ -40,7 +40,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
-    public detail?: { code?: string; message?: string; reason?: string }
+    public detail?: { code?: string; message?: string; reason?: string; entitlement?: string }
   ) {
     super(message)
     this.name = 'ApiError'
@@ -129,7 +129,7 @@ async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 
 
   if (!response.ok) {
     let errorDetail = response.statusText
-    let structuredDetail: { code?: string; message?: string; reason?: string } | undefined
+    let structuredDetail: { code?: string; message?: string; reason?: string; entitlement?: string } | undefined
     try {
       const data = await response.json()
       if (data && data.detail) {

@@ -22,7 +22,7 @@ const selectedGenre = ref<string>( (route.query.genre as string) || '' )
 const selectedYear = ref<string>( (route.query.year as string) || '' )
 const selectedQuality = ref<string>( (route.query.quality as string) || '' )
 const selectedMinRating = ref<string>( (route.query.min_rating as string) || '' )
-const selectedSort = ref<string>( (route.query.sort as string) || 'popular' )
+const selectedSort = ref<string>( (route.query.sort as string) || 'recently_added' )
 const searchQuery = ref<string>( (route.query.q as string) || '' )
 
 const loading = ref(true)
@@ -89,7 +89,7 @@ function updateQueryParams() {
   if (selectedYear.value) query.year = selectedYear.value
   if (selectedQuality.value) query.quality = selectedQuality.value
   if (selectedMinRating.value) query.min_rating = selectedMinRating.value
-  if (selectedSort.value && selectedSort.value !== 'popular') query.sort = selectedSort.value
+  if (selectedSort.value && selectedSort.value !== 'recently_added') query.sort = selectedSort.value
   if (page.value > 1) query.page = page.value.toString()
 
   router.replace({ query })
@@ -106,7 +106,7 @@ function clearAllFilters() {
   selectedYear.value = ''
   selectedQuality.value = ''
   selectedMinRating.value = ''
-  selectedSort.value = 'popular'
+  selectedSort.value = 'recently_added'
   searchQuery.value = ''
   page.value = 1
   router.replace({ query: {} })
@@ -137,7 +137,7 @@ watch(
     selectedYear.value = (newQuery.year as string) || ''
     selectedQuality.value = (newQuery.quality as string) || ''
     selectedMinRating.value = (newQuery.min_rating as string) || ''
-    selectedSort.value = (newQuery.sort as string) || 'popular'
+    selectedSort.value = (newQuery.sort as string) || 'recently_added'
     searchQuery.value = (newQuery.q as string) || ''
     page.value = catalogPage(newQuery.page)
     loadMovies()
@@ -156,12 +156,15 @@ onMounted(() => {
       <h1 class="page-title">
         <span v-if="searchQuery">{{ t("Search Results for \"") }}{{ searchQuery }}"</span>
         <span v-else-if="selectedGenre">{{ t("Genre:") }} {{ selectedGenre }}</span>
+        <span v-else-if="selectedSort === 'popular'">Популярное на KINOSOTA</span>
         <span v-else>{{ t("Movie Catalog") }}</span>
       </h1>
       <span class="catalog-count">{{ total }} {{ total === 1 ? 'movie' : 'movies' }} {{ t("available") }}</span>
     </div>
 
 
+
+    <p v-if="selectedSort === 'popular' && !searchQuery" class="popularity-description">Фильмы, которые чаще всего смотрят на нашем сайте. От самых популярных к менее популярным.</p>
 
     <!-- Main Content -->
     <section class="catalog-content" aria-label="Каталог">
@@ -191,6 +194,7 @@ onMounted(() => {
         </div>
         <h2>{{ t("No movies found") }}</h2>
         <p v-if="searchQuery">{{ t("No movies match your search query \"") }}{{ searchQuery }}".</p>
+        <p v-else-if="selectedSort === 'popular'">Пока нет просмотров, подходящих под эти условия. Выберите фильм в общем каталоге.</p>
         <p v-else>{{ t("No movies match the selected filters.") }}</p>
         <button class="retry-btn" @click="clearAllFilters">{{ t("Clear All Filters") }}</button>
       </div>
@@ -227,6 +231,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
+
 .catalog-page {
   max-width: var(--page-frame-max);
   margin: 0 auto;
@@ -366,4 +371,5 @@ onMounted(() => {
   font-size: 0.9rem;
   color: var(--ui-secondary);
 }
+.popularity-description{margin:0 0 24px;color:var(--text-secondary);font-size:16px;line-height:24px;text-wrap:pretty}
 </style>

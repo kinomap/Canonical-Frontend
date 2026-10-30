@@ -242,7 +242,8 @@ describe('MovieDetailsView.vue', () => {
     expect(wrapper.findComponent({name:'VideoPlayer'}).exists()).toBe(true)
     expect(wrapper.findComponent({name:'VideoPlayer'}).props('src')).toBe('')
     expect(wrapper.find('.main-content').element).toBe(content)
-    expect(wrapper.find('.player-container').exists()).toBe(false)
+    expect(wrapper.find('.player-container').exists()).toBe(true) // keep splash; do not request ads before authorization
+    expect(wrapper.findComponent({name:'VideoPlayer'}).props('requested')).toBe(false)
     expect(router.currentRoute.value.fullPath).toBe('/movies/movie-123')
     if (outcome === 'success') {
       resolveStart({ session_id: 's1', media_url: 'https://media.example/stream', heartbeat_interval_seconds: 30 })
@@ -370,6 +371,30 @@ describe('MovieDetailsView.vue', () => {
     expect(apiClient.startPlayback).toHaveBeenLastCalledWith('movie-123','part-2')
     expect(wrapper.findAll('.movie-part-buttons button')[1]!.attributes('aria-pressed')).toBe('true')
     wrapper.unmount()
+  })
+
+  it('shows premium access guidance inside the player without raw JSON or premature ads',async()=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.startPlayback).mockRejectedValueOnce({status:403,message:'{"code":"entitlement_required","entitlement":"content:premium"}',detail:{code:'entitlement_required',entitlement:'content:premium'}})
+    await w.find('.player-container').trigger('click');await flushPromises()
+    expect(w.find('.subscription-player').exists()).toBe(true)
+    expect(w.text()).toContain('Этот фильм доступен по подписке')
+    expect(w.find('.subscription-primary').attributes('href')).toBe('/profile?tab=billing')
+    expect(w.find('.subscription-secondary').attributes('href')).toBe('/movies')
+    expect(w.find('.inline-error').exists()).toBe(false)
+    expect(w.text()).not.toContain('entitlement_required')
+    expect(w.find('.player-container').exists()).toBe(false)
+    expect(w.findComponent({name:'VideoPlayer'}).props('requested')).toBe(false)
+    expect(apiClient.diagnosePlayback).not.toHaveBeenCalled()
+    w.unmount()
+  })
+  it.each([401,403,500])('does not mislabel unrelated %s errors as a subscription requirement',async(status)=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.startPlayback).mockRejectedValueOnce({status,message:'Playback temporarily unavailable',detail:{code:'other'}})
+    await w.find('.player-container').trigger('click');await flushPromises()
+    expect(w.find('.subscription-player').exists()).toBe(false)
+    if(status!==401)expect(w.text()).toContain('Playback temporarily unavailable')
+    w.unmount()
   })
 
 })

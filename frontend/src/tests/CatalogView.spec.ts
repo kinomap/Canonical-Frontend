@@ -145,4 +145,23 @@ describe('CatalogView.vue', () => {
     )
     expect(wrapper.find('.page-info').text()).toContain('Page 2 of 2')
   })
+  it('keeps site popularity in the URL through pagination and reload',async()=>{
+    await router.push('/movies?sort=popular');await router.isReady()
+    vi.mocked(apiClient.listMovies).mockResolvedValue({items:[{id:'pop1',title:'Popular',genres:[]}],total:41,page:1,page_size:20,total_pages:3} as any)
+    const w=mount(CatalogView,{global:{plugins:[router]}});await flushPromises()
+    expect(w.text()).toContain('Популярное на KINOSOTA')
+    expect(apiClient.listMovies).toHaveBeenLastCalledWith(expect.objectContaining({sort:'popular',page:1}),expect.anything())
+    await w.findAll('.page-btn').at(-1)!.trigger('click');await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({sort:'popular',page:'2'})
+    expect(apiClient.listMovies).toHaveBeenLastCalledWith(expect.objectContaining({sort:'popular',page:2}),expect.anything())
+    w.unmount()
+  })
+  it('keeps the all-movie catalogue separate from the popularity collection',async()=>{
+    await router.push('/movies');await router.isReady()
+    vi.mocked(apiClient.listMovies).mockResolvedValue({items:[],total:0,page:1,page_size:20,total_pages:0})
+    const w=mount(CatalogView,{global:{plugins:[router]}});await flushPromises()
+    expect(apiClient.listMovies).toHaveBeenLastCalledWith(expect.objectContaining({sort:'recently_added'}),expect.anything())
+    expect(w.text()).not.toContain('Популярное на KINOSOTA');w.unmount()
+  })
+
 })
