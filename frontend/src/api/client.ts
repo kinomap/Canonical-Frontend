@@ -227,6 +227,8 @@ export const apiClient = {
     if (filters.min_rating) params.append('min_rating', filters.min_rating.toString())
     if (filters.sort) params.append('sort', filters.sort)
 
+    if (filters.q) params.append('q', filters.q)
+
     const queryStr = params.toString() ? `?${params.toString()}` : ''
     return request<PaginatedSeries>(`/series${queryStr}`, { signal }, 15_000)
   },

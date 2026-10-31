@@ -65,6 +65,8 @@ export interface AudioTrack {
 }
 
 export interface MovieFilters {
+  /** Paginated series search; global mixed search uses /search instead. */
+  q?: string
   page?: number
   page_size?: number
   genre?: string

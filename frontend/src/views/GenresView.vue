@@ -125,7 +125,11 @@ onMounted(async () => {
           <ArrowLeft :size="20" /> {{ t("Все жанры") }} </button>
         <div class="title-with-count">
           <h1 class="page-title">{{ activeGenreName }}</h1>
-          <span class="genre-count">{{ total }} {{ t("фильма и сериала") }}</span>
+          <span class="genre-count" aria-live="polite">
+            <template v-if="contentLoading">Загрузка…</template>
+            <template v-else-if="contentError">Количество недоступно</template>
+            <template v-else>Фильмы и сериалы: {{ total }}</template>
+          </span>
         </div>
       </div>
 

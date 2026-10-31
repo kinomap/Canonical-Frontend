@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { movieCatalogYear } from '@/router/catalogSections'
 import { catalogPage } from '@/router/catalogNavigation'
 import { apiClient } from '@/api/client'
 import type { Genre, MovieFilters, MovieSummary } from '@/types/movie'
@@ -19,7 +20,7 @@ const page = ref(catalogPage(route.query.page))
 const pageSize = ref(20)
 
 const selectedGenre = ref<string>( (route.query.genre as string) || '' )
-const selectedYear = ref<string>( (route.query.year as string) || '' )
+const selectedYear = ref<string>( movieCatalogYear(route.query) )
 const selectedQuality = ref<string>( (route.query.quality as string) || '' )
 const selectedMinRating = ref<string>( (route.query.min_rating as string) || '' )
 const selectedSort = ref<string>( (route.query.sort as string) || 'recently_added' )
@@ -42,8 +43,10 @@ async function fetchGenres() {
 }
 
 let abortController: AbortController | null = null
+let requestSeq = 0
 
 async function loadMovies() {
+  const seq = ++requestSeq
   if (abortController) {
     abortController.abort()
   }
@@ -55,6 +58,7 @@ async function loadMovies() {
   try {
     if (searchQuery.value.trim().length > 0) {
       const res = await apiClient.searchMovies(searchQuery.value.trim(), page.value, pageSize.value, signal)
+      if (seq !== requestSeq) return
       movies.value = res.items
       total.value = res.total
     } else {
@@ -68,15 +72,18 @@ async function loadMovies() {
         sort: selectedSort.value || undefined,
       }
       const res = await apiClient.listMovies(filters, signal)
+      if (seq !== requestSeq) return
       movies.value = res.items
       total.value = res.total
     }
   } catch (err: any) {
-    if (err.name === 'AbortError') return
+    if (seq !== requestSeq || err.name === 'AbortError') return
     console.error('Catalog API Error:', err)
+    movies.value = []
+    total.value = 0
     error.value = 'Не удалось загрузить каталог'
   } finally {
-    if (!abortController?.signal.aborted) {
+    if (seq === requestSeq && !signal.aborted) {
       loading.value = false
     }
   }
@@ -98,7 +105,6 @@ function updateQueryParams() {
 function onFilterChange() {
   page.value = 1
   updateQueryParams()
-  loadMovies()
 }
 
 function clearAllFilters() {
@@ -110,14 +116,12 @@ function clearAllFilters() {
   searchQuery.value = ''
   page.value = 1
   router.replace({ query: {} })
-  loadMovies()
 }
 
 function changePage(newPage: number) {
   if (newPage >= 1 && newPage <= totalPages.value) {
     page.value = newPage
     updateQueryParams()
-    loadMovies()
     try {
       if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -134,7 +138,7 @@ watch(
   () => route.query,
   (newQuery) => {
     selectedGenre.value = (newQuery.genre as string) || ''
-    selectedYear.value = (newQuery.year as string) || ''
+    selectedYear.value = movieCatalogYear(newQuery)
     selectedQuality.value = (newQuery.quality as string) || ''
     selectedMinRating.value = (newQuery.min_rating as string) || ''
     selectedSort.value = (newQuery.sort as string) || 'recently_added'
@@ -143,6 +147,8 @@ watch(
     loadMovies()
   }
 )
+
+onBeforeUnmount(() => { ++requestSeq; abortController?.abort() })
 
 onMounted(() => {
   fetchGenres()
@@ -157,9 +163,16 @@ onMounted(() => {
         <span v-if="searchQuery">{{ t("Search Results for \"") }}{{ searchQuery }}"</span>
         <span v-else-if="selectedGenre">{{ t("Genre:") }} {{ selectedGenre }}</span>
         <span v-else-if="selectedSort === 'popular'">Популярное на KINOSOTA</span>
+        <span v-else-if="selectedYear && selectedSort === 'newest'">Новинки {{ selectedYear }} года</span>
+        <span v-else-if="selectedMinRating && selectedSort === 'rating_desc'">Высокий рейтинг</span>
+        <span v-else-if="selectedYear">Фильмы {{ selectedYear }} года</span>
         <span v-else>{{ t("Movie Catalog") }}</span>
       </h1>
-      <span class="catalog-count">{{ total }} {{ total === 1 ? 'movie' : 'movies' }} {{ t("available") }}</span>
+      <span class="catalog-count" aria-live="polite">
+        <template v-if="loading">Загрузка…</template>
+        <template v-else-if="error">Количество недоступно</template>
+        <template v-else>{{ searchQuery ? 'Найдено:' : 'Доступно фильмов:' }} {{ total }}</template>
+      </span>
     </div>
 
 

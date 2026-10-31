@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { NEW_RELEASES_URL } from '@/router/catalogSections'
 import CinemaBrand from './CinemaBrand.vue'
 import { Send, ArrowRight, Search } from 'lucide-vue-next'
 // Official channel confirmed by the operator; one destination for every footer CTA.
 const telegramUrl = 'https://t.me/kinosota'
-const library = [{name:'Фильмы',to:'/movies'},{name:'Сериалы',to:'/series'},{name:'Новинки',to:'/movies?sort=newest'},{name:'Популярное',to:'/movies?sort=popular'},{name:'Подборки',to:'/discover'}]
+const library = [{name:'Фильмы',to:'/movies'},{name:'Сериалы',to:'/series'},{name:'Новинки',to:NEW_RELEASES_URL},{name:'Популярное',to:'/movies?sort=popular'},{name:'Подборки',to:'/discover'}]
 const genres = [{name:'Боевик',slug:'boevik'},{name:'Комедия',slug:'komedija'},{name:'Фантастика',slug:'fantastika'},{name:'Ужасы',slug:'uzhasy'},{name:'Триллер',slug:'triller'},{name:'Драма',slug:'drama'}]
 function focusSearch(){ window.dispatchEvent(new CustomEvent('showcase:search')) }
 </script>

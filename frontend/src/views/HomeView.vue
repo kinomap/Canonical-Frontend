@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NEW_RELEASES_URL, TOP_RATED_URL } from '@/router/catalogSections'
 import { t } from '@/i18n'
 import { ref, onMounted } from 'vue'
 import { apiClient } from '@/api/client'
@@ -81,14 +82,14 @@ onMounted(() => {
       <MovieRail
         :title="t('Новые фильмы')"
         :movies="collections.newest"
-        view-all-link="/movies?sort=newest"
+        :view-all-link="NEW_RELEASES_URL"
         @play="handlePlayNotice"
       />
 
       <MovieRail
         :title="t('Лучший рейтинг')"
         :movies="collections.top_rated"
-        view-all-link="/movies?sort=rating_desc"
+        :view-all-link="TOP_RATED_URL"
         @play="handlePlayNotice"
       />
 
