@@ -1,0 +1,11 @@
+import {describe,it,expect,vi} from 'vitest'
+import {mount,flushPromises} from '@vue/test-utils'
+import {createMemoryHistory,createRouter} from 'vue-router'
+import Header from '@/components/AppHeader.vue'
+import {buildSeo} from '@/utils/seo'
+const makeRouter=()=>createRouter({history:createMemoryHistory(),routes:[{path:'/',component:{template:'<p />'}},{path:'/movies',component:{template:'<p />'}},{path:'/series',component:{template:'<p />'}},{path:'/genres',component:{template:'<p />'}},{path:'/login',component:{template:'<p />'}},{path:'/register',component:{template:'<p />'}},{path:'/torrents',component:{template:'<p />'}},{path:'/torrents/:kind/:id',component:{template:'<p />'}}]})
+describe('torrent mode boundary',()=>{
+ it('adds desktop and mobile torrent menu entries without changing Telegram search',async()=>{localStorage.clear();const router=makeRouter();await router.push('/');await router.isReady();const w=mount(Header,{global:{plugins:[router]}});await flushPromises();expect(w.find('.torrent-nav-entry').attributes('href')).toBe('/torrents');expect(w.find('.header-search').exists()).toBe(true);expect(w.find('.torrent-brand-badge').exists()).toBe(false);w.unmount()})
+ it.each(['/torrents','/torrents/tv/87739'])('shows persistent mode and prevents Telegram autocomplete on %s',async path=>{localStorage.clear();const router=makeRouter();await router.push(path);await router.isReady();const w=mount(Header,{global:{plugins:[router]}});await flushPromises();expect(w.find('.torrent-brand-badge').text()).toBe('TORRENTS');expect(w.find('.header-search').exists()).toBe(false);await w.find('.mobile-hamburger-btn').trigger('click');expect(w.find('.mobile-search-wrapper').exists()).toBe(false);expect(w.get('nav[aria-label="Мобильная торрент навигация"]').text()).toContain('Вернуться в Telegram каталог');await router.push('/');await flushPromises();expect(w.find('.torrent-brand-badge').exists()).toBe(false);expect(w.find('.header-search').exists()).toBe(true);w.unmount()})
+ it('keeps unplayable torrent previews out of search indexing',()=>{for(const path of ['/torrents','/torrents?kind=tv','/torrents/tv/87739']){const seo=buildSeo(path,'https://watch.scenrix.com');expect(seo.robots).toBe('noindex, nofollow');expect(seo.title).toContain('TMDB');expect(seo.jsonLd).toHaveLength(0)}})
+})

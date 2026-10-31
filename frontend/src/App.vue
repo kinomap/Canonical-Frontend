@@ -52,7 +52,7 @@ onUnmounted(() => {
     <main id="main-content" tabindex="-1" class="app-main">
       <RouterView />
     </main>
-    <CinemaFooter v-if="!['/profile','/login','/register'].includes(route.path)" />
+    <CinemaFooter v-if="!['/profile','/login','/register'].includes(route.path) && !route.path.startsWith('/torrents')" />
 
     <DesktopAuthorizeModal />
     <!-- Global session-expired modal — rendered above everything -->

@@ -17,6 +17,8 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   scrollBehavior: createCatalogScrollBehavior(),
   routes: [
+    {path:'/torrents', name:'torrent-catalog', component:()=>import('@/views/TorrentCatalogView.vue')},
+    {path:'/torrents/:kind/:id', name:'torrent-detail', component:()=>import('@/views/TorrentCatalogView.vue')},
     {
       path: '/',
       name: 'home',

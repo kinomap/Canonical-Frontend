@@ -8,10 +8,11 @@ export function buildSeo(path:string,origin:string,item?:CatalogItem,genreName?:
  const u=new URL(path,origin), type=u.pathname.startsWith('/series/')?'TVSeries':'Movie'
  const isDetail=/^\/(movies|series)\/[^/]+/.test(u.pathname)
  const unavailable=isDetail && (!item || (type==='Movie' && item.status!=='available'))
+ const torrentPage=u.pathname==='/torrents'||u.pathname.startsWith('/torrents/')
  const privatePage=/^\/(?:api|admin|auth|login|register|profile)(?:\/|$)/.test(u.pathname)
  const genre=u.pathname==='/genres' ? u.searchParams.get('genre') : null
  const canonical=origin.replace(/\/$/,'')+(isDetail&&item?.id&&item?.title?contentPath(type==='Movie'?'movie':'series',item.id,item.title):u.pathname)+(genre?`?genre=${encodeURIComponent(genre)}`:'')
- const label=isDetail&&item?.title ? cleanTitle(item.title) : genreName ? `${genreName} — фильмы и сериалы` : ({'/':'Фильмы и сериалы','/movies':'Фильмы','/series':'Сериалы','/genres':'Жанры','/discover':'Подборки кино'} as Record<string,string>)[u.pathname]||'KINOSOTA'
+ const label=torrentPage ? 'Торренты · каталог TMDB' : isDetail&&item?.title ? cleanTitle(item.title) : genreName ? `${genreName} — фильмы и сериалы` : ({'/':'Фильмы и сериалы','/movies':'Фильмы','/series':'Сериалы','/genres':'Жанры','/discover':'Подборки кино'} as Record<string,string>)[u.pathname]||'KINOSOTA'
  const description=item?.overview?.trim().slice(0,240)||`${label} на KINOSOTA. Новинки, популярные истории и удобный каталог по жанрам. Больше, чем просто просмотр.`
  const jsonLd:Record<string,unknown>[]=[]
  if(u.pathname==='/')jsonLd.push({'@context':'https://schema.org','@type':'WebSite',name:'KINOSOTA',url:origin,potentialAction:{'@type':'SearchAction',target:{'@type':'EntryPoint',urlTemplate:origin+'/movies?q={search_term_string}'},'query-input':'required name=search_term_string'}})
@@ -21,7 +22,7 @@ export function buildSeo(path:string,origin:string,item?:CatalogItem,genreName?:
   if(typeof item!.rating==='number' && item!.rating!>0 && item!.rating!<=10)schema.aggregateRating={'@type':'AggregateRating',ratingValue:item!.rating,bestRating:10,worstRating:0}
   jsonLd.push(schema,{'@context':'https://schema.org','@type':'BreadcrumbList',itemListElement:[{'@type':'ListItem',position:1,name:'Главная',item:origin},{'@type':'ListItem',position:2,name:type==='Movie'?'Фильмы':'Сериалы',item:origin+(type==='Movie'?'/movies':'/series')},{'@type':'ListItem',position:3,name:cleanTitle(item!.title!),item:canonical}]})
  }
- return {title:label.includes('KINOSOTA')?label:`${label} — KINOSOTA`,description,canonical,image,type:isDetail&&!unavailable?(type==='Movie'?'video.movie':'video.tv_show'):'website',robots:privatePage||unavailable?'noindex, nofollow':'index, follow',jsonLd}
+ return {title:label.includes('KINOSOTA')?label:`${label} — KINOSOTA`,description,canonical,image,type:isDetail&&!unavailable?(type==='Movie'?'video.movie':'video.tv_show'):'website',robots:torrentPage||privatePage||unavailable?'noindex, nofollow':'index, follow',jsonLd}
 }
 export function serializeJsonLd(value:unknown):string{return JSON.stringify(value).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026')}
 export function applySeo(seo:PageSeo):void {
