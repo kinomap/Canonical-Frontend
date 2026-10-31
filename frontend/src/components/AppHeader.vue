@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UserAvatar from './UserAvatar.vue'
 import { t } from '@/i18n'
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Home, Bell } from 'lucide-vue-next'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -10,6 +10,7 @@ import BrandLogo from '@/components/CinemaBrand.vue'
 
 const router = useRouter()
 const route = useRoute()
+const torrentMode=computed(()=>route.path==='/torrents'||route.path.startsWith('/torrents/'))
 const authStore = useAuthStore()
 
 const searchQuery = ref('')
@@ -51,11 +52,11 @@ watch(route, () => {
 </script>
 
 <template>
-  <header class="app-header">
+  <header class="app-header" :class="{'torrent-header':torrentMode}">
     <div class="header-container">
       <!-- Left: Logo & Brand -->
       <div class="header-left">
-        <router-link to="/" class="brand-link" tabindex="0">
+        <router-link :to="torrentMode?'/torrents':'/'" class="brand-link" tabindex="0">
           <div class="desktop-logo">
             <BrandLogo />
           </div>
@@ -64,18 +65,21 @@ watch(route, () => {
           </div>
         </router-link>
 
+        <span v-if="torrentMode" class="torrent-brand-badge">TORRENTS</span>
         <!-- Desktop Navigation Links -->
-        <nav class="desktop-nav" aria-label="Основная навигация">
+        <nav v-if="!torrentMode" class="desktop-nav" aria-label="Основная навигация">
           <router-link to="/" class="nav-link" :class="{ active: route.path === '/' }"><Home :size="18" aria-hidden="true" />Главная</router-link>
           <router-link to="/movies" class="nav-link" :class="{ active: route.path.startsWith('/movies') }">{{ t("Movies") }}</router-link>
           <router-link to="/series" class="nav-link" :class="{ active: route.path.startsWith('/series') }">{{ t("Series") }}</router-link>
           <details class="header-genres"><summary class="nav-link" :class="{active:route.path==='/genres'}">Жанры ▾</summary><div class="genre-dropdown"><router-link v-for="genre in [{name:'Боевик',slug:'boevik'},{name:'Комедия',slug:'komedija'},{name:'Фантастика',slug:'fantastika'},{name:'Ужасы',slug:'uzhasy'},{name:'Триллер',slug:'triller'}]" :key="genre.slug" :to="`/genres?genre=${genre.slug}`">{{genre.name}}</router-link><router-link to="/genres">Все жанры</router-link></div></details>
+          <router-link to="/torrents" class="nav-link torrent-nav-entry">Торренты</router-link>
         </nav>
+        <nav v-else class="desktop-nav" aria-label="Торрент навигация"><router-link to="/torrents" class="nav-link" :class="{active:route.path==='/torrents'&&!route.query.kind}">Главная</router-link><router-link to="/torrents?kind=movie" class="nav-link">Фильмы</router-link><router-link to="/torrents?kind=tv" class="nav-link">Сериалы</router-link><router-link to="/" class="nav-link">Telegram каталог →</router-link></nav>
       </div>
 
       <!-- Right: Search & User Controls -->
       <div class="header-right">
-        <div class="header-search">
+        <div v-if="!torrentMode" class="header-search">
           <SearchBar ref="desktopSearch"
             v-model="searchQuery"
             placeholder="Поиск фильмов, сериалов..."
@@ -117,7 +121,7 @@ watch(route, () => {
 
     <!-- Mobile Drawer Menu -->
     <div v-if="mobileMenuOpen" class="mobile-menu-drawer">
-      <div class="mobile-search-wrapper">
+      <div v-if="!torrentMode" class="mobile-search-wrapper">
         <SearchBar ref="mobileSearch"
           v-model="searchQuery"
           placeholder="Поиск фильмов, сериалов..."
@@ -125,11 +129,13 @@ watch(route, () => {
         />
       </div>
 
-      <nav class="mobile-nav" aria-label="Мобильная навигация">
+      <nav v-if="!torrentMode" class="mobile-nav" aria-label="Мобильная навигация">
         <router-link to="/" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Home") }}</router-link>
         <router-link to="/movies" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Movies") }}</router-link>
         <router-link to="/series" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Series") }}</router-link>
         <router-link to="/genres" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Genres") }}</router-link>
+
+        <router-link to="/torrents" class="mobile-nav-link" @click="closeMobileMenu">Торренты</router-link>
 
         <div class="mobile-auth-divider"></div>
 
@@ -142,6 +148,7 @@ watch(route, () => {
           <router-link to="/register" class="mobile-nav-link register" @click="closeMobileMenu">{{ t("Create Account") }}</router-link>
         </template>
       </nav>
+      <nav v-else class="mobile-nav" aria-label="Мобильная торрент навигация"><router-link to="/torrents" class="mobile-nav-link">Торренты · главная</router-link><router-link to="/torrents?kind=movie" class="mobile-nav-link">Фильмы TMDB</router-link><router-link to="/torrents?kind=tv" class="mobile-nav-link">Сериалы TMDB</router-link><router-link to="/" class="mobile-nav-link">Вернуться в Telegram каталог</router-link></nav>
     </div>
   </header>
 </template>
@@ -432,4 +439,9 @@ watch(route, () => {
 @media (max-width: 639px) {
   .brand-link { flex-basis:64px; }
 }
+</style>
+
+<style scoped>
+.torrent-brand-badge{font-size:12px;line-height:16px;letter-spacing:.08em;color:#9ce8d7;border:1px solid #527d73;border-radius:8px;padding:8px;font-weight:600;white-space:nowrap}.torrent-header{background:#181818}.torrent-nav-entry{color:#9ce8d7}.torrent-header .nav-link.active{color:#9ce8d7;border-color:#527d73;background:#1f1f1f}
+@media(max-width:767px){.torrent-header .header-left{gap:8px}.torrent-brand-badge{font-size:12px;padding:4px}.torrent-header :deep(.cinema-brand img){display:none}.torrent-header :deep(.cinema-brand){font-size:18px}}
 </style>
