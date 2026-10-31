@@ -12,6 +12,15 @@ describe('apiClient', () => {
     globalThis.fetch = originalFetch
   })
 
+  it('series search sends query and pagination to the paginated endpoint', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({ok:true,json:async()=>({items:[],total:65,page:3,page_size:20})} as Response)
+    const result = await apiClient.listSeries({q:'Ход королевы',page:3,page_size:20,genre:'drama',year:2020,sort:'newest'})
+    const url = new URL(String(vi.mocked(globalThis.fetch).mock.calls[0][0]),'http://localhost')
+    expect(url.pathname).toBe('/api/v1/series')
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({q:'Ход королевы',page:'3',page_size:'20',genre:'drama',year:'2020',sort:'newest'})
+    expect(result.total).toBe(65)
+  })
+
   it('listMovies fetches paginated movies with default params', async () => {
     const mockData = {
       items: [

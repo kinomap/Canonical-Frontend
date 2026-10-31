@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NEW_RELEASES_URL } from '@/router/catalogSections'
 import { t } from '@/i18n'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { apiClient } from '@/api/client'
@@ -167,7 +168,7 @@ onUnmounted(() => {
       <MovieRail
         :title="t('Новинки')"
         :movies="collections.newest"
-        view-all-link="/movies?sort=newest"
+        :view-all-link="NEW_RELEASES_URL"
         eager
       />
 

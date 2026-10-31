@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { catalogPage } from '@/router/catalogNavigation'
 import { apiClient } from '@/api/client'
 import type { Genre, MovieFilters, MovieSummary, SeriesSummary } from '@/types/movie'
 import MovieCard from '@/components/MovieCard.vue'
@@ -14,7 +15,7 @@ const router = useRouter()
 const seriesList = ref<MovieSummary[]>([])
 const genres = ref<Genre[]>([])
 const total = ref(0)
-const page = ref(1)
+const page = ref(catalogPage(route.query.page))
 const pageSize = ref(20)
 
 const selectedGenre = ref<string>((route.query.genre as string) || '')
@@ -40,8 +41,10 @@ async function fetchGenres() {
 }
 
 let abortController: AbortController | null = null
+let requestSeq = 0
 
 async function loadSeries() {
+  const seq = ++requestSeq
   if (abortController) {
     abortController.abort()
   }
@@ -51,53 +54,39 @@ async function loadSeries() {
   loading.value = true
   error.value = null
   try {
-    if (searchQuery.value.trim().length > 0) {
-      const items = await apiClient.searchSeries(searchQuery.value.trim(), pageSize.value, signal)
-      seriesList.value = items.map((s: SeriesSummary) => ({
-        id: s.id,
-        type: 'series',
-        title: s.title,
-        original_title: s.original_title || '',
-        year: s.year,
-        poster: s.poster_url,
-        rating: s.rating,
-        runtime: null,
-        quality: null,
-        status: 'available',
-        genres: s.genres || [],
-      }))
-      total.value = items.length
-    } else {
-      const filters: MovieFilters = {
-        page: page.value,
-        page_size: pageSize.value,
-        genre: selectedGenre.value || undefined,
-        year: selectedYear.value ? parseInt(selectedYear.value, 10) : undefined,
-        min_rating: selectedMinRating.value ? parseFloat(selectedMinRating.value) : undefined,
-        sort: selectedSort.value || undefined,
-      }
-      const res = await apiClient.listSeries(filters, signal)
-      seriesList.value = res.items.map((s: SeriesSummary) => ({
-        id: s.id,
-        type: 'series',
-        title: s.title,
-        original_title: s.original_title || '',
-        year: s.year,
-        poster: s.poster_url,
-        rating: s.rating,
-        runtime: null,
-        quality: null,
-        status: 'available',
-        genres: s.genres || [],
-      }))
-      total.value = res.total
+    const filters: MovieFilters = {
+      q: searchQuery.value.trim() || undefined,
+      page: page.value,
+      page_size: pageSize.value,
+      genre: selectedGenre.value || undefined,
+      year: selectedYear.value ? parseInt(selectedYear.value, 10) : undefined,
+      min_rating: selectedMinRating.value ? parseFloat(selectedMinRating.value) : undefined,
+      sort: selectedSort.value || undefined,
     }
+    const res = await apiClient.listSeries(filters, signal)
+    if (seq !== requestSeq) return
+    seriesList.value = res.items.map((s: SeriesSummary) => ({
+      id: s.id,
+      type: 'series',
+      title: s.title,
+      original_title: s.original_title || '',
+      year: s.year,
+      poster: s.poster_url,
+      rating: s.rating,
+      runtime: null,
+      quality: null,
+      status: 'available',
+      genres: s.genres || [],
+    }))
+    total.value = res.total
   } catch (err: any) {
-    if (err.name === 'AbortError') return
+    if (seq !== requestSeq || err.name === 'AbortError') return
     console.error('Series Catalog API Error:', err)
+    seriesList.value = []
+    total.value = 0
     error.value = 'Не удалось загрузить каталог сериалов'
   } finally {
-    if (!abortController?.signal.aborted) {
+    if (seq === requestSeq && !signal.aborted) {
       loading.value = false
     }
   }
@@ -123,14 +112,12 @@ function clearAllFilters() {
   searchQuery.value = ''
   page.value = 1
   router.replace({ query: {} })
-  loadSeries()
 }
 
 function changePage(newPage: number) {
   if (newPage >= 1 && newPage <= totalPages.value) {
     page.value = newPage
     updateQueryParams()
-    loadSeries()
     try {
       if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -151,10 +138,12 @@ watch(
     selectedMinRating.value = (newQuery.min_rating as string) || ''
     selectedSort.value = (newQuery.sort as string) || 'newest'
     searchQuery.value = (newQuery.q as string) || ''
-    if (newQuery.page) page.value = parseInt(newQuery.page as string, 10) || 1
+    page.value = catalogPage(newQuery.page)
     loadSeries()
   }
 )
+
+onBeforeUnmount(() => { ++requestSeq; abortController?.abort() })
 
 onMounted(() => {
   fetchGenres()
@@ -163,14 +152,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="catalog-page">
+  <div class="catalog-page" :data-catalog-ready="!loading">
     <div class="catalog-title-bar">
       <h1 class="page-title">
         <span v-if="searchQuery">{{ t("Поиск по сериалам \"") }}{{ searchQuery }}"</span>
         <span v-else-if="selectedGenre">{{ t("Сериалы:") }} {{ selectedGenre }}</span>
         <span v-else>{{ t("Каталог сериалов") }}</span>
       </h1>
-      <span class="catalog-count">{{ total }} {{ t("доступно") }}</span>
+      <span class="catalog-count" aria-live="polite">
+        <template v-if="loading">Загрузка…</template>
+        <template v-else-if="error">Количество недоступно</template>
+        <template v-else>Доступно сериалов: {{ total }}</template>
+      </span>
     </div>
 
     <!-- Main Content -->
