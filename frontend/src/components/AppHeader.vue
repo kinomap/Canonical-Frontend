@@ -13,12 +13,13 @@ const route = useRoute()
 const torrentMode=computed(()=>route.path==='/torrents'||route.path.startsWith('/torrents/'))
 const authStore = useAuthStore()
 
-const searchQuery = ref('')
+const searchQuery = ref(String(route.query.q||''))
+watch(()=>route.query.q,value=>{searchQuery.value=String(value||'')})
 const mobileMenuOpen = ref(false)
 const desktopSearch = ref<InstanceType<typeof SearchBar> | null>(null)
 const mobileSearch = ref<InstanceType<typeof SearchBar> | null>(null)
 async function focusSearch() {
- if (window.matchMedia('(max-width: 767px)').matches) { mobileMenuOpen.value=true; await nextTick(); mobileSearch.value?.focus() }
+ if (window.matchMedia('(max-width: 1023px)').matches) { mobileMenuOpen.value=true; await nextTick(); mobileSearch.value?.focus() }
  else desktopSearch.value?.focus()
 }
 function shortcut(event: KeyboardEvent) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase()==='k' && !event.altKey) {event.preventDefault();focusSearch()} }
@@ -33,7 +34,9 @@ onMounted(() => {
 
 function handleSearch(query: string) {
   if (query.trim().length > 0) {
-    router.push({ path: '/movies', query: { q: query.trim() } })
+    router.push({ path: torrentMode.value?'/torrents':'/movies', query: torrentMode.value?{kind:route.query.kind==='tv'||route.params.kind==='tv'?'tv':'movie',q:query.trim().slice(0,120)}:{q:query.trim()} })
+  } else if(torrentMode.value) {
+    router.push({path:'/torrents',query:{kind:route.query.kind==='tv'?'tv':'movie'}})
   }
 }
 
@@ -74,13 +77,19 @@ watch(route, () => {
           <details class="header-genres"><summary class="nav-link" :class="{active:route.path==='/genres'}">Жанры ▾</summary><div class="genre-dropdown"><router-link v-for="genre in [{name:'Боевик',slug:'boevik'},{name:'Комедия',slug:'komedija'},{name:'Фантастика',slug:'fantastika'},{name:'Ужасы',slug:'uzhasy'},{name:'Триллер',slug:'triller'}]" :key="genre.slug" :to="`/genres?genre=${genre.slug}`">{{genre.name}}</router-link><router-link to="/genres">Все жанры</router-link></div></details>
           <router-link to="/torrents" class="nav-link torrent-nav-entry">Торренты</router-link>
         </nav>
-        <nav v-else class="desktop-nav" aria-label="Торрент навигация"><router-link to="/torrents" class="nav-link" :class="{active:route.path==='/torrents'&&!route.query.kind}">Главная</router-link><router-link to="/torrents?kind=movie" class="nav-link">Фильмы</router-link><router-link to="/torrents?kind=tv" class="nav-link">Сериалы</router-link><router-link to="/" class="nav-link">Telegram каталог →</router-link></nav>
+        <nav v-else class="desktop-nav" aria-label="Торрент навигация">
+          <router-link to="/torrents" class="nav-link" :class="{active:route.path==='/torrents'&&!route.query.kind&&!route.query.q}"><Home :size="16" stroke-width="1.7" /> Главная</router-link>
+          <router-link to="/torrents?kind=movie" class="nav-link" :class="{active:route.query.kind==='movie'}">Фильмы</router-link>
+          <router-link to="/torrents?kind=tv" class="nav-link" :class="{active:route.query.kind==='tv'}">Сериалы</router-link>
+          <details class="header-genres"><summary class="nav-link">Жанры ▾</summary><div class="genre-dropdown"><router-link v-for="g in [{id:28,name:'Боевик'},{id:35,name:'Комедия'},{id:878,name:'Фантастика'},{id:27,name:'Ужасы'},{id:53,name:'Триллер'}]" :key="g.id" :to="`/torrents?kind=movie&genre=${g.id}`">{{g.name}}</router-link><router-link to="/torrents?kind=movie">Все жанры</router-link></div></details>
+          <router-link to="/" class="nav-link main-catalog-link">Основной каталог →</router-link>
+        </nav>
       </div>
 
       <!-- Right: Search & User Controls -->
       <div class="header-right">
-        <div v-if="!torrentMode" class="header-search">
-          <SearchBar ref="desktopSearch"
+        <div class="header-search">
+          <SearchBar :torrent="torrentMode" ref="desktopSearch"
             v-model="searchQuery"
             placeholder="Поиск фильмов, сериалов..."
             @search="handleSearch"
@@ -121,8 +130,8 @@ watch(route, () => {
 
     <!-- Mobile Drawer Menu -->
     <div v-if="mobileMenuOpen" class="mobile-menu-drawer">
-      <div v-if="!torrentMode" class="mobile-search-wrapper">
-        <SearchBar ref="mobileSearch"
+      <div class="mobile-search-wrapper">
+        <SearchBar :torrent="torrentMode" ref="mobileSearch"
           v-model="searchQuery"
           placeholder="Поиск фильмов, сериалов..."
           @search="handleSearch"
@@ -148,7 +157,7 @@ watch(route, () => {
           <router-link to="/register" class="mobile-nav-link register" @click="closeMobileMenu">{{ t("Create Account") }}</router-link>
         </template>
       </nav>
-      <nav v-else class="mobile-nav" aria-label="Мобильная торрент навигация"><router-link to="/torrents" class="mobile-nav-link">Торренты · главная</router-link><router-link to="/torrents?kind=movie" class="mobile-nav-link">Фильмы TMDB</router-link><router-link to="/torrents?kind=tv" class="mobile-nav-link">Сериалы TMDB</router-link><router-link to="/" class="mobile-nav-link">Вернуться в Telegram каталог</router-link></nav>
+      <nav v-else class="mobile-nav" aria-label="Мобильная торрент навигация"><router-link to="/torrents" class="mobile-nav-link">Главная</router-link><router-link to="/torrents?kind=movie" class="mobile-nav-link">Фильмы</router-link><router-link to="/torrents?kind=tv" class="mobile-nav-link">Сериалы</router-link><details class="mobile-genres"><summary class="mobile-nav-link">Жанры</summary><router-link v-for="g in [{id:28,name:'Боевик'},{id:35,name:'Комедия'},{id:878,name:'Фантастика'},{id:27,name:'Ужасы'},{id:53,name:'Триллер'}]" :key="g.id" :to="`/torrents?kind=movie&genre=${g.id}`" class="mobile-nav-link">{{g.name}}</router-link></details><router-link to="/" class="mobile-nav-link">Основной каталог →</router-link><template v-if="!authStore.isAuthenticated.value"><router-link to="/login" class="mobile-nav-link">Войти</router-link><router-link to="/register" class="mobile-nav-link">Регистрация</router-link></template></nav>
     </div>
   </header>
 </template>
@@ -439,9 +448,13 @@ watch(route, () => {
 @media (max-width: 639px) {
   .brand-link { flex-basis:64px; }
 }
+.torrent-header .header-left{gap:12px;flex:0 1 auto}.torrent-header .desktop-nav{gap:8px;white-space:nowrap}.torrent-header .nav-link{font-size:14px;display:inline-flex;align-items:center;gap:4px}.torrent-header .brand-link{flex:0 0 auto}.torrent-header .header-right{flex:1 1 440px}.torrent-header .torrent-brand-badge{padding:4px 8px;font-size:10px}.torrent-header .main-catalog-link{font-size:12px}.torrent-header :deep(.search-input:focus){border-color:#70bca8}.torrent-header :deep(.register-btn){background:#f4d45e}
+@media(min-width:1024px) and (max-width:1499px){.torrent-header .main-catalog-link{display:none}.torrent-header .header-left{gap:8px}.torrent-header .desktop-nav{gap:0}.torrent-header .nav-link{font-size:12px}}
 </style>
 
 <style scoped>
-.torrent-brand-badge{font-size:12px;line-height:16px;letter-spacing:.08em;color:#9ce8d7;border:1px solid #527d73;border-radius:8px;padding:8px;font-weight:600;white-space:nowrap}.torrent-header{background:#181818}.torrent-nav-entry{color:#9ce8d7}.torrent-header .nav-link.active{color:#9ce8d7;border-color:#527d73;background:#1f1f1f}
-@media(max-width:767px){.torrent-header .header-left{gap:8px}.torrent-brand-badge{font-size:12px;padding:4px}.torrent-header :deep(.cinema-brand img){display:none}.torrent-header :deep(.cinema-brand){font-size:18px}}
+.torrent-brand-badge{font-size:12px;line-height:16px;letter-spacing:.08em;color:#9ce8d7;border:1px solid #527d73;border-radius:8px;padding:8px;font-weight:600;white-space:nowrap}.torrent-header{--ui-link:#9ce8d7;--ui-accent:#f4d45e;background:var(--ui-bg)}.torrent-nav-entry{color:#9ce8d7}.torrent-header .nav-link.active{color:#9ce8d7;border-color:#527d73;background:#1f1f1f}
+@media(max-width:767px){.torrent-header .header-left{gap:8px}.torrent-brand-badge{font-size:12px;padding:4px}.torrent-header :deep(.cinema-brand){font-size:18px}}
+.torrent-header .header-left{gap:12px;flex:0 1 auto}.torrent-header .desktop-nav{gap:8px;white-space:nowrap}.torrent-header .nav-link{font-size:14px;display:inline-flex;align-items:center;gap:4px}.torrent-header .brand-link{flex:0 0 auto}.torrent-header .header-right{flex:1 1 440px}.torrent-header .torrent-brand-badge{padding:4px 8px;font-size:10px}.torrent-header .main-catalog-link{font-size:12px}.torrent-header :deep(.search-input:focus){border-color:#70bca8}.torrent-header :deep(.register-btn){background:#f4d45e}
+@media(min-width:1024px) and (max-width:1499px){.torrent-header .main-catalog-link{display:none}.torrent-header .header-left{gap:8px}.torrent-header .desktop-nav{gap:0}.torrent-header .nav-link{font-size:12px}}
 </style>
