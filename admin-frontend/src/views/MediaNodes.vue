@@ -164,7 +164,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 
         <div v-for="node in nodes" :key="node.id" class="mn-row" role="row" data-test="node-row">
           <div class="mn-cell mn-cell-node" role="cell">
-            <button class="mn-node-name" @click="openNode(node)">{{ node.name }}</button>
+            <button class="mn-node-name" @click="openNode(node)">{{ node.name }}</button><span class="mn-node-profile">{{ node.profile === 'torrent' ? 'Торренты · PRO' : 'Telegram' }}</span>
             <div class="mn-node-sub">{{ node.node_id }}<span v-if="node.region"> · {{ node.region }}</span></div>
             <div class="mn-node-sub mn-mono" :title="endpointOf(node)">{{ endpointOf(node) }}</div>
           </div>
@@ -282,6 +282,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .mn-row-head { border-top: none; background: var(--ui-surface); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--k-text-muted); padding-top: 0.6rem; padding-bottom: 0.6rem; }
 .mn-cell { min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .mn-cell-node { flex-direction: column; align-items: flex-start; gap: 2px; }
+.mn-node-profile { display:block; font-size:0.85rem; color:var(--k-text-muted); margin-top:4px; }
 .mn-node-name { background: none; border: none; padding: 0; color: var(--k-text); font-weight: 600; font-size: 0.95rem; text-align: left; }
 .mn-node-name:hover { color: var(--k-info); text-decoration: underline; }
 .mn-node-sub { color: var(--k-text-muted); font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

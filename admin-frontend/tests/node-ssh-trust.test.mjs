@@ -19,7 +19,7 @@ function setup(response={verified:true}) {
  vm.runInNewContext(compiled,sandbox)
  const state=sandbox.exports.default.setup({}, {expose:()=>{},emit:()=>{}})
  state.nodeName.value='node-test';state.host.value='203.0.113.10';state.sshPort.value=2222;state.sshUsername.value='deployer';state.hostFingerprint.value=pin;state.releases.value=[{version:'test',commit:'a'.repeat(40)}];state.selectedVersion.value='test';state.sshPrivateKey.value='synthetic'.repeat(10)
- return {state,requests}
+ return {state,requests,axios}
 }
 test('wizard compiles and explains server identity separately from private credential',()=>{
  assert.deepEqual(compileTemplate({source:descriptor.template.content,filename:'AddMediaNodeWizard.vue',id:'trust'}).errors,[])
@@ -62,4 +62,19 @@ for(const field of ['host','sshPort','hostFingerprint'])test(`editing ${field} i
 test('failed identity check stays visible and does not allow deployment',async()=>{
  const {state}=setup(new Error('synthetic mismatch'));await vue.nextTick();await state.verifyIdentity()
  assert.equal(state.identityVerified.value,false);assert.ok(state.identityError.value.length>10);assert.equal(state.canDeploy.value,false)
+})
+
+test('torrent wizard sends immutable profile and filters incompatible releases',async()=>{
+ const {state,requests,axios}=setup();state.nodeProfile.value='torrent'
+ axios.get=async()=>({data:[{version:'1.2.16'},{version:'1.3.0',commit:'a'.repeat(40),profiles:['telegram','torrent']}]})
+ await state.loadReleases();assert.equal(state.releases.value.length,1);assert.equal(state.selectedVersion.value,'1.3.0')
+ await state.startDeploy();assert.equal(requests.find(r=>r.url.endsWith('/nodes')).body.profile,'torrent')
+})
+test('switching profile discards pending incompatible release responses',async()=>{
+ const {state,axios}=setup();let resolve
+ axios.get=async()=>new Promise(r=>{resolve=r})
+ const pending=state.loadReleases();state.nodeProfile.value='torrent'
+ resolve({data:[{version:'1.2.16'}]});await pending
+ assert.equal(state.releases.value.length,0);assert.equal(state.selectedVersion.value,'')
+ assert.equal(state.loadingReleases.value,false)
 })

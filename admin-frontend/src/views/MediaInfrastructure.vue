@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TorrentServices from '../components/TorrentServices.vue'
+import JackettSettings from '../components/JackettSettings.vue'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 
@@ -83,6 +85,8 @@ interface ScaleSignal {
 // ── State ─────────────────────────────────────────────────────────────────
 
 const data = ref<ObservabilityData | null>(null)
+const torrentNodes = ref<any[]>([])
+const torrentNodesError = ref(false)
 const scaleSignal = ref<ScaleSignal | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -101,6 +105,10 @@ const fetchData = async () => {
     ])
     data.value = obsResp.data
     if (scaleResp) scaleSignal.value = scaleResp.data
+    try {
+      const nodes=await axios.get('/api/v1/admin/media/nodes',auth())
+      torrentNodes.value=nodes.data.filter((n:any)=>n.profile==='torrent');torrentNodesError.value=false
+    } catch { torrentNodesError.value=true }
     lastFetchedAt.value = new Date()
     secondsSinceUpdate.value = 0
     error.value = ''
@@ -169,6 +177,8 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <JackettSettings />
+
     <div v-if="loading && !data" class="obs-loading">
       <div class="obs-spinner"></div>
       <span>Loading telemetry...</span>
@@ -180,6 +190,11 @@ onUnmounted(() => {
     </div>
 
     <template v-if="data">
+      <section aria-label="Торрент-ноды">
+        <p v-if="torrentNodesError" role="alert">Не удалось обновить состояние torrent-нод. Последние данные не подтверждены.</p>
+        <p v-else-if="!torrentNodes.length">Torrent-ноды ещё не подключены. Добавьте VPS в Media Nodes с профилем «Торренты».</p>
+        <div v-for="node in torrentNodes" :key="node.id"><router-link :to="`/media-nodes/${node.id}`">{{ node.name }} · Торренты</router-link><TorrentServices :observation="node.torrent_services" /></div>
+      </section>
       <!-- ── Capacity Overview ───────────────────────── -->
       <section class="obs-section">
         <h2 class="obs-section-title">Capacity Overview</h2>

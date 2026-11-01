@@ -8,6 +8,7 @@
  */
 
 export interface MediaNodeRow {
+  profile?: 'telegram' | 'torrent'
   id: string
   node_id: string
   name: string
