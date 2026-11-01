@@ -5,6 +5,8 @@ import { torrentsApi, torrentPath, type TorrentItem, type TorrentPage, type Torr
 import { SlidersHorizontal, RotateCcw, ChevronDown, ArrowRight, Play } from 'lucide-vue-next'
 import LibraryButton from '@/components/LibraryButton.vue'
 import TorrentCard from '@/components/TorrentCard.vue'
+import TorrentPlaybackSubscription from '@/components/TorrentPlaybackSubscription.vue'
+import { useAuthStore } from '@/stores/auth'
 import { NEW_RELEASE_YEAR } from '@/router/catalogSections'
 const route=useRoute(),router=useRouter()
 const kind=computed<TorrentKind>(()=>route.query.kind==='tv'?'tv':'movie')
@@ -16,6 +18,15 @@ const ratingOptions=computed(()=>[...new Set([10,9,8,7,6,5,4,3,2,1,0,...(rating.
 const queryText=computed(()=>String(route.query.q||'').trim().slice(0,120))
 const home=computed(()=>!route.params.id&&!['kind','genre','year','rating','page','q'].some(k=>route.query[k]))
 const loading=ref(true),error=ref(''),data=ref<TorrentPage|null>(null),detail=ref<TorrentItem|null>(null)
+const auth=useAuthStore()
+let accessGeneration=0
+const playbackAccess=ref<boolean|null>(null),accessError=ref(false)
+async function loadAccess(version:number,signal:AbortSignal){
+ const check=++accessGeneration
+ playbackAccess.value=null;accessError.value=false
+ try{const result=await torrentsApi.access(signal);if(version===generation&&check===accessGeneration)playbackAccess.value=result.allowed}
+ catch{if(version===generation&&check===accessGeneration&&!signal.aborted)accessError.value=true}
+}
 const rails=ref<{title:string;items:TorrentItem[];query:Record<string,string>}[]>([])
 const hero=ref<TorrentItem|null>(null)
 let heroTimer:ReturnType<typeof setTimeout>|undefined
@@ -29,13 +40,13 @@ let generation=0,controller:AbortController|undefined
 async function load(){
  const version=++generation;controller?.abort();controller=new AbortController();const signal=controller.signal
  clearTimeout(heroTimer);hero.value=null
- loading.value=true;error.value='';data.value=null;detail.value=null;rails.value=[]
+ loading.value=true;error.value='';data.value=null;detail.value=null;rails.value=[];playbackAccess.value=null;accessError.value=false
  try{
   if(route.params.id){
    const detailKind=String(route.params.kind)
    if(!['movie','tv'].includes(detailKind)||!/^\d+$/.test(String(route.params.id)))throw new Error('invalid')
    const result=await torrentsApi.detail(detailKind as TorrentKind,String(route.params.id),signal)
-   if(version===generation)detail.value=result
+   if(version===generation){detail.value=result;void loadAccess(version,signal)}
   }else if(home.value){
    const results=await Promise.all([torrentsApi.list({kind:'movie'},signal),torrentsApi.list({kind:'movie',year:String(NEW_RELEASE_YEAR)},signal),torrentsApi.list({kind:'tv'},signal)])
    if(version!==generation)return
@@ -55,6 +66,8 @@ function search(value:string){const q=value.trim().slice(0,120);router.push({pat
 function resetFilters(){const query:LocationQueryRaw={...route.query};delete query.year;delete query.rating;delete query.page;router.push({path:'/torrents',query})}
 function paginate(value:number){router.push({path:'/torrents',query:{...route.query,kind:kind.value,page:String(value)}})}
 watch(()=>route.fullPath,load,{immediate:true})
+watch(()=>auth.token.value,()=>{if(detail.value&&controller)void loadAccess(generation,controller.signal)})
+function retryAccess(){if(controller)void loadAccess(generation,controller.signal)}
 onBeforeUnmount(()=>{++generation;controller?.abort();clearTimeout(heroTimer)})
 </script>
 <template>
@@ -80,8 +93,14 @@ onBeforeUnmount(()=>{++generation;controller?.abort();clearTimeout(heroTimer)})
    <router-link class="back-link" :to="{path:'/torrents',query:route.query}">← Назад в торрент каталог</router-link>
    <section class="torrent-detail">
     <img v-if="detail.poster" :src="detail.poster" :alt="`Постер «${detail.title}»`" width="342" height="513" />
-    <div><span class="mode-label">{{detail.kind==='tv'?'СЕРИАЛ':'ФИЛЬМ'}} · TMDB</span><h1>{{detail.title}}</h1><LibraryButton :item="detail" /><p class="original-title">{{detail.original_title}}</p><p>{{detail.year}}<span v-if="detail.rating"> · ★ {{detail.rating.toFixed(1)}}</span><span v-if="detail.runtime"> · {{detail.runtime}} мин</span><span v-if="detail.seasons"> · Сезонов: {{detail.seasons}}</span><span v-if="detail.episodes"> · Эпизодов: {{detail.episodes}}</span></p><div class="detail-genres"><router-link v-for="g in detail.genres" :key="g.id" :to="{path:'/torrents',query:{kind:detail.kind,genre:String(g.id)}}">{{g.name}}</router-link></div><p class="overview">{{detail.overview||'Описание на русском языке пока недоступно.'}}</p><div class="playback-pending"><h2>Торрент воспроизведение ещё не подключено</h2><p>Здесь появятся доступные раздачи и выбор источника. Сейчас можно изучить описание и продолжить поиск в каталоге.</p><router-link :to="`/torrents?kind=${detail.kind}`">Продолжить выбор →</router-link></div></div>
+    <div><span class="mode-label">{{detail.kind==='tv'?'СЕРИАЛ':'ФИЛЬМ'}} · TMDB</span><h1>{{detail.title}}</h1><LibraryButton :item="detail" /><p class="original-title">{{detail.original_title}}</p><p>{{detail.year}}<span v-if="detail.rating"> · ★ {{detail.rating.toFixed(1)}}</span><span v-if="detail.runtime"> · {{detail.runtime}} мин</span><span v-if="detail.seasons"> · Сезонов: {{detail.seasons}}</span><span v-if="detail.episodes"> · Эпизодов: {{detail.episodes}}</span></p><div class="detail-genres"><router-link v-for="g in detail.genres" :key="g.id" :to="{path:'/torrents',query:{kind:detail.kind,genre:String(g.id)}}">{{g.name}}</router-link></div><p class="overview">{{detail.overview||'Описание на русском языке пока недоступно.'}}</p></div>
    </section>
+   <div class="torrent-playback-area">
+    <section v-if="accessError" class="playback-pending" role="alert"><h2>Не удалось проверить доступ к просмотру</h2><p>Каталог и описание доступны. Повторите проверку перед воспроизведением.</p><button type="button" @click="retryAccess()">Повторить проверку</button></section>
+    <div v-else-if="playbackAccess===null" class="playback-pending" role="status">Проверяем доступ к просмотру…</div>
+    <TorrentPlaybackSubscription v-else-if="!playbackAccess" :poster="detail.backdrop||detail.poster||undefined" />
+    <section v-else class="playback-pending"><h2>Торрент воспроизведение ещё не подключено</h2><p>Доступ PRO подтверждён. Раздачи и воспроизведение появятся после подключения торрент сервиса. Карточка не гарантирует наличие источника.</p><router-link :to="`/torrents?kind=${detail.kind}`">Продолжить выбор →</router-link></section>
+   </div>
   </template>
   <template v-else-if="home">
    <h1 class="sr-only">Торренты · фильмы и сериалы TMDB</h1>
@@ -104,6 +123,7 @@ onBeforeUnmount(()=>{++generation;controller?.abort();clearTimeout(heroTimer)})
 .torrent-rail{max-width:var(--page-frame-max);margin:0 auto 40px;padding:0 var(--page-frame-gutter);box-sizing:border-box}.rail-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 24px}.rail-heading h2{display:flex;align-items:center;gap:12px;font-size:24px;line-height:32px;font-weight:600;margin:0}.rail-heading h2:before{content:'';height:24px;width:4px;background:var(--torrent-gold);border-radius:4px}.rail-heading>a{font-size:14px;line-height:20px;color:var(--torrent-gold);text-decoration:none;white-space:nowrap}.torrent-grid,.torrent-loading{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:24px 16px}.torrent-skeleton{aspect-ratio:2/3;border-radius:12px;background:#1f1f1f}.torrent-home>.torrent-loading{max-width:var(--page-frame-max);margin:32px auto;padding:0 var(--page-frame-gutter)}
 .torrent-tools{display:flex;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:24px}.torrent-filters{width:fit-content;max-width:100%}.torrent-filters>summary{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-height:44px;width:fit-content;padding:10px 12px;list-style:none;cursor:pointer;border:1px solid var(--ui-control);border-radius:10px;background:var(--ui-surface);font-size:14px;line-height:20px;font-weight:600;user-select:none}.torrent-filters>summary::-webkit-details-marker{display:none}.torrent-filters>summary:hover{border-color:var(--torrent-accent)}.torrent-filters[open] .filter-chevron{transform:rotate(180deg)}.filter-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:6px;background:#9ce8d7;color:#0a1714;font-size:12px}.filter-panel{box-sizing:border-box;width:400px;max-width:100%;margin-top:8px;padding:16px;border:1px solid var(--ui-control);border-radius:12px;background:var(--ui-surface)}.filter-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.filter-fields label{display:grid;gap:8px;min-width:0;font-size:14px;line-height:20px;color:var(--ui-secondary)}.select-wrap{position:relative;display:flex;align-items:center;min-width:0}.select-wrap>svg{position:absolute;right:12px;pointer-events:none}.torrent-filters select{appearance:none;box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px 36px 10px 12px;border:1px solid var(--ui-control);border-radius:8px;background:var(--ui-bg,#141414);font:inherit;font-size:14px;line-height:20px;color:var(--ui-text)}.torrent-filters select:disabled{opacity:.5;cursor:not-allowed}.filter-help{font-size:14px;line-height:20px;color:var(--ui-secondary);margin:12px 0 0}.filter-applied{font-size:14px;line-height:20px;color:var(--ui-secondary);padding:12px 0}.reset-filters,.torrent-pagination button,.torrent-state button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;min-height:44px;box-sizing:border-box;background:var(--ui-surface);color:inherit;border:1px solid var(--ui-control);border-radius:8px;text-decoration:none;font-size:14px;line-height:20px;cursor:pointer}.reset-filters{margin-top:12px;color:var(--torrent-accent)}.search-context{font-size:14px;line-height:20px;color:var(--ui-secondary);margin:0 0 24px}.search-context button{margin-left:8px;color:var(--ui-link);background:none;border:0;text-decoration:underline;cursor:pointer;min-height:44px}
 .results-heading{margin:24px 0}.results-heading h1,.torrent-detail h1,.torrent-state h1{font-size:30px;line-height:36px;font-weight:600;margin:0 0 12px;text-wrap:balance}.results-heading p,.pagination-note{font-size:14px;line-height:20px;color:#bbb}.torrent-pagination{display:flex;justify-content:center;align-items:center;gap:16px;margin-top:32px}.torrent-pagination button:disabled{opacity:.4;cursor:default}.pagination-note{text-align:center}.torrent-state{padding:48px 24px;text-align:center;border:1px solid var(--ui-border);border-radius:12px}.torrent-state p{font-size:16px;line-height:24px;color:#bbb}.torrent-home>.torrent-state{margin:32px var(--page-frame-gutter)}.tmdb-credit{max-width:var(--page-frame-max);box-sizing:border-box;margin:48px auto 0;padding-top:24px;color:#bbb;font-size:12px;line-height:16px}.torrent-home .tmdb-credit{padding:24px var(--page-frame-gutter) 0}.tmdb-credit img{vertical-align:middle;margin-right:12px;max-width:100px}.tmdb-credit p{margin:8px 0}.engine-note{max-width:680px}
+.torrent-playback-area{margin-top:32px}.torrent-playback-area>.playback-pending{margin-top:0}.playback-pending button{min-height:44px;padding:8px 12px;font:inherit;border-radius:8px;border:1px solid #f4cc4c;background:#f4cc4c;color:#131209;cursor:pointer}
 .back-link{display:inline-block;min-height:44px;margin:0 0 24px;text-decoration:none}.torrent-detail{display:grid;grid-template-columns:minmax(180px,280px) minmax(0,1fr);gap:32px}.torrent-detail>img{width:100%;height:auto;border-radius:12px}.torrent-detail h1{margin-top:16px}.torrent-detail p{font-size:16px;line-height:24px}.original-title{color:#bbb}.detail-genres{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.detail-genres a{border:1px solid var(--ui-border);padding:8px 12px;border-radius:8px;text-decoration:none;font-size:14px;line-height:20px}.overview{max-width:680px;text-wrap:pretty}.playback-pending{padding:24px;margin-top:32px;background:#181818;border:1px solid #527d73;border-radius:12px}.playback-pending h2{font-size:20px;line-height:28px;margin:0}.playback-pending p{color:#bbb}a:focus-visible,button:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #9ce8d7;outline-offset:4px}
 @media(max-width:1100px){.torrent-grid,.torrent-loading{grid-template-columns:repeat(4,minmax(0,1fr))}.rail-items>*:nth-child(n+5){display:none}.hero-copy h2{font-size:36px;line-height:40px}}
 @media(max-width:767px){.torrent-page{padding-top:16px}.torrent-home{padding-top:0}.torrent-hero{min-height:480px;align-items:flex-end}.torrent-hero>img{object-position:65% center}.hero-shade{background:linear-gradient(0deg,rgba(7,12,14,.98),rgba(7,12,14,.75) 45%,rgba(7,12,14,.04) 95%)}.hero-copy{padding-top:160px;padding-bottom:64px}.hero-copy h2{font-size:30px;line-height:36px;margin:12px 0 16px}.hero-copy p{font-size:14px;line-height:20px;-webkit-line-clamp:3;margin:16px 0 24px}.hero-schedule{bottom:24px;left:var(--page-frame-gutter);right:auto}.hero-meta{font-size:14px;gap:12px}.torrent-grid,.torrent-loading{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 16px}.rail-heading{margin-bottom:16px}.rail-heading h2{font-size:20px;line-height:28px}.rail-heading>a{font-size:12px}.torrent-detail{grid-template-columns:1fr;gap:24px}.torrent-detail>img{width:160px;height:240px;object-fit:cover}.results-heading h1,.torrent-detail h1{font-size:24px;line-height:32px}}

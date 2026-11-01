@@ -169,6 +169,9 @@ async function performRequest<T>(endpoint: string, options?: RequestInit, cacheT
 }
 
 export const apiClient = {
+  getTorrentPlaybackAccess(signal?: AbortSignal): Promise<{allowed:boolean;requirement:'pro';playback_available:false}> {
+    return request('/torrents/playback-access', {signal, cache:'no-store'})
+  },
   getTorrentMetadata<T>(path: string, signal?: AbortSignal): Promise<T> {
     return request<T>(`/torrents/${path}`, {signal}, 60_000)
   },

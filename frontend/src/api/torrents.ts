@@ -10,6 +10,7 @@ export type TorrentItem = {
 export type TorrentPage = { provider:'tmdb'; mode:'metadata_only'; items:TorrentItem[]; page:number; total:number; total_pages:number; refresh_at?:string; rotation?:string }
 export type TorrentFilters = { kind:TorrentKind; page?:number; genre?:string; year?:string; rating?:string; q?:string; collection?:'spotlight' }
 export const torrentsApi = {
+ access(signal?:AbortSignal) {return apiClient.getTorrentPlaybackAccess(signal)},
  list(filters:TorrentFilters, signal?:AbortSignal):Promise<TorrentPage> {
   const query=new URLSearchParams({kind:filters.kind,page:String(filters.page||1)})
   if(filters.genre)query.set('genre',filters.genre)
