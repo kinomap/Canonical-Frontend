@@ -3,12 +3,12 @@ import {mount,flushPromises} from '@vue/test-utils'
 import {createMemoryHistory,createRouter} from 'vue-router'
 import View from '@/views/TorrentCatalogView.vue'
 import {torrentsApi,torrentPath} from '@/api/torrents'
-vi.mock('@/api/torrents',async original=>({...await original<any>(),torrentsApi:{list:vi.fn(),genres:vi.fn(),detail:vi.fn()}}))
+vi.mock('@/api/torrents',async original=>({...await original<any>(),torrentsApi:{access:vi.fn(),list:vi.fn(),genres:vi.fn(),detail:vi.fn()}}))
 const entry={tmdb_id:1,kind:'movie',title:'Название фильма',year:2026,original_title:'Original',rating:8,overview:'Описание',poster:null,backdrop:null,playback_available:false} as const
 const response={provider:'tmdb',mode:'metadata_only',items:[entry],total:65,total_pages:4,page:1} as const
 const mounted:any[]=[]
 afterEach(()=>mounted.splice(0).forEach(w=>w.unmount()))
-beforeEach(()=>{vi.resetAllMocks();vi.mocked(torrentsApi.list).mockResolvedValue(response as any);vi.mocked(torrentsApi.genres).mockResolvedValue({items:[{id:18,name:'Драма'}]});vi.mocked(torrentsApi.detail).mockResolvedValue({...entry,genres:[{id:18,name:'Драма'}]})})
+beforeEach(()=>{vi.resetAllMocks();vi.mocked(torrentsApi.access).mockResolvedValue({allowed:true,requirement:'pro',playback_available:false});vi.mocked(torrentsApi.list).mockResolvedValue(response as any);vi.mocked(torrentsApi.genres).mockResolvedValue({items:[{id:18,name:'Драма'}]});vi.mocked(torrentsApi.detail).mockResolvedValue({...entry,genres:[{id:18,name:'Драма'}]})})
 async function at(path:string){const router=createRouter({history:createMemoryHistory(),routes:[{path:'/torrents',component:View},{path:'/torrents/:kind/:id',component:View},{path:'/',component:{template:'<p>Telegram</p>'}}]});await router.push(path);await router.isReady();const w=mount(View,{global:{plugins:[router]}});mounted.push(w);await flushPromises();return{w,router}}
 describe('isolated metadata catalogue',()=>{
  it('builds three TMDB rails and keeps every card in torrent namespace',async()=>{const{w}=await at('/torrents');expect(w.findAll('.torrent-rail')).toHaveLength(3);expect(torrentsApi.list).toHaveBeenCalledTimes(4);expect(w.text()).toContain('Воспроизведение ещё не подключено');expect(w.findAll('.torrent-card-link').every(a=>a.attributes('href')!.startsWith('/torrents/'))).toBe(true);expect(w.find('video').exists()).toBe(false)})
@@ -38,4 +38,18 @@ describe('torrent catalogue redesign',()=>{
 
 describe('reference hierarchy',()=>{
  it('uses portrait posters on home and in catalogue',async()=>{vi.mocked(torrentsApi.list).mockResolvedValue({...response,items:[{...entry,poster:'poster.jpg',backdrop:'backdrop.jpg'}]} as any);const{w,router}=await at('/torrents');expect(w.find('.torrent-card img').attributes('src')).toBe('poster.jpg');expect(w.find('.torrent-card .torrent-card-rating').text()).toContain('8');expect(w.find('.hero-copy a').text()).toContain('Смотреть');await router.push('/torrents?kind=movie');await flushPromises();expect(w.find('.torrent-card img').attributes('src')).toBe('poster.jpg');expect(w.find('.torrent-card-landscape').exists()).toBe(false)})
+})
+
+
+describe('torrent PRO message without changing public browsing',()=>{
+ it('shows the dedicated PRO message for a free user/guest, while keeping metadata and bookmarks',async()=>{
+  vi.mocked(torrentsApi.access).mockResolvedValue({allowed:false,requirement:'pro',playback_available:false});const{w}=await at('/torrents/movie/1');
+  expect(w.find('.torrent-detail h1').text()).toBe('Название фильма');expect(w.find('.subscription-player').exists()).toBe(true);
+  expect(w.text()).toContain('Фильмы из раздела «Торренты» доступны только с подпиской PRO');expect(w.text()).toContain('без рекламы');expect(w.text()).toContain('Доступные озвучки и качество зависят от конкретной раздачи');
+  expect(w.find('.subscription-primary').attributes('href')).toBe('/profile?tab=billing');expect(w.find('.subscription-secondary').attributes('href')).toBe('/torrents');expect(w.find('video').exists()).toBe(false)
+ });
+ it('does not query rights or block any catalogue section',async()=>{vi.mocked(torrentsApi.access).mockResolvedValue({allowed:false,requirement:'pro',playback_available:false});for(const path of ['/torrents','/torrents?kind=movie','/torrents?kind=tv','/torrents?kind=movie&genre=18']){const{w}=await at(path);expect(w.find('.subscription-player').exists()).toBe(false);expect(w.find('.torrent-grid').exists()).toBe(true)}expect(torrentsApi.access).not.toHaveBeenCalled()});
+ it('does not pretend that a PRO account means a playable source exists',async()=>{const{w}=await at('/torrents/movie/1');expect(w.find('.subscription-player').exists()).toBe(false);expect(w.text()).toContain('Доступ PRO подтверждён');expect(w.find('video').exists()).toBe(false)});
+ it('keeps metadata visible and offers retry after an access check failure',async()=>{vi.mocked(torrentsApi.access).mockRejectedValueOnce(new Error('503'));const{w}=await at('/torrents/movie/1');expect(w.find('.torrent-detail h1').exists()).toBe(true);expect(w.find('[role=alert]').text()).toContain('Не удалось проверить доступ');expect(w.find('.subscription-player').exists()).toBe(false);await w.find('[role=alert] button').trigger('click');await flushPromises();expect(w.text()).toContain('Доступ PRO подтверждён')});
+ it('ignores a late access check after navigating back to a catalogue',async()=>{let resolve:any;vi.mocked(torrentsApi.access).mockImplementationOnce(()=>new Promise(r=>resolve=r));const{w,router}=await at('/torrents/movie/1');await router.push('/torrents?kind=tv');await flushPromises();resolve({allowed:false});await flushPromises();expect(w.find('.subscription-player').exists()).toBe(false);expect(w.find('.torrent-grid').exists()).toBe(true)});
 })
