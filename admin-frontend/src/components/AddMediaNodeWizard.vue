@@ -17,6 +17,7 @@ let pollInterval: number | null = null
 
 // Step 1 — Target
 const nodeName = ref('')
+const nodeProfile = ref<'telegram'|'torrent'>('telegram')
 const region = ref('')
 const cacheL1 = ref(512)
 const cacheL2 = ref(10)
@@ -111,18 +112,28 @@ const canStartDeploy = computed(() => deploymentBlockers.value.length === 0 && !
 // Final trust gate: no node writes before successful identity verification.
 const canDeploy = computed(() => Boolean(identityVerified.value && deploymentBlockers.value.length === 0))
 
+let releaseGeneration = 0
+watch(nodeProfile, () => {
+  releaseGeneration += 1
+  releases.value = []
+  selectedVersion.value = ''
+  loadingReleases.value = false
+}, {flush:'sync'})
 async function loadReleases() {
+  const generation = ++releaseGeneration
+  const profile = nodeProfile.value
+  releases.value = []
+  selectedVersion.value = ''
   loadingReleases.value = true
   try {
     const resp = await axios.get('/api/v1/admin/media/node-releases', auth())
-    releases.value = resp.data
-    if (releases.value.length > 0) {
-      selectedVersion.value = releases.value[releases.value.length - 1].version
-    }
+    if (disposed || generation !== releaseGeneration || profile !== nodeProfile.value) return
+    releases.value = resp.data.filter((r: any) => (r.profiles || ["telegram"]).includes(profile))
+    if (releases.value.length > 0) selectedVersion.value = releases.value[releases.value.length - 1].version
   } catch {
-    addToast('Failed to load releases', 'error')
+    if (!disposed && generation === releaseGeneration) addToast('Failed to load releases', 'error')
   } finally {
-    loadingReleases.value = false
+    if (!disposed && generation === releaseGeneration) loadingReleases.value = false
   }
 }
 
@@ -154,6 +165,7 @@ async function startDeploy() {
       const canonicalHost = canonicalizeHost(host.value)
       const createResp = await axios.post('/api/v1/admin/media/nodes', {
         name: nodeName.value,
+        profile: nodeProfile.value,
         for_provisioning: true,
         cache_l1_max_mb: cacheL1.value,
         cache_l2_max_gb: cacheL2.value,
@@ -171,7 +183,7 @@ async function startDeploy() {
       if (err.response?.status === 409) {
         const nodes = await axios.get('/api/v1/admin/media/nodes', auth())
         const existing = nodes.data.find((n: any) =>
-          n.name === nodeName.value && n.hostname === canonicalizeHost(host.value)
+          n.name === nodeName.value && n.hostname === canonicalizeHost(host.value) && (n.profile || "telegram") === nodeProfile.value
         )
         if (existing) {
           nodeId = existing.id
@@ -238,6 +250,7 @@ async function pollDeployment(nodeId: string) {
 
 onUnmounted(() => {
   disposed = true
+  releaseGeneration += 1
   identityGeneration += 1
   if (pollInterval) clearInterval(pollInterval)
   sshPrivateKey.value = ''
@@ -309,10 +322,14 @@ function stageClass(stage: string): string {
 
       <!-- Step 1: Target -->
       <div v-if="step === 1" class="wizard-body">
-        <label>L1-кэш, МиБ<input v-model.number="cacheL1" type="number" min="0" max="65536" /></label>
-        <label>L2-кэш, ГиБ<input v-model.number="cacheL2" type="number" min="0" max="65536" /></label>
-        <MediaVpsGuide />
+        <label v-if="nodeProfile==='telegram'">L1-кэш, МиБ<input v-model.number="cacheL1" type="number" min="0" max="65536" /></label>
+        <label v-if="nodeProfile==='telegram'">L2-кэш, ГиБ<input v-model.number="cacheL2" type="number" min="0" max="65536" /></label>
+        <MediaVpsGuide v-if="nodeProfile==='telegram'" />
         <h3>Target VPS</h3>
+        <label>Назначение VPS
+          <select v-model="nodeProfile" aria-label="Назначение VPS"><option value="telegram">Telegram — действующий профиль</option><option value="torrent">Торренты — PRO и администратор</option></select>
+        </label>
+        <p v-if="nodeProfile==='torrent'" class="form-hint">Отдельный VPS: Media Nginx, torrent-worker, один TorrServer. Общий закрытый Jackett устанавливается отдельно и не копируется на каждую ноду. Telegram-сессии и доступ к БД не передаются. Индексаторы настраиваются отдельно; установка сервисов не означает готовность воспроизведения.</p>
         <label>Node Name
           <input v-model="nodeName" placeholder="media-02" />
         </label>
@@ -427,6 +444,7 @@ function stageClass(stage: string): string {
         <div class="success-icon">✓</div>
         <h3>{{ nodeName }}</h3>
         <p class="success-status">ACTIVE · HEALTHY</p>
+        <p v-if="nodeProfile==='torrent'">Сервисы установлены. Готовность воспроизведения проверяется отдельно: нужны индексаторы, источник и разрешённый поток.</p>
         <p class="success-wg">✓ Control Connection: WireGuard</p>
         <p>Node version: {{ deploymentStatus?.target_version }}</p>
         <p>Commit: {{ deploymentStatus?.target_commit?.slice(0, 12) }}</p>

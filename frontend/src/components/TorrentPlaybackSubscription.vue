@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
 defineProps<{poster?: string}>()
-const heading = ref<HTMLElement | null>(null)
-onMounted(() => heading.value?.focus({preventScroll: true}))
 </script>
 
 <template>
@@ -11,7 +8,7 @@ onMounted(() => heading.value?.focus({preventScroll: true}))
     <div class="subscription-shade"></div>
     <div class="subscription-message">
       <span class="subscription-badge">KINOSOTA <b>PRO</b></span>
-      <h2 id="torrent-subscription-player-title" ref="heading" tabindex="-1">Фильмы из раздела «Торренты» доступны только с подпиской PRO</h2>
+      <h2 id="torrent-subscription-player-title">Фильмы из раздела «Торренты» доступны только с подпиской PRO</h2>
       <p>Смотрите без рекламы, выбирайте озвучку и высокое качество. Доступные озвучки и качество зависят от конкретной раздачи.</p>
       <div class="subscription-actions">
         <router-link class="subscription-primary" to="/profile?tab=billing">Выбрать подписку <span aria-hidden="true">→</span></router-link>

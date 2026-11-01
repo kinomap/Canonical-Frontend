@@ -5,12 +5,14 @@ import axios from 'axios'
 import { addToast } from '../toast'
 import RemoveMediaNodeModal from '../components/RemoveMediaNodeModal.vue'
 import MediaVpsGuide from '../components/MediaVpsGuide.vue'
+import TorrentServices from '../components/TorrentServices.vue'
 
 const route = useRoute()
 const router = useRouter()
 const nodeId = route.params.id as string
 
 interface NodeDetail {
+  profile?: 'telegram'|'torrent'; torrent_services?: {observed_at:string; services:Record<string,{status:string;version:string|null;latency_ms:number|null}>}|null
   id: string; node_id: string; name: string; hostname: string | null
   public_url: string | null; media_endpoint: string; status: string
   health_status: string; enabled: boolean; capacity: number
@@ -148,7 +150,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
     <template v-else-if="node">
       <div class="nd-header">
         <div>
-          <h1 class="nd-title">{{ node.name }}</h1>
+          <h1 class="nd-title">{{ node.name }}</h1><p>{{ node.profile==='torrent'?'Торренты · PRO и администратор':'Telegram' }}</p>
           <div class="nd-subtitle">{{ node.node_id }} <span v-if="node.region" class="nd-region">{{ node.region }}</span></div>
         </div>
         <div class="nd-header-badges">
@@ -171,7 +173,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
       </section>
 
       <!-- ── Capacity ── -->
-      <section class="nd-section" v-if="telemetry">
+      <section class="nd-section" v-if="telemetry && node.profile!=='torrent'">
         <h2 class="nd-section-title">Capacity</h2>
         <section class="cache-settings">
           <h3>Настройки кэша ноды</h3>
@@ -208,6 +210,8 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         </div>
       </section>
 
+      <TorrentServices v-if="node.profile==='torrent'" :observation="node.torrent_services" />
+      <p v-if="node.profile==='torrent'" role="status">Ёмкость торрент-стриминга ещё не измерена. Telegram-сессии и расчёт их ёмкости к этой ноде не применяются.</p>
       <!-- ── Worker ── -->
       <section class="nd-section">
         <h2 class="nd-section-title">Worker</h2>
@@ -215,14 +219,14 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
           <div class="nd-info"><span class="nd-info-label">Health</span><span class="nd-badge" :class="statusClass(node.worker_health || 'UNKNOWN')">{{ node.worker_health || 'UNKNOWN' }}</span></div>
           <div class="nd-info"><span class="nd-info-label">Uptime</span><span class="nd-info-val">{{ formatUptime(node.uptime_seconds) }}</span></div>
           <div class="nd-info"><span class="nd-info-label">Active Streams</span><span class="nd-info-val">{{ node.active_streams }}</span></div>
-          <div class="nd-info" v-if="telemetry"><span class="nd-info-label">Errors/sec</span><span class="nd-info-val">{{ telemetry.errors_per_sec.toFixed(2) }}</span></div>
-          <div class="nd-info" v-if="telemetry"><span class="nd-info-label">Cache Hit Ratio</span><span class="nd-info-val">{{ (telemetry.cache_hit_ratio * 100).toFixed(0) }}%</span></div>
-          <div class="nd-info" v-if="telemetry"><span class="nd-info-label">TTFF p95</span><span class="nd-info-val">{{ telemetry.ttff_p95 !== null ? telemetry.ttff_p95.toFixed(0) + ' ms' : '—' }}</span></div>
+          <div class="nd-info" v-if="telemetry && node.profile!=='torrent'"><span class="nd-info-label">Errors/sec</span><span class="nd-info-val">{{ telemetry.errors_per_sec.toFixed(2) }}</span></div>
+          <div class="nd-info" v-if="telemetry && node.profile!=='torrent'"><span class="nd-info-label">Cache Hit Ratio</span><span class="nd-info-val">{{ (telemetry.cache_hit_ratio * 100).toFixed(0) }}%</span></div>
+          <div class="nd-info" v-if="telemetry && node.profile!=='torrent'"><span class="nd-info-label">TTFF p95</span><span class="nd-info-val">{{ telemetry.ttff_p95 !== null ? telemetry.ttff_p95.toFixed(0) + ' ms' : '—' }}</span></div>
         </div>
       </section>
 
       <!-- ── Session Capacity ── -->
-      <section class="nd-section" v-if="node">
+      <section class="nd-section" v-if="node.profile!=='torrent'">
         <h2 class="nd-section-title">Session Capacity</h2>
         <div class="nd-info-grid">
           <div class="nd-info">
@@ -258,7 +262,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
       </section>
 
       <!-- ── Sessions ── -->
-      <section class="nd-section">
+      <section class="nd-section" v-if="node.profile!=='torrent'">
         <h2 class="nd-section-title">Assigned Sessions ({{ sessions.length }})</h2>
         <div v-if="sessions.length === 0" class="nd-empty">No sessions assigned to this node.</div>
         <table v-else class="nd-table">
