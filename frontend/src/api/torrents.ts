@@ -8,12 +8,13 @@ export type TorrentItem = {
  playback_available:false; genres?:TmdbGenre[]; seasons?:number; episodes?:number; runtime?:number;
 }
 export type TorrentPage = { provider:'tmdb'; mode:'metadata_only'; items:TorrentItem[]; page:number; total:number; total_pages:number; refresh_at?:string; rotation?:string }
-export type TorrentFilters = { kind:TorrentKind; page?:number; genre?:string; year?:string; q?:string; collection?:'spotlight' }
+export type TorrentFilters = { kind:TorrentKind; page?:number; genre?:string; year?:string; rating?:string; q?:string; collection?:'spotlight' }
 export const torrentsApi = {
  list(filters:TorrentFilters, signal?:AbortSignal):Promise<TorrentPage> {
   const query=new URLSearchParams({kind:filters.kind,page:String(filters.page||1)})
   if(filters.genre)query.set('genre',filters.genre)
   if(filters.year)query.set('year',filters.year)
+  if(filters.rating)query.set('rating',filters.rating)
   if(filters.q?.trim())query.set('q',filters.q.trim().slice(0,120))
   if(filters.collection)query.set('collection',filters.collection)
   return apiClient.getTorrentMetadata<TorrentPage>('catalog?'+query,signal)
