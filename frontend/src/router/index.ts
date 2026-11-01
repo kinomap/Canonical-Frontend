@@ -18,6 +18,7 @@ const router = createRouter({
   scrollBehavior: createCatalogScrollBehavior(),
   routes: [
     {path:'/torrents', name:'torrent-catalog', component:()=>import('@/views/TorrentCatalogView.vue')},
+    {path:'/torrents/library',name:'torrent-library',component:()=>import('@/views/LibraryView.vue'),meta:{requiresAuth:true}},
     {path:'/torrents/:kind/:id', name:'torrent-detail', component:()=>import('@/views/TorrentCatalogView.vue')},
     {
       path: '/',
