@@ -38,6 +38,8 @@ const messages: Record<string, string> = {
   jackett_action_failed: 'Jackett не подтвердил операцию. Проверьте данные авторизации; форма будет обновлена. Подключение не считается успешным.',
 }
 function failure(e: any) { return messages[e?.response?.data?.code] || 'Не удалось связаться с Jackett. Обновите состояние и повторите проверку.' }
+function showConnected() { filter.value = 'configured'; query.value = ''; page.value = 1 }
+function changeFilter() { if (filter.value === 'configured') query.value = ''; page.value = 1 }
 function close() { editing.value = null; form.value = null; draft.value = {}; cleared.value = {}; confirming.value = null }
 function resetDraft() {
   draft.value = {}; cleared.value = {}
@@ -95,7 +97,7 @@ async function save() {
     await axios.post(`${path(row)}/config`, { revision: form.value.revision, changes }, auth())
     if (!alive) return
     notice.value = 'Jackett принял настройки. Проверьте подключение отдельно; это ещё не подтверждает готовность воспроизведения.'
-    close(); await loadIndexers()
+    showConnected(); close(); await loadIndexers()
   } catch (e) {
     if (!alive) return
     error.value = failure(e)
@@ -137,9 +139,10 @@ onBeforeUnmount(() => { alive = false; ++generation; close() })
     <template v-if="instances.length">
       <div class="jackett-toolbar">
         <label v-if="instances.length > 1">Поисковый сервис<select v-model="selected" :disabled="busy" @change="loadIndexers"><option v-for="item in instances" :key="item.id" :value="item.id">{{ item.name }}</option></select></label>
-        <label>Трекеры<select v-model="filter" :disabled="busy" @change="page = 1"><option value="configured">Подключённые ({{ connected }})</option><option value="all">Все доступные ({{ indexers.length }})</option></select></label>
+        <label>Трекеры<select v-model="filter" :disabled="busy" @change="changeFilter"><option value="configured">Подключённые ({{ connected }})</option><option value="all">Все доступные ({{ indexers.length }})</option></select></label>
         <label>Найти индексатор<input v-model="query" type="search" placeholder="Название или язык" :disabled="busy" @input="page = 1" /></label>
       </div>
+      <p v-if="observed" class="jackett-count" role="status">Подключено индексаторов: <strong>{{ connected }}</strong><span v-if="query.trim()"> · Найдено по фильтру: {{ matched.length }} <button type="button" :disabled="busy" @click="query = ''; page = 1">Сбросить поиск</button></span></p>
       <p v-if="observed" class="jackett-meta">Состояние Jackett: {{ observed }}. «Подключён» означает настройку в Jackett, а не готовность поиска или плеера.</p>
       <ul class="jackett-list" aria-label="Индексаторы">
         <li v-for="row in visible" :key="row.id">

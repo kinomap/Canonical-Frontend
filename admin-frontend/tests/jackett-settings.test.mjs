@@ -69,3 +69,19 @@ test('unmount clears credentials and rejects late form response', async () => {
  const { state, hooks } = setup(); const pending = state.open(row); hooks.unmount(); await pending
  assert.equal(state.editing.value, null); assert.deepEqual(Object.keys(state.draft.value), [])
 })
+
+test('connected count stays global and switching to connected clears stale search', async () => {
+ const { state, hooks } = setup(); await hooks.mount()
+ state.indexers.value = [row, { ...row, id: 'other', name: 'NoNaMe Club' }, { ...row, id: 'available', configured: false }]
+ state.filter.value = 'all'; state.query.value = 'Tracker'; state.page.value = 3
+ assert.equal(state.connected.value, 2); assert.equal(state.matched.value.length, 2)
+ state.filter.value = 'configured'; state.changeFilter()
+ assert.equal(state.query.value, ''); assert.equal(state.page.value, 1)
+ assert.equal(state.matched.value.length, 2); assert.equal(state.connected.value, 2)
+})
+test('successful save returns to complete connected list; failure preserves filter', async () => {
+ const { state, response } = setup(); state.filter.value = 'all'; state.query.value = 'tracker'; await state.open(row); await state.save()
+ assert.equal(state.filter.value, 'configured'); assert.equal(state.query.value, ''); assert.equal(state.page.value, 1)
+ state.filter.value = 'all'; state.query.value = 'tracker'; await state.open(row); response.error = {}; await state.save()
+ assert.equal(state.filter.value, 'all'); assert.equal(state.query.value, 'tracker')
+})
