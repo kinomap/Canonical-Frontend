@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-const props=defineProps<{observation?:{observed_at:string;services:Record<string,{status:string;version:string|null;latency_ms:number|null}>}|null}>()
+const props=defineProps<{observation?:{observed_at:string;services:Record<string,{status:string;version:string|null;latency_ms:number|null;saved_torrents?:number|null}>}|null}>()
 const now=ref(Date.now());let timer:ReturnType<typeof setInterval>|undefined
 onMounted(()=>{timer=setInterval(()=>{now.value=Date.now()},1000)})
 onUnmounted(()=>{if(timer)clearInterval(timer)})
@@ -17,6 +17,7 @@ const fresh=computed(()=>age.value!==null&&Number.isFinite(age.value)&&age.value
       <strong>{{ !fresh?'Не подтверждено':observation?.services[name]?.status==='healthy'?'Работает':'Недоступен' }}</strong>
       <span>Версия: {{ observation?.services[name]?.version||'не получена' }}</span>
       <span>Отклик: {{ observation?.services[name]?.latency_ms??'—' }} мс</span>
+      <span>Сохранено в TorrServer: {{ fresh ? (observation?.services[name]?.saved_torrents ?? 'нет данных') : 'нет актуальных данных' }}</span>
     </article></div>
     <p>TorrServer закрыт от браузера. Jackett — общий сервис поиска вне пакета ноды; его состояние здесь не измеряется. Работа TorrServer не подтверждает готовность фильма. Сетевой показатель worker не включает весь трафик TorrServer и пиров; ёмкость торрент-ноды ещё не измерена. Автообновление выключено; версия закреплена в релизе ноды.</p>
   </section>
