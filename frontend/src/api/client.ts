@@ -175,6 +175,9 @@ export const apiClient = {
   getTorrentMetadata<T>(path: string, signal?: AbortSignal): Promise<T> {
     return request<T>(`/torrents/${path}`, {signal}, 60_000)
   },
+  postTorrentAction<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+    return request<T>(`/torrents/${path}`, {method: 'POST', body: JSON.stringify(body), signal, cache: 'no-store'})
+  },
   async listMovies(filters: MovieFilters = {}, signal?: AbortSignal): Promise<PaginatedMovies> {
     const params = new URLSearchParams()
     if (filters.page) params.append('page', filters.page.toString())

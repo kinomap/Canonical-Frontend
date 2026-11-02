@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
-import { torrentsApi, torrentPath, type TorrentItem, type TorrentPage, type TorrentKind } from '@/api/torrents'
+import { torrentsApi, torrentPath, torrentPlaybackApi, type TorrentItem, type TorrentPage, type TorrentKind, type TorrentPlaybackStatus } from '@/api/torrents'
 import { SlidersHorizontal, RotateCcw, ChevronDown, ArrowRight, Play } from 'lucide-vue-next'
 import LibraryButton from '@/components/LibraryButton.vue'
 import TorrentCard from '@/components/TorrentCard.vue'
@@ -21,6 +21,7 @@ const loading=ref(true),error=ref(''),data=ref<TorrentPage|null>(null),detail=re
 const auth=useAuthStore()
 let accessGeneration=0
 const playbackAccess=ref<boolean|null>(null),accessError=ref(false)
+const torrentStatus=ref<TorrentPlaybackStatus|undefined>(undefined)
 async function loadAccess(version:number,signal:AbortSignal){
  const check=++accessGeneration
  playbackAccess.value=null;accessError.value=false
@@ -30,6 +31,13 @@ async function loadAccess(version:number,signal:AbortSignal){
 const rails=ref<{title:string;items:TorrentItem[];query:Record<string,string>}[]>([])
 const hero=ref<TorrentItem|null>(null)
 let heroTimer:ReturnType<typeof setTimeout>|undefined
+async function loadTorrentStatus(version:number,item:TorrentItem,signal:AbortSignal){
+ try{
+  const key=`${item.kind}:${item.tmdb_id}`
+  const result=await torrentPlaybackApi.preparationStatus([key],signal)
+  if(version===generation)torrentStatus.value=result.statuses[key]?.status
+ }catch{/* non-blocking */}
+}
 async function refreshHero(version:number,signal:AbortSignal){
  try{const result=await torrentsApi.list({kind:'movie',collection:'spotlight'},signal);if(version!==generation)return;hero.value=result.items[0]||null;
  const delay=Date.parse(result.refresh_at||'')-Date.now();if(Number.isFinite(delay))heroTimer=setTimeout(()=>refreshHero(version,signal),Math.max(1000,Math.min(delay,4*3600*1000)));
@@ -40,13 +48,13 @@ let generation=0,controller:AbortController|undefined
 async function load(){
  const version=++generation;controller?.abort();controller=new AbortController();const signal=controller.signal
  clearTimeout(heroTimer);hero.value=null
- loading.value=true;error.value='';data.value=null;detail.value=null;rails.value=[];playbackAccess.value=null;accessError.value=false
+ loading.value=true;error.value='';data.value=null;detail.value=null;rails.value=[];playbackAccess.value=null;accessError.value=false;torrentStatus.value=undefined
  try{
   if(route.params.id){
    const detailKind=String(route.params.kind)
    if(!['movie','tv'].includes(detailKind)||!/^\d+$/.test(String(route.params.id)))throw new Error('invalid')
    const result=await torrentsApi.detail(detailKind as TorrentKind,String(route.params.id),signal)
-   if(version===generation){detail.value=result;void loadAccess(version,signal)}
+   if(version===generation){detail.value=result;void loadAccess(version,signal);void loadTorrentStatus(version,result,signal)}
   }else if(home.value){
    const results=await Promise.all([torrentsApi.list({kind:'movie'},signal),torrentsApi.list({kind:'movie',year:String(NEW_RELEASE_YEAR)},signal),torrentsApi.list({kind:'tv'},signal)])
    if(version!==generation)return
@@ -95,7 +103,7 @@ onBeforeUnmount(()=>{++generation;controller?.abort();clearTimeout(heroTimer)})
     <img v-if="detail.poster" :src="detail.poster" :alt="`Постер «${detail.title}»`" width="342" height="513" />
     <div><span class="mode-label">{{detail.kind==='tv'?'СЕРИАЛ':'ФИЛЬМ'}} · TMDB</span><h1>{{detail.title}}</h1><LibraryButton :item="detail" /><p class="original-title">{{detail.original_title}}</p><p>{{detail.year}}<span v-if="detail.rating"> · ★ {{detail.rating.toFixed(1)}}</span><span v-if="detail.runtime"> · {{detail.runtime}} мин</span><span v-if="detail.seasons"> · Сезонов: {{detail.seasons}}</span><span v-if="detail.episodes"> · Эпизодов: {{detail.episodes}}</span></p><div class="detail-genres"><router-link v-for="g in detail.genres" :key="g.id" :to="{path:'/torrents',query:{kind:detail.kind,genre:String(g.id)}}">{{g.name}}</router-link></div><p class="overview">{{detail.overview||'Описание на русском языке пока недоступно.'}}</p></div>
    </section>
-   <TorrentPlayer :access="playbackAccess" :access-error="accessError" :poster="detail.backdrop||detail.poster||undefined" :kind="detail.kind" @retry="retryAccess" />
+   <TorrentPlayer :access="playbackAccess" :access-error="accessError" :poster="detail.backdrop||detail.poster||undefined" :kind="detail.kind" :tmdb-id="detail.tmdb_id" :torrent-status="torrentStatus" @retry="retryAccess" />
   </template>
   <template v-else-if="home">
    <h1 class="sr-only">Торренты · фильмы и сериалы TMDB</h1>

@@ -24,3 +24,15 @@ export const torrentsApi = {
  detail(kind:TorrentKind,id:string,signal?:AbortSignal):Promise<TorrentItem> {return apiClient.getTorrentMetadata(`detail/${kind}/${encodeURIComponent(id)}`,signal)},
 }
 export const torrentPath=(item:Pick<TorrentItem,'kind'|'tmdb_id'>)=>`/torrents/${item.kind}/${item.tmdb_id}`
+
+export type TorrentPlaybackStatus = 'playable' | 'partial' | 'loading' | 'searching' | 'queued' | 'retrying' | 'unavailable' | 'not_queued'
+export type PlaybackTicket = { stream_url: string; expires_at: string; title: string }
+
+export const torrentPlaybackApi = {
+  preparationStatus(keys: string[], signal?: AbortSignal): Promise<{statuses: Record<string, {status: TorrentPlaybackStatus; playable: boolean}>}> {
+    return apiClient.getTorrentMetadata('preparation-status?keys=' + keys.join(','), signal)
+  },
+  playbackTicket(kind: TorrentKind, tmdb_id: number, file_index = 0, signal?: AbortSignal): Promise<PlaybackTicket> {
+    return apiClient.postTorrentAction<PlaybackTicket>('playback-ticket', {kind, tmdb_id, file_index}, signal)
+  },
+}
