@@ -62,7 +62,7 @@ def main():
         libc=platform.libc_ver()[1]
         if not libc:raise RuntimeError('Cannot determine minimum glibc version')
         from linux_metadata import write_metadata
-        write_metadata(stage,'0.1.5',arch,libc)
+        write_metadata(stage,'0.1.6',arch,libc)
         wrapper=stage/'usr/bin/kinosota-player';wrapper.write_text('#!/bin/sh\nexec /opt/kinosota-player/kinosota-player "$@"\n');wrapper.chmod(0o755)
         from PySide6.QtGui import QImage
         from PySide6.QtCore import Qt
@@ -81,7 +81,9 @@ def main():
         import plistlib
         info=app/'Contents/Info.plist'
         with info.open('rb') as stream: data=plistlib.load(stream)
-        data.update({'CFBundleName':'KINOSOTA Player','CFBundleDisplayName':'KINOSOTA Player','CFBundleShortVersionString':'0.1.5','CFBundleVersion':'0.1.5','NSHumanReadableCopyright':'KINOSOTA. Third-party notices included in the application.'})
+        data.update({'CFBundleName':'KINOSOTA Player','CFBundleDisplayName':'KINOSOTA Player','CFBundleShortVersionString':'0.1.6','CFBundleVersion':'0.1.6','NSHumanReadableCopyright':'KINOSOTA. Third-party notices included in the application.',
+            # kinosota://watch?launch=<uuid> from the website «▶ Смотреть» button.
+            'CFBundleURLTypes':[{'CFBundleURLName':'com.kinosota.player.watch','CFBundleURLSchemes':['kinosota']}]})
         with info.open('wb') as stream: plistlib.dump(data,stream)
         dmg_stage=ROOT/'build/dmg';shutil.rmtree(dmg_stage,ignore_errors=True);dmg_stage.mkdir(parents=True)
         shutil.copytree(app,dmg_stage/app.name,symlinks=True)

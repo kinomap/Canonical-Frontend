@@ -4,24 +4,28 @@ import { useRoute, useRouter } from 'vue-router'
 import { Bookmark, ArrowLeft, ArrowRight } from 'lucide-vue-next'
 import { libraryApi } from '@/api/library'
 import type { LibraryPage } from '@/api/library'
-import { preparationApi } from '@/api/preparation'
+import { preparationApi, IN_PROGRESS } from '@/api/preparation'
 import type { PrepStatusMap } from '@/api/preparation'
+import { torrentsApi } from '@/api/torrents'
 import TorrentCard from '@/components/TorrentCard.vue'
 import { useLibrary } from '@/stores/library'
 const route=useRoute(),router=useRouter(),library=useLibrary()
 const data=ref<LibraryPage|null>(null),loading=ref(false),error=ref('')
 const prepStatuses=ref<PrepStatusMap>({})
+// Progress is a PRO/Admin feature: other accounts would only ever see 'unavailable'.
+let torrentAccess:Promise<boolean>|null=null
+const canPrepare=()=>torrentAccess??=torrentsApi.access().then(r=>r.allowed).catch(()=>{torrentAccess=null;return false})
 const page=computed(()=>Math.min(10000,Math.max(1,parseInt(String(route.query.page||1),10)||1)))
 let generation=0
 async function load(){const version=++generation;loading.value=true;error.value='';try{const result=await libraryApi.list(page.value);if(version!==generation)return;if(page.value>result.total_pages){await router.replace({query:{page:result.total_pages>1?result.total_pages:undefined}});return}data.value=result;await refreshStatuses(result)}catch{if(version===generation)error.value='Не удалось загрузить кинотеку. Попробуйте ещё раз.'}finally{if(version===generation)loading.value=false}}
-async function refreshStatuses(page?:LibraryPage){const items=page?page.items:(data.value?.items??[]);if(!items.length)return;const keys=items.map(i=>`${i.kind}:${i.tmdb_id}`);try{const r=await preparationApi.status(keys);prepStatuses.value={...prepStatuses.value,...r.statuses}}catch{}}
+async function refreshStatuses(page?:LibraryPage){const items=page?page.items:(data.value?.items??[]);if(!items.length||!await canPrepare())return;const keys=items.map(i=>`${i.kind}:${i.tmdb_id}`);try{const r=await preparationApi.status(keys);prepStatuses.value={...prepStatuses.value,...r.statuses}}catch{}}
 watch([page,library.revision],load,{immediate:true})
 function go(n:number){router.push({query:n>1?{page:n}:{}})}
-// Poll preparation status every 5 seconds while in-progress items exist
+// Poll preparation status every 4 seconds while in-progress items exist
 let pollTimer:ReturnType<typeof setInterval>|null=null
-function startPoll(){if(pollTimer)return;pollTimer=setInterval(()=>{const inProgress=Object.values(prepStatuses.value).some(s=>['queued','searching','loading','retrying'].includes(s.status));if(inProgress)refreshStatuses();else stopPoll()},5000)}
+function startPoll(){if(pollTimer)return;pollTimer=setInterval(()=>{const inProgress=Object.values(prepStatuses.value).some(s=>IN_PROGRESS.includes(s.status));if(inProgress)refreshStatuses();else stopPoll()},4000)}
 function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null}}
-watch(prepStatuses,()=>{const inProgress=Object.values(prepStatuses.value).some(s=>['queued','searching','loading','retrying'].includes(s.status));if(inProgress)startPoll();else stopPoll()},{deep:true})
+watch(prepStatuses,()=>{const inProgress=Object.values(prepStatuses.value).some(s=>IN_PROGRESS.includes(s.status));if(inProgress)startPoll();else stopPoll()},{deep:true})
 onUnmounted(stopPoll)
 </script>
 <template><main class="library-page"><div class="library-heading"><div><p class="eyebrow">ВАША КОЛЛЕКЦИЯ</p><h1>Кинотека</h1><p>Фильмы и сериалы, которые вы сохранили. Последние добавленные — первыми.</p></div><router-link to="/torrents">Вернуться в каталог →</router-link></div><p v-if="loading" role="status">Загружаем кинотеку…</p><section v-else-if="error" class="library-empty" role="alert"><p>{{error}}</p><button @click="load">Повторить</button></section><template v-else-if="data"><p class="library-count">Сохранено: {{data.total}}</p><div v-if="data.items.length" class="library-grid"><TorrentCard v-for="item in data.items" :key="`${item.kind}:${item.tmdb_id}`" :item="item" :prep-status="prepStatuses[`${item.kind}:${item.tmdb_id}`]" /></div><section v-else class="library-empty"><Bookmark :size="32" aria-hidden="true" /><h2>Здесь будет ваша кинотека</h2><p>Нажмите на флажок у фильма или сериала, чтобы сохранить его.</p><router-link to="/torrents">Выбрать фильм →</router-link></section><nav v-if="data.total_pages>1" class="library-pagination" aria-label="Страницы кинотеки"><button :disabled="page<=1" aria-label="Предыдущая страница" @click="go(page-1)"><ArrowLeft :size="18" /></button><span>{{page}} / {{data.total_pages}}</span><button :disabled="page>=data.total_pages" aria-label="Следующая страница" @click="go(page+1)"><ArrowRight :size="18" /></button></nav></template></main></template>

@@ -51,3 +51,18 @@ QPushButton#settingsNav:focus{border-color:#ffe28b;}
 QPushButton#danger{color:#ffb0ab;border-color:#a64640;background:#25181b;} QPushButton#danger:hover{background:#432124;}
 QScrollArea{border:0;background:transparent;}
 """
+
+# Torrents section: header tabs, quality / voice pills, white «▶ Смотреть» button.
+PREMIUM_STYLE += """
+QPushButton#nav{padding:8px 14px;border:1px solid transparent;background:transparent;min-height:20px;border-radius:8px;}
+QPushButton#nav:hover{border-color:#5e542c;} QPushButton#nav:checked{background:#332e1a;border-color:#a88a24;color:#ffe28b;}
+QPushButton#pill{padding:6px 14px;border:1px solid #4a535c;border-radius:16px;background:transparent;min-height:20px;font-weight:600;}
+QPushButton#pill:hover{border-color:#ffd400;} QPushButton#pill:checked{background:#ffd400;color:#11120e;border-color:#ffe04a;}
+QPushButton#pill:disabled{color:#5f6870;border-color:#262e35;background:transparent;}
+QPushButton#watch{background:#ffffff;color:#0b0f12;font-size:16px;font-weight:800;border:1px solid #ffffff;border-radius:10px;padding:12px 28px;}
+QPushButton#watch:hover{background:#eceff1;} QPushButton#watch:disabled{color:#8a929b;background:#1b2228;border-color:#323c44;}
+QLabel#torrentTitle{font-size:26px;font-weight:800;} QLabel#caption{color:#9ce8d7;font-size:12px;font-weight:600;letter-spacing:1px;}
+QLabel#selected{font-size:15px;font-weight:600;} QLabel#progress{font-size:14px;}
+QComboBox{background:#0b1217;border:1px solid #3c464e;border-radius:10px;padding:8px 12px;min-height:22px;}
+QComboBox:focus{border:2px solid #ffd400;} QComboBox QAbstractItemView{background:#0b1217;border:1px solid #3c464e;selection-background-color:#ffd400;selection-color:#101010;}
+"""

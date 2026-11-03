@@ -1,27 +1,38 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+/**
+ * In-page player area: the PRO paywall for free users, access-check states and,
+ * once a source is ready, an optional in-browser fallback. The primary
+ * «▶ Смотреть» (KINOSOTA Player) lives in the detail info block.
+ */
+import { computed, ref, watch } from 'vue'
 import TorrentPlaybackSubscription from './TorrentPlaybackSubscription.vue'
-import { torrentPlaybackApi, type TorrentPlaybackStatus } from '@/api/torrents'
-const props = defineProps<{
+import { torrentPlaybackApi, type StreamChoice, type TorrentPlaybackStatus } from '@/api/torrents'
+const props = withDefaults(defineProps<{
   access: boolean | null
   accessError: boolean
   poster?: string
   kind: 'movie' | 'tv'
   tmdbId?: number
   torrentStatus?: TorrentPlaybackStatus
-}>()
+  /** Selected source is prepared (wins over torrentStatus when given). */
+  ready?: boolean
+  choice?: StreamChoice
+}>(), { poster: undefined, tmdbId: undefined, torrentStatus: undefined, ready: undefined, choice: undefined })
 defineEmits<{retry: []}>()
 
 const streamUrl = ref<string | null>(null)
 const streamError = ref('')
 const streamLoading = ref(false)
+const root = ref<HTMLElement | null>(null)
+const isPlayable = computed(() => props.ready !== undefined ? props.ready : props.torrentStatus === 'playable' || props.torrentStatus === 'partial')
+const visible = computed(() => props.access !== true || props.accessError || isPlayable.value)
 
 async function startPlayback() {
-  if (!props.tmdbId) return
+  if (!props.tmdbId || !isPlayable.value || streamLoading.value) return
   streamError.value = ''
   streamLoading.value = true
   try {
-    const ticket = await torrentPlaybackApi.playbackTicket(props.kind, props.tmdbId)
+    const ticket = await torrentPlaybackApi.playbackTicket(props.kind, props.tmdbId, props.choice ?? {})
     streamUrl.value = ticket.stream_url
   } catch {
     streamError.value = 'Не удалось получить ссылку для воспроизведения. Повторите попытку.'
@@ -35,17 +46,27 @@ function stopPlayback() {
   streamError.value = ''
 }
 
-const isPlayable = () =>
-  props.torrentStatus === 'playable' || props.torrentStatus === 'partial'
+/** Called from the «player is not installed» dialog. */
+async function playInBrowser() {
+  root.value?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+  await startPlayback()
+}
+// Another quality / voice / episode: never keep playing the previous stream.
+watch(() => JSON.stringify(props.choice ?? {}), stopPlayback)
+watch(isPlayable, (ready) => { if (!ready) stopPlayback() })
+defineExpose({ startPlayback, playInBrowser })
 </script>
 <template>
-  <section class="torrent-player" data-testid="torrent-player" aria-label="Плеер фильма">
+  <section v-if="visible" ref="root" class="torrent-player" data-testid="torrent-player" aria-label="Плеер фильма">
     <TorrentPlaybackSubscription v-if="access===false&&!accessError" :poster="poster" />
-    <template v-else-if="access===true && isPlayable()">
+    <div v-else-if="accessError" class="torrent-player-state" role="alert"><h2>Не удалось проверить доступ к просмотру</h2><p>Каталог и описание доступны. Повторите проверку перед воспроизведением.</p><button type="button" @click="$emit('retry')">Повторить проверку</button></div>
+    <div v-else-if="access===null" class="torrent-player-state is-compact" role="status"><p>Проверяем доступ к просмотру…</p></div>
+    <template v-else>
       <div v-if="streamUrl" class="torrent-video-wrap">
         <video
           :src="streamUrl"
           controls
+          autoplay
           preload="metadata"
           class="torrent-video"
           aria-label="Видеоплеер"
@@ -53,23 +74,18 @@ const isPlayable = () =>
         />
         <button type="button" class="stop-btn" @click="stopPlayback">✕ Закрыть плеер</button>
       </div>
-      <div v-else class="torrent-player-state">
-        <p v-if="torrentStatus==='partial'" class="status-hint">Раздача загружается — воспроизведение может начаться не сразу.</p>
-        <p v-if="streamError" role="alert" class="stream-error">{{ streamError }}</p>
-        <button type="button" :disabled="streamLoading" @click="startPlayback">
-          {{ streamLoading ? 'Подготовка…' : '▶ Смотреть' }}
-        </button>
+      <div v-else class="torrent-player-state torrent-player-ready">
+        <img v-if="poster" :src="poster" alt="" class="player-backdrop" loading="lazy" />
+        <div class="player-ready-copy">
+          <p v-if="torrentStatus==='partial'" class="status-hint">Доступны не все серии — остальные появятся позже.</p>
+          <p v-if="streamError" role="alert" class="stream-error">{{ streamError }}</p>
+          <button type="button" class="browser-play" :disabled="streamLoading" @click="startPlayback">
+            {{ streamLoading ? 'Подготовка…' : '▶ Смотреть в браузере' }}
+          </button>
+          <p class="player-note">Максимальное качество и все аудиодорожки — в приложении KINOSOTA Player.</p>
+        </div>
       </div>
     </template>
-    <div v-else class="torrent-player-state" :role="accessError?'alert':'status'">
-      <template v-if="accessError"><h2>Не удалось проверить доступ к просмотру</h2><p>Каталог и описание доступны. Повторите проверку перед воспроизведением.</p><button type="button" @click="$emit('retry')">Повторить проверку</button></template>
-      <template v-else-if="access===null"><p>Проверяем доступ к просмотру…</p></template>
-      <template v-else-if="access===true && torrentStatus && torrentStatus !== 'not_queued'">
-        <h2>{{ torrentStatus === 'loading' ? 'Загружаем раздачу…' : torrentStatus === 'searching' ? 'Ищем источник…' : 'Подготавливаем…' }}</h2>
-        <p>Воспроизведение появится автоматически. Обычно это занимает 1–3 минуты.</p>
-      </template>
-      <template v-else><h2>Торрент воспроизведение ещё не подключено</h2><p>Доступ PRO подтверждён. Раздачи и воспроизведение появятся после подключения торрент сервиса. Карточка не гарантирует наличие источника.</p><router-link :to="`/torrents?kind=${kind}`">Продолжить выбор →</router-link></template>
-    </div>
   </section>
 </template>
 <style scoped>
@@ -85,4 +101,12 @@ const isPlayable = () =>
 .status-hint{font-size:14px;color:#9ce8d7;margin:0 0 8px}
 .stream-error{color:#ff6b6b;font-size:14px;margin:0 0 8px}
 @media(max-width:600px){.torrent-player-state{aspect-ratio:auto;min-height:400px;padding:24px 16px}}
+.torrent-player-state.is-compact{aspect-ratio:auto;min-height:96px;padding:24px}
+.torrent-player-ready{position:relative;overflow:hidden;isolation:isolate}
+.player-backdrop{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:.45}
+.torrent-player-ready:before{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse at center,rgba(9,11,14,.35),rgba(9,11,14,.9))}
+.player-ready-copy{display:flex;flex-direction:column;align-items:center;gap:12px}
+.torrent-player-state .browser-play{background:rgba(9,11,14,.6);color:#fff;border:1px solid rgba(255,255,255,.55);min-height:48px;padding:10px 22px;font-weight:600}
+.torrent-player-state .browser-play:hover:not(:disabled){border-color:#fff;background:rgba(9,11,14,.8)}
+.player-note{font-size:14px!important;line-height:20px!important;color:#cfd8dc!important}
 </style>

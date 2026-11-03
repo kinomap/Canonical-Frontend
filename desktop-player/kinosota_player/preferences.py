@@ -53,6 +53,34 @@ TEXT = {
 
 TEXT.update({'ВАШ КИНОТЕАТР': 'YOUR CINEMA', 'Мой аккаунт': 'My account', 'О приложении': 'About', 'Помощь': 'Help', 'Персонализируйте приложение под себя.': 'Make the player your own.', 'Интерфейс': 'Interface', 'Язык управления приложением.': 'Choose the app interface language.', 'На каком языке показывать названия.': 'Choose how movie titles are displayed.', 'Язык названий': 'Title language', 'Аккаунт': 'Account', 'Информация о текущем аккаунте.': 'Your current account information.', 'Обновить данные аккаунта': 'Refresh account details', 'Управлять подпиской на сайте': 'Manage subscription on website', 'Выйти из аккаунта': 'Sign out', 'Приложение': 'Application', 'Версия и системная информация.': 'Version and system information.', 'Проверить доступные версии': 'Check available versions', 'Удалить приложение…': 'Uninstall application…', 'Удаление потребует подтверждения ОС. Данные аккаунта на сайте останутся.': 'Removal requires OS confirmation. Your website account is preserved.', 'Установка и безопасность.': 'Installation and security.', 'Windows: запуск после установки включён в мастере. macOS: перенесите приложение в Applications и откройте его. Linux: откройте пакет в менеджере приложений, затем нажмите «Открыть» или запустите KINOSOTA из меню.': 'Windows: launch after setup is enabled in the wizard. macOS: drag the app to Applications, then open it. Linux: open the package in your software manager, then choose Open or launch KINOSOTA from the app menu.', 'Не отключайте защиту ОС. Подпись Windows и notarization macOS пока не подтверждены.': 'Do not disable OS security. Windows signing and macOS notarization are not yet verified.', 'Открыть руководство на сайте': 'Open installation guide', 'Копировать': 'Copy', 'Гость': 'Guest', 'Удалить приложение': 'Uninstall application', 'Удалить KINOSOTA Player с этого компьютера? ОС запросит подтверждение. Другие приложения и аккаунт на сайте не будут удалены.': 'Remove KINOSOTA Player from this computer? The OS will ask for confirmation. Other apps and your website account will not be removed.', 'Подтвердите удаление в системном окне.': 'Confirm removal in the system dialog.', 'Закрыть': 'Close', 'Удаление отменено или недоступно. Приложение не удалено. Закройте окно и повторите через менеджер пакетов.': 'Removal was cancelled or unavailable. The app was not removed. Close this dialog and try your package manager.', 'macOS: закройте плеер и переместите KINOSOTA Player из Applications в Корзину.': 'macOS: close the player and move KINOSOTA Player from Applications to the Trash.', 'Удаление доступно для установленного пакета. Откройте системный менеджер приложений.': 'Uninstall is available for the installed package. Open your system software manager.'})
 
+# 0.1.6: «Торренты» section and website «▶ Смотреть» launches.
+TEXT.update({
+ 'Каталог':'Catalogue','Торренты':'Torrents','Кинотека':'Library','Фильмы':'Movies','Сериалы':'Series',
+ 'Поиск фильмов и сериалов — название…':'Search movies and series by title…','← К списку':'← Back to list',
+ 'КАЧЕСТВО':'QUALITY','ЯЗЫК':'LANGUAGE','Русская озвучка':'Russian audio','Украинская озвучка':'Ukrainian audio',
+ 'Английская дорожка':'English audio','Сериал':'Series','Фильм':'Movie','Выбрано':'Selected','сид':'seeds',
+ 'Подождите…':'Please wait…','Загружаем…':'Loading…','Повторить':'Retry','Нужна подписка PRO':'PRO subscription required',
+ '▶  Смотреть':'▶  Watch','Серия не найдена':'Episode not found','Подготовить раздачу':'Prepare release',
+ 'Готовим раздачу…':'Preparing release…','Найти раздачи':'Find releases','Добавить в кинотеку':'Add to library',
+ 'Сезон':'Season','Серия':'Episode','Спецвыпуски':'Specials','Загружаем кинотеку…':'Loading your library…',
+ 'В кинотеке пока пусто. Найдите фильм или сериал и добавьте его.':'Your library is empty. Find a movie or series and add it.',
+ 'Раздача поставлена в очередь на проверку':'The release is queued for checking',
+ 'Повторный поиск станет доступен чуть позже':'Another search will be available a little later',
+ 'Добавьте запись в кинотеку, чтобы начать поиск':'Add the title to your library to start the search',
+ 'Ищем раздачи…':'Searching releases…','Добавлено в кинотеку — ищем раздачи':'Added to your library — searching releases',
+ 'Не удалось выполнить действие. Повторите попытку.':'Could not complete the action. Please try again.',
+ 'Ссылка из браузера не распознана. Нажмите «Смотреть» на сайте ещё раз.':'The browser link was not recognised. Press “Watch” on the website again.',
+ 'Войдите в аккаунт — фильм с сайта откроется сразу после входа.':'Sign in — the title from the website opens right after.',
+ 'Открываем фильм с сайта…':'Opening the title from the website…',
+ 'Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.':'Could not open the title from the website. Press “Watch” again.',
+ 'Этот запуск создан другим аккаунтом. Войдите в приложение тем же аккаунтом, что и на сайте.':'This launch belongs to another account. Sign in to the app with the same account as on the website.',
+ 'Ссылка устарела. Нажмите «Смотреть» на сайте ещё раз.':'The link has expired. Press “Watch” on the website again.',
+ 'Для просмотра торрентов нужна подписка PRO.':'A PRO subscription is required for torrents.',
+ 'Раздача ещё готовится. Попробуйте через минуту.':'The release is still being prepared. Try again in a minute.',
+ 'Такой серии нет в выбранной раздаче.':'This episode is not in the selected release.',
+ 'Медиасервер временно недоступен. Попробуйте открыть фильм чуть позже.':'Media server unavailable. Try this title a little later.',
+})
+
 def translate(text, language):
     if language != 'en': return text
     if text in TEXT: return TEXT[text]

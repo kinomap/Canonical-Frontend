@@ -35,6 +35,10 @@ test -f /usr/share/metainfo/com.kinosota.Player.metainfo.xml
 grep -q 'desktop-id' /usr/share/metainfo/com.kinosota.Player.metainfo.xml
 grep -q 'Actions=Uninstall' /usr/share/applications/kinosota-player.desktop
 grep -q 'Exec=kinosota-player --uninstall' /usr/share/applications/kinosota-player.desktop
+# Website «▶ Смотреть» opens kinosota://watch?launch=<uuid> through the desktop entry.
+grep -q '^Exec=kinosota-player %u$' /usr/share/applications/kinosota-player.desktop
+grep -q '^MimeType=x-scheme-handler/kinosota;$' /usr/share/applications/kinosota-player.desktop
+if [ -f /usr/share/applications/mimeinfo.cache ]; then grep -q 'x-scheme-handler/kinosota=kinosota-player.desktop' /usr/share/applications/mimeinfo.cache; fi
 # Match the GUI's fixed dpkg remove path; never open interactive authorization in CI.
 dpkg --remove kinosota-player
 DEBIAN_FRONTEND=noninteractive apt-get purge -y kinosota-player

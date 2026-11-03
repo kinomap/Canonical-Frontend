@@ -13,6 +13,8 @@ from .engine import Mpv
 from .catalog import PosterGrid
 from .preferences import Preferences,translate,movie_title
 from .settings import SettingsDrawer
+from .torrents import TorrentPage, audio_args, media_title_args
+from .deeplink import parse_launch
 ASSET=Path(__file__).parent/'assets'/'drone.png'
 STYLE=PREMIUM_STYLE
 
@@ -44,14 +46,15 @@ class Window(QMainWindow):
         self.preferences=preferences or Preferences();self.language=self.preferences.get("interface_language");self.title_language=self.preferences.get("title_language");self.bound=[];self.account={}
         self.pool=QThreadPool(self);self.pool.setMaxThreadCount(3);self.jobs=set();self.session='';self.playing_movie='';self.closed=False;self.epoch=0;self.play_generation=0;self.search_generation=0;self.search_running=False;self.search_queued=False;self.pending_stops=[]
         self.page=1;self.query='';self.total_pages=1;self.pair=None;self.pair_until=0;self.pending_poll=False;self.pending_beat=False;self.busy=False
+        self.torrent_playing=False;self.pending_launch=''
         self.setWindowTitle('KINOSOTA Player');self.setWindowIcon(QIcon(str(ASSET)));self.resize(1240,840);self.setMinimumSize(760,600)
         root=CinemaBackdrop();self.backdrop=root;layout=QVBoxLayout(root);layout.setContentsMargins(24,16,24,12);layout.setSpacing(10);self.root_layout=layout
-        head=QHBoxLayout();icon=label('');icon.setPixmap(QPixmap(str(ASSET)).scaled(40,40,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));head.addWidget(icon);head.addWidget(self.brand_label());head.addStretch();head.addWidget(label('DESKTOP · PRO','hint'));self.settings_button=button('',self.open_settings);head.addWidget(self.settings_button);layout.addLayout(head)
+        head=QHBoxLayout();icon=label('');icon.setPixmap(QPixmap(str(ASSET)).scaled(40,40,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));head.addWidget(icon);head.addWidget(self.brand_label());head.addSpacing(18);self.nav_catalog=self.nav_button(self.show_catalog);self.nav_torrents=self.nav_button(self.show_torrents);head.addWidget(self.nav_catalog);head.addWidget(self.nav_torrents);head.addStretch();head.addWidget(label('DESKTOP · PRO','hint'));self.settings_button=button('',self.open_settings);head.addWidget(self.settings_button);layout.addLayout(head)
         self.pages=QStackedWidget();layout.addWidget(self.pages,1)
-        self.make_login();self.make_catalog();self.message=StatusLabel(self);layout.addWidget(self.message)
+        self.make_login();self.make_catalog();self.message=StatusLabel(self);layout.addWidget(self.message);self.make_torrents()
         self.setCentralWidget(root);self.setStyleSheet(PREMIUM_STYLE)
         self.drawer=SettingsDrawer(root,self.preferences);self.drawer.languageChanged.connect(self.set_language);self.drawer.titlesChanged.connect(self.set_title_language);self.drawer.refreshRequested.connect(self.refresh_account);self.drawer.signOutRequested.connect(self.logout)
-        self.retranslate();self.pages.currentChanged.connect(lambda _:self.adapt_layout())
+        self.retranslate();self.pages.currentChanged.connect(self.page_changed);self.page_changed(self.pages.currentIndex())
         self.pair_timer=QTimer(self);self.pair_timer.setInterval(5000);self.pair_timer.timeout.connect(self.poll_pair)
         self.lease_timer=QTimer(self);self.lease_timer.timeout.connect(self.beat)
         self.process_timer=QTimer(self);self.process_timer.setInterval(1000);self.process_timer.timeout.connect(self.check_process);self.process_timer.start()
@@ -71,6 +74,22 @@ class Window(QMainWindow):
             self.jobs.discard(job)
             if not self.closed and epoch==self.epoch:(fail or self.show_error)(error)
         job.signals.done.connect(finish);job.signals.failed.connect(failure);self.pool.start(job)
+    def nav_button(self,fn):
+        b=QPushButton();b.setObjectName('nav');b.setCheckable(True);b.setCursor(Qt.CursorShape.PointingHandCursor);b.clicked.connect(fn);return b
+    def make_torrents(self):
+        self.torrents=TorrentPage(self.api,self.work,self.show_error,lambda text:self.message.setText(text),self.language,self.title_language)
+        self.torrents.playRequested.connect(self.play_torrent);self.pages.addWidget(self.torrents)
+    def page_changed(self,index):
+        signed=index!=0
+        for button,page in ((self.nav_catalog,1),(self.nav_torrents,2)):button.setVisible(signed);button.setChecked(index==page)
+        self.adapt_layout()
+    def show_catalog(self):
+        if self.pages.currentIndex()!=0:self.pages.setCurrentIndex(1)
+        self.nav_catalog.setChecked(self.pages.currentIndex()==1)
+    def show_torrents(self):
+        if self.pages.currentIndex()==0:self.nav_torrents.setChecked(False);return
+        self.pages.setCurrentIndex(2);self.nav_torrents.setChecked(True)
+        if not self.torrents.loaded:self.torrents.load()
     def text(self,text,name='',wrap=False):
         x=label(translate(text,self.language),name,wrap);self.bound.append((x,text));return x
     def make_login(self):
@@ -96,9 +115,9 @@ class Window(QMainWindow):
         self.pages.addWidget(page)
     def retranslate(self):
         for widget,text in self.bound:widget.setText(translate(text,self.language))
-        for widget,text in [(self.settings_button,'Настройки'),(self.login_button,'Войти'),(self.browser_button,'Войти через аккаунт в браузере  →'),(self.remember,'Запомнить вход в защищённом хранилище ОС'),(self.prev,'← Назад'),(self.next,'Далее →')]:widget.setText(translate(text,self.language))
+        for widget,text in [(self.settings_button,'Настройки'),(self.login_button,'Войти'),(self.browser_button,'Войти через аккаунт в браузере  →'),(self.remember,'Запомнить вход в защищённом хранилище ОС'),(self.prev,'← Назад'),(self.next,'Далее →'),(self.nav_catalog,'Каталог'),(self.nav_torrents,'Торренты')]:widget.setText(translate(text,self.language))
         for widget,text in [(self.identity,'Логин или email'),(self.password,'Пароль'),(self.otp,'Если включена двухфакторная защита'),(self.search,'Поиск фильмов — название или латиница…')]:widget.setPlaceholderText(translate(text,self.language));widget.setAccessibleName(translate(text,self.language))
-        self.message.setText(self.message.raw);self.drawer.retranslate(self.language);self.refresh_titles();self.adapt_layout()
+        self.message.setText(self.message.raw);self.drawer.retranslate(self.language);self.torrents.retranslate(self.language);self.refresh_titles();self.adapt_layout()
     def set_language(self,language):
         self.preferences.set('interface_language',language);self.language=language;self.drawer.ui_language.blockSignals(True);self.drawer.ui_language.setCurrentIndex(self.drawer.ui_language.findData(language));self.drawer.ui_language.blockSignals(False);self.retranslate()
     def set_title_language(self,language):
@@ -107,7 +126,7 @@ class Window(QMainWindow):
         self.results.title_language=self.title_language
         for i in range(self.results.count()):
             item=self.results.item(i);title=movie_title(item.data(Qt.ItemDataRole.UserRole),self.title_language);item.setText(title);item.setToolTip(title);item.setData(Qt.ItemDataRole.AccessibleTextRole,title)
-        self.selection(self.results.currentItem());self.results.viewport().update()
+        self.selection(self.results.currentItem());self.results.viewport().update();self.torrents.set_title_language(self.title_language)
     def open_settings(self):
         self.drawer.signout.setVisible(self.pages.currentIndex()==1);self.drawer.refresh.setVisible(self.pages.currentIndex()==1)
         self.drawer.present()
@@ -142,6 +161,7 @@ class Window(QMainWindow):
         self.account=dict(account);self.drawer.update_account(self.account);self.account_label.setText(account.get('username',''));self.account_label.setToolTip(account.get('username',''));self.message.setText('Вход выполнен. Выберите фильм.')
         if self.remember.isChecked() and not self.vault.save(self.api.token):self.message.setText('Вход выполнен. Защищённое хранилище недоступно: сессия останется только в памяти.')
         self.new_search()
+        if self.pending_launch:self.redeem_launch()
     def schedule_search(self,*args):
         self.search_generation+=1;self.search_timer.start()
     def new_search(self):
@@ -208,7 +228,7 @@ class Window(QMainWindow):
                 self.api.stop(sid)
                 if sid in self.pending_stops:self.pending_stops.remove(sid)
     def stop(self,release=True):
-        self.play_generation+=1;self.busy=False;self.play_button.setEnabled(bool(self.results.currentItem()));self.pending_beat=False
+        self.play_generation+=1;self.busy=False;self.torrent_playing=False;self.play_button.setEnabled(bool(self.results.currentItem()));self.pending_beat=False
         self.lease_timer.stop();sid=self.session;self.session='';self.playing_movie='';self.engine.stop()
         if sid:self.pending_stops.append(sid)
         if release and self.pending_stops:self.work(self.release_pending,fail=lambda e:None)
@@ -223,6 +243,9 @@ class Window(QMainWindow):
             if self.session==sid:self.stop();self.show_error(e)
         self.work(lambda:self.api.heartbeat(sid),done,fail)
     def check_process(self):
+        if self.torrent_playing and not self.session and not self.engine.alive():
+            code=self.engine.exit_code();self.stop()
+            self.message.setText('Воспроизведение завершено.' if code in (None,0) else 'Не удалось воспроизвести видео. Проверьте соединение и повторите позднее.');return
         if self.session and not self.engine.alive():
             code=self.engine.exit_code();movie=self.playing_movie
             self.stop()
@@ -239,12 +262,12 @@ class Window(QMainWindow):
         if isinstance(error,ApiError):
             self.message.setText(str(error))
             if error.status==401:
-                self.epoch+=1;self.search_timer.stop();self.search_generation+=1;self.search_running=False;self.search_queued=False;self.pair_timer.stop();self.pair=None;self.pending_poll=False;self.login_button.setEnabled(True);self.drawer.dismiss();self.account={};self.drawer.update_account({});self.results.posters.clear();self.results.clear();self.password.clear();self.otp.clear();self.vault.clear();self.stop();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False);self.identity.setFocus()
+                self.epoch+=1;self.search_timer.stop();self.search_generation+=1;self.search_running=False;self.search_queued=False;self.pair_timer.stop();self.pair=None;self.pending_poll=False;self.login_button.setEnabled(True);self.drawer.dismiss();self.account={};self.drawer.update_account({});self.results.posters.clear();self.results.clear();self.password.clear();self.otp.clear();self.vault.clear();self.stop();self.torrents.reset();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False);self.identity.setFocus()
         else:self.message.setText('Не удалось выполнить действие. Проверьте установку mpv и соединение.')
     def logout(self):
         self.drawer.dismiss();self.account={};self.drawer.update_account({})
         self.search_timer.stop();self.search_generation+=1;self.search_running=False;self.search_queued=False;self.results.posters.clear();self.epoch+=1;self.busy=False;self.pending_beat=False;self.pending_poll=False;self.login_button.setEnabled(True)
-        self.stop();self.pair_timer.stop();self.vault.clear();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False);self.results.clear()
+        self.stop();self.pair_timer.stop();self.vault.clear();self.pending_launch='';self.torrents.reset();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False);self.results.clear()
         self.work(self.api.logout,lambda _:self.message.setText('Вы вышли из аккаунта. Сайт также может запросить повторный вход.'))
     def start_pair(self):
         if self.busy:return
@@ -265,19 +288,80 @@ class Window(QMainWindow):
                 self.pair_timer.stop();self.api.token=data['access_token'];self.work(self.api.access,self.signed_in)
         def fail(e):self.pending_poll=False;self.pair_timer.stop();self.show_error(e)
         self.work(lambda:self.api.request('POST','/desktop/pairing/exchange',{'device_code':code}),done,fail)
+    def play_torrent(self,choice,force=False):
+        """Torrent title from the «Торренты» page or a website launch: ticket → mpv (--alang)."""
+        if self.busy and not force:return
+        self.stop(release=False);self.busy=True;self.play_button.setEnabled(False)
+        title=str(choice.get('title') or 'KINOSOTA');self.message.setText('Открываем фильм…')
+        epoch=self.epoch;generation=self.play_generation
+        def cancelled():return self.closed or epoch!=self.epoch or generation!=self.play_generation
+        def start():
+            self.release_pending()
+            if cancelled():raise RuntimeError('Cancelled')
+            ticket=self.api.torrent_ticket(choice['kind'],choice['tmdb_id'],choice.get('source_id'),choice.get('season'),choice.get('episode'))
+            if cancelled():raise RuntimeError('Cancelled')
+            self.engine.start(ticket['stream_url'],extra_args=[*audio_args(choice.get('audio_lang')),*media_title_args(title)])
+            if cancelled():self.engine.stop();raise RuntimeError('Cancelled')
+            return ticket
+        def done(ticket):
+            if generation!=self.play_generation:return
+            self.busy=False;self.play_button.setEnabled(bool(self.results.currentItem()));self.torrent_playing=True
+            episode=f" · S{choice['season']:02d}E{choice['episode']:02d}" if type(choice.get('season')) is int and type(choice.get('episode')) is int else ''
+            self.message.setText('Воспроизводится: '+title+episode)
+        def fail(error):
+            if generation==self.play_generation:self.busy=False;self.play_button.setEnabled(bool(self.results.currentItem()));self.show_error(error)
+        self.work(start,done,fail)
+    def open_link(self,link):
+        """kinosota://watch?launch=<uuid> from the website «▶ Смотреть» button."""
+        if self.closed:return
+        if self.isMinimized():self.showNormal()
+        self.raise_();self.activateWindow()
+        launch=parse_launch(link)
+        if not launch:self.message.setText('Ссылка из браузера не распознана. Нажмите «Смотреть» на сайте ещё раз.');return
+        self.pending_launch=launch
+        if self.pages.currentIndex()==0:
+            self.message.setText('Войдите в аккаунт — фильм с сайта откроется сразу после входа.');return
+        self.redeem_launch()
+    def redeem_launch(self):
+        launch=self.pending_launch;self.pending_launch=''
+        if not launch:return
+        self.show_torrents();self.message.setText('Открываем фильм с сайта…')
+        def done(meta):
+            if not isinstance(meta,dict) or meta.get('kind') not in ('movie','tv') or type(meta.get('tmdb_id')) is not int:
+                self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
+            prefs={key:meta.get(key) for key in ('source_id','season','episode','audio_lang')}
+            self.torrents.open_title(meta,prefs)
+            self.play_torrent({'kind':meta['kind'],'tmdb_id':meta['tmdb_id'],**prefs,'title':movie_title(meta,self.title_language)},force=True)
+        def fail(error):
+            if isinstance(error,ApiError) and error.status==401:self.pending_launch=launch;self.show_error(error)
+            elif isinstance(error,ApiError) and error.status==404:self.message.setText('Этот запуск создан другим аккаунтом. Войдите в приложение тем же аккаунтом, что и на сайте.')
+            elif isinstance(error,ApiError) and error.status==410:self.message.setText('Ссылка устарела. Нажмите «Смотреть» на сайте ещё раз.')
+            else:self.show_error(error)
+        self.work(lambda:self.api.open_launch(launch),done,fail)
     def closeEvent(self,event):
-        self.drawer.dismiss()
+        self.drawer.dismiss();self.torrents.shutdown()
         self.search_timer.stop();self.results.posters.clear();self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close();event.accept()
 
 def main():
     if '--version' in sys.argv:
-        print('KINOSOTA Player 0.1.5');return 0
+        print('KINOSOTA Player 0.1.6');return 0
     app=QApplication(sys.argv);app.setApplicationName('KINOSOTA Player');app.setOrganizationName('KINOSOTA');app.setDesktopFileName('kinosota-player')
     if '--uninstall' in sys.argv:
         from .installation import show_uninstall
         show_uninstall(language=Preferences().get('interface_language'));return 0
     smoke='--smoke-test' in sys.argv or '--playback-smoke-fixture' in sys.argv
+    instance=None;link=None
+    if not smoke:
+        from .deeplink import Instance, LinkEvents, find_link, forward
+        link=find_link(sys.argv)
+        # A second process started by the browser hands the link to the open window.
+        if link and forward(link):return 0
+        instance=Instance(app);instance.listen()
     window=Window(restore=not smoke);window.show()
+    if instance is not None:
+        instance.linkReceived.connect(window.open_link)
+        app.installEventFilter(LinkEvents(window.open_link,app))
+        if link:QTimer.singleShot(0,lambda:window.open_link(link))
     if '--playback-smoke-fixture' in sys.argv:
         from .smoke import run_playback_smoke
         try:

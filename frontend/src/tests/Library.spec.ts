@@ -6,12 +6,16 @@ import LibraryButton from '@/components/LibraryButton.vue'
 import Card from '@/components/TorrentCard.vue'
 import LibraryView from '@/views/LibraryView.vue'
 import {libraryApi} from '@/api/library'
+import {torrentsApi} from '@/api/torrents'
+import {preparationApi} from '@/api/preparation'
 const auth=vi.hoisted(()=>({token:null as any,user:null as any,isAuthenticated:null as any}))
 vi.mock('@/stores/auth',()=>({useAuthStore:()=>auth}))
 vi.mock('@/api/library',()=>({libraryApi:{membership:vi.fn(),set:vi.fn(),list:vi.fn()}}))
+vi.mock('@/api/torrents',async original=>{const real=await original<any>();return{...real,torrentsApi:{...real.torrentsApi,access:vi.fn()}}})
+vi.mock('@/api/preparation',async original=>({...await original<any>(),preparationApi:{status:vi.fn()}}))
 const item={tmdb_id:550,kind:'movie',title:'Тестовый фильм',original_title:'Test',year:2026,rating:8,overview:'',poster:null,backdrop:null,playback_available:false} as const
 const wrappers:any[]=[]
-beforeEach(()=>{if(!auth.token){auth.token=ref(null);auth.user=ref(null);auth.isAuthenticated=ref(true)}auth.token.value='cookie-session';auth.user.value={id:crypto.randomUUID()};auth.isAuthenticated.value=true;vi.mocked(libraryApi.membership).mockResolvedValue({saved:[]});vi.mocked(libraryApi.set).mockResolvedValue({saved:true});vi.mocked(libraryApi.list).mockResolvedValue({items:[item],page:1,total:1,total_pages:1})})
+beforeEach(()=>{if(!auth.token){auth.token=ref(null);auth.user=ref(null);auth.isAuthenticated=ref(true)}auth.token.value='cookie-session';auth.user.value={id:crypto.randomUUID()};auth.isAuthenticated.value=true;vi.mocked(libraryApi.membership).mockResolvedValue({saved:[]});vi.mocked(libraryApi.set).mockResolvedValue({saved:true});vi.mocked(libraryApi.list).mockResolvedValue({items:[item],page:1,total:1,total_pages:1});vi.mocked(torrentsApi.access).mockResolvedValue({allowed:false,requirement:'pro',playback_available:false} as any);vi.mocked(preparationApi.status).mockResolvedValue({statuses:{}} as any)})
 afterEach(()=>{wrappers.splice(0).forEach(w=>w.unmount());vi.clearAllMocks()})
 async function mountAt(component:any,props:any={},path='/torrents') {const router=createRouter({history:createMemoryHistory(),routes:[{path:'/torrents',component:{template:'<p />'}},{path:'/torrents/library',component:LibraryView},{path:'/login',component:{template:'<p />'}}]});await router.push(path);await router.isReady();const w=mount(component,{props,global:{plugins:[router]}});wrappers.push(w);await new Promise(r=>setTimeout(r,10));await flushPromises();return{w,router}}
 describe('account-backed library controls',()=>{
@@ -23,4 +27,11 @@ describe('account-backed library controls',()=>{
  it('does not nest bookmark buttons inside navigation links',async()=>{const{w}=await mountAt(Card,{item});expect(w.find('a button').exists()).toBe(false);expect(w.get('.card-library button').attributes('title')).toBe('Добавить в кинотеку')})
  it('clears saved flags when the account changes after original controls unmount',async()=>{vi.mocked(libraryApi.membership).mockResolvedValue({saved:['movie:550']});const first=await mountAt(LibraryButton,{item});expect(first.w.get('button').attributes('aria-pressed')).toBe('true');first.w.unmount();auth.user.value={id:'another-account'};vi.mocked(libraryApi.membership).mockResolvedValue({saved:[]});const second=await mountAt(LibraryButton,{item});expect(second.w.get('button').attributes('aria-pressed')).toBe('false')})
  it('loads a paginated saved collection and handles empty state',async()=>{vi.mocked(libraryApi.list).mockResolvedValue({items:[],page:1,total:0,total_pages:1});const{w}=await mountAt(LibraryView,{},'/torrents/library');expect(libraryApi.list).toHaveBeenCalledWith(1);expect(w.text()).toContain('Здесь будет ваша кинотека');expect(w.find('.library-pagination').exists()).toBe(false)})
+})
+
+describe('library preparation progress',()=>{
+ const pro=()=>vi.mocked(torrentsApi.access).mockResolvedValue({allowed:true,requirement:'pro',playback_available:false} as any)
+ it('shows the live preparation step with percent on a library card',async()=>{pro();vi.mocked(preparationApi.status).mockResolvedValue({statuses:{'movie:550':{status:'loading',playable:false,progress:75}}} as any);const{w}=await mountAt(LibraryView,{},'/torrents/library');expect(preparationApi.status).toHaveBeenCalledWith(['movie:550']);const bar=w.find('[data-testid="card-progress"] [role="progressbar"]');expect(bar.find('.progress-label').text()).toBe('Проверка и буферизация');expect(bar.find('.progress-percent').text()).toBe('75%')})
+ it('turns green with the measured start time once ready',async()=>{pro();vi.mocked(preparationApi.status).mockResolvedValue({statuses:{'movie:550':{status:'playable',playable:true,progress:100,start_ms:640}}} as any);const{w}=await mountAt(LibraryView,{},'/torrents/library');const bar=w.find('[data-testid="card-progress"] [role="progressbar"]');expect(bar.text()).toBe('Готово · старт 640 мс');expect(bar.classes()).toContain('is-ready')})
+ it('does not ask for preparation without PRO access and shows no progress',async()=>{const{w}=await mountAt(LibraryView,{},'/torrents/library');expect(torrentsApi.access).toHaveBeenCalled();expect(preparationApi.status).not.toHaveBeenCalled();expect(w.find('[data-testid="card-progress"]').exists()).toBe(false);expect(w.find('.torrent-card').exists()).toBe(true)})
 })
