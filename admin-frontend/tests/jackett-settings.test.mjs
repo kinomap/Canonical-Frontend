@@ -11,7 +11,17 @@ const { descriptor } = parse(source)
 const script = compileScript(descriptor, { id: 'jackett-test' })
 const compiled = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
 const row = { id: 'tracker', name: 'Tracker', configured: true, type: 'private', language: 'ru-RU' }
-const form = { revision: 'revision', unsupported: [], fields: [{ id: 'password', label: 'Password', type: 'inputstring', secret: true, saved: true, value: '' }, { id: 'username', label: 'Username', type: 'inputstring', secret: true, value: '' }, { id: 'flag', type: 'inputbool', value: true }, { id: 'sitelink', type: 'inputstring', value: 'https://tracker.example/' }] }
+const form = { revision: 'revision', unsupported: [], fields: [
+ { id: 'password', label: 'Password', type: 'inputstring', secret: true, saved: true, value: '' },
+ { id: 'username', label: 'Username', type: 'inputstring', secret: false, saved: true, value: 'saved-user' },
+ { id: 'cookie', label: 'Cookie', type: 'inputstring', secret: true, saved: true, value: '' },
+ { id: 'apikey', label: 'API key', type: 'inputstring', secret: true, saved: false, value: '' },
+ { id: 'searchbyuploader', label: 'Search by uploader', type: 'inputstring', secret: false, saved: false, value: '' },
+ { id: 'captchaimage', label: 'CAPTCHA', type: 'displayimage', value: 'data:image/png;base64,AAAA' },
+ { id: 'captchatext', label: 'Captcha text', type: 'inputstring', secret: false, saved: false, value: '' },
+ { id: 'proxyurl', label: 'Proxy', type: 'inputstring', secret: false, saved: false, value: '' },
+ { id: 'flag', type: 'inputbool', value: true },
+ { id: 'sitelink', type: 'inputstring', value: 'https://tracker.example/' }] }
 function setup() {
  const requests = [], hooks = {}, response = { error: null, wait: null }
  const axios = {
@@ -39,14 +49,16 @@ test('omitted saved password stays omitted; boolean fields remain typed', async 
  const { state, requests } = setup(); await state.open(row); await state.save()
  const sent = requests.find(x => x.method === 'POST').body
  assert.equal('password' in sent.changes, false); assert.equal('sitelink' in sent.changes, false)
+ // Untouched ordinary values, captcha image and locked connection fields are not sent either.
+ assert.deepEqual(Object.keys(sent.changes), ['flag'])
  assert.equal(sent.changes.flag.value, true); assert.equal(state.form.value, null)
  assert.deepEqual(Object.keys(state.draft.value), [])
 })
 test('new password and explicit clear have distinct semantics', async () => {
  const { state, requests } = setup(); await state.open(row)
- state.draft.value.password = 'new-private'; state.cleared.value.username = true; await state.save()
+ state.draft.value.password = 'new-private'; state.cleared.value.cookie = true; await state.save()
  const changes = requests.find(x => x.method === 'POST').body.changes
- assert.equal(changes.password.mode, 'replace'); assert.equal(changes.password.value, 'new-private'); assert.equal(changes.username.mode, 'clear')
+ assert.equal(changes.password.mode, 'replace'); assert.equal(changes.password.value, 'new-private'); assert.deepEqual(changes.cookie, { mode: 'clear' })
 })
 test('failed save clears entered secrets, reloads form and never automatically retries', async () => {
  const { state, requests, response } = setup(); await state.open(row); state.draft.value.password = 'new-private'
@@ -84,4 +96,49 @@ test('successful save returns to complete connected list; failure preserves filt
  assert.equal(state.filter.value, 'configured'); assert.equal(state.query.value, ''); assert.equal(state.page.value, 1)
  state.filter.value = 'all'; state.query.value = 'tracker'; await state.open(row); response.error = {}; await state.save()
  assert.equal(state.filter.value, 'all'); assert.equal(state.query.value, 'tracker')
+})
+test('ordinary fields show saved values, send only real edits and may be emptied', async () => {
+ const { state, requests } = setup(); await state.open(row)
+ assert.equal(state.draft.value.username, 'saved-user'); assert.equal(state.draft.value.password, '')
+ state.draft.value.username = ''; state.draft.value.captchatext = 'x7k2'; await state.save()
+ const changes = requests.find(x => x.method === 'POST').body.changes
+ assert.deepEqual(changes.username, { mode: 'replace', value: '' }); assert.deepEqual(changes.captchatext, { mode: 'replace', value: 'x7k2' })
+ assert.equal('searchbyuploader' in changes, false); assert.equal('proxyurl' in changes, false)
+})
+test('clear control exists only for saved real secrets', async () => {
+ const { state, requests } = setup(); await state.open(row)
+ state.cleared.value.username = true; state.cleared.value.apikey = true; state.cleared.value.searchbyuploader = true; await state.save()
+ const changes = requests.find(x => x.method === 'POST').body.changes
+ assert.equal('username' in changes, false); assert.equal('apikey' in changes, false); assert.equal('searchbyuploader' in changes, false)
+ assert.match(source, /v-if="field\.secret && field\.saved" class="jackett-clear"/)
+ assert.match(source, /:type="field\.secret \? 'password' : 'text'"/)
+ assert.match(source, /:autocomplete="field\.secret \? 'new-password' : 'off'"/)
+ assert.match(source, /:readonly="locked\(field\)"/)
+})
+test('captcha_required asks for the new image on a fresh form, keeps typed login, never secrets', async () => {
+ const { state, requests, response } = setup(); await state.open(row)
+ state.draft.value.username = 'new-user'; state.draft.value.password = 'typed-secret'; state.draft.value.captchatext = 'old'
+ response.error = { response: { status: 409, data: { code: 'captcha_required', reload_required: true } } }
+ await state.save()
+ assert.equal(requests.filter(x => x.method === 'POST').length, 1)
+ assert.equal(requests.filter(x => x.method === 'GET' && x.url.endsWith('/config')).length, 2)
+ assert.match(state.notice.value, /^Введите символы с новой картинки/); assert.equal(state.error.value, '')
+ assert.ok(state.form.value); assert.equal(state.draft.value.username, 'new-user')
+ assert.equal(state.draft.value.password, ''); assert.equal(state.draft.value.captchatext, '')
+ // The kept login is sent with the next attempt; nothing is retried automatically.
+ response.error = null; state.draft.value.captchatext = 'new'; await state.save()
+ const second = requests.filter(x => x.method === 'POST')[1].body.changes
+ assert.deepEqual(second.username, { mode: 'replace', value: 'new-user' }); assert.equal('password' in second, false)
+})
+test('changed settings reload without replaying typed values', async () => {
+ const { state, response } = setup(); await state.open(row); state.draft.value.username = 'stale'
+ response.error = { response: { status: 409, data: { code: 'config_changed_reload' } } }
+ await state.save()
+ assert.equal(state.draft.value.username, 'saved-user'); assert.match(state.error.value, /Форма обновлена/)
+})
+test('Cloudflare block has an explicit operator message', async () => {
+ const { state, response } = setup(); await state.open(row)
+ response.error = { response: { status: 502, data: { code: 'cloudflare_challenge', error: 'Just a moment... raw' } } }
+ await state.save()
+ assert.equal(state.error.value, 'Сайт закрыт проверкой Cloudflare / требуется FlareSolverr или прокси.')
 })

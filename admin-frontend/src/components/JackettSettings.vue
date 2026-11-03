@@ -20,6 +20,8 @@ const observed = ref('')
 const editing = ref<Indexer | null>(null)
 const form = ref<Form | null>(null)
 const draft = ref<Record<string, any>>({})
+// Values as loaded: ordinary fields are sent only when really edited.
+const initial = ref<Record<string, any>>({})
 const cleared = ref<Record<string, boolean>>({})
 const confirming = ref<Indexer | null>(null)
 let alive = true
@@ -36,14 +38,27 @@ const messages: Record<string, string> = {
   site_link_locked: 'Адрес трекера задаётся его проверенным определением в Jackett.',
   unsafe_tracker_site: 'Адрес трекера не прошёл проверку безопасности.',
   jackett_action_failed: 'Jackett не подтвердил операцию. Проверьте данные авторизации; форма будет обновлена. Подключение не считается успешным.',
+  cloudflare_challenge: 'Сайт закрыт проверкой Cloudflare / требуется FlareSolverr или прокси.',
+  captcha_required: 'Введите символы с новой картинки и нажмите «Сохранить / продолжить настройку». Если вход снова не удастся, проверьте логин и пароль.',
+  connection_field_locked: 'Адреса и прокси трекера задаются его проверенным определением в Jackett.',
+  indexer_not_found: 'Индексатор не найден в Jackett. Обновите список.',
 }
+const TEXT = ['inputstring', 'password', 'inputtags']
+// Mirrors the backend: tracker addresses/proxies are never edited here.
+const locked = (field: Field) => field.id === 'sitelink' || /url|proxy|serveraddress/i.test(field.id)
+const ordinary = (field: Field) => !field.secret && TEXT.includes(field.type) && !locked(field) && !/captcha/i.test(field.id)
 function failure(e: any) { return messages[e?.response?.data?.code] || 'Не удалось связаться с Jackett. Обновите состояние и повторите проверку.' }
 function showConnected() { filter.value = 'configured'; query.value = ''; page.value = 1 }
 function changeFilter() { if (filter.value === 'configured') query.value = ''; page.value = 1 }
-function close() { editing.value = null; form.value = null; draft.value = {}; cleared.value = {}; confirming.value = null }
+function close() { editing.value = null; form.value = null; draft.value = {}; initial.value = {}; cleared.value = {}; confirming.value = null }
 function resetDraft() {
-  draft.value = {}; cleared.value = {}
-  for (const field of form.value?.fields || []) if (field.type !== 'displayimage') draft.value[field.id] = field.secret ? '' : field.value
+  draft.value = {}; initial.value = {}; cleared.value = {}
+  for (const field of form.value?.fields || []) {
+    if (field.type === 'displayimage') continue
+    const value = field.secret ? '' : field.value
+    draft.value[field.id] = Array.isArray(value) ? [...value] : value
+    initial.value[field.id] = Array.isArray(value) ? [...value] : value
+  }
 }
 const matched = computed(() => indexers.value.filter(x => (filter.value !== 'configured' || x.configured) && `${x.name} ${x.id} ${x.language}`.toLowerCase().includes(query.value.toLowerCase())))
 const pages = computed(() => Math.max(1, Math.ceil(matched.value.length / 20)))
@@ -86,14 +101,16 @@ async function save() {
   const row = editing.value
   const changes: Record<string, any> = {}
   for (const field of form.value.fields) {
-    if (field.id === 'sitelink' || field.type === 'displayimage') continue
+    if (field.type === 'displayimage' || locked(field)) continue
+    const value = draft.value[field.id]
     if (field.secret) {
-      if (cleared.value[field.id]) changes[field.id] = { mode: 'clear' }
-      else if (draft.value[field.id]) changes[field.id] = { mode: 'replace', value: draft.value[field.id] }
-    } else if (['inputstring', 'password', 'inputtags'].includes(field.type)) {
-      // Saved text is never sent to the browser: an empty box means "keep", not "wipe".
-      if (draft.value[field.id]) changes[field.id] = { mode: 'replace', value: draft.value[field.id] }
-    } else changes[field.id] = { mode: 'replace', value: draft.value[field.id] }
+      // Saved secrets are never sent to the browser: an empty box means "keep".
+      if (cleared.value[field.id] && field.saved) changes[field.id] = { mode: 'clear' }
+      else if (value) changes[field.id] = { mode: 'replace', value }
+    } else if (TEXT.includes(field.type)) {
+      // Ordinary values are shown as saved: only real edits are sent, '' empties the field.
+      if (typeof value === 'string' && value !== initial.value[field.id]) changes[field.id] = { mode: 'replace', value }
+    } else changes[field.id] = { mode: 'replace', value }
   }
   busy.value = true; error.value = ''; notice.value = ''
   try {
@@ -103,21 +120,23 @@ async function save() {
     showConnected(); close(); await loadIndexers()
   } catch (e: any) {
     if (!alive) return
-    const challenge = e?.response?.data
-    if (challenge?.code === 'captcha_required' && challenge.form) {
-      // Jackett staged the login: keep saved credentials, ask only for the captcha.
-      const typed: Record<string, any> = {}
-      for (const field of form.value!.fields) if (!field.secret && field.type !== 'displayimage' && !/captcha/i.test(field.id)) typed[field.id] = draft.value[field.id]
-      form.value = challenge.form; resetDraft()
-      for (const [id, value] of Object.entries(typed)) if (id in draft.value) draft.value[id] = value
-      notice.value = 'Введите код с картинки и нажмите «Сохранить / продолжить настройку». Логин и пароль уже сохранены.'
-      return
-    }
-    error.value = failure(e)
-    // Never replay a mutation automatically. Fetch a fresh (possibly staged) form.
-    form.value = null; draft.value = {}; cleared.value = {}
-    try { const { data } = await axios.get(`${path(row)}/config`, auth()); if (alive) { form.value = data; resetDraft() } }
-    catch { if (alive) close() }
+    const code = e?.response?.data?.code
+    // Keep edits of ordinary fields (login, filters) unless the saved settings
+    // changed meanwhile; typed secrets and captcha answers are never kept.
+    const typed: Record<string, any> = {}
+    if (code !== 'config_changed_reload') for (const field of form.value?.fields || []) if (ordinary(field) && draft.value[field.id] !== initial.value[field.id]) typed[field.id] = draft.value[field.id]
+    if (code === 'captcha_required') notice.value = messages.captcha_required
+    else error.value = failure(e)
+    // Never replay a mutation automatically. A fresh form brings a new captcha
+    // image and a new single-use snapshot.
+    form.value = null; draft.value = {}; initial.value = {}; cleared.value = {}
+    try {
+      const { data } = await axios.get(`${path(row)}/config`, auth())
+      if (alive) {
+        form.value = data; resetDraft()
+        for (const [id, value] of Object.entries(typed)) if (id in draft.value) draft.value[id] = value
+      }
+    } catch (reload) { if (alive) { close(); notice.value = ''; if (!error.value) error.value = failure(reload) } }
   } finally {
     for (const key of Object.keys(changes)) delete changes[key]
     if (alive) busy.value = false
@@ -168,7 +187,7 @@ onBeforeUnmount(() => { alive = false; ++generation; close() })
       <div v-if="confirming" class="jackett-confirm" role="group" aria-label="Подтверждение удаления"><p>Удалить настройки {{ confirming.name }} из Jackett? Сохранённая авторизация этого трекера будет удалена.</p><div class="jackett-actions"><button class="danger" :disabled="busy" @click="action(confirming!, 'delete')">Да, удалить</button><button :disabled="busy" @click="confirming = null">Отмена</button></div></div>
       <form v-if="editing && form" class="jackett-form" autocomplete="off" @submit.prevent="save">
         <header class="jackett-heading"><h3 tabindex="-1">{{ editing.name }} · настройки</h3><button type="button" :disabled="busy" @click="close">Закрыть</button></header>
-        <p>Сохранённые пароли и ключи скрыты. Оставьте поле пустым, чтобы сохранить прежнее значение; удаление — отдельным переключателем.</p>
+        <p>Сохранённые пароли, cookie и ключи скрыты: пустое поле оставляет прежнее значение, удаление — отдельным переключателем. Обычные поля (логин, фильтры) показаны с сохранёнными значениями.</p>
         <p v-if="form.unsupported.length" class="jackett-error" role="alert">Для этого трекера требуется дополнительная проверка, пока не поддерживаемая здесь: {{ form.unsupported.join(', ') }}. Подключение не подтверждено.</p>
         <fieldset :disabled="busy"><legend class="sr-only">Параметры индексатора</legend>
           <div v-for="(field, i) in form.fields" :key="field.id" class="jackett-field">
@@ -177,7 +196,7 @@ onBeforeUnmount(() => { alive = false; ++generation; close() })
             <input v-else-if="field.type === 'inputbool'" :id="`jackett-field-${i}`" v-model="draft[field.id]" type="checkbox" />
             <select v-else-if="field.type === 'inputselect'" :id="`jackett-field-${i}`" v-model="draft[field.id]"><option v-for="(label, value) in field.options" :key="value" :value="value">{{ label }}</option></select>
             <select v-else-if="field.type === 'inputcheckbox'" :id="`jackett-field-${i}`" v-model="draft[field.id]" multiple><option v-for="(label, value) in field.options" :key="value" :value="value">{{ label }}</option></select>
-            <input v-else :id="`jackett-field-${i}`" v-model="draft[field.id]" :type="field.secret ? 'password' : 'text'" :readonly="field.id === 'sitelink'" :disabled="cleared[field.id]" :placeholder="field.saved && field.secret ? 'Сохранено · оставить без изменений' : ''" autocomplete="new-password" maxlength="16384" />
+            <input v-else :id="`jackett-field-${i}`" v-model="draft[field.id]" :type="field.secret ? 'password' : 'text'" :readonly="locked(field)" :disabled="field.secret && cleared[field.id]" :placeholder="field.saved && field.secret ? 'Сохранено · оставить без изменений' : ''" :autocomplete="field.secret ? 'new-password' : 'off'" maxlength="16384" />
             <label v-if="field.secret && field.saved" class="jackett-clear"><input v-model="cleared[field.id]" type="checkbox" />Удалить сохранённое значение</label>
           </div>
         </fieldset>
