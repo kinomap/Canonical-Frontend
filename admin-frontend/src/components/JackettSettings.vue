@@ -43,7 +43,7 @@ function changeFilter() { if (filter.value === 'configured') query.value = ''; p
 function close() { editing.value = null; form.value = null; draft.value = {}; cleared.value = {}; confirming.value = null }
 function resetDraft() {
   draft.value = {}; cleared.value = {}
-  for (const field of form.value?.fields || []) draft.value[field.id] = field.secret ? '' : field.value
+  for (const field of form.value?.fields || []) if (field.type !== 'displayimage') draft.value[field.id] = field.secret ? '' : field.value
 }
 const matched = computed(() => indexers.value.filter(x => (filter.value !== 'configured' || x.configured) && `${x.name} ${x.id} ${x.language}`.toLowerCase().includes(query.value.toLowerCase())))
 const pages = computed(() => Math.max(1, Math.ceil(matched.value.length / 20)))
@@ -86,10 +86,13 @@ async function save() {
   const row = editing.value
   const changes: Record<string, any> = {}
   for (const field of form.value.fields) {
-    if (field.id === 'sitelink') continue
+    if (field.id === 'sitelink' || field.type === 'displayimage') continue
     if (field.secret) {
       if (cleared.value[field.id]) changes[field.id] = { mode: 'clear' }
       else if (draft.value[field.id]) changes[field.id] = { mode: 'replace', value: draft.value[field.id] }
+    } else if (['inputstring', 'password', 'inputtags'].includes(field.type)) {
+      // Saved text is never sent to the browser: an empty box means "keep", not "wipe".
+      if (draft.value[field.id]) changes[field.id] = { mode: 'replace', value: draft.value[field.id] }
     } else changes[field.id] = { mode: 'replace', value: draft.value[field.id] }
   }
   busy.value = true; error.value = ''; notice.value = ''
@@ -98,8 +101,18 @@ async function save() {
     if (!alive) return
     notice.value = 'Jackett принял настройки. Проверьте подключение отдельно; это ещё не подтверждает готовность воспроизведения.'
     showConnected(); close(); await loadIndexers()
-  } catch (e) {
+  } catch (e: any) {
     if (!alive) return
+    const challenge = e?.response?.data
+    if (challenge?.code === 'captcha_required' && challenge.form) {
+      // Jackett staged the login: keep saved credentials, ask only for the captcha.
+      const typed: Record<string, any> = {}
+      for (const field of form.value!.fields) if (!field.secret && field.type !== 'displayimage' && !/captcha/i.test(field.id)) typed[field.id] = draft.value[field.id]
+      form.value = challenge.form; resetDraft()
+      for (const [id, value] of Object.entries(typed)) if (id in draft.value) draft.value[id] = value
+      notice.value = 'Введите код с картинки и нажмите «Сохранить / продолжить настройку». Логин и пароль уже сохранены.'
+      return
+    }
     error.value = failure(e)
     // Never replay a mutation automatically. Fetch a fresh (possibly staged) form.
     form.value = null; draft.value = {}; cleared.value = {}
@@ -155,12 +168,13 @@ onBeforeUnmount(() => { alive = false; ++generation; close() })
       <div v-if="confirming" class="jackett-confirm" role="group" aria-label="Подтверждение удаления"><p>Удалить настройки {{ confirming.name }} из Jackett? Сохранённая авторизация этого трекера будет удалена.</p><div class="jackett-actions"><button class="danger" :disabled="busy" @click="action(confirming!, 'delete')">Да, удалить</button><button :disabled="busy" @click="confirming = null">Отмена</button></div></div>
       <form v-if="editing && form" class="jackett-form" autocomplete="off" @submit.prevent="save">
         <header class="jackett-heading"><h3 tabindex="-1">{{ editing.name }} · настройки</h3><button type="button" :disabled="busy" @click="close">Закрыть</button></header>
-        <p>Сохранённые текстовые значения скрыты. Оставьте поле пустым, чтобы сохранить прежнее значение; удаление — отдельным переключателем.</p>
+        <p>Сохранённые пароли и ключи скрыты. Оставьте поле пустым, чтобы сохранить прежнее значение; удаление — отдельным переключателем.</p>
         <p v-if="form.unsupported.length" class="jackett-error" role="alert">Для этого трекера требуется дополнительная проверка, пока не поддерживаемая здесь: {{ form.unsupported.join(', ') }}. Подключение не подтверждено.</p>
         <fieldset :disabled="busy"><legend class="sr-only">Параметры индексатора</legend>
           <div v-for="(field, i) in form.fields" :key="field.id" class="jackett-field">
             <label :for="`jackett-field-${i}`">{{ field.label }}</label>
-            <input v-if="field.type === 'inputbool'" :id="`jackett-field-${i}`" v-model="draft[field.id]" type="checkbox" />
+            <img v-if="field.type === 'displayimage' && typeof field.value === 'string' && field.value.startsWith('data:image/')" :id="`jackett-field-${i}`" class="jackett-captcha" :src="field.value" alt="Код проверки (CAPTCHA)" referrerpolicy="no-referrer" />
+            <input v-else-if="field.type === 'inputbool'" :id="`jackett-field-${i}`" v-model="draft[field.id]" type="checkbox" />
             <select v-else-if="field.type === 'inputselect'" :id="`jackett-field-${i}`" v-model="draft[field.id]"><option v-for="(label, value) in field.options" :key="value" :value="value">{{ label }}</option></select>
             <select v-else-if="field.type === 'inputcheckbox'" :id="`jackett-field-${i}`" v-model="draft[field.id]" multiple><option v-for="(label, value) in field.options" :key="value" :value="value">{{ label }}</option></select>
             <input v-else :id="`jackett-field-${i}`" v-model="draft[field.id]" :type="field.secret ? 'password' : 'text'" :readonly="field.id === 'sitelink'" :disabled="cleared[field.id]" :placeholder="field.saved && field.secret ? 'Сохранено · оставить без изменений' : ''" autocomplete="new-password" maxlength="16384" />
@@ -174,5 +188,5 @@ onBeforeUnmount(() => { alive = false; ++generation; close() })
 </template>
 
 <style scoped>
-.jackett-panel{margin:0 0 24px;padding:24px;border:1px solid var(--ui-border,#39404b);border-radius:12px;background:var(--ui-surface,#171d27);color:var(--ui-text,#f5f6f8);font-size:16px;line-height:1.5;min-width:0}.jackett-panel *{box-sizing:border-box}.jackett-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.jackett-heading h2{margin:0;font-size:20px}.jackett-heading h3{margin:0;font-size:18px}.jackett-panel p{margin:8px 0 16px;color:var(--ui-text-muted,#b9c1cf)}.jackett-panel button,.jackett-panel input:not([type=checkbox]),.jackett-panel select{font:inherit;border:1px solid var(--ui-border,#4e5869);border-radius:8px;background:var(--ui-surface,#171d27);color:var(--ui-text,#f5f6f8);min-height:44px;padding:8px 12px;max-width:100%}.jackett-panel button{cursor:pointer;white-space:normal}.jackett-panel button:disabled{opacity:.55;cursor:wait}.jackett-panel :focus-visible{outline:2px solid #f6cf4b;outline-offset:3px}.jackett-panel input[type=checkbox]{width:20px;height:20px;accent-color:#f6cf4b}.jackett-toolbar{display:flex;flex-wrap:wrap;gap:16px;margin:20px 0 8px}.jackett-toolbar label{display:grid;gap:8px;flex:1;min-width:180px}.jackett-meta{font-size:14px}.jackett-list{list-style:none;margin:16px 0;padding:0}.jackett-list li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--ui-border,#39404b)}.jackett-name{min-width:0;overflow-wrap:anywhere}.jackett-name span{display:block;font-size:14px;color:var(--ui-text-muted,#b9c1cf)}.jackett-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.jackett-panel .danger{color:#ffaaa5}.jackett-panel .jackett-error{color:#ffb6af;border-left:3px solid #ff8a80;padding-left:12px}.jackett-panel .jackett-notice{color:#a8e8bc;border-left:3px solid #71ce90;padding-left:12px}.jackett-form,.jackett-confirm{margin-top:24px;padding-top:24px;border-top:1px solid var(--ui-border,#39404b)}.jackett-form fieldset{border:0;padding:0;margin:16px 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.jackett-field{min-width:0;display:flex;flex-direction:column;gap:8px}.jackett-field>label{overflow-wrap:anywhere}.jackett-clear{display:flex;align-items:center;gap:8px;font-size:14px;min-height:44px}.jackett-panel .primary{background:#f6cf4b;border-color:#f6cf4b;color:#171717}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}@media(max-width:640px){.jackett-panel{padding:16px}.jackett-heading{flex-wrap:wrap}.jackett-list li{align-items:flex-start;flex-direction:column}.jackett-form fieldset{grid-template-columns:1fr}.jackett-toolbar label{min-width:100%;width:100%}.jackett-actions{width:100%}.jackett-actions button{flex:1}.jackett-form .primary{width:100%}}
+.jackett-panel{margin:0 0 24px;padding:24px;border:1px solid var(--ui-border,#39404b);border-radius:12px;background:var(--ui-surface,#171d27);color:var(--ui-text,#f5f6f8);font-size:16px;line-height:1.5;min-width:0}.jackett-panel *{box-sizing:border-box}.jackett-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.jackett-heading h2{margin:0;font-size:20px}.jackett-heading h3{margin:0;font-size:18px}.jackett-panel p{margin:8px 0 16px;color:var(--ui-text-muted,#b9c1cf)}.jackett-panel button,.jackett-panel input:not([type=checkbox]),.jackett-panel select{font:inherit;border:1px solid var(--ui-border,#4e5869);border-radius:8px;background:var(--ui-surface,#171d27);color:var(--ui-text,#f5f6f8);min-height:44px;padding:8px 12px;max-width:100%}.jackett-panel button{cursor:pointer;white-space:normal}.jackett-panel button:disabled{opacity:.55;cursor:wait}.jackett-panel :focus-visible{outline:2px solid #f6cf4b;outline-offset:3px}.jackett-panel input[type=checkbox]{width:20px;height:20px;accent-color:#f6cf4b}.jackett-toolbar{display:flex;flex-wrap:wrap;gap:16px;margin:20px 0 8px}.jackett-toolbar label{display:grid;gap:8px;flex:1;min-width:180px}.jackett-meta{font-size:14px}.jackett-list{list-style:none;margin:16px 0;padding:0}.jackett-list li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--ui-border,#39404b)}.jackett-name{min-width:0;overflow-wrap:anywhere}.jackett-name span{display:block;font-size:14px;color:var(--ui-text-muted,#b9c1cf)}.jackett-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.jackett-panel .danger{color:#ffaaa5}.jackett-panel .jackett-error{color:#ffb6af;border-left:3px solid #ff8a80;padding-left:12px}.jackett-panel .jackett-notice{color:#a8e8bc;border-left:3px solid #71ce90;padding-left:12px}.jackett-form,.jackett-confirm{margin-top:24px;padding-top:24px;border-top:1px solid var(--ui-border,#39404b)}.jackett-form fieldset{border:0;padding:0;margin:16px 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.jackett-field{min-width:0;display:flex;flex-direction:column;gap:8px}.jackett-field>label{overflow-wrap:anywhere}.jackett-captcha{max-width:100%;height:auto;align-self:flex-start;background:#fff;border-radius:6px;padding:4px}.jackett-clear{display:flex;align-items:center;gap:8px;font-size:14px;min-height:44px}.jackett-panel .primary{background:#f6cf4b;border-color:#f6cf4b;color:#171717}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}@media(max-width:640px){.jackett-panel{padding:16px}.jackett-heading{flex-wrap:wrap}.jackett-list li{align-items:flex-start;flex-direction:column}.jackett-form fieldset{grid-template-columns:1fr}.jackett-toolbar label{min-width:100%;width:100%}.jackett-actions{width:100%}.jackett-actions button{flex:1}.jackett-form .primary{width:100%}}
 </style>
