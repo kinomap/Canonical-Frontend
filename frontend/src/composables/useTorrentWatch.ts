@@ -11,37 +11,48 @@ import {
   type TorrentEpisode,
   type TorrentItem,
   type TorrentLanguage,
-  type TorrentPlaybackStatus,
   type TorrentSource,
   type TorrentSourcesView,
 } from '@/api/torrents'
-import { IN_PROGRESS, PREP_PROGRESS } from '@/api/preparation'
+import { ACTIVE_STAGES, PREP_POLL_MS, PREP_PROGRESS, stageLabel, stageOf, type PrepStage, type PrepStatus } from '@/api/preparation'
 import { useLibrary } from '@/stores/library'
 import { openDeepLink, waitForPlayer } from '@/lib/desktopLaunch'
 
-export const POLL_MS = 4000
-/** Pill text; RU / UA get a CSS-drawn flag (flag emoji are not rendered on Windows). */
-export const LANGUAGE_LABELS: Record<TorrentLanguage, string> = { ru: 'RU', uk: 'UA', en: 'EN' }
-export const LANGUAGE_FLAGS: Record<TorrentLanguage, boolean> = { ru: true, uk: true, en: false }
-export const LANGUAGE_NAMES: Record<TorrentLanguage, string> = { ru: 'Русская озвучка', uk: 'Украинская озвучка', en: 'Английская дорожка' }
+/** Live refresh while something moves (the reference re-reads every 2–3 s). */
+export const POLL_MS = PREP_POLL_MS
+/** The server scheduled a retry (nothing found yet / tracker error): look again now and then. */
+export const RETRY_POLL_MS = 30000
+/** Language pill: flag + code; «UND» stands for sources whose audio language is not named. */
+export type LanguagePill = TorrentLanguage | 'und'
+export const LANGUAGE_ORDER: readonly LanguagePill[] = ['ru', 'uk', 'en', 'und']
+export const LANGUAGE_LABELS: Record<LanguagePill, string> = { ru: 'RU', uk: 'UA', en: 'EN', und: 'UND' }
+export const LANGUAGE_FLAGS: Record<LanguagePill, boolean> = { ru: true, uk: true, en: true, und: false }
+export const LANGUAGE_NAMES: Record<LanguagePill, string> = {
+  ru: 'Русская озвучка', uk: 'Украинская озвучка', en: 'Английская дорожка', und: 'Язык дорожки не указан',
+}
 
-export type ProgressView = { status: TorrentPlaybackStatus; progress: number; startMs: number | null; label?: string }
+export type ProgressView = { status: PrepStatus; stage: PrepStage; progress: number; startMs: number | null; label?: string; quality?: string | null }
+export type QualityOption = { value: string; label: string; available: boolean; active: boolean }
+export type SeasonOption = { value: number; label: string; episodes: number; available: boolean }
+export type EpisodeOption = { value: number; available: boolean; sizeMb: number | null; sourceId: string | null }
 export type WatchAction =
   | 'checking' | 'subscribe' | 'loading' | 'retry' | 'library' | 'discover'
   | 'prepare' | 'wait' | 'missing' | 'launch'
-type Prefs = { quality?: string | null; language?: TorrentLanguage | null; episode?: TorrentEpisode | null }
+type Prefs = { quality?: string | null; language?: LanguagePill | null; episode?: TorrentEpisode | null }
 
 /** Titles already re-searched in this tab (the server also enforces a cooldown). */
 const autoDiscovered = new Set<string>()
 
 export const hasEpisode = (source: TorrentSource, e: TorrentEpisode) =>
   source.episodes.some((x) => x.season === e.season && x.episode === e.episode)
+export const speaks = (source: TorrentSource, lang: LanguagePill) =>
+  lang === 'und' ? !source.languages.length : source.languages.includes(lang)
 
 function rank(s: TorrentSource, p: Prefs): number[] {
   return [
     s.state === 'failed' ? 1 : 0,
     p.quality && s.quality !== p.quality ? 1 : 0,
-    p.language && !s.languages.includes(p.language) ? 1 : 0,
+    p.language && !speaks(s, p.language) ? 1 : 0,
     p.episode && !hasEpisode(s, p.episode) ? 1 : 0,
     s.state === 'ready' ? 0 : 1,
     -s.seeders,
@@ -65,15 +76,25 @@ export function bestSource(list: TorrentSource[], prefs: Prefs = {}): TorrentSou
   return best
 }
 
-const inFlight = (v: TorrentSourcesView) =>
-  v.discovering || IN_PROGRESS.includes(v.status.status) || v.sources.some((s) => s.state === 'queued' || s.state === 'loading')
+/** Something the server is working on right now (stage or a queued / checked source). */
+const moving = (v: TorrentSourcesView) =>
+  ACTIVE_STAGES.includes(stageOf(v.status)) || v.sources.some((s) => s.state === 'queued' || s.state === 'loading')
+/** Final for now: nothing found on the trackers / the attempt failed. */
+const settled = (stage: PrepStage) => stage === 'not_found' || stage === 'failed'
+
+function discoverMessage(result: string, scope: 'title' | 'episodes', stage: PrepStage): string {
+  if (result === 'cooldown') return scope === 'episodes' ? 'Новые серии можно будет проверить чуть позже' : 'Повторный поиск станет доступен чуть позже'
+  if (result === 'no_demand') return 'Добавьте запись в кинотеку, чтобы начать поиск'
+  if (result === 'active') return settled(stage) ? 'Повторный поиск уже запланирован' : 'Поиск уже идёт'
+  return scope === 'episodes' ? 'Проверяем новые серии…' : 'Ищем раздачи…'
+}
 
 export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boolean | null>) {
   const library = useLibrary()
   const view = ref<TorrentSourcesView | null>(null)
   const loadError = ref(false)
   const selectedId = ref<string | null | undefined>(undefined)
-  const language = ref<TorrentLanguage | null>(null)
+  const language = ref<LanguagePill | null>(null)
   const season = ref<number | null>(null)
   const episode = ref<number | null>(null)
   const busy = ref<'' | 'prepare' | 'discover' | 'library' | 'launch'>('')
@@ -88,6 +109,8 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   const key = computed(() => (item.value ? `${item.value.kind}:${item.value.tmdb_id}` : ''))
   const isTv = computed(() => item.value?.kind === 'tv')
   const sources = computed(() => view.value?.sources ?? [])
+  const offered = computed(() => sources.value.filter((s) => s.state !== 'failed'))
+  const stage = computed<PrepStage>(() => stageOf(view.value?.status))
   const selected = computed<TorrentSource | null>(() => {
     const list = sources.value
     if (!list.length) return null
@@ -97,32 +120,62 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     }
     return list.find((s) => s.default) ?? bestSource(list)
   })
+  /** Voice sent to the player: the user's pick when the source has it, Russian first otherwise. */
   const audioLanguage = computed<TorrentLanguage | null>(() => {
     const langs = selected.value?.languages ?? []
-    if (language.value && (langs.includes(language.value) || !langs.length)) return language.value
+    const pick = language.value
+    if (pick && pick !== 'und' && (langs.includes(pick) || !langs.length)) return pick
     return langs.includes('ru') ? 'ru' : (langs[0] ?? null)
   })
+  /** The highlighted language pill; «UND» when the chosen source names no language. */
+  const activeLanguage = computed<LanguagePill | null>(() => {
+    const s = selected.value
+    if (!s) return null
+    return s.languages.length ? audioLanguage.value : 'und'
+  })
+  /** Only the voices some offered source carries (no dead pills, like the reference). */
+  const languageOptions = computed<LanguagePill[]>(() => {
+    const present = new Set<LanguagePill>()
+    for (const s of offered.value) {
+      if (!s.languages.length) present.add('und')
+      for (const l of s.languages) present.add(l)
+    }
+    return LANGUAGE_ORDER.filter((l) => present.has(l))
+  })
 
+  const seasonFiles = computed(() => view.value?.seasons ?? [])
   const knownEpisodes = computed<TorrentEpisode[]>(() => {
     const seen = new Map<string, TorrentEpisode>()
-    for (const e of [...(view.value?.episodes ?? []), ...(selected.value?.episodes ?? [])]) seen.set(`${e.season}:${e.episode}`, e)
+    const add = (s: number, e: number) => seen.set(`${s}:${e}`, { season: s, episode: e })
+    for (const e of view.value?.episodes ?? []) add(e.season, e.episode)
+    for (const e of selected.value?.episodes ?? []) add(e.season, e.episode)
+    for (const s of seasonFiles.value) for (const e of s.episodes) add(s.season, e.episode)
     return [...seen.values()].sort((a, b) => a.season - b.season || a.episode - b.episode)
   })
   const showEpisodes = computed(() => isTv.value && knownEpisodes.value.length > 0)
-  const seasonOptions = computed(() => {
+  const seasonOptions = computed<SeasonOption[]>(() => {
     const available = new Set(knownEpisodes.value.map((e) => e.season))
-    const options = new Map<number, { value: number; label: string; episodes: number; available: boolean }>()
+    const options = new Map<number, SeasonOption>()
     for (const s of item.value?.season_list ?? []) {
       if (s.season > 0 || available.has(s.season)) options.set(s.season, { value: s.season, label: s.season ? `Сезон ${s.season}` : 'Спецвыпуски', episodes: s.episodes, available: available.has(s.season) })
     }
     for (const n of available) if (!options.has(n)) options.set(n, { value: n, label: n ? `Сезон ${n}` : 'Спецвыпуски', episodes: 0, available: true })
     return [...options.values()].sort((a, b) => a.value - b.value)
   })
-  const episodeOptions = computed(() => {
+  /** Episode grid of the chosen season: TMDB count, the ready ones with their file size. */
+  const episodeOptions = computed<EpisodeOption[]>(() => {
     if (season.value === null) return []
+    const files = new Map((seasonFiles.value.find((s) => s.season === season.value)?.episodes ?? []).map((e) => [e.episode, e]))
     const available = new Set(knownEpisodes.value.filter((e) => e.season === season.value).map((e) => e.episode))
     const count = Math.min(2000, Math.max(seasonOptions.value.find((s) => s.value === season.value)?.episodes ?? 0, 0, ...available))
-    return Array.from({ length: count }, (_, i) => ({ value: i + 1, available: available.has(i + 1) }))
+    return Array.from({ length: count }, (_, i) => {
+      const file = files.get(i + 1)
+      return {
+        value: i + 1, available: available.has(i + 1),
+        sizeMb: file && file.size_bytes > 0 ? Math.round(file.size_bytes / 1048576) : null,
+        sourceId: file?.source_id ?? null,
+      }
+    })
   })
   const currentEpisode = computed<TorrentEpisode | null>(() =>
     showEpisodes.value && season.value !== null && episode.value !== null ? { season: season.value, episode: episode.value } : null)
@@ -134,19 +187,34 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     episode.value = first.episode
   }, { immediate: true })
 
+  /** Quality pills: «1080p WEB-DL» names the source a click would pick; missing ones are struck through. */
+  const qualityOptions = computed<QualityOption[]>(() => (view.value?.qualities ?? []).map((q) => {
+    const current = selected.value?.quality === q.value ? selected.value : null
+    const best = current ?? bestSource(offered.value.filter((s) => s.quality === q.value), { language: language.value, episode: currentEpisode.value })
+    return { value: q.value, label: best?.source_type ? `${q.value} ${best.source_type}` : q.value, available: !!best, active: !!current }
+  }))
+
   const progress = computed<ProgressView | null>(() => {
     const v = view.value
     if (access.value !== true || !v?.allowed) return null
     const s = selected.value
     if (s && !s.default) {
-      if (s.state === 'failed') return { status: 'unavailable', progress: 0, startMs: null, label: 'Раздача не отвечает' }
-      if (s.state === 'candidate') return { status: 'queued', progress: 0, startMs: null, label: 'Раздача не подготовлена' }
-      const status: TorrentPlaybackStatus = s.state === 'ready' ? 'playable' : s.state === 'loading' ? 'loading' : 'queued'
-      return { status, progress: s.progress, startMs: s.start_ms }
+      if (s.state === 'failed') return { status: 'unavailable', stage: 'failed', progress: 0, startMs: null, label: 'Раздача не отвечает' }
+      if (s.state === 'candidate') return { status: 'not_queued', stage: 'idle', progress: 0, startMs: null, label: 'Раздача не подготовлена' }
+      if (s.state === 'ready') return { status: 'playable', stage: 'ready', progress: 100, startMs: s.start_ms, quality: s.quality }
+      const checking = s.state === 'loading'
+      return { status: checking ? 'loading' : 'queued', stage: checking ? 'checking' : 'queued', progress: s.progress, startMs: null }
     }
-    const st = v.status.status
-    if (st === 'not_queued') return null
-    return { status: st, progress: v.status.progress ?? PREP_PROGRESS[st], startMs: v.status.start_ms ?? s?.start_ms ?? null }
+    const st = v.status
+    const current = stageOf(st)
+    if (current === 'idle' || current === 'locked') return null
+    return {
+      status: st.status, stage: current,
+      progress: st.progress ?? PREP_PROGRESS[st.status] ?? 0,
+      startMs: st.start_ms ?? s?.start_ms ?? null,
+      label: current === 'ready' ? undefined : stageLabel(st),
+      quality: s?.quality ?? null,
+    }
   })
 
   const action = computed<WatchAction>(() => {
@@ -159,9 +227,9 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (s?.state === 'ready') return episodeReady.value ? 'launch' : 'missing'
     if (s && s.source_id && (s.state === 'candidate' || s.state === 'failed')) return 'prepare'
     if (s && (s.state === 'queued' || s.state === 'loading')) return 'wait'
-    const st = v.status.status
-    if (IN_PROGRESS.includes(st) || v.discovering) return 'wait'
-    if (st === 'not_queued') return v.in_library ? 'discover' : 'library'
+    const current = stage.value
+    if (ACTIVE_STAGES.includes(current) || (v.discovering && !settled(current))) return 'wait'
+    if (current === 'idle') return v.in_library ? 'discover' : 'library'
     return 'discover'
   })
   const choice = computed<StreamChoice>(() => ({
@@ -170,12 +238,20 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     episode: currentEpisode.value?.episode ?? null,
   }))
 
+  /** Next live refresh, or null when nothing can change by itself. */
+  function pollDelay(): number | null {
+    const v = view.value
+    if (!v) return loadError.value ? POLL_MS * 2 : null
+    if (moving(v) || (v.discovering && !settled(stageOf(v.status)))) return loadError.value ? POLL_MS * 2 : POLL_MS
+    return v.discovering ? RETRY_POLL_MS : null
+  }
+
   function schedule() {
     clearTimeout(timer)
-    const v = view.value
-    if (!v || !inFlight(v)) return
+    const delay = pollDelay()
+    if (delay === null) return
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-    timer = setTimeout(() => { void refresh() }, loadError.value ? POLL_MS * 2 : POLL_MS)
+    timer = setTimeout(() => { void refresh() }, delay)
   }
 
   async function refresh() {
@@ -202,7 +278,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   function autoDiscover(v: TorrentSourcesView) {
     const target = item.value
     if (!target || !v.allowed || !v.in_library || v.discovering) return
-    if (v.status.status !== 'playable' && v.status.status !== 'partial') return
+    if (stageOf(v.status) !== 'ready') return
     if (v.sources.filter((s) => s.state !== 'failed').length > 1) return
     const k = `${target.kind}:${target.tmdb_id}`
     if (autoDiscovered.has(k)) return
@@ -219,14 +295,14 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (source.source_id && (source.state === 'candidate' || source.state === 'failed')) void prepare(source)
   }
   function pickQuality(quality: string) {
-    const options = sources.value.filter((s) => s.quality === quality && s.state !== 'failed')
     if (selected.value?.quality === quality) return
+    const options = offered.value.filter((s) => s.quality === quality)
     choose(bestSource(options, { language: language.value, episode: currentEpisode.value }))
   }
-  function pickLanguage(lang: TorrentLanguage) {
+  function pickLanguage(lang: LanguagePill) {
     language.value = lang
-    if (selected.value?.languages.includes(lang)) return
-    const options = sources.value.filter((s) => s.languages.includes(lang) && s.state !== 'failed')
+    if (selected.value && speaks(selected.value, lang)) return
+    const options = offered.value.filter((s) => speaks(s, lang))
     choose(bestSource(options, { quality: selected.value?.quality, episode: currentEpisode.value }))
   }
   function followEpisode() {
@@ -264,16 +340,17 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     await refresh()
   }
 
-  async function discover() {
+  /** «↻ Искать раздачи» / «⟳ Обновить» (new episodes): one more tracker search for this title. */
+  async function discover(scope: 'title' | 'episodes' = 'title') {
     const target = item.value
     if (!target || busy.value) return
     busy.value = 'discover'
     error.value = ''
     message.value = ''
+    const before = stage.value
     try {
       const { result } = await torrentPlaybackApi.discover(target.kind, target.tmdb_id)
-      message.value = result === 'cooldown' ? 'Повторный поиск станет доступен чуть позже'
-        : result === 'no_demand' ? 'Добавьте запись в кинотеку, чтобы начать поиск' : 'Ищем раздачи…'
+      message.value = discoverMessage(result, scope, before)
     } catch (e) {
       error.value = e instanceof ApiError && e.status < 500 ? e.message : 'Не удалось запустить поиск. Повторите попытку.'
     } finally {
@@ -342,7 +419,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   }
 
   function onVisible() {
-    if (document.visibilityState === 'visible' && view.value && inFlight(view.value)) void refresh()
+    if (document.visibilityState === 'visible' && pollDelay() !== null) void refresh()
   }
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
 
@@ -373,8 +450,8 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   })
 
   return reactive({
-    view, loadError, selected, sources, audioLanguage, language, season, episode,
-    seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice,
+    view, loadError, selected, sources, stage, audioLanguage, activeLanguage, language, season, episode,
+    qualityOptions, languageOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice,
     busy, message, error, installPrompt,
     refresh, pickQuality, pickLanguage, pickSeason, pickEpisode, prepare, discover, addToLibrary, launch, closeInstall,
   })

@@ -1,5 +1,6 @@
 /** Metadata only. Never call a Telegram playback or catalogue endpoint here. */
 import { apiClient, adRequest } from './client'
+import type { PrepStatus, PrepStatusItem } from './preparation'
 export type TorrentKind = 'movie' | 'tv'
 export type TmdbGenre = { id: number; name: string }
 export type TorrentItem = {
@@ -27,10 +28,14 @@ export const torrentsApi = {
 }
 export const torrentPath=(item:Pick<TorrentItem,'kind'|'tmdb_id'>)=>`/torrents/${item.kind}/${item.tmdb_id}`
 
-export type TorrentPlaybackStatus = 'playable' | 'partial' | 'loading' | 'searching' | 'queued' | 'retrying' | 'unavailable' | 'not_queued'
-export type TorrentStatusPayload = { status: TorrentPlaybackStatus; playable: boolean; progress?: number; start_ms?: number | null; quality?: string | null; source_type?: string | null; seeders?: number | null }
+export type TorrentPlaybackStatus = PrepStatus
+/** Same shape as the Kinoteka status: machine state + the stage / label the UI names. */
+export type TorrentStatusPayload = PrepStatusItem
 export type TorrentSourceState = 'candidate' | 'queued' | 'loading' | 'ready' | 'failed'
 export type TorrentEpisode = { season: number; episode: number }
+/** One cell of the episode grid: the ready source serving it and the file size. */
+export type TorrentSeasonEpisode = { episode: number; source_id: string | null; size_bytes: number }
+export type TorrentSeasonFiles = { season: number; episodes: TorrentSeasonEpisode[] }
 export type TorrentLanguage = 'ru' | 'uk' | 'en'
 export type TorrentSource = {
   source_id: string | null; title: string; quality: string | null; source_type: string | null; languages: TorrentLanguage[];
@@ -41,6 +46,8 @@ export type TorrentSourcesView = {
   allowed: boolean; status: TorrentStatusPayload; discovering: boolean; in_library: boolean; selected_source_id: string | null;
   sources: TorrentSource[]; qualities: { value: string; available: boolean }[]; languages: { value: TorrentLanguage; available: boolean }[];
   episodes: TorrentEpisode[]
+  /** TV only: season tabs and the episode grid of the ready sources. */
+  seasons?: TorrentSeasonFiles[]
 }
 export type StreamChoice = { source_id?: string | null; season?: number | null; episode?: number | null; file_index?: number | null }
 export type PlaybackTicket = { stream_url: string; expires_at: string; title: string; source_id?: string | null; season?: number | null; episode?: number | null }

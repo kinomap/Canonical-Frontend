@@ -31,7 +31,32 @@ describe('account-backed library controls',()=>{
 
 describe('library preparation progress',()=>{
  const pro=()=>vi.mocked(torrentsApi.access).mockResolvedValue({allowed:true,requirement:'pro',playback_available:false} as any)
- it('shows the live preparation step with percent on a library card',async()=>{pro();vi.mocked(preparationApi.status).mockResolvedValue({statuses:{'movie:550':{status:'loading',playable:false,progress:75}}} as any);const{w}=await mountAt(LibraryView,{},'/torrents/library');expect(preparationApi.status).toHaveBeenCalledWith(['movie:550']);const bar=w.find('[data-testid="card-progress"] [role="progressbar"]');expect(bar.find('.progress-label').text()).toBe('Проверка и буферизация');expect(bar.find('.progress-percent').text()).toBe('75%')})
- it('turns green with the measured start time once ready',async()=>{pro();vi.mocked(preparationApi.status).mockResolvedValue({statuses:{'movie:550':{status:'playable',playable:true,progress:100,start_ms:640}}} as any);const{w}=await mountAt(LibraryView,{},'/torrents/library');const bar=w.find('[data-testid="card-progress"] [role="progressbar"]');expect(bar.text()).toBe('Готово · старт 640 мс');expect(bar.classes()).toContain('is-ready')})
+ const card=(w:any)=>w.find('.torrent-card > [data-testid="card-progress"] .torrent-progress')
+ it('shows the live preparation step with percent under a library card',async()=>{pro();vi.mocked(preparationApi.status).mockResolvedValue({statuses:{'movie:550':{status:'loading',playable:false,progress:75}}} as any);const{w}=await mountAt(LibraryView,{},'/torrents/library');expect(preparationApi.status).toHaveBeenCalledWith(['movie:550']);expect(w.find('.torrent-poster [data-testid="card-progress"]').exists()).toBe(false);const bar=card(w);expect(bar.attributes('role')).toBe('progressbar');expect(bar.find('.progress-label').text()).toBe('Проверка потока...');expect(bar.find('.progress-percent').text()).toBe('75%');expect(bar.attributes('data-stage')).toBe('checking');expect(bar.find('.progress-fill').attributes('style')).toContain('width: 75%')})
+ it('turns green with the prepared quality once ready',async()=>{pro();vi.mocked(preparationApi.status).mockResolvedValue({statuses:{'movie:550':{status:'playable',playable:true,progress:100,start_ms:640,stage:'ready',label:'Готово',quality:'1080p',source_type:'WEB-DL',seeders:357}}} as any);const{w}=await mountAt(LibraryView,{},'/torrents/library');const bar=card(w);expect(bar.text()).toBe('Готово · 1080p');expect(bar.classes()).toContain('is-ready');expect(bar.find('.progress-percent').exists()).toBe(false)})
+ it('falls back to the measured start time when the quality is unknown',async()=>{pro();vi.mocked(preparationApi.status).mockResolvedValue({statuses:{'movie:550':{status:'playable',playable:true,progress:100,start_ms:18416}}} as any);const{w}=await mountAt(LibraryView,{},'/torrents/library');expect(card(w).text()).toBe('Готово · старт 18416 мс')})
+ it('names an empty tracker search on the card instead of a percent',async()=>{pro();vi.mocked(preparationApi.status).mockResolvedValue({statuses:{'movie:550':{status:'unavailable',playable:false,progress:0,start_ms:null,stage:'not_found',label:'Раздачи на трекерах пока не найдены',reason:'no_verified_source'}}} as any);const{w}=await mountAt(LibraryView,{},'/torrents/library');const bar=card(w);expect(bar.text()).toBe('Раздачи на трекерах пока не найдены');expect(bar.classes()).toContain('is-warn');expect(bar.find('.progress-track').exists()).toBe(false)})
+ it('re-reads the status every 2.5 s through the stages until ready and then stops',async()=>{
+  pro()
+  const steps=[{status:'queued',playable:false,progress:10,stage:'queued',label:'В очереди...'},{status:'searching',playable:false,progress:42,stage:'searching',label:'Поиск источников...'},{status:'loading',playable:false,progress:81,stage:'checking',label:'Проверка потока...'},{status:'playable',playable:true,progress:100,start_ms:18416,stage:'ready',label:'Готово',quality:'1080p'}]
+  let call=0
+  vi.mocked(preparationApi.status).mockImplementation(async()=>({statuses:{'movie:550':steps[Math.min(call++,steps.length-1)]}}) as any)
+  vi.useFakeTimers()
+  try{
+   const router=createRouter({history:createMemoryHistory(),routes:[{path:'/torrents',component:{template:'<p />'}},{path:'/torrents/library',component:LibraryView}]})
+   await router.push('/torrents/library');await router.isReady()
+   const w=mount(LibraryView,{global:{plugins:[router]}});wrappers.push(w);await flushPromises()
+   expect(card(w).find('.progress-label').text()).toBe('В очереди...');expect(card(w).find('.progress-percent').text()).toBe('10%')
+   await vi.advanceTimersByTimeAsync(2500);await flushPromises()
+   expect(card(w).find('.progress-label').text()).toBe('Поиск источников...');expect(card(w).find('.progress-percent').text()).toBe('42%')
+   await vi.advanceTimersByTimeAsync(2500);await flushPromises()
+   expect(card(w).find('.progress-label').text()).toBe('Проверка потока...');expect(card(w).find('.progress-percent').text()).toBe('81%')
+   await vi.advanceTimersByTimeAsync(2500);await flushPromises()
+   expect(card(w).text()).toBe('Готово · 1080p');expect(card(w).classes()).toContain('is-ready')
+   expect(preparationApi.status).toHaveBeenCalledTimes(4)
+   await vi.advanceTimersByTimeAsync(10000);await flushPromises()
+   expect(preparationApi.status).toHaveBeenCalledTimes(4)
+  }finally{vi.useRealTimers()}
+ })
  it('does not ask for preparation without PRO access and shows no progress',async()=>{const{w}=await mountAt(LibraryView,{},'/torrents/library');expect(torrentsApi.access).toHaveBeenCalled();expect(preparationApi.status).not.toHaveBeenCalled();expect(w.find('[data-testid="card-progress"]').exists()).toBe(false);expect(w.find('.torrent-card').exists()).toBe(true)})
 })

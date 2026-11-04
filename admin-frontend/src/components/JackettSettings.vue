@@ -5,7 +5,8 @@ import ServiceVersion from './ServiceVersion.vue'
 
 // Last real search through Jackett for one tracker (stored on the backend).
 type Check = { checked_at: string; ok: boolean; result_count: number | null; error_code: string | null; duration_ms?: number | null; source?: string }
-type Indexer = { id: string; name: string; type: string; language: string; configured: boolean; has_error: boolean; check?: Check | null }
+// search_use: whether viewer searches use it now; a failed check leaves it out for up to 24 h.
+type Indexer = { id: string; name: string; type: string; language: string; configured: boolean; has_error: boolean; check?: Check | null; search_use?: 'used' | 'skipped' | null }
 type Field = { id: string; label: string; type: string; value: any; options?: Record<string, string>; secret?: boolean; saved?: boolean }
 type Form = { fields: Field[]; revision: string; unsupported: string[] }
 const base = '/api/v1/admin/torrent-search/instances'
@@ -49,6 +50,9 @@ const messages: Record<string, string> = {
   captcha_required: 'Введите символы с новой картинки и нажмите «Сохранить / продолжить настройку». Если вход снова не удастся, проверьте логин и пароль.',
   connection_field_locked: 'Адреса и прокси трекера задаются его проверенным определением в Jackett.',
   indexer_not_found: 'Индексатор не найден в Jackett. Обновите список.',
+  tracker_auth_failed: 'Трекер отклонил вход: проверьте логин и пароль. Подключение не считается успешным.',
+  tracker_timeout: 'Трекер не ответил вовремя. Подключение не подтверждено — повторите позже.',
+  tracker_rate_limited: 'Трекер временно ограничил частоту запросов. Подключение не подтверждено — повторите позже.',
 }
 const checkMessages: Record<string, string> = {
   cloudflare_403: 'Cloudflare 403 — сайт закрыт проверкой Cloudflare',
@@ -62,15 +66,24 @@ const checkMessages: Record<string, string> = {
   jackett_auth_failed: 'Backend не авторизован в Jackett',
   jackett_unavailable: 'Jackett недоступен',
 }
-const plural = (n: number) => { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? 'раздача' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'раздачи' : 'раздач' }
 const stamp = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+// Outcome of one real Torznab search through Jackett: never just "connected".
+function verdict(c: Check) {
+  if (c.ok) { const n = c.result_count ?? 0; return `✓ Работает (тест OK, раздач: ${n >= 100 ? '100+' : n})` }
+  return `✕ Ошибка: ${checkMessages[c.error_code || ''] || 'Ошибка проверки'}`
+}
 function status(row: Indexer) {
   if (!row.configured) return 'Не подключён'
   const c = row.check
-  let text = 'Ещё не проверялся'
-  if (c?.ok) { const n = c.result_count ?? 0; text = `✓ Работает (проверено ${stamp(c.checked_at)}, найдено ${n >= 100 ? '100+' : n} ${plural(n)})` }
-  else if (c) text = `✗ ${checkMessages[c.error_code || ''] || 'Ошибка проверки'} (проверено ${stamp(c.checked_at)})`
+  let text = c ? `${verdict(c)} · проверено ${stamp(c.checked_at)}` : 'Ещё не проверялся'
+  if (c && !c.ok && row.search_use === 'skipped') text += ' · исключён из поиска раздач до успешной проверки (не дольше 24 ч)'
   return checking.value[row.id] ? `${text} · проверяется…` : text
+}
+// Result of a save, confirmed by the real check (or its absence, said plainly).
+function report(name: string, c: Check | null) {
+  if (c && !c.ok) { notice.value = ''; error.value = `${name}: Jackett сохранил настройки, но проверочный поиск не прошёл — ${verdict(c)}. Поиск раздач не использует индексатор, пока проверка не пройдёт (не дольше 24 ч).`; return }
+  // A real error of the list reload or of the check itself stays visible.
+  notice.value = c ? `${name}: настройки сохранены и подтверждены проверочным поиском — ${verdict(c)}. Индексатор автоматически используется поиском раздач.` : `${name}: Jackett принял настройки, но проверочный поиск не завершился. Нажмите «Проверить»: без успешной проверки индексатор не считается рабочим.`
 }
 const statusKind = (row: Indexer) => (!row.configured || !row.check ? 'unknown' : row.check.ok ? 'ok' : 'bad')
 const TEXT = ['inputstring', 'password', 'inputtags']
@@ -106,6 +119,9 @@ async function loadIndexers() {
   } catch (e) { if (alive && token === generation) error.value = failure(e) }
   finally { if (alive && token === generation) busy.value = false }
 }
+// Resolves when the check already running for a tracker (e.g. the automatic one) ends.
+const waiters: Record<string, (() => void)[]> = {}
+const settled = (id: string) => checking.value[id] ? new Promise<void>(resolve => { (waiters[id] ||= []).push(resolve) }) : Promise.resolve()
 // One real search per tracker; the result is stored and shown with its time.
 async function check(row: Indexer, source: 'manual' | 'auto' = 'manual', quiet = false) {
   if (!row.configured || checking.value[row.id]) return
@@ -123,6 +139,7 @@ async function check(row: Indexer, source: 'manual' | 'auto' = 'manual', quiet =
     else error.value = failure(e)
   } finally {
     if (alive) { const next = { ...checking.value }; delete next[id]; checking.value = next }
+    const done = waiters[id] || []; delete waiters[id]; for (const resolve of done) resolve()
   }
 }
 async function checkAll() {
@@ -131,11 +148,13 @@ async function checkAll() {
   try { for (const row of indexers.value.filter(x => x.configured)) { if (!alive) return; await check(row, 'manual', true) } }
   finally { if (alive) checkingAll.value = false }
 }
+const fresh = (row: Indexer) => !!row.check && Date.now() - Date.parse(row.check.checked_at) < STALE_MS
 async function autoCheck() {
-  const token = generation, now = Date.now()
-  const stale = indexers.value.filter(x => x.configured && (!x.check || !(now - Date.parse(x.check.checked_at) < STALE_MS)))
+  const token = generation
+  const stale = indexers.value.filter(x => x.configured && !fresh(x))
   // Sequential: never a burst of tracker searches; a reloaded list starts its own pass.
-  for (const row of stale) { if (!alive || token !== generation) return; await check(row, 'auto') }
+  // A tracker checked meanwhile (e.g. right after its save) is not searched again.
+  for (const row of stale) { if (!alive || token !== generation) return; if (!fresh(row)) await check(row, 'auto') }
 }
 async function load() {
   loading.value = true; busy.value = true; error.value = ''; ++generation; close(); instances.value = []; selected.value = ''; indexers.value = []; observed.value = ''
@@ -176,19 +195,36 @@ async function save() {
   }
   busy.value = true; error.value = ''; notice.value = ''
   try {
-    await axios.post(`${path(row)}/config`, { revision: form.value.revision, changes }, auth())
+    const { data } = await axios.post(`${path(row)}/config`, { revision: form.value.revision, changes }, auth())
     if (!alive) return
-    notice.value = 'Jackett принял настройки. Сейчас будет выполнен проверочный поиск по трекеру; это ещё не проверка воспроизведения.'
+    // The backend confirms a save with one real Torznab search (data.check); with
+    // too little time left it leaves that check to this page (check_pending).
+    let verified: Check | null = data?.check || null
     showConnected(); close(); await loadIndexers()
+    if (!alive) return
+    const target = indexers.value.find(x => x.id === row.id)
+    if (target && verified && !target.check) target.check = verified
+    if (!verified && target) {
+      notice.value = `${row.name}: Jackett принял настройки. Выполняется проверочный поиск по трекеру…`
+      if (checking.value[target.id]) await settled(target.id)
+      else await check(target, 'manual', true)
+      if (!alive) return
+      verified = target.check || null
+    }
+    report(row.name, verified)
   } catch (e: any) {
     if (!alive) return
     const code = e?.response?.data?.code
+    // A rejected save is recorded as a failed check: the list shows the reason.
+    const failed: Check | null = e?.response?.data?.check || null
+    const target = indexers.value.find(x => x.id === row.id)
+    if (target && failed) { target.check = failed; if (!failed.ok) target.search_use = 'skipped' }
     // Keep edits of ordinary fields (login, filters) unless the saved settings
     // changed meanwhile; typed secrets and captcha answers are never kept.
     const typed: Record<string, any> = {}
     if (code !== 'config_changed_reload') for (const field of form.value?.fields || []) if (ordinary(field) && draft.value[field.id] !== initial.value[field.id]) typed[field.id] = draft.value[field.id]
     if (code === 'captcha_required') notice.value = messages.captcha_required
-    else error.value = failure(e)
+    else error.value = failed ? `${failure(e)} Статус: ${verdict(failed)}.` : failure(e)
     // Never replay a mutation automatically. A fresh form brings a new captcha
     // image and a new single-use snapshot.
     form.value = null; draft.value = {}; initial.value = {}; cleared.value = {}
@@ -237,7 +273,7 @@ onBeforeUnmount(() => { alive = false; ++generation; close() })
         <label>Найти индексатор<input v-model="query" type="search" placeholder="Название или язык" :disabled="busy" @input="page = 1" /></label>
       </div>
       <p v-if="observed" class="jackett-count" role="status">Подключено индексаторов: <strong>{{ connected }}</strong><span v-if="query.trim()"> · Найдено по фильтру: {{ matched.length }} <button type="button" :disabled="busy" @click="query = ''; page = 1">Сбросить поиск</button></span><button v-if="connected" type="button" class="jackett-check-all" :disabled="busy || checkingAll" @click="checkAll">{{ checkingAll ? 'Проверка…' : 'Проверить все' }}</button></p>
-      <p v-if="observed" class="jackett-meta">Состояние Jackett: {{ observed }}. Статус — результат реального поиска через Jackett по каждому трекеру; результаты старше 30 минут перепроверяются автоматически. Это не проверка воспроизведения.</p>
+      <p v-if="observed" class="jackett-meta">Состояние Jackett: {{ observed }}. Статус — результат реального поиска через Jackett по каждому трекеру (сохранение настроек тоже подтверждается таким поиском); результаты старше 30 минут перепроверяются автоматически. Рабочие трекеры сами используются поиском раздач; трекер с ошибкой проверки исключается из него до успешной проверки (не дольше 24 ч). Это не проверка воспроизведения.</p>
       <ul class="jackett-list" aria-label="Индексаторы">
         <li v-for="row in visible" :key="row.id">
           <div class="jackett-name"><strong>{{ row.name }}</strong><span>{{ row.type }} · {{ row.language }} · <span :class="['jackett-status', statusKind(row)]">{{ status(row) }}</span></span></div>
