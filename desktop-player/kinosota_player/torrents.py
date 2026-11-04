@@ -153,9 +153,13 @@ def _pill(text, handler):
 class TorrentPage(QWidget):
     """Кинотека / Фильмы / Сериалы → title → quality, voice, episode → mpv."""
     playRequested = Signal(dict)
+    listShown = Signal()
 
-    def __init__(self, api, work, show_error, notify, language='ru', title_language='ru', parent=None):
+    def __init__(self, api, work, show_error, notify, language='ru', title_language='ru', parent=None, embedded=False):
         super().__init__(parent)
+        # Embedded in the window: the header navigation and search replace the pills.
+        self.embedded = embedded
+        self.return_to = None
         self.api, self.work, self.show_error, self.notify = api, work, show_error, notify
         self.language, self.title_language = language, title_language
         self.mode, self.query, self.page, self.total_pages = 'library', '', 1, 1
@@ -204,11 +208,16 @@ class TorrentPage(QWidget):
         row.addSpacing(10)
         row.addWidget(self.search, 1)
         row.addStretch(0)
-        v.addLayout(row)
+        self.list_controls = QWidget()
+        self.list_controls.setLayout(row)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.list_controls.setVisible(not self.embedded)
+        v.addWidget(self.list_controls)
         self.grid = PosterGrid(self.api.origin)
         self.grid.title_language = self.title_language
         self.grid.itemClicked.connect(self.open_item)
         self.grid.itemActivated.connect(self.open_item)
+        self.grid.bookmarkToggled.connect(self.unsave)
         v.addWidget(self.grid, 1)
         pages = QHBoxLayout()
         self.prev = QPushButton()
@@ -396,6 +405,8 @@ class TorrentPage(QWidget):
         for row in data.get('items') or []:
             if not isinstance(row, dict) or row.get('kind') not in ('movie', 'tv') or type(row.get('tmdb_id')) is not int:
                 continue
+            if self.mode == 'library':
+                row = {**row, '_saved': True}  # Yellow ribbon: a click removes the title.
             title = movie_title(row, self.title_language)
             item = QListWidgetItem(title)
             item.setData(Qt.ItemDataRole.UserRole, row)
@@ -406,6 +417,24 @@ class TorrentPage(QWidget):
         self.prev.setEnabled(page > 1)
         self.next.setEnabled(page < self.total_pages)
         self.page_label.setText(f'{page} / {self.total_pages}')
+
+    def unsave(self, item):
+        """Ribbon in «Кинотека»: remove the title from the personal library."""
+        row = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if self.mode != 'library' or not isinstance(row, dict) or not hasattr(self.api, 'remove_from_library'):
+            return
+        generation = self.list_generation
+
+        def done(_):
+            if generation == self.list_generation:
+                for i in range(self.grid.count()):
+                    current = self.grid.item(i).data(Qt.ItemDataRole.UserRole) or {}
+                    if (current.get('kind'), current.get('tmdb_id')) == (row['kind'], row['tmdb_id']):
+                        self.grid.takeItem(i)
+                        break
+            self.notify('Удалено из кинотеки')
+
+        self.work(lambda: self.api.remove_from_library(row['kind'], row['tmdb_id']), done, self.show_error)
 
     # ---------- detail ----------
     def open_item(self, item):
@@ -434,8 +463,25 @@ class TorrentPage(QWidget):
         self.poll.stop()
         self.item = self.view = None
         self.stack.setCurrentIndex(0)
+        back, self.return_to = self.return_to, None
+        if back:
+            back()  # Opened from the window catalogue: go back there.
+            return
         if self.mode == 'library' and self.loaded:
             self.load()  # Preparation progress may have changed meanwhile.
+        self.listShown.emit()
+
+    def show_library(self):
+        """«Кинотека» in the window header: the personal library list, freshly loaded."""
+        self.return_to = None
+        self.detail_generation += 1
+        self.poll.stop()
+        self.item = self.view = None
+        self.stack.setCurrentIndex(0)
+        self.mode_buttons['library'].setChecked(True)
+        self.search.clear()
+        self.query = ''
+        self.set_mode('library')
 
     def reset(self):
         self.list_generation += 1
@@ -446,6 +492,7 @@ class TorrentPage(QWidget):
         self.grid.clear()
         self.item = self.view = None
         self.loaded = False
+        self.return_to = None
         self.mode, self.query, self.page = 'library', '', 1
         self.mode_buttons['library'].setChecked(True)
         self.search.clear()

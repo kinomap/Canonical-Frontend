@@ -81,6 +81,23 @@ TEXT.update({
  'Медиасервер временно недоступен. Попробуйте открыть фильм чуть позже.':'Media server unavailable. Try this title a little later.',
 })
 
+# 0.1.7: header sections, «Фильтры» panel, found counter, pages and bookmarks.
+TEXT.update({
+ 'Главная':'Home','Поиск фильмов и сериалов...':'Search movies and series...','Сетка':'Grid','Список':'List',
+ 'Найдено:':'Found:','Страница':'Page','Вперёд →':'Next →','Торрент':'Torrent',
+ 'Фильтры':'Filters','Показать фильтры':'Show filters','Скрыть фильтры':'Hide filters',
+ 'Жанры':'Genres','Рейтинг':'Rating','Год выпуска':'Release year','Источник':'Source','Сортировка':'Sort by',
+ 'Сбросить':'Reset','Все жанры':'All genres','Выбрать жанры':'Choose genres','Убрать жанр':'Remove genre',
+ 'Сбросить жанры':'Clear genres','Загружаем жанры…':'Loading genres…',
+ 'Не удалось загрузить жанры. Откройте список ещё раз.':'Could not load genres. Open the list again.',
+ 'Любой':'Any','от':'from','С любого':'From any','По любой':'To any',
+ 'Все источники':'All sources','KINOSOTA':'KINOSOTA','По популярности':'Most popular','По рейтингу':'Top rated',
+ 'Новинки':'Newest','По названию':'Title A–Z','Сериалы доступны только из торрентов':'Series come from torrents only',
+ 'Ничего не найдено. Измените или сбросьте фильтры.':'Nothing found. Change or reset the filters.',
+ 'Добавлено в кинотеку':'Added to your library','Удалено из кинотеки':'Removed from your library',
+ 'Фильм больше недоступен':'This movie is no longer available','Загружаем каталог…':'Loading the catalogue…',
+})
+
 def translate(text, language):
     if language != 'en': return text
     if text in TEXT: return TEXT[text]

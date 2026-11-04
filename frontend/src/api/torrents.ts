@@ -82,6 +82,10 @@ export const torrentPlaybackApi = {
     const {kind, tmdb_id, audio_lang, ...choice} = request
     return apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', {kind, tmdb_id, ...choiceBody({...choice, file_index: undefined}), ...(audio_lang ? {audio_lang} : {})})
   },
+  /** A KINOSOTA catalogue film the browser cannot play: the app plays it with its own session. */
+  catalogLaunch(movie_id: string): Promise<DesktopLaunch> {
+    return apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', {kind: 'movie', movie_id})
+  },
   launchStatus(launch_id: string, signal?: AbortSignal): Promise<{opened: boolean; expired: boolean}> {
     return adRequest(`/torrents/desktop-launch/${encodeURIComponent(launch_id)}`, {signal, cache: 'no-store'})
   },

@@ -44,6 +44,20 @@ describe('Desktop player privilege',()=>{
  it('compatibility warning has actionable profile and public information links',async()=>{
   const w=await render(PlaybackCompatibility);expect(w.text()).toContain('кодек');expect(w.findAll('a').map(a=>a.attributes('href'))).toEqual(['/profile#desktop-player','/player']);w.unmount()
  })
+ it('incompatibility notice offers to continue in KINOSOTA Player; only a PRO-less account is sent to the subscription',async()=>{
+  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/:any(.*)*',component:{template:'<div/>'}}]});await router.push('/');await router.isReady()
+  const w=mount(PlaybackCompatibility,{props:{issue:'audio',canBrowse:true},global:{plugins:[router]}})
+  expect(w.get('h2').text()).toBe('Фильм несовместим с вашим браузером')
+  expect(w.text()).toContain('запускать его отдельно на компьютере не нужно')
+  expect(w.get('[data-testid=codec-notice-desktop]').text()).toBe('▶ Продолжить в KINOSOTA Player')
+  expect(w.get('[data-testid=codec-notice-browser]').text()).toBe('Смотреть в браузере без звука')
+  await w.get('[data-testid=codec-notice-desktop]').trigger('click');expect(w.emitted('desktop')).toHaveLength(1)
+  await w.get('[data-testid=codec-notice-browser]').trigger('click');expect(w.emitted('browser')).toHaveLength(1)
+  await w.setProps({pro:false});expect(w.find('[data-testid=codec-notice-desktop]').exists()).toBe(false);expect(w.get('a.primary').attributes('href')).toBe('/profile?tab=billing')
+  await w.setProps({pro:true,busy:true,status:'Открываем KINOSOTA Player…'});expect(w.get('[data-testid=codec-notice-desktop]').attributes('disabled')).toBeDefined();expect(w.get('[role=status]').text()).toBe('Открываем KINOSOTA Player…')
+  await w.setProps({issue:null,codecs:'HEVC (H.265) и DTS',canBrowse:false});expect(w.get('.compatibility-lead').text()).toContain('HEVC (H.265) и DTS');expect(w.find('[data-testid=codec-notice-browser]').exists()).toBe(false)
+  w.unmount()
+ })
 })
 
 

@@ -4,6 +4,9 @@ import MovieDetailsView from '@/views/MovieDetailsView.vue'
 import { apiClient, ApiError } from '@/api/client'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { openDeepLink, waitForPlayer } from '@/lib/desktopLaunch'
+
+vi.mock('@/lib/desktopLaunch', async (orig) => ({ ...(await orig<typeof import('@/lib/desktopLaunch')>()), openDeepLink: vi.fn(), waitForPlayer: vi.fn() }))
 
 vi.mock('@/api/client', () => ({
   adRequest: vi.fn().mockResolvedValue({cue_points:[],plan_token:null}),
@@ -20,6 +23,8 @@ vi.mock('@/api/client', () => ({
     heartbeatPlayback: vi.fn(),
     stopPlayback: vi.fn(),
     getCurrentUser: vi.fn(),
+    getTorrentPlaybackAccess: vi.fn(),
+    postTorrentAction: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     constructor(public status: number, message: string) {
@@ -394,6 +399,101 @@ describe('MovieDetailsView.vue', () => {
     await w.find('.player-container').trigger('click');await flushPromises()
     expect(w.find('.subscription-player').exists()).toBe(false)
     if(status!==401)expect(w.text()).toContain('Playback temporarily unavailable')
+    w.unmount()
+  })
+
+  const unsupported=(reason:string)=>Object.assign(new Error('Unsupported'),{status:409,detail:{code:'BROWSER_MEDIA_UNSUPPORTED',reason}})
+  const launch=(id:string)=>({launch_id:id,deep_link:'kinosota://watch?launch='+id,expires_at:'2026-11-05T12:00:00Z'})
+
+  it('hands a film the browser cannot play to KINOSOTA Player from the notice in the player window',async()=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.diagnosePlayback).mockResolvedValue({state:'available'})
+    vi.mocked(apiClient.getTorrentPlaybackAccess).mockResolvedValue({allowed:true} as any)
+    vi.mocked(apiClient.startPlayback).mockRejectedValueOnce(unsupported('unsupported_pixel_format'))
+    vi.mocked(apiClient.postTorrentAction).mockResolvedValue(launch('launch-1') as any)
+    vi.mocked(waitForPlayer).mockResolvedValue(true)
+    await w.find('.player-container').trigger('click');await flushPromises()
+    const notice=w.find('[data-testid="codec-notice"]')
+    expect(notice.text()).toContain('Фильм несовместим с вашим браузером')
+    expect(notice.text()).toContain('10 бит')
+    expect(notice.text()).toContain('плеер откроется автоматически')
+    expect(notice.find('[data-testid="codec-notice-browser"]').exists()).toBe(false)
+    await notice.find('[data-testid="codec-notice-desktop"]').trigger('click');await flushPromises()
+    expect(apiClient.postTorrentAction).toHaveBeenCalledWith('desktop-launch',{kind:'movie',movie_id:'movie-123'})
+    expect(openDeepLink).toHaveBeenCalledWith('kinosota://watch?launch=launch-1')
+    expect(vi.mocked(waitForPlayer).mock.calls[0][0]).toBe('launch-1')
+    expect(w.find('.compatibility-status').text()).toBe('Фильм открыт в KINOSOTA Player')
+    w.unmount()
+  })
+
+  it('asks a PRO-less account to subscribe instead of offering a player it cannot use',async()=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.diagnosePlayback).mockResolvedValue({state:'available'})
+    vi.mocked(apiClient.getTorrentPlaybackAccess).mockResolvedValue({allowed:false} as any)
+    vi.mocked(apiClient.startPlayback).mockRejectedValueOnce(unsupported('unsupported_codec'))
+    await w.find('.player-container').trigger('click');await flushPromises()
+    const notice=w.find('[data-testid="codec-notice"]')
+    expect(notice.find('[data-testid="codec-notice-desktop"]').exists()).toBe(false)
+    expect(notice.find('a.primary').text()).toBe('Оформить PRO')
+    expect(notice.find('a.primary').attributes('href')).toBe('/profile?tab=billing')
+    expect(notice.text()).toContain('доступно с подпиской PRO')
+    expect(apiClient.postTorrentAction).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('turns a refused launch (403) into the PRO requirement',async()=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.diagnosePlayback).mockResolvedValue({state:'available'})
+    vi.mocked(apiClient.startPlayback).mockRejectedValueOnce(unsupported('unsupported_container'))
+    vi.mocked(apiClient.postTorrentAction).mockRejectedValueOnce(Object.assign(new Error('Нужна подписка PRO'),{status:403}))
+    await w.find('.player-container').trigger('click');await flushPromises()
+    expect(w.find('.compatibility-lead').text()).toContain('Формат файла')
+    await w.find('[data-testid="codec-notice-desktop"]').trigger('click');await flushPromises()
+    expect(w.find('[data-testid="codec-notice"] a.primary').text()).toBe('Оформить PRO')
+    expect(openDeepLink).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('pauses a film playing without sound under the notice; without the app the viewer may keep watching here',async()=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.getTorrentPlaybackAccess).mockResolvedValue({allowed:true} as any)
+    vi.mocked(apiClient.startPlayback).mockResolvedValueOnce({session_id:'silent-session',media_url:'https://media.invalid/fixture.mkv',heartbeat_interval_seconds:30} as any)
+    vi.mocked(apiClient.postTorrentAction).mockResolvedValue(launch('launch-2') as any)
+    vi.mocked(waitForPlayer).mockResolvedValue(false)
+    await w.find('.player-container').trigger('click');await flushPromises()
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear()
+    const player=w.findComponent({name:'VideoPlayer'})
+    player.vm.$emit('codec-issue','audio');await flushPromises()
+    const notice=player.find('[data-testid="codec-notice"]')
+    expect(notice.classes()).toContain('is-overlay')
+    expect(notice.text()).toContain('не воспроизводит звук')
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled()
+    await notice.find('[data-testid="codec-notice-desktop"]').trigger('click');await flushPromises()
+    const modal=document.body.querySelector('[data-testid="desktop-player-modal"]')
+    expect(modal).not.toBeNull()
+    vi.mocked(HTMLMediaElement.prototype.play).mockClear()
+    ;(modal!.querySelector('.desktop-modal-secondary') as HTMLButtonElement).click();await flushPromises()
+    expect(document.body.querySelector('[data-testid="desktop-player-modal"]')).toBeNull()
+    expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
+    expect(apiClient.stopPlayback).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('frees the browser session once KINOSOTA Player has picked a picture-less film up',async()=>{
+    const w=await compatibilityFixture()
+    vi.mocked(apiClient.getTorrentPlaybackAccess).mockResolvedValue({allowed:true} as any)
+    vi.mocked(apiClient.startPlayback).mockResolvedValueOnce({session_id:'handoff-session',media_url:'https://media.invalid/fixture.mkv',heartbeat_interval_seconds:30} as any)
+    vi.mocked(apiClient.postTorrentAction).mockResolvedValue(launch('launch-3') as any)
+    vi.mocked(waitForPlayer).mockResolvedValue(true)
+    await w.find('.player-container').trigger('click');await flushPromises()
+    w.findComponent({name:'VideoPlayer'}).vm.$emit('codec-issue','video');await flushPromises()
+    expect(w.find('[data-testid="codec-notice"]').text()).toContain('не может показать изображение')
+    await w.find('[data-testid="codec-notice-desktop"]').trigger('click');await flushPromises()
+    expect(apiClient.stopPlayback).toHaveBeenCalledWith('handoff-session',{})
+    expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+    expect(w.find('.handoff-status').text()).toBe('Фильм открыт в KINOSOTA Player')
+    expect(w.findComponent({name:'VideoPlayer'}).props('requested')).toBe(false)
     w.unmount()
   })
 

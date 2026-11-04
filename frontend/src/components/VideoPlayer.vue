@@ -3,6 +3,7 @@ import { t, tr } from '@/i18n'
 import { adRequest } from '@/api/client'
 import {createHistoryWriter} from '@/api/watchHistory'
 import AdPlaybackContainer from './AdPlaybackContainer.vue'
+import { missingPicture, soundWatcher } from '@/lib/browserCodecs'
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
@@ -17,7 +18,8 @@ const props = withDefaults(defineProps<{
   title?: string;
 }>(), { requested: true })
 
-const emit = defineEmits(['close', 'ended', 'media-error'])
+// 'codec-issue': the browser silently plays without picture ('video') or sound ('audio').
+const emit = defineEmits(['close', 'ended', 'media-error', 'codec-issue'])
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 const adsRef=ref<InstanceType<typeof AdPlaybackContainer>|null>(null)
@@ -97,6 +99,7 @@ function handleTimeUpdate() {
   if (!videoRef.value || isDragging.value) return
   adsRef.value?.tick()
   currentTime.value = videoRef.value.currentTime
+  if (!silentReported && !adsRef.value?.busy && sound.check(videoRef.value)) { silentReported = true; emit('codec-issue', 'audio') }
   
   if (videoRef.value.buffered.length > 0) {
     const bufferedEnd = videoRef.value.buffered.end(videoRef.value.buffered.length - 1)
@@ -114,11 +117,19 @@ async function saveHistory(keepalive=false){
  try{await historyWriter(id,v.currentTime,v.duration,historyEnded,keepalive);historySaveError.value=false}catch{historySaveError.value=true}
 }
 watch(()=>props.historySessionId,()=>{historyWriter=createHistoryWriter();mainPlayed=false;historyEnded=false;lastHistorySave=0;historySaveError.value=false})
-watch(()=>props.src,()=>{resumeApplied=false})
+watch(()=>props.src,()=>{resumeApplied=false;silentReported=false;sound.reset()})
+/** One silent-codec report per source; the owner decides whether to pause. */
+let silentReported=false
+const sound=soundWatcher(4)
+function pause(){videoRef.value?.pause()}
+/** Continue in the browser after the incompatibility notice (no second report). */
+function resume(){silentReported=true;sound.finish();const played=videoRef.value?.play() as Promise<void>|undefined;played?.catch?.(()=>{})}
+defineExpose({pause,resume})
 function handleSeeked(){if(videoRef.value&&!videoRef.value.ended)historyEnded=false;void saveHistory()}
 function handleLoadedMetadata() {
   if (!videoRef.value) return
   duration.value = videoRef.value.duration
+  if (!silentReported && props.src && missingPicture(videoRef.value)) { silentReported = true; emit('codec-issue', 'video') }
   if(!resumeApplied&&Number.isFinite(duration.value)&&duration.value>0){
    resumeApplied=true
    const position=props.initialPosition||0
@@ -314,6 +325,7 @@ onBeforeUnmount(() => {
       ></video>
       
       <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" :requested="requested" />
+      <slot name="overlay" />
       <!-- Buffering overlay -->
       <div class="buf-overlay" :class="{ show: isBuffering }">
         <div class="spinner"></div>

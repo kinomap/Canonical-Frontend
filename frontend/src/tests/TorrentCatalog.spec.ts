@@ -120,6 +120,20 @@ describe('torrent watch panel and live preparation',()=>{
   await w.find('[data-testid="watch-button"]').trigger('click');await flushPromises()
   expect(w.find('.watch-message').text()).toBe('Открыто в KINOSOTA Player');expect(document.body.querySelector('[data-testid="desktop-player-modal"]')).toBeNull()
  })
+ it('warns in the player window about a release the browser cannot decode and continues it in KINOSOTA Player',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready({sources:[src({title:'Film (2021) BDRip 2160p | HEVC | DTS'})]}) as any)
+  vi.mocked(torrentPlaybackApi.desktopLaunch).mockResolvedValue({launch_id:'id-9',deep_link:'kinosota://watch?launch=id-9',expires_at:'2026-11-05T12:00:00Z'} as any)
+  vi.mocked(waitForPlayer).mockResolvedValue(true)
+  const{w}=await at('/torrents/movie/1')
+  const notice=w.find('[data-testid="torrent-player"] [data-testid="codec-notice"]')
+  expect(notice.text()).toContain('Фильм несовместим с вашим браузером');expect(notice.text()).toContain('HEVC (H.265) и DTS')
+  expect(w.find('.browser-play').exists()).toBe(false)
+  await notice.find('[data-testid="codec-notice-desktop"]').trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'s1080',season:null,episode:null,audio_lang:'ru'})
+  expect(openDeepLink).toHaveBeenCalledWith('kinosota://watch?launch=id-9')
+  expect(w.find('[data-testid="codec-notice"] .compatibility-status').text()).toBe('Открыто в KINOSOTA Player')
+  expect(torrentPlaybackApi.playbackTicket).not.toHaveBeenCalled()
+ })
  it('lets a series pick a season tab and an episode card and launches exactly that episode',async()=>{
   vi.mocked(torrentsApi.detail).mockResolvedValue({...entry,kind:'tv',tmdb_id:7,season_list:[{season:1,episodes:8,name:'S1'},{season:2,episodes:6,name:'S2'}],genres:[]} as any)
   const eps=[{season:1,episode:1},{season:1,episode:2}]

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { listingHistoryBack, returnToListing } from '@/router/catalogNavigation'
 import { apiClient, ApiError } from '@/api/client'
@@ -11,6 +11,10 @@ import { useAuthStore } from '@/stores/auth'
 import AudioTracksList from '@/components/AudioTracksList.vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import PlaybackCompatibility from '@/components/PlaybackCompatibility.vue'
+import DesktopPlayerModal from '@/components/DesktopPlayerModal.vue'
+import { torrentPlaybackApi } from '@/api/torrents'
+import { useDesktopHandoff } from '@/composables/useDesktopHandoff'
+import type { CompatibilityIssue } from '@/lib/browserCodecs'
 import PlaybackUnavailable from '@/components/PlaybackUnavailable.vue'
 import PlaybackSubscription from '@/components/PlaybackSubscription.vue'
 import ReactionsBlock from '@/components/ReactionsBlock.vue'
@@ -47,6 +51,39 @@ const compatibilityWarning = ref(false)
 const unavailableWarning = ref(false)
 const diagnosing = ref(false)
 const playError = ref<string | null>(null)   // inline error under the player
+/** Why the browser cannot play this film (server probe reason or the media error). */
+const compatIssue = ref<CompatibilityIssue>(null)
+/** The browser plays without picture / sound: the notice is drawn over the paused video. */
+const codecIssue = ref<'video' | 'audio' | null>(null)
+const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
+// «Продолжить в KINOSOTA Player»: the installed app opens by itself and plays this film.
+const handoff = useDesktopHandoff(() => torrentPlaybackApi.catalogLaunch(movieId.value), () => {
+  // The film now plays in the app: free the browser session it no longer uses.
+  if (codecIssue.value || shouldPlay.value) {
+    releasePlaybackSession()
+    shouldPlay.value = false
+    streamUrl.value = null
+  }
+  codecIssue.value = null
+})
+const PROBE_ISSUES: Record<string, CompatibilityIssue> = {
+  unsupported_container: 'container', unsupported_codec: 'codec', unsupported_pixel_format: 'pixel',
+}
+watch(() => compatibilityWarning.value || !!codecIssue.value, (shown) => { if (shown) void handoff.checkAccess() })
+function onCodecIssue(kind: 'video' | 'audio') {
+  if (!shouldPlay.value || !streamUrl.value || compatibilityWarning.value) return
+  videoPlayer.value?.pause()
+  codecIssue.value = kind
+}
+function continueInBrowser() {
+  handoff.closeInstall()
+  if (!codecIssue.value) return
+  codecIssue.value = null
+  videoPlayer.value?.resume()
+}
+function openInPlayer() {
+  void handoff.launch()
+}
 const commentError = ref<string | null>(null) // inline error in comments section
 
 
@@ -116,6 +153,9 @@ async function handlePlay() {
   subscriptionRequired.value = false
   compatibilityWarning.value = false
   unavailableWarning.value = false
+  compatIssue.value = null
+  codecIssue.value = null
+  handoff.reset()
   if (streamUrl.value) {
     shouldPlay.value = true
     return
@@ -150,6 +190,7 @@ async function handlePlay() {
       } else if (err?.detail?.code === 'MEDIA_UNAVAILABLE' || err?.status === 404 || err?.status === 410) {
         unavailableWarning.value = true
       } else if (err?.detail?.code === 'BROWSER_MEDIA_UNSUPPORTED') {
+        compatIssue.value = PROBE_ISSUES[String(err?.detail?.reason || '')] || 'codec'
         await diagnoseFailure(4)
       }
       // 401 is handled globally by auth:expired → no duplicate message
@@ -184,6 +225,8 @@ async function handleMediaError(code: number) {
   releasePlaybackSession()
   shouldPlay.value = false
   streamUrl.value = null
+  codecIssue.value = null
+  compatIssue.value = 'codec'
   await diagnoseFailure(code)
 }
 
@@ -345,10 +388,16 @@ onMounted(() => {
         </div>
       </div>
       <PlaybackSubscription v-if="subscriptionRequired" :poster="movie.backdrop || movie.poster || undefined" />
-      <VideoPlayer :key="selectedSourceId || movieId" :history-session-id="historySessionId" :initial-position="resumePosition" :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" @media-error="handleMediaError" />
+      <VideoPlayer ref="videoPlayer" :key="selectedSourceId || movieId" :history-session-id="historySessionId" :initial-position="resumePosition" :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" @media-error="handleMediaError" @codec-issue="onCodecIssue">
+        <template #overlay>
+          <PlaybackCompatibility v-if="codecIssue" overlay can-browse :issue="codecIssue" :busy="handoff.busy" :status="handoff.status" :error="handoff.error" :pro="handoff.pro" @desktop="openInPlayer" @browser="continueInBrowser" />
+        </template>
+      </VideoPlayer>
       <p v-if="diagnosing" role="status">Проверяем доступность фильма…</p>
       <PlaybackUnavailable v-if="unavailableWarning" />
-      <PlaybackCompatibility v-else-if="compatibilityWarning" />
+      <PlaybackCompatibility v-else-if="compatibilityWarning" :poster="movie.backdrop || movie.poster || undefined" :issue="compatIssue || 'codec'" :busy="handoff.busy" :status="handoff.status" :error="handoff.error" :pro="handoff.pro" @desktop="openInPlayer" />
+      <p v-else-if="handoff.status && !codecIssue" class="handoff-status" role="status">{{ handoff.status }}</p>
+      <DesktopPlayerModal :show="handoff.installPrompt" :can-browse="!!codecIssue" @close="handoff.closeInstall()" @browser="continueInBrowser" />
       <!-- Inline player error (non-auth failures only) -->
       <div v-if="playError && !compatibilityWarning && !unavailableWarning" class="inline-error" role="alert">
         <span>{{ playError }}</span>
@@ -977,4 +1026,5 @@ onMounted(() => {
 .movie-part-buttons button:focus-visible { outline: 2px solid white; outline-offset: 2px; }
 .movie-part-buttons button:disabled { opacity: .5; cursor: wait; }
 
+.handoff-status{margin:12px 0 0;color:#9ce8d7;font-size:15px}
 </style>

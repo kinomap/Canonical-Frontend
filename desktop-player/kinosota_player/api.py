@@ -1,5 +1,5 @@
 """HTTPS API client. No passwords on disk, no tokens in URLs or logs."""
-import threading, uuid
+import re, threading, uuid
 from urllib.parse import urlsplit
 import httpx
 
@@ -26,6 +26,23 @@ def _tmdb(value):
     return value
 def _uuid(value):
     return str(uuid.UUID(str(value)))
+def _year(value):
+    if value is None:return None
+    if type(value) is not int or not 1870<=value<=2100:raise ValueError('Invalid year')
+    return value
+def _rating(value):
+    if value is None:return None
+    if type(value) not in (int,float) or not 0<=value<=10:raise ValueError('Invalid rating')
+    return float(value)
+def _sorted_years(year_from,year_to):
+    year_from,year_to=_year(year_from),_year(year_to)
+    if year_from is not None and year_to is not None and year_from>year_to:year_from,year_to=year_to,year_from
+    return year_from,year_to
+
+# Player sort keys → KINOSOTA /movies and TMDB /torrents/catalog orders.
+MOVIE_SORTS={'popularity':'popularity','rating':'rating_desc','newest':'newest','title':'title_asc'}
+TMDB_SORTS={'popularity':'popular','rating':'rating','newest':'newest','title':'title'}
+SLUG=re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
 
 class Api:
     def __init__(self,origin=API_ORIGIN,transport=None):
@@ -34,7 +51,7 @@ class Api:
             raise ValueError('A plain HTTPS origin is required')
         self.origin=origin.rstrip('/');self.token='';self.lock=threading.RLock()
         self.client=httpx.Client(base_url=self.origin+'/api/v1/',timeout=20,follow_redirects=False,transport=transport,
-            headers={'User-Agent':'KINOSOTA-Player/0.1.6','Accept':'application/json'})
+            headers={'User-Agent':'KINOSOTA-Player/0.1.7','Accept':'application/json'})
     def request(self,method,path,body=None,extra_headers=None):
         if not path.startswith('/') or path.startswith('//') or '://' in path:raise ValueError('Relative API path required')
         with self.lock:
@@ -80,14 +97,46 @@ class Api:
     # sees an infohash, magnet or tracker URL; the stream URL goes to mpv over IPC.
     def library(self,page=1):
         return self.request('GET','/account/library?'+str(httpx.QueryParams({'page':max(1,int(page)),'size':48})))
-    def torrent_catalog(self,kind='movie',query='',page=1):
+    def movies(self,page=1,query='',genres=(),year_from=None,year_to=None,min_rating=None,sort='popularity',page_size=30):
+        """KINOSOTA catalogue (/movies): any of the genre slugs, inclusive years, minimum rating."""
+        if sort not in MOVIE_SORTS:raise ValueError('Unsupported sort')
+        slugs=list(dict.fromkeys(genres))[:10]
+        if any(not isinstance(g,str) or not SLUG.match(g) for g in slugs):raise ValueError('Invalid genre')
+        year_from,year_to=_sorted_years(year_from,year_to)
+        params={'page':max(1,int(page)),'page_size':max(1,min(100,int(page_size))),'sort':MOVIE_SORTS[sort]}
+        if query:params['q']=str(query)[:100]
+        if slugs:params['genres']=','.join(slugs)
+        if year_from is not None:params['year_from']=year_from
+        if year_to is not None:params['year_to']=year_to
+        if _rating(min_rating) is not None:params['min_rating']=_rating(min_rating)
+        return self.request('GET','/movies?'+str(httpx.QueryParams(params)))
+    def torrent_catalog(self,kind='movie',query='',page=1,genres=(),year_from=None,year_to=None,rating=None,sort='popularity'):
+        """TMDB titles with torrent sources. A title search takes no other filters (server rule)."""
+        if sort not in TMDB_SORTS:raise ValueError('Unsupported sort')
         params={'kind':_kind(kind),'page':max(1,min(500,int(page)))}
-        if query:params['q']=str(query)[:120]
+        ids=[_tmdb(g) for g in dict.fromkeys(genres)][:10]
+        year_from,year_to=_sorted_years(year_from,year_to);rating=_rating(rating)
+        if query:
+            if ids or year_from is not None or year_to is not None or rating is not None or sort!='popularity':
+                raise ValueError('A title search takes no filters')
+            params['q']=str(query)[:120]
+        if ids:params['genres']=','.join(map(str,ids))
+        if year_from is not None:params['year_from']=year_from
+        if year_to is not None:params['year_to']=year_to
+        if rating is not None:params['rating']=rating
+        if sort!='popularity':params['sort']=TMDB_SORTS[sort]
         return self.request('GET','/torrents/catalog?'+str(httpx.QueryParams(params)))
+    def genres(self):return self.request('GET','/genres')
+    def torrent_genres(self,kind):return self.request('GET','/torrents/genres?'+str(httpx.QueryParams({'kind':_kind(kind)})))
+    def library_membership(self,pairs):
+        keys=list(dict.fromkeys(f'{_kind(kind)}:{_tmdb(tmdb_id)}' for kind,tmdb_id in pairs))[:100]
+        if not keys:return {'saved':[]}
+        return self.request('GET','/account/library/membership?'+str(httpx.QueryParams({'keys':','.join(keys)})))
     def torrent_sources(self,kind,tmdb_id):return self.request('GET',f'/torrents/sources/{_kind(kind)}/{_tmdb(tmdb_id)}')
     def prepare_source(self,source_id):return self.request('POST',f'/torrents/sources/{_uuid(source_id)}/prepare',{})
     def discover_sources(self,kind,tmdb_id):return self.request('POST',f'/torrents/sources/{_kind(kind)}/{_tmdb(tmdb_id)}/discover',{})
     def add_to_library(self,kind,tmdb_id):return self.request('PUT',f'/account/library/{_kind(kind)}/{_tmdb(tmdb_id)}',{})
+    def remove_from_library(self,kind,tmdb_id):return self.request('DELETE',f'/account/library/{_kind(kind)}/{_tmdb(tmdb_id)}')
     def open_launch(self,launch_id):return self.request('POST',f'/torrents/desktop-launch/{_uuid(launch_id)}/open',{})
     def torrent_ticket(self,kind,tmdb_id,source_id=None,season=None,episode=None):
         body={'kind':_kind(kind),'tmdb_id':_tmdb(tmdb_id)}
