@@ -25,8 +25,8 @@ const form = { revision: 'revision', unsupported: [], fields: [
 function setup() {
  const requests = [], hooks = {}, response = { error: null, wait: null }
  const axios = {
-  get: async (url) => { requests.push({ method: 'GET', url }); if (url.endsWith('/config')) return { data: structuredClone(form) }; if (url.endsWith('/indexers')) return { data: { indexers: [row], observed_at: '2026-11-01T00:00:00Z' } }; return { data: { instances: [{ id: 'primary', name: 'Shared' }] } } },
-  post: async (url, body) => { requests.push({ method: 'POST', url, body: structuredClone(body) }); if (response.wait) await response.wait; if (response.error) throw response.error; return { data: { ok: true } } },
+  get: async (url) => { requests.push({ method: 'GET', url }); if (url.endsWith('/config')) return { data: structuredClone(form) }; if (url.endsWith('/indexers')) return { data: { indexers: structuredClone(response.indexers || [row]), observed_at: '2026-11-01T00:00:00Z' } }; return { data: { instances: [{ id: 'primary', name: 'Shared' }] } } },
+  post: async (url, body) => { requests.push({ method: 'POST', url, body: structuredClone(body) }); if (response.wait) await response.wait; if (response.error) throw response.error; if (url.endsWith('/check')) return { data: { check: structuredClone(response.check || null), throttled: false } }; return { data: { ok: true } } },
   delete: async (url, config) => { requests.push({ method: 'DELETE', url, body: config.data }); return { data: { ok: true } } },
  }
  const sandbox = { exports: {}, require: n => n === 'vue' ? { ...vue, onMounted: cb => { hooks.mount = cb }, onBeforeUnmount: cb => { hooks.unmount = cb } } : { default: axios, __esModule: true }, localStorage: { getItem: () => 'synthetic-admin' }, document: { querySelector: () => null } }
@@ -141,4 +141,59 @@ test('Cloudflare block has an explicit operator message', async () => {
  response.error = { response: { status: 502, data: { code: 'cloudflare_challenge', error: 'Just a moment... raw' } } }
  await state.save()
  assert.equal(state.error.value, 'Сайт закрыт проверкой Cloudflare / требуется FlareSolverr или прокси.')
+})
+
+const AT = '2026-11-04T09:05:00Z'
+const checks = requests => requests.filter(x => x.method === 'POST' && x.url.endsWith('/check'))
+const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+test('indexer status is the last real search, never just "connected"', () => {
+ const { state } = setup()
+ const ok = n => state.status({ ...row, check: { checked_at: AT, ok: true, result_count: n, error_code: null } })
+ assert.match(ok(17), /^✓ Работает \(проверено \d\d\.\d\d, \d\d:\d\d, найдено 17 раздач\)$/)
+ for (const [n, text] of [[1, '1 раздача'], [3, '3 раздачи'], [11, '11 раздач'], [21, '21 раздача'], [100, '100+ раздач'], [250, '100+ раздач']]) assert.ok(ok(n).endsWith(`найдено ${text})`), ok(n))
+ const bad = code => state.status({ ...row, check: { checked_at: AT, ok: false, result_count: null, error_code: code } })
+ assert.match(bad('cloudflare_403'), /^✗ Cloudflare 403 — сайт закрыт проверкой Cloudflare \(проверено /)
+ assert.match(bad('auth_failed'), /^✗ Ошибка авторизации на трекере /)
+ assert.match(bad('timeout'), /^✗ Timeout /); assert.match(bad('surprise'), /^✗ Ошибка проверки /)
+ assert.equal(state.status({ ...row, check: null }), 'Ещё не проверялся'); assert.equal(state.status({ ...row, configured: false }), 'Не подключён')
+ assert.equal(state.statusKind({ ...row, check: { ok: false } }), 'bad'); assert.equal(state.statusKind({ ...row, check: null }), 'unknown')
+ assert.doesNotMatch(source, /\/test`|'Подключён' :/); assert.ok(source.includes(`@click="check(row, 'manual')"`))
+})
+test('«Проверить» runs one real check per click and shows its result', async () => {
+ const { state, requests, response } = setup(); state.indexers.value = [{ ...row }]
+ response.check = { checked_at: AT, ok: true, result_count: 42, error_code: null, duration_ms: 900, source: 'manual' }
+ let resolve; response.wait = new Promise(r => { resolve = r })
+ const first = state.check(state.indexers.value[0], 'manual'); await state.check(state.indexers.value[0], 'manual')
+ assert.equal(checks(requests).length, 1); assert.match(state.status(state.indexers.value[0]), / · проверяется…$/)
+ resolve(); await first
+ const [sent] = checks(requests)
+ assert.ok(sent.url.endsWith('/instances/primary/indexers/tracker/check')); assert.deepEqual(sent.body, { source: 'manual' })
+ assert.match(state.status(state.indexers.value[0]), /^✓ Работает .*найдено 42 раздачи\)$/)
+})
+test('opening the list re-checks only stale trackers, one at a time', async () => {
+ const { requests, response, hooks } = setup()
+ response.indexers = [
+  { ...row, id: 'fresh', check: { checked_at: new Date().toISOString(), ok: true, result_count: 5, error_code: null } },
+  { ...row, id: 'old', check: { checked_at: new Date(Date.now() - 31 * 60 * 1000).toISOString(), ok: false, result_count: null, error_code: 'timeout' } },
+  { ...row, id: 'never', check: null }, { ...row, id: 'off', configured: false, check: null }]
+ let resolve; response.wait = new Promise(r => { resolve = r })
+ await hooks.mount()
+ assert.deepEqual(checks(requests).map(x => [x.url.split('/').at(-2), x.body.source]), [['old', 'auto']])
+ resolve(); await settle()
+ assert.deepEqual(checks(requests).map(x => x.url.split('/').at(-2)), ['old', 'never'])
+})
+test('background check failures stay quiet; manual ones explain', async () => {
+ const { state, response } = setup(); state.indexers.value = [{ ...row }]
+ response.error = { response: { status: 409, data: { code: 'check_in_progress' } } }
+ await state.check(state.indexers.value[0], 'auto'); assert.equal(state.notice.value, ''); assert.equal(state.error.value, '')
+ await state.check(state.indexers.value[0], 'manual'); assert.match(state.notice.value, /проверка уже выполняется/)
+ response.error = { response: { status: 503, data: { code: 'jackett_auth_failed', error: 'raw-upstream' } } }
+ await state.check(state.indexers.value[0], 'manual'); assert.match(state.error.value, /^Backend не смог авторизоваться/)
+ assert.equal(state.status(state.indexers.value[0]), 'Ещё не проверялся')
+})
+test('«Проверить все» checks every connected tracker sequentially', async () => {
+ const { state, requests } = setup(); state.indexers.value = [{ ...row, id: 'a' }, { ...row, id: 'b' }, { ...row, id: 'c', configured: false }]
+ await state.checkAll()
+ assert.deepEqual(checks(requests).map(x => [x.url.split('/').at(-2), x.body.source]), [['a', 'manual'], ['b', 'manual']])
+ assert.equal(state.checkingAll.value, false)
 })

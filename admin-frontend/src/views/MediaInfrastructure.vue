@@ -193,7 +193,7 @@ onUnmounted(() => {
       <section aria-label="Торрент-ноды">
         <p v-if="torrentNodesError" role="alert">Не удалось обновить состояние torrent-нод. Последние данные не подтверждены.</p>
         <p v-else-if="!torrentNodes.length">Torrent-ноды ещё не подключены. Добавьте VPS в Media Nodes с профилем «Торренты».</p>
-        <div v-for="node in torrentNodes" :key="node.id"><router-link :to="`/media-nodes/${node.id}`">{{ node.name }} · Торренты</router-link><TorrentServices :observation="node.torrent_services" /></div>
+        <div v-for="node in torrentNodes" :key="node.id"><router-link :to="`/media-nodes/${node.id}`">{{ node.name }} · Торренты</router-link><TorrentServices :node-id="node.node_id" :observation="node.torrent_services" /></div>
       </section>
       <!-- ── Capacity Overview ───────────────────────── -->
       <section class="obs-section">

@@ -210,7 +210,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
         </div>
       </section>
 
-      <TorrentServices v-if="node.profile==='torrent'" :observation="node.torrent_services" />
+      <TorrentServices v-if="node.profile==='torrent'" :node-id="node.node_id" :observation="node.torrent_services" />
       <p v-if="node.profile==='torrent'" role="status">Ёмкость торрент-стриминга ещё не измерена. Telegram-сессии и расчёт их ёмкости к этой ноде не применяются.</p>
       <!-- ── Worker ── -->
       <section class="nd-section">
