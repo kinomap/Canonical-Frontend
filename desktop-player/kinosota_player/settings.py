@@ -4,8 +4,9 @@ from pathlib import Path
 from PySide6.QtCore import Qt,QRect,QPropertyAnimation,QEasingCurve,QEvent,Signal,QSize
 from PySide6.QtGui import QPixmap,QIcon,QPainter
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QWidget,QFrame,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QApplication,QScrollArea,QStackedWidget,QSizePolicy
+from PySide6.QtWidgets import QWidget,QFrame,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QApplication,QScrollArea,QStackedWidget,QSizePolicy,QStyledItemDelegate
 from .preferences import translate
+from .filters import FilterCombo
 from . import __version__
 
 def line_icon(name):
@@ -57,7 +58,7 @@ class SettingsDrawer(QWidget):
     def card(self,v,title,hint):
         frame=QFrame();frame.setObjectName('settingsCard');x=QVBoxLayout(frame);x.setContentsMargins(18,16,18,16);x.setSpacing(10);x.addWidget(self.text(title,'sectionTitle'));x.addWidget(self.text(hint,'hint',True));v.addWidget(frame);return x
     def selector(self,v,title,value):
-        l=self.text(title,'fieldLabel');v.addWidget(l);c=QComboBox();c.addItem('Русский · RU','ru');c.addItem('English · EN','en');c.setCurrentIndex(c.findData(value));c.setMinimumHeight(42);l.setBuddy(c);v.addWidget(c);return c
+        l=self.text(title,'fieldLabel');v.addWidget(l);c=FilterCombo();c.setItemDelegate(QStyledItemDelegate(c));c.addItem('Русский · RU','ru');c.addItem('English · EN','en');c.setCurrentIndex(c.findData(value));c.setMinimumHeight(42);l.setBuddy(c);v.addWidget(c);return c
     def select_page(self,index):
         self.stack.setCurrentIndex(index)
         for i,b in enumerate(self.nav):b.setChecked(i==index)

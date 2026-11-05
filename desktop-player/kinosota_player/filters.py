@@ -3,7 +3,7 @@ from datetime import date
 from PySide6.QtCore import Qt, QPoint, QPointF, QRect, QSize, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLayout, QMenu, QPushButton,
-    QSizePolicy, QVBoxLayout, QWidget)
+    QSizePolicy, QStyledItemDelegate, QVBoxLayout, QWidget)
 from .browse import Genres
 from .preferences import translate
 from .theme import icon
@@ -116,6 +116,7 @@ def _combo(name):
     combo.setObjectName(name)
     combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
     combo.setCursor(Qt.CursorShape.PointingHandCursor)
+    combo.setItemDelegate(QStyledItemDelegate(combo))  # 0.1.8: the styled 30 px rows of the list.
     return combo
 
 

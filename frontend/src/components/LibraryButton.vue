@@ -10,7 +10,9 @@ const auth=useAuthStore(), library=useLibrary(), route=useRoute(), router=useRou
 const state=computed(()=>library.entry(props.item))
 const label=computed(()=>state.value.error|| (state.value.saved?'Удалить из кинотеки':'Добавить в кинотеку'))
 watch(()=>[props.item.kind,props.item.tmdb_id,auth.token.value,auth.user.value?.id],()=>library.ensure(props.item),{immediate:true})
-async function toggle(){if(!auth.isAuthenticated.value){await router.push({path:'/login',query:{redirect:route.fullPath}});return}await library.toggle(props.item)}
+// Guests and expired sessions (401) go to sign-in and come back here; no error badge for them.
+const toLogin=()=>router.push({path:'/login',query:{redirect:route.fullPath}})
+async function toggle(){if(!auth.isAuthenticated.value||library.guest.value){await toLogin();return}if(await library.toggle(props.item)==='login')await toLogin()}
 </script>
 <template><div class="library-control"><button type="button" class="library-button" :class="{'is-saved':state.saved}" :title="label" :aria-label="label" :aria-pressed="state.saved" :aria-busy="state.loading" :disabled="state.loading" @click.stop.prevent="toggle"><Bookmark :size="21" :fill="state.saved?'currentColor':'none'" :stroke-width="1.8" aria-hidden="true" /></button><span class="library-tooltip" role="tooltip">{{label}}</span><span v-if="state.error" class="library-feedback" role="alert">{{state.error}}</span></div></template>
 <style scoped>

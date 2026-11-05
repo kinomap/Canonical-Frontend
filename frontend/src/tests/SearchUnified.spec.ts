@@ -1,4 +1,4 @@
-import {t} from '../i18n'
+import {t, tr} from '../i18n'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import MovieCard from '@/components/MovieCard.vue'
@@ -81,7 +81,7 @@ describe('TZ35 Unified Search Frontend Integration', () => {
     await flushPromises()
 
     expect(apiClient.searchMoviesQuick).toHaveBeenCalledWith('Shōgun', 5, expect.any(AbortSignal))
-    expect(wrapper.text()).toContain(t('Сериал'))
+    expect(wrapper.text()).toContain(tr('Сериал', 'Series'))
 
     const suggestions = wrapper.findAll('.suggestion-item')
     expect(suggestions.length).toBe(2)

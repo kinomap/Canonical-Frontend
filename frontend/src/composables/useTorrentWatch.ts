@@ -35,6 +35,8 @@ export type ProgressView = { status: PrepStatus; stage: PrepStage; progress: num
 export type QualityOption = { value: string; label: string; available: boolean; active: boolean }
 export type SeasonOption = { value: number; label: string; episodes: number; available: boolean }
 export type EpisodeOption = { value: number; available: boolean; sizeMb: number | null; sourceId: string | null }
+/** Voice-over pill: «active» when the chosen source carries it, «best» for the top-ranked release's voice. */
+export type VoiceOption = { value: string; active: boolean; best: boolean }
 export type WatchAction =
   | 'checking' | 'subscribe' | 'loading' | 'retry' | 'library' | 'discover'
   | 'prepare' | 'wait' | 'missing' | 'launch'
@@ -55,6 +57,8 @@ function rank(s: TorrentSource, p: Prefs): number[] {
     p.language && !speaks(s, p.language) ? 1 : 0,
     p.episode && !hasEpisode(s, p.episode) ? 1 : 0,
     s.state === 'ready' ? 0 : 1,
+    // Server viewer rank: 1080p > 2160p > 720p, ru/en/uk voices, more voices, seeders.
+    s.rank ?? Number.MAX_SAFE_INTEGER,
     -s.seeders,
     -s.size_bytes,
   ]
@@ -118,7 +122,9 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       const hit = list.find((s) => s.source_id === selectedId.value)
       if (hit) return hit
     }
-    return list.find((s) => s.default) ?? bestSource(list)
+    // The server recommends the best-ranked ready source; the manifest default otherwise.
+    const recommended = view.value?.selected_source_id
+    return (recommended ? list.find((s) => s.source_id === recommended) : undefined) ?? list.find((s) => s.default) ?? bestSource(list)
   })
   /** Voice sent to the player: the user's pick when the source has it, Russian first otherwise. */
   const audioLanguage = computed<TorrentLanguage | null>(() => {
@@ -142,6 +148,16 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     }
     return LANGUAGE_ORDER.filter((l) => present.has(l))
   })
+  /** Voice-over studios of the offered releases, best-ranked first (at most 12). */
+  const voiceOptions = computed<VoiceOption[]>(() => {
+    const names: string[] = []
+    const add = (v: string) => { if (v && !names.includes(v)) names.push(v) }
+    for (const s of [...offered.value].sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9))) for (const v of s.voices ?? []) add(v)
+    for (const v of view.value?.voices ?? []) add(v.value)
+    const current = selected.value?.voices ?? []
+    const top = bestSource(offered.value)?.voices?.[0] ?? null
+    return names.slice(0, 12).map((value) => ({ value, active: current.includes(value), best: value === top }))
+  })
 
   const seasonFiles = computed(() => view.value?.seasons ?? [])
   const knownEpisodes = computed<TorrentEpisode[]>(() => {
@@ -157,9 +173,9 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     const available = new Set(knownEpisodes.value.map((e) => e.season))
     const options = new Map<number, SeasonOption>()
     for (const s of item.value?.season_list ?? []) {
-      if (s.season > 0 || available.has(s.season)) options.set(s.season, { value: s.season, label: s.season ? `Сезон ${s.season}` : 'Спецвыпуски', episodes: s.episodes, available: available.has(s.season) })
+      if (s.season > 0 || available.has(s.season)) options.set(s.season, { value: s.season, label: s.season ? `${s.season} сезон` : 'Спецвыпуски', episodes: s.episodes, available: available.has(s.season) })
     }
-    for (const n of available) if (!options.has(n)) options.set(n, { value: n, label: n ? `Сезон ${n}` : 'Спецвыпуски', episodes: 0, available: true })
+    for (const n of available) if (!options.has(n)) options.set(n, { value: n, label: n ? `${n} сезон` : 'Спецвыпуски', episodes: 0, available: true })
     return [...options.values()].sort((a, b) => a.value - b.value)
   })
   /** Episode grid of the chosen season: TMDB count, the ready ones with their file size. */
@@ -304,6 +320,11 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (selected.value && speaks(selected.value, lang)) return
     const options = offered.value.filter((s) => speaks(s, lang))
     choose(bestSource(options, { quality: selected.value?.quality, episode: currentEpisode.value }))
+  }
+  function pickVoice(voice: string) {
+    if (selected.value?.voices?.includes(voice)) return
+    const options = offered.value.filter((s) => s.voices?.includes(voice))
+    choose(bestSource(options, { quality: selected.value?.quality, language: language.value, episode: currentEpisode.value }))
   }
   function followEpisode() {
     const e = currentEpisode.value
@@ -451,9 +472,9 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
 
   return reactive({
     view, loadError, selected, sources, stage, audioLanguage, activeLanguage, language, season, episode,
-    qualityOptions, languageOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice,
+    qualityOptions, languageOptions, voiceOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice,
     busy, message, error, installPrompt,
-    refresh, pickQuality, pickLanguage, pickSeason, pickEpisode, prepare, discover, addToLibrary, launch, closeInstall,
+    refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, addToLibrary, launch, closeInstall,
   })
 }
 

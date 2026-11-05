@@ -1,9 +1,13 @@
 """HTTPS API client. No passwords on disk, no tokens in URLs or logs."""
-import re, threading, uuid
+import re, threading, time, uuid
 from urllib.parse import urlsplit
 import httpx
 
 API_ORIGIN='https://watch.scenrix.com'
+USER_AGENT='KINOSOTA-Player/0.1.8'
+# Stream warm-up: the first bytes of a cold torrent may take a while; mpv gets the URL only once they flow.
+WARM_RANGE='bytes=0-262143';WARM_ENOUGH=65536
+STALE_STREAM=(400,401,403,404,410)
 class ApiError(Exception):
     def __init__(self,status,code='',message=''):
         self.status=status;self.code=code
@@ -51,7 +55,9 @@ class Api:
             raise ValueError('A plain HTTPS origin is required')
         self.origin=origin.rstrip('/');self.token='';self.lock=threading.RLock()
         self.client=httpx.Client(base_url=self.origin+'/api/v1/',timeout=20,follow_redirects=False,transport=transport,
-            headers={'User-Agent':'KINOSOTA-Player/0.1.7','Accept':'application/json'})
+            headers={'User-Agent':USER_AGENT,'Accept':'application/json'})
+        # Media node client: no session token, no redirects; the signed stream URL is the only credential.
+        self.media=httpx.Client(timeout=httpx.Timeout(30,connect=10),follow_redirects=False,transport=transport,headers={'User-Agent':USER_AGENT})
     def request(self,method,path,body=None,extra_headers=None):
         if not path.startswith('/') or path.startswith('//') or '://' in path:raise ValueError('Relative API path required')
         with self.lock:
@@ -132,6 +138,7 @@ class Api:
         keys=list(dict.fromkeys(f'{_kind(kind)}:{_tmdb(tmdb_id)}' for kind,tmdb_id in pairs))[:100]
         if not keys:return {'saved':[]}
         return self.request('GET','/account/library/membership?'+str(httpx.QueryParams({'keys':','.join(keys)})))
+    def torrent_detail(self,kind,tmdb_id):return self.request('GET',f'/torrents/detail/{_kind(kind)}/{_tmdb(tmdb_id)}')
     def torrent_sources(self,kind,tmdb_id):return self.request('GET',f'/torrents/sources/{_kind(kind)}/{_tmdb(tmdb_id)}')
     def prepare_source(self,source_id):return self.request('POST',f'/torrents/sources/{_uuid(source_id)}/prepare',{})
     def discover_sources(self,kind,tmdb_id):return self.request('POST',f'/torrents/sources/{_kind(kind)}/{_tmdb(tmdb_id)}/discover',{})
@@ -143,8 +150,38 @@ class Api:
         if source_id:body['source_id']=_uuid(source_id)
         if kind=='tv' and type(season) is int and type(episode) is int:body.update(season=season,episode=episode)
         return self.request('POST','/torrents/playback-ticket',body)
+    def warm_stream(self,url,cancelled=lambda:False,budget=90,sleep=time.sleep,clock=time.monotonic):
+        """Read the first bytes of a fresh stream ticket until the media node serves video.
+
+        A cold torrent answers 5xx or stalls while peers connect; mpv would give up on that.
+        Returns the byte count (0 when cancelled); raises ApiError for a stale link or when the
+        budget runs out. Runs without the API lock: heartbeats and other requests keep flowing."""
+        parts=urlsplit(str(url))
+        if parts.scheme!='https' or not parts.hostname or parts.username or parts.password:raise ValueError('An HTTPS stream URL is required')
+        deadline=clock()+max(1.0,float(budget));delay=1.0
+        while not cancelled():
+            left=deadline-clock()
+            if left<=0:break
+            try:
+                limit=max(1.0,min(30.0,left))
+                with self.media.stream('GET',str(url),headers={'Range':WARM_RANGE},timeout=httpx.Timeout(limit,connect=min(10.0,limit))) as r:
+                    if r.status_code in STALE_STREAM:raise ApiError(r.status_code,message='Ссылка на поток устарела. Откройте фильм снова.')
+                    if 300<=r.status_code<400 or r.status_code==416:return 0  # Not ours to judge: mpv handles it.
+                    if r.is_success:
+                        got=0
+                        for chunk in r.iter_bytes():
+                            got+=len(chunk)
+                            if got>=WARM_ENOUGH or cancelled():return got
+                        if got:return got
+            except httpx.HTTPError:pass
+            if cancelled():break
+            pause=min(delay,deadline-clock())
+            if pause<=0:break
+            sleep(pause);delay=min(6.0,delay*1.6)
+        if cancelled():return 0
+        raise ApiError(0,message='Раздача пока не отдаёт видео. Попробуйте ещё раз через минуту.')
     def logout(self):
         try:
             if self.token:self.request('POST','/auth/logout',{})
         finally:self.token='';self.client.cookies.clear()
-    def close(self):self.client.close()
+    def close(self):self.client.close();self.media.close()

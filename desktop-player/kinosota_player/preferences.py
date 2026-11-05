@@ -98,6 +98,20 @@ TEXT.update({
  'Фильм больше недоступен':'This movie is no longer available','Загружаем каталог…':'Loading the catalogue…',
 })
 
+# 0.1.8: title page as on the website (facts, «О фильме», «В ролях»), search suggestions, stream warm-up.
+TEXT.update({
+ 'Готово':'Ready','ОЗВУЧКА':'VOICE-OVER','СЕРИЯ':'EPISODE','В РОЛЯХ':'CAST',
+ 'О ФИЛЬМЕ':'ABOUT THE MOVIE','О СЕРИАЛЕ':'ABOUT THE SERIES',
+ 'Описание на русском языке пока недоступно.':'No Russian description yet.',
+ 'Режиссёр':'Director','Режиссёры':'Directors','Создатель':'Creator','Создатели':'Creators',
+ 'Студия':'Studio','Студии':'Studios','Страна':'Country','Страны':'Countries',
+ 'Подготавливаем поток… Первый запуск может занять до минуты.':'Preparing the stream… The first start can take up to a minute.',
+ 'Переподключаемся…':'Reconnecting…',
+ 'Ссылка на поток устарела. Откройте фильм снова.':'The stream link has expired. Open the title again.',
+ 'Раздача пока не отдаёт видео. Попробуйте ещё раз через минуту.':'The release is not sending video yet. Try again in a minute.',
+ 'Ищем':'Searching for','Смотреть':'Watch','Найти':'Search',
+})
+
 def translate(text, language):
     if language != 'en': return text
     if text in TEXT: return TEXT[text]

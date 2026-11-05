@@ -8,9 +8,12 @@ export type TorrentItem = {
  overview:string; poster:string|null; backdrop:string|null; rating:number;
  playback_available:false; genres?:TmdbGenre[]; seasons?:number; episodes?:number; runtime?:number;
  season_list?:TorrentSeason[];
+ /** Title page only (/torrents/detail): TMDB credits, studios and production countries. */
+ tagline?:string; directors?:string[]; cast?:TorrentCastMember[]; studios?:string[]; countries?:string[]; end_year?:number|null;
 }
+export type TorrentCastMember = { name:string; character:string; photo:string|null }
 export type TorrentSeason = { season:number; episodes:number; name:string }
-export type TorrentPage = { provider:'tmdb'; mode:'metadata_only'; items:TorrentItem[]; page:number; total:number; total_pages:number; refresh_at?:string; rotation?:string }
+export type TorrentPage = { provider:'tmdb'; mode:'metadata_only'; items:TorrentItem[]; page:number; total:number; total_pages:number; refresh_at?:string; rotation?:string; interpreted_as?:string }
 export type TorrentFilters = { kind:TorrentKind; page?:number; genre?:string; year?:string; rating?:string; q?:string; collection?:'spotlight' }
 export const torrentsApi = {
  access(signal?:AbortSignal) {return apiClient.getTorrentPlaybackAccess(signal)},
@@ -41,11 +44,16 @@ export type TorrentSource = {
   source_id: string | null; title: string; quality: string | null; source_type: string | null; languages: TorrentLanguage[];
   seeders: number; size_bytes: number; state: TorrentSourceState; progress: number; start_ms: number | null;
   default: boolean; episodes: TorrentEpisode[]; file_count: number
+  /** Voice-over studios parsed from the release title (LostFilm, NewStudio, ...). */
+  voices?: string[]
+  /** Server viewer rank position (0 = best: 1080p > 2160p > 720p, languages, voices, seeders). */
+  rank?: number
 }
 export type TorrentSourcesView = {
   allowed: boolean; status: TorrentStatusPayload; discovering: boolean; in_library: boolean; selected_source_id: string | null;
   sources: TorrentSource[]; qualities: { value: string; available: boolean }[]; languages: { value: TorrentLanguage; available: boolean }[];
   episodes: TorrentEpisode[]
+  voices?: { value: string; available: boolean }[]
   /** TV only: season tabs and the episode grid of the ready sources. */
   seasons?: TorrentSeasonFiles[]
 }

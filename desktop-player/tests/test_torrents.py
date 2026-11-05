@@ -4,11 +4,15 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import copy, json
 import httpx
 import pytest
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent, QPixmap
 from PySide6.QtWidgets import QApplication
 from kinosota_player.api import Api, ApiError
 from kinosota_player.app import Window
 from kinosota_player.torrents import (TorrentPage, audio_args, best_source, in_flight, media_title_args,
     progress_state, progress_text, size_text)
+from kinosota_player.preferences import translate
+from kinosota_player.suggest import highlight_parts
 
 A = '11111111-1111-4111-8111-111111111111'
 B = '22222222-2222-4222-8222-222222222222'
@@ -183,15 +187,15 @@ def test_detail_page_shows_selection_progress_and_white_watch_button():
     page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008})
     assert api.calls == [('sources', 'movie', 155)] and not errors
     assert page.stack.currentIndex() == 1 and page.title_label.text() == 'Тёмный рыцарь'
-    assert page.meta_label.text() == '2008 · Фильм'
-    assert page.progress_label.text() == 'Готово · старт 1\u00a0234 мс' and page.progress.value() == 100
-    assert page.selected_label.text() == '✓ Выбрано: 2160p WEB-DL · ▲ 50 сид · 20,0 ГБ'
+    assert page.meta_label.text() == 'ФИЛЬМ · 2008'
+    assert page.progress_label.text() == '● Готово' and page.progress.value() == 100
+    assert page.selected_label.text() == '· 2160p WEB-DL · 50 сидов · 20,0 ГБ · старт 1,2 с'
     q = page.quality_buttons
     assert q['2160p'].isEnabled() and q['2160p'].isChecked() and q['1080p'].isEnabled() and not q['1080p'].isChecked()
     assert not q['720p'].isEnabled() and not q['480p'].isEnabled()  # Only a failed 720p, no 480p at all.
     lang = page.language_buttons
     assert lang['ru'].isChecked() and lang['en'].isEnabled() and lang['uk'].isEnabled() and not lang['en'].isChecked()
-    assert lang['ru'].text() == 'RU' and lang['uk'].text() == 'UA' and not lang['ru'].icon().isNull()
+    assert lang['ru'].text() == 'Русский' and lang['uk'].text() == 'Українська' and lang['en'].text() == 'English'
     assert page.action_button.text() == '▶  Смотреть' and page.action_button.objectName() == 'watch'
     assert page.action_button.isEnabled() and not page.episode_box.isVisibleTo(page)
     played = []
@@ -363,3 +367,249 @@ def test_torrent_api_contract_and_server_messages():
             bad()
     assert len(seen) == count  # Invalid identifiers never reach the network.
     api.close()
+
+
+# 0.1.8: title page as on the website, search suggestions, cold-stream warm-up and reconnects.
+STREAM = 'https://torrent-01.scenrix.com/stream/opaque-ticket'
+HOUSE = {'kind': 'tv', 'tmdb_id': 1408, 'title': 'Доктор Хаус', 'original_title': 'House', 'year': 2004, 'end_year': 2012,
+         'tagline': 'Уже лучше?', 'overview': 'Блестящий диагност Грегори Хаус берётся за самые сложные случаи.',
+         'rating': 8.6, 'seasons': 8, 'episodes': 176, 'poster': None,
+         'genres': [{'id': 18, 'name': 'Драма'}, {'id': 9648, 'name': 'Детектив'}, {'id': 35, 'name': 'Комедия'}],
+         'directors': ['Дэвид Шор'], 'studios': ['Heel & Toe Films', 'Shore Z Productions', 'Bad Hat Harry'],
+         'countries': ['США'], 'country_codes': ['US'],
+         'cast': [{'name': 'Хью Лори', 'character': 'Грегори Хаус', 'photo': None},
+                  {'name': 'Лиза Эдельштейн', 'character': 'Лиза Кадди', 'photo': None},
+                  {'name': 'Омар Эппс', 'character': '', 'photo': None}]}
+
+
+class DetailApi(FakeApi):
+    def __init__(self, *args, detail=None, detail_error=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.detail, self.detail_error = detail, detail_error
+
+    def torrent_detail(self, kind, tmdb_id):
+        self.calls.append(('detail', kind, tmdb_id))
+        if self.detail_error:
+            raise self.detail_error
+        return copy.deepcopy(self.detail)
+
+
+class WarmApi(FakeApi):
+    window = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.warmed = []
+
+    def warm_stream(self, url, cancelled=lambda: False):
+        self.warmed.append((url, self.window.message.text() if self.window else ''))
+        return 65536
+
+
+class DroppedEngine(FakeEngine):
+    """mpv that loses a cold torrent stream right after the start (exit code 2)."""
+
+    def alive(self):
+        return False
+
+    def exit_code(self):
+        return 2
+
+
+def test_warm_stream_waits_for_a_cold_torrent_without_the_session_token():
+    replies, seen, slept = [503, 503, 206], [], []
+
+    def serve(request):
+        seen.append(request)
+        status = replies.pop(0) if replies else 206
+        return httpx.Response(status, content=b'\0' * 70000 if status == 206 else b'')
+
+    api = Api(transport=httpx.MockTransport(serve))
+    api.token = 'opaque-session'
+    assert api.warm_stream(STREAM, sleep=slept.append) >= 65536
+    assert slept == [1.0, 1.6] and len(seen) == 3 and seen[0].url == STREAM
+    assert all('authorization' not in r.headers and r.headers['Range'] == 'bytes=0-262143' for r in seen)
+    seen.clear()
+    assert api.warm_stream(STREAM, cancelled=lambda: True) == 0 and seen == []
+    with pytest.raises(ValueError):
+        api.warm_stream('http://torrent-01.scenrix.com/stream/opaque-ticket')
+    with pytest.raises(ApiError, match='устарела'):
+        Api(transport=httpx.MockTransport(lambda request: httpx.Response(410))).warm_stream(STREAM, sleep=slept.append)
+    now, busy, pauses = [0.0], [], []
+
+    def wait(seconds):
+        pauses.append(seconds)
+        now[0] += 2
+
+    def unavailable(request):
+        busy.append(request)
+        return httpx.Response(503)
+
+    with pytest.raises(ApiError, match='не отдаёт видео'):
+        Api(transport=httpx.MockTransport(unavailable)).warm_stream(STREAM, budget=5, sleep=wait, clock=lambda: now[0])
+    assert len(busy) == 3 and pauses == [1.0, 1.6, 1.0]
+
+
+def test_cold_stream_is_warmed_and_reopened_twice_before_giving_up():
+    app = QApplication.instance() or QApplication([])
+    api, engine = WarmApi(), DroppedEngine()
+    w = window_for(api, engine)
+    api.window = w
+    w.signed_in({'username': 'viewer'})
+    choice = {'kind': 'movie', 'tmdb_id': 155, 'source_id': A, 'title': 'Тёмный рыцарь', 'audio_lang': 'ru',
+              'season': None, 'episode': None}
+    w.play_torrent(choice)
+    assert len(engine.started) == 1 and w.torrent_playing and w.message.text() == 'Воспроизводится: Тёмный рыцарь'
+    w.check_process()
+    w.check_process()
+    assert len(engine.started) == 3 and w.torrent_attempt == 2 and w.torrent_playing
+    assert [text for _, text in api.warmed] == ['Открываем фильм…', 'Переподключаемся…', 'Переподключаемся…']
+    assert all(url == STREAM for url, _ in api.warmed)
+    assert api.calls.count(('ticket', 'movie', 155, A, None, None)) == 3  # A fresh ticket for every attempt.
+    w.check_process()
+    assert len(engine.started) == 3 and not w.torrent_playing
+    assert w.message.text().startswith('Не удалось воспроизвести видео')
+    # A title that already played for two minutes is not reopened behind the viewer's back.
+    w.play_torrent(choice)
+    w.torrent_started -= 121
+    w.check_process()
+    assert len(engine.started) == 4 and w.message.text().startswith('Не удалось воспроизвести видео')
+    w.close()
+    app.processEvents()
+
+
+def test_search_suggestions_under_the_header_search_follow_the_keyboard():
+    app = QApplication.instance() or QApplication([])
+    api, engine = FakeApi(), FakeEngine()
+    w = window_for(api, engine)
+    w.signed_in({'username': 'viewer'})
+    assert w.pages.currentIndex() == 1
+    found = {'items': [{'_source': 'tmdb', 'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008,
+                        'rating': 8.5, 'poster': None},
+                       {'_source': 'tmdb', 'kind': 'tv', 'tmdb_id': 1408, 'title': 'Доктор Хаус', 'year': 2004,
+                        'rating': 8.6, 'poster': None}],
+             'total': 2, 'total_pages': 1, 'interpreted_as': 'тёмный рыцарь'}
+    state = {'query': 'temniy rycar', 'page': 1}
+    w.search.setText('temniy rycar')
+    w.search.hasFocus = lambda: False
+    w.fill_results(found, state)
+    assert w.suggest.isHidden()  # Only while the viewer is typing in the field.
+    w.search.hasFocus = lambda: True
+    w.fill_results(found, state)
+    s = w.suggest
+    assert not s.isHidden() and [m['tmdb_id'] for m in s.items] == [155, 1408]
+    assert not s.hint.isHidden() and s.hint.text().startswith('Ищем ') and '«тёмный рыцарь»' in s.hint.text()
+    assert s.rows[0].title.text() == '<span style="color:#ffd24d;font-weight:800">Тёмный рыцарь</span>'
+    assert s.rows[1].title.text() == 'Доктор Хаус'
+    assert [s.rows[0].meta.text(), s.rows[1].meta.text()] == ['Фильм · 2008 · ★ 8.5', 'Сериал · 2004 · ★ 8.6']
+    assert not s.rows[1].isHidden() and s.rows[2].isHidden()
+
+    def key(code):
+        return w.eventFilter(w.search, QKeyEvent(QEvent.Type.KeyPress, code, Qt.KeyboardModifier.NoModifier))
+
+    assert key(Qt.Key.Key_Up) and s.active == 1
+    assert key(Qt.Key.Key_Down) and s.active == 0 and s.rows[0].property('active') is True
+    assert key(Qt.Key.Key_Escape) and s.isHidden()
+    assert not key(Qt.Key.Key_Down)  # Closed popup: the field handles keys again.
+    w.fill_results(found, state)
+    assert key(Qt.Key.Key_Down) and key(Qt.Key.Key_Return)
+    assert s.isHidden() and w.pages.currentIndex() == 2 and w.torrents.item['tmdb_id'] == 155
+    assert ('sources', 'movie', 155) in api.calls and w.torrents.back.text() == '‹  Главная'
+    assert highlight_parts('Тёмного рыцаря', ['тёмный рыцарь']) == [('Тёмного рыцаря', True)]
+    assert highlight_parts('Рыцарь дорог', ['ntvysq']) == [('Рыцарь дорог', False)]
+    w.close()
+    app.processEvents()
+
+
+def test_title_page_shows_facts_credits_and_cast_like_the_website():
+    api = DetailApi(view=tv_view(), detail=HOUSE)
+    page, notes, errors = page_for(api)
+    page.open_title({'kind': 'tv', 'tmdb_id': 1408, 'title': 'Доктор Хаус', 'original_title': 'House', 'year': 2004,
+                     'poster': None})
+    assert ('detail', 'tv', 1408) in api.calls and errors == []
+    assert page.meta_label.text() == 'СЕРИАЛ · 2004–2012 · США'
+    assert page.subtitle_label.text() == 'House · «Уже лучше?»' and not page.subtitle_label.isHidden()
+    assert page.fact_items == [('factRating', '★ 8.6 TMDB'), ('fact', '8 сезонов · 176 серий'),
+                               ('fact', 'драма'), ('fact', 'детектив'), ('fact', 'комедия')]
+    assert page.credit_rows == [('Создатель', 'Дэвид Шор'),
+                                ('Студии', 'Heel & Toe Films, Shore Z Productions, Bad Hat Harry'), ('Страна', 'США')]
+    assert page.about_caption.text() == 'О СЕРИАЛЕ' and page.overview_label.text().startswith('Блестящий диагност')
+    assert [(c.name.full, c.role.full) for c in page.cast_cards] == [
+        ('Хью Лори', 'Грегори Хаус'), ('Лиза Эдельштейн', 'Лиза Кадди'), ('Омар Эппс', '')]
+    assert page.cast_cards[2].role.isHidden() and not page.cast_section.isHidden() and not page.about.isHidden()
+    page.retranslate('en')
+    assert page.meta_label.text() == translate('Сериал', 'en').upper() + ' · 2004–2012 · USA'
+    assert page.credit_rows[-1] == (translate('Страна', 'en'), 'USA')
+    assert page.about_caption.text() == 'ABOUT THE SERIES' and page.cast_caption.text() == 'CAST'
+    assert page.fact_items[1] == ('fact', '8 seasons · 176 episodes') and page.credit_rows[0] == ('Creator', 'Дэвид Шор')
+    # Without the extras the page still offers the releases and the watch button.
+    plain = DetailApi(view=movie_view(), detail_error=ApiError(503))
+    page, notes, errors = page_for(plain)
+    page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008, 'poster': None})
+    assert ('detail', 'movie', 155) in plain.calls and errors == []
+    assert page.meta_label.text() == 'ФИЛЬМ · 2008' and page.subtitle_label.isHidden()
+    assert page.about.isHidden() and page.cast_section.isHidden() and page.facts.isHidden()
+    assert page.action_button.isEnabled()
+
+
+def test_server_rank_preselected_release_and_voice_pills():
+    view = movie_view()
+    view['sources'][0].update(rank=2, voices=['Дубляж', 'LostFilm'])
+    view['sources'][1].update(state='ready', progress=100, start_ms=800, seeders=5, rank=1,
+                              voices=['Дубляж', 'Кубик в Кубе'])
+    view['sources'][2].update(voices=['Гоблин'])  # A failed release is not offered.
+    view['selected_source_id'] = B
+    view['voices'] = [{'value': 'Дубляж'}, {'value': 'TVShows'}]
+    assert best_source(view['sources'])['source_id'] == B  # The server rank beats seeders and size.
+    api = FakeApi(view=view)
+    page, notes, errors = page_for(api)
+    page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008, 'poster': None})
+    assert page.selected()['source_id'] == B and errors == []
+    assert page.voice_values == ['Дубляж', 'Кубик в Кубе', 'LostFilm', 'TVShows']
+    assert [b.text() for b in page.voice_buttons if b.isChecked()] == ['Дубляж', 'Кубик в Кубе']
+    page.pick_voice('LostFilm')
+    assert page.selected()['source_id'] == A
+    assert [b.text() for b in page.voice_buttons if b.isChecked()] == ['Дубляж', 'LostFilm']
+    page.pick_voice('TVShows')  # No offered release carries it yet: the current choice stays.
+    assert page.selected()['source_id'] == A and not any(call[0] == 'prepare' for call in api.calls)
+
+
+def test_library_list_has_no_found_counter():
+    api = FakeApi()
+    page, notes, errors = page_for(api)
+    page.show_library()
+    assert ('library', 1) in api.calls and page.grid.count() == 1 and errors == []
+    assert notes[-1] == '' and not any('Найдено' in note for note in notes)
+
+
+def test_title_backdrop_is_painted_behind_the_header_only_on_the_title_page():
+    app = QApplication.instance() or QApplication([])
+    art = 'https://image.tmdb.org/t/p/w1280/backdrop.jpg'
+    api, engine = DetailApi(view=tv_view(), detail={**HOUSE, 'backdrop': art}), FakeEngine()
+    w = window_for(api, engine)
+    w.signed_in({'username': 'viewer'})
+    page = w.torrents
+    pixmap = QPixmap(64, 36)
+    pixmap.fill(Qt.GlobalColor.darkCyan)
+    page.backdrop_art.cache[page.backdrop_art.url(art)] = pixmap  # As if already downloaded: no network in tests.
+    page.return_to = lambda: w.show_section('home', reload=False)
+    w.pages.setCurrentIndex(2)
+    page.open_title({'kind': 'tv', 'tmdb_id': 1408, 'title': 'Доктор Хаус', 'year': 2004, 'poster': None})
+    assert page.backdrop_url == art and w.backdrop.art.cacheKey() == pixmap.cacheKey()
+    assert not w.backdrop.grab().isNull()  # The hero mode paints without errors.
+    page.show_list()
+    assert w.pages.currentIndex() == 1 and w.backdrop.art.isNull()
+    w.close()
+    app.processEvents()
+
+
+def test_country_names_follow_the_interface_language():
+    from kinosota_player.torrents import country_names
+    meta = {'countries': ['США', 'Южная Корея', 'СССР', 'Атлантида'], 'country_codes': ['US', 'KR', 'SU', '']}
+    assert country_names(meta, 'ru', 4) == ['США', 'Южная Корея', 'СССР', 'Атлантида']
+    assert country_names(meta, 'en', 4) == ['USA', 'South Korea', 'USSR', 'Атлантида']
+    assert country_names(meta, 'en', 1) == ['USA']
+    # An API without codes, or with codes that do not line up, keeps the Russian names.
+    assert country_names({'countries': ['США']}, 'en', 4) == ['США']
+    assert country_names({'countries': ['США', 'Канада'], 'country_codes': ['US']}, 'en', 4) == ['США', 'Канада']
+    assert country_names({'countries': None, 'country_codes': 'US'}, 'en', 4) == []

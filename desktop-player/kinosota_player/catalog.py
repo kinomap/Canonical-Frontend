@@ -9,8 +9,8 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkRe
 from PySide6.QtWidgets import QListWidget, QListView, QStyledItemDelegate, QStyle
 
 class Posters:
-    def __init__(self, view, origin):
-        self.view=view;self.origin=origin;self.cache=OrderedDict();self.pending={}
+    def __init__(self, view, origin, size=(440,660)):
+        self.view=view;self.origin=origin;self.size=size;self.cache=OrderedDict();self.pending={}
         self.network=QNetworkAccessManager(view)
     def url(self, source):
         if not isinstance(source,str) or not source:return ''
@@ -34,7 +34,7 @@ class Posters:
             self.pending.pop(u,None);image=QPixmap()
             if reply.error()==QNetworkReply.NetworkError.NoError and reply.bytesAvailable()<=8*1024*1024:
                 image.loadFromData(reply.readAll())
-            if not image.isNull():image=image.scaled(440,660,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+            if not image.isNull():image=image.scaled(self.size[0],self.size[1],Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
             self.cache[u]=image
             while len(self.cache)>128:self.cache.popitem(last=False)
             reply.deleteLater();self.view.viewport().update()

@@ -251,7 +251,7 @@ def test_drawer_is_in_window_and_focus_contained(tmp_path):
     from PySide6.QtTest import QTest
     from kinosota_player.preferences import Preferences
     app=QApplication.instance() or QApplication([])
-    w=Window(api=Api(),engine=Engine(),vault=Vault(),restore=False,preferences=Preferences(QSettings(str(tmp_path/'p.ini'),QSettings.Format.IniFormat)));w.resize(760,600);w.show();app.processEvents();w.settings_button.setFocus();w.open_settings()
+    w=Window(api=Api(),engine=Engine(),vault=Vault(),restore=False,preferences=Preferences(QSettings(str(tmp_path/'p.ini'),QSettings.Format.IniFormat)));w.resize(760,600);w.show();app.processEvents();assert w.avatar.isVisible() and w.avatar.toolTip()=="Настройки";w.avatar.setFocus();w.open_settings()
     w.drawer.animation.setCurrentTime(180);app.processEvents()
     assert w.drawer.parentWidget() is w.backdrop and not w.drawer.isWindow()
     for _ in range(16):
@@ -259,7 +259,7 @@ def test_drawer_is_in_window_and_focus_contained(tmp_path):
     w.drawer.update_account({'username':'admin','email':'a@example.com','subscription_status':'free'})
     assert w.drawer.fields['subscription_status'].text()=='Бесплатная' # admin is not a made-up paid subscription
     w.set_language('en');assert w.drawer.fields['subscription_status'].text()=='Free'
-    QTest.keyClick(app.focusWidget(),Qt.Key.Key_Escape);assert not w.drawer.isVisible() and app.focusWidget() is w.settings_button
+    QTest.keyClick(app.focusWidget(),Qt.Key.Key_Escape);assert not w.drawer.isVisible() and app.focusWidget() is w.avatar
     w.close();app.processEvents()
 
 

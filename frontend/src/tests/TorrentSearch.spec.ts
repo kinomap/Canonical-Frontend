@@ -5,6 +5,7 @@ import SearchBar from '@/components/SearchBar.vue'
 import Header from '@/components/AppHeader.vue'
 import {apiClient} from '@/api/client'
 import {torrentsApi} from '@/api/torrents'
+import {language} from '@/i18n'
 vi.mock('@/api/torrents',async original=>({...await original<any>(),torrentsApi:{list:vi.fn()}}))
 const quick=vi.spyOn(apiClient,'searchMoviesQuick')
 const wrappers:any[]=[]
@@ -20,4 +21,26 @@ describe('torrent search namespace and keyboard behavior',()=>{
  it('shows useful unavailable state without switching engines',async()=>{vi.mocked(torrentsApi.list).mockRejectedValue(Error('503'));const{w}=await at(SearchBar);await type(w,'Palmer');expect(w.text()).toContain('Поиск временно недоступен');expect(quick).not.toHaveBeenCalled()})
  it('header submits title to torrent catalogue, never main movies',async()=>{const{w,router}=await at(Header,'/torrents',{});const input=w.find('.header-search input');await input.setValue('Палмер');await input.trigger('keydown.enter');await flushPromises();expect(router.currentRoute.value.path).toBe('/torrents');expect(router.currentRoute.value.query).toMatchObject({q:'Палмер',kind:'movie'});expect(w.text()).not.toMatch(/Telegram|Телеграм/i)})
  it('encodes query data rather than interpreting query parameters',async()=>{const spy=vi.spyOn(apiClient,'getTorrentMetadata').mockResolvedValue({} as any);const{torrentsApi:real}=await vi.importActual<typeof import('@/api/torrents')>('@/api/torrents');await real.list({kind:'movie',q:' a&kind=tv '});const path=String(spy.mock.calls[0][0]);const q=new URLSearchParams(path.split('?')[1]);expect(q.get('q')).toBe('a&kind=tv');expect(q.get('kind')).toBe('movie');spy.mockRestore()})
+ it('shows the server interpretation of latin/translit input and marks matched title words',async()=>{
+  vi.mocked(torrentsApi.list).mockImplementation(async f=>(f.kind==='movie'
+   ? {provider:'tmdb',mode:'metadata_only',interpreted_as:'тёмный рыцарь',items:[{...item('movie',155),title:'Тёмный рыцарь',year:2008,rating:8.52},{...item('movie',29751),title:'Бэтмен: Возвращение Тёмного рыцаря',year:2012}],page:1,total:2,total_pages:1}
+   : {provider:'tmdb',mode:'metadata_only',items:[],page:1,total:0,total_pages:0}) as any)
+  language.value='ru';const{w}=await at(SearchBar);await type(w,'temniy rycar')
+  expect(w.find('.dropdown-hint').text()).toBe('Ищем «тёмный рыцарь»')
+  const rows=w.findAll('.suggestion-item')
+  expect(rows).toHaveLength(2)
+  expect(rows[0]!.findAll('mark').map(m=>m.text())).toEqual(['Тёмный рыцарь'])
+  expect(rows[1]!.findAll('mark').map(m=>m.text())).toEqual(['Тёмного рыцаря'])
+  expect(rows[0]!.find('.suggestion-meta').text()).toBe('Фильм · 2008 · ★ 8.5')
+  expect(rows[0]!.find('.suggestion-poster').exists()).toBe(true)
+  await type(w,'тёмный рыцарь')
+  expect(w.find('.dropdown-hint').exists()).toBe(false)
+ })
+ it('labels series suggestions and hides the hint without an interpretation',async()=>{
+  language.value='ru';const{w}=await at(SearchBar);await type(w,'Люп')
+  expect(w.find('.dropdown-hint').exists()).toBe(false)
+  const series=w.findAll('.suggestion-item')[1]!
+  expect(series.find('.suggestion-meta').text()).toBe('Сериал · 2021 · ★ 8.0')
+  expect(series.find('mark').text()).toBe('Люпен')
+ })
 })

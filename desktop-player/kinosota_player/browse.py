@@ -159,7 +159,7 @@ def fetch_page(api, genres, state, known=None):
         use_site = False  # None of the chosen genres exists on the website.
     if keys and not ids:
         use_tmdb = False
-    items = []
+    items, interpreted = [], ''
     site_total, site_pages = known.get('site', (None, None))
     if not use_site:
         site_total, site_pages = 0, 0
@@ -178,6 +178,9 @@ def fetch_page(api, genres, state, known=None):
         if tmdb_page >= 1 or tmdb_pages is None:
             if query:
                 data = api.torrent_catalog(kind, query, max(1, tmdb_page))
+                # 0.1.8: a transliterated / wrong-layout query comes back as the words actually searched.
+                value = data.get('interpreted_as') if isinstance(data, dict) else None
+                interpreted = value.strip()[:120] if isinstance(value, str) else ''
             else:
                 data = api.torrent_catalog(kind, '', max(1, tmdb_page), genres=ids, year_from=state['year_from'],
                                            year_to=state['year_to'], rating=state['rating'], sort=state['sort'])
@@ -201,7 +204,7 @@ def fetch_page(api, genres, state, known=None):
         if type(row.get('tmdb_id')) is int:
             row['_saved'] = f"{row.get('kind') or 'movie'}:{row['tmdb_id']}" in saved
     return {'items': items, 'total': site_total + tmdb_total, 'total_pages': max(1, site_pages + tmdb_pages),
-            'totals': {'site': (site_total, site_pages), 'tmdb': (tmdb_total, tmdb_pages)}}
+            'totals': {'site': (site_total, site_pages), 'tmdb': (tmdb_total, tmdb_pages)}, 'interpreted_as': interpreted}
 
 
 def page_numbers(current, total, width=7):

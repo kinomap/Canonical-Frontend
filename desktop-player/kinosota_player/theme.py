@@ -7,12 +7,27 @@ from PySide6.QtWidgets import QWidget
 ASSETS=Path(__file__).parent/'assets'
 class CinemaBackdrop(QWidget):
     def __init__(self):
-        super().__init__();self.catalog=False
+        super().__init__();self.catalog=False;self.art=QPixmap();self.art_scaled=(None,QPixmap())
         self.scene=QPixmap(str(ASSETS/'cinema-login.jpg'));self.header=QPixmap(str(ASSETS/'cinema-header.jpg'))
     def set_catalog(self,value):self.catalog=value;self.update()
+    def set_art(self,pixmap):
+        # 0.1.8: the open title's backdrop replaces the header art, as the website hero.
+        art=pixmap if isinstance(pixmap,QPixmap) and not pixmap.isNull() else QPixmap()
+        if art.cacheKey()!=self.art.cacheKey():self.art=art;self.art_scaled=(None,QPixmap());self.update()
+    def paint_art(self,p,w,h):
+        H=float(min(h,560))
+        key=(self.art.cacheKey(),w,int(H))
+        if self.art_scaled[0]!=key:
+            self.art_scaled=(key,self.art.scaled(w,int(H),Qt.AspectRatioMode.KeepAspectRatioByExpanding,Qt.TransformationMode.SmoothTransformation))
+        scaled=self.art_scaled[1];top=max(0.0,(scaled.height()-H)*.2)  # object-position: center 20%
+        p.setOpacity(.55);p.drawPixmap(QRectF(0,0,w,H),scaled,QRectF((scaled.width()-w)/2,top,w,H));p.setOpacity(1)
+        side=QLinearGradient(0,0,w,0);side.setColorAt(0,QColor(7,11,14,245));side.setColorAt(.38,QColor(7,11,14,199));side.setColorAt(1,QColor(7,11,14,77))
+        p.fillRect(QRectF(0,0,w,H),side)
+        fade=QLinearGradient(0,H*.4,0,H);fade.setColorAt(0,QColor(7,11,14,0));fade.setColorAt(1,QColor('#070b0e'));p.fillRect(QRectF(0,H*.4,w,H*.6+1),fade)
     def paintEvent(self,event):
         p=QPainter(self);p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.fillRect(self.rect(),QColor('#070b0e'));w,h=self.width(),self.height()
+        if self.catalog and not self.art.isNull():self.paint_art(p,w,h);return
         image=self.header if self.catalog else self.scene
         target=QRectF(0,0,w,200) if self.catalog else QRectF(0,80,w*.64,h-80)
         if not image.isNull():
@@ -138,4 +153,82 @@ QPushButton#pageButton:checked{background:#ffd400;color:#11120e;border-color:#ff
 QPushButton#pageNav{padding:4px 10px;min-height:20px;border:1px solid #323c44;background:transparent;border-radius:7px;font-size:13px;}
 QPushButton#pageNav:hover,QPushButton#pageButton:hover{border-color:#ffd400;}
 QLabel#gap{color:#8f9ba6;padding:0 2px;}
+"""
+
+# 0.1.8: softer controls without yellow hover frames, the honey gradient of the website,
+# the title page (poster, facts, options card, cast) and the search suggestions.
+PREMIUM_STYLE += """
+QPushButton{background:rgba(255,255,255,10);border:1px solid rgba(255,255,255,26);border-radius:10px;}
+QPushButton:hover{background:rgba(255,255,255,20);border-color:rgba(255,255,255,41);}
+QPushButton:pressed{background:rgba(255,255,255,28);} QPushButton:focus{border:1px solid rgba(255,194,26,140);}
+QPushButton:disabled{color:#7d858d;background:rgba(255,255,255,6);border-color:rgba(255,255,255,15);}
+QPushButton#primary,QPushButton#watch{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffe36e,stop:.46 #ffc21a,stop:1 #ff9e1b);color:#11120e;font-weight:800;border:1px solid rgba(255,227,110,180);}
+QPushButton#primary:hover,QPushButton#watch:hover{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffea8a,stop:.46 #ffcd3f,stop:1 #ffab3a);}
+QPushButton#primary:focus,QPushButton#watch:focus{border:2px solid #fff1b8;}
+QPushButton#primary:disabled,QPushButton#watch:disabled{color:#8a929b;background:rgba(255,255,255,8);border-color:rgba(255,255,255,20);}
+QPushButton#watch{font-size:16px;border-radius:12px;padding:12px 28px;}
+QPushButton#avatar{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffe36e,stop:.46 #ffc21a,stop:1 #ff9e1b);color:#11120e;border:1px solid rgba(255,227,110,180);}
+QPushButton#avatar:hover{background:#ffd24d;} QPushButton#avatar:focus{border:2px solid #ffffff;}
+QPushButton#nav{border:0;background:transparent;color:#c9d1d9;}
+QPushButton#nav:hover{background:rgba(255,255,255,15);border:0;color:#f5f6f7;}
+QPushButton#nav:checked{background:rgba(255,194,26,31);border:0;color:#ffd24d;}
+QPushButton#nav:focus{border:1px solid rgba(255,194,26,140);}
+QLineEdit#headerSearch{background:rgba(255,255,255,13);border:1px solid rgba(255,255,255,26);border-radius:12px;}
+QLineEdit#headerSearch:focus{background:rgba(255,255,255,18);border:1px solid rgba(255,194,26,160);}
+QComboBox{background:rgba(255,255,255,10);border:1px solid rgba(255,255,255,26);border-radius:10px;padding:7px 30px 7px 12px;min-height:20px;}
+QComboBox:hover{background:rgba(255,255,255,18);border-color:rgba(255,255,255,41);}
+QComboBox:focus{border:1px solid rgba(255,194,26,160);}
+QComboBox::drop-down{width:0;border:0;} QComboBox::down-arrow{image:none;width:0;height:0;}
+QComboBox QAbstractItemView{background:#151a20;color:#f5f6f7;border:1px solid rgba(255,255,255,26);padding:4px;outline:0;selection-background-color:rgba(255,194,26,46);selection-color:#ffd24d;}
+QComboBox QAbstractItemView::item{min-height:30px;padding:0 10px;border-radius:6px;}
+QComboBox QAbstractItemView::item:hover{background:rgba(255,255,255,15);}
+QComboBox QAbstractItemView::item:selected{background:rgba(255,194,26,46);color:#ffd24d;}
+QComboBox#filterCombo{padding:5px 26px 5px 10px;border-radius:8px;}
+QComboBox#filterCombo:focus{border:1px solid rgba(255,194,26,160);}
+QPushButton#filterToggle:hover{border-color:transparent;background:rgba(255,255,255,15);}
+QPushButton#chip{background:rgba(255,194,26,31);border:1px solid rgba(255,194,26,77);color:#ffd24d;}
+QPushButton#chip:hover{border-color:rgba(255,194,26,128);}
+QPushButton#chipAdd{background:rgba(255,255,255,10);border:1px solid rgba(255,255,255,26);}
+QPushButton#chipAdd:hover{background:rgba(255,255,255,20);border-color:rgba(255,255,255,41);}
+QPushButton#filterReset{background:transparent;border:1px solid rgba(255,255,255,26);}
+QPushButton#filterReset:hover{background:rgba(255,255,255,15);border-color:rgba(255,255,255,41);}
+QPushButton#pageNav,QPushButton#pageButton{background:rgba(255,255,255,8);border:1px solid rgba(255,255,255,26);border-radius:8px;}
+QPushButton#pageNav:hover,QPushButton#pageButton:hover{background:rgba(255,255,255,18);border-color:rgba(255,255,255,41);}
+QPushButton#pageButton:checked{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffe36e,stop:.46 #ffc21a,stop:1 #ff9e1b);color:#11120e;border-color:rgba(255,227,110,180);}
+QPushButton#viewToggle{background:transparent;border:1px solid rgba(255,255,255,26);}
+QPushButton#viewToggle:hover{background:rgba(255,255,255,15);}
+QPushButton#viewToggle:checked{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffe36e,stop:.46 #ffc21a,stop:1 #ff9e1b);border-color:rgba(255,227,110,180);}
+QPushButton#iconButton:hover{border-color:transparent;background:rgba(255,255,255,15);}
+QPushButton#pill{background:rgba(255,255,255,8);border:1px solid rgba(255,255,255,26);border-radius:16px;padding:6px 14px;}
+QPushButton#pill:hover{background:rgba(255,255,255,18);border-color:rgba(255,255,255,46);}
+QPushButton#pill:checked{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffe36e,stop:.46 #ffc21a,stop:1 #ff9e1b);color:#11120e;border:1px solid rgba(255,227,110,180);}
+QPushButton#pill:disabled{color:#5f6870;background:transparent;border-color:rgba(255,255,255,13);}
+QPushButton#voice{padding:5px 12px;min-height:18px;border-radius:14px;background:rgba(255,255,255,8);border:1px solid rgba(255,255,255,26);font-size:13px;font-weight:600;}
+QPushButton#voice:hover{background:rgba(255,255,255,18);border-color:rgba(255,255,255,46);}
+QPushButton#voice:checked{background:rgba(255,194,26,36);border-color:rgba(255,194,26,150);color:#ffd24d;}
+QScrollArea#detailScroll,QWidget#detailBody{background:transparent;}
+QPushButton#backChip{padding:6px 12px 6px 10px;border-radius:8px;font-size:13px;font-weight:600;color:rgba(245,246,248,173);background:rgba(255,255,255,13);border:none;}
+QPushButton#backChip:hover{color:#f5f6f8;background:rgba(255,255,255,23);}
+QLabel#detailEyebrow{color:rgba(245,246,248,112);font-size:12px;font-weight:700;letter-spacing:2px;}
+QLabel#torrentTitle{font-size:40px;font-weight:800;color:#ffffff;}
+QLabel#subtitle{color:#aab5bf;font-size:15px;}
+QLabel#fact{padding:6px 12px;border-radius:8px;background:rgba(255,255,255,13);border:none;color:rgba(245,246,248,173);font-size:13px;}
+QLabel#factRating{padding:6px 12px;border-radius:8px;background:rgba(255,194,26,36);border:none;color:#ffd24d;font-size:13px;font-weight:700;}
+QLabel#progress{font-size:14px;font-weight:700;} QLabel#progress[tone="ready"]{color:#3ddc84;}
+QLabel#progress[tone="active"]{color:#ffd24d;} QLabel#progress[tone="muted"]{color:#aab5bf;font-weight:600;}
+QLabel#selected{font-size:14px;font-weight:500;color:#c2cad2;}
+QProgressBar#prepBar{background:rgba(255,255,255,15);border:0;border-radius:3px;}
+QProgressBar#prepBar::chunk{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffe36e,stop:.46 #ffc21a,stop:1 #ff9e1b);border-radius:3px;}
+QFrame#optionsCard{background:rgba(255,255,255,8);border:1px solid rgba(255,255,255,20);border-radius:16px;}
+QLabel#caption{color:#8f9ba6;font-size:11px;font-weight:700;letter-spacing:1px;padding-top:7px;}
+QLabel#sectionCaption{color:#8f9ba6;font-size:12px;font-weight:700;letter-spacing:2px;}
+QLabel#overview{color:#d5dbe0;font-size:15px;}
+QLabel#factKey{color:#8f9ba6;font-size:13px;} QLabel#factValue{color:#f5f6f7;font-size:13px;font-weight:600;}
+QFrame#castCard{background:rgba(255,255,255,8);border:1px solid rgba(255,255,255,18);border-radius:14px;}
+QLabel#castPhoto{background:rgba(255,255,255,15);border-radius:10px;color:#ffd24d;font-size:15px;font-weight:800;}
+QLabel#castName{color:#f5f6f7;font-size:14px;font-weight:700;} QLabel#castRole{color:#8f9ba6;font-size:12px;}
+QFrame#suggest{background:rgba(23,26,33,245);border:1px solid rgba(255,255,255,20);border-radius:16px;}
+QFrame#suggestRow{background:transparent;border-radius:10px;} QFrame#suggestRow[active="true"]{background:rgba(255,255,255,18);}
+QLabel#suggestTitle{color:#f5f6f7;font-size:14px;font-weight:600;} QLabel#suggestMeta{color:#8f9ba6;font-size:12px;}
+QLabel#suggestHint{color:#aab5bf;font-size:12px;padding:4px 8px 2px 8px;}
 """
