@@ -1,6 +1,7 @@
 """Native build only. Does not upload, publish or mark a release ready."""
 import argparse,hashlib,json,os,platform,shutil,subprocess,sys
 from pathlib import Path
+from release_version import VERSION
 ROOT=Path(__file__).resolve().parents[1]
 def run(*args):subprocess.run([str(a) for a in args],cwd=ROOT,check=True)
 def main():
@@ -62,7 +63,7 @@ def main():
         libc=platform.libc_ver()[1]
         if not libc:raise RuntimeError('Cannot determine minimum glibc version')
         from linux_metadata import write_metadata
-        write_metadata(stage,'0.1.8',arch,libc)
+        write_metadata(stage,VERSION,arch,libc)
         wrapper=stage/'usr/bin/kinosota-player';wrapper.write_text('#!/bin/sh\nexec /opt/kinosota-player/kinosota-player "$@"\n');wrapper.chmod(0o755)
         from PySide6.QtGui import QImage
         from PySide6.QtCore import Qt
@@ -74,14 +75,14 @@ def main():
         shutil.copy2(ROOT/'packaging/THIRD_PARTY.md',docs/'copyright')
         run('dpkg-deb','--root-owner-group','--build',stage,out/'kinosota-player.deb')
     elif system=='Windows':
-        run('ISCC.exe',ROOT/'packaging/windows.iss')
+        run('ISCC.exe','/DAppVersion='+VERSION,ROOT/'packaging/windows.iss')
     elif system=='Darwin':
         # Signing and notarization remain release gates, never fabricate them here.
         app=out/(name+'.app')
         import plistlib
         info=app/'Contents/Info.plist'
         with info.open('rb') as stream: data=plistlib.load(stream)
-        data.update({'CFBundleName':'KINOSOTA Player','CFBundleDisplayName':'KINOSOTA Player','CFBundleShortVersionString':'0.1.8','CFBundleVersion':'0.1.8','NSHumanReadableCopyright':'KINOSOTA. Third-party notices included in the application.',
+        data.update({'CFBundleName':'KINOSOTA Player','CFBundleDisplayName':'KINOSOTA Player','CFBundleShortVersionString':VERSION,'CFBundleVersion':VERSION,'NSHumanReadableCopyright':'KINOSOTA. Third-party notices included in the application.',
             # kinosota://watch?launch=<uuid> from the website «▶ Смотреть» button.
             'CFBundleURLTypes':[{'CFBundleURLName':'com.kinosota.player.watch','CFBundleURLSchemes':['kinosota']}]})
         with info.open('wb') as stream: plistlib.dump(data,stream)

@@ -6,7 +6,11 @@ from urllib.parse import urljoin, urlsplit
 from PySide6.QtCore import Qt, QSize, QRectF, QPointF, QUrl, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap, QLinearGradient, QPolygonF
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
-from PySide6.QtWidgets import QListWidget, QListView, QStyledItemDelegate, QStyle
+from PySide6.QtWidgets import QAbstractItemView, QListWidget, QListView, QStyledItemDelegate, QStyle
+from .motion import smooth
+
+# Below the artwork: two title lines and the year / kind line (ends 58 px under the poster), then 8 px of air.
+TEXT_H = 74
 
 class Posters:
     def __init__(self, view, origin, size=(440,660)):
@@ -135,7 +139,7 @@ class TileDelegate(QStyledItemDelegate):
 class PosterGrid(QListWidget):
     bookmarkToggled=Signal(object)
     def __init__(self,origin,parent=None):
-        super().__init__(parent);self.list_mode=False;self.language='ru';self._bookmark_press=None;self.posters=Posters(self,origin);self.setViewMode(QListView.ViewMode.IconMode);self.setResizeMode(QListView.ResizeMode.Adjust);self.setMovement(QListView.Movement.Static);self.setWrapping(True);self.setUniformItemSizes(True);self.setWordWrap(True);self.setMouseTracking(True);self.setSpacing(0);self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);self.setItemDelegate(TileDelegate(self));self.setAccessibleName('Фильмы. Нажмите на постер для просмотра.');self.resize_tiles()
+        super().__init__(parent);self.list_mode=False;self.language='ru';self._bookmark_press=None;self.posters=Posters(self,origin);self.setViewMode(QListView.ViewMode.IconMode);self.setResizeMode(QListView.ResizeMode.Adjust);self.setMovement(QListView.Movement.Static);self.setWrapping(True);self.setUniformItemSizes(True);self.setWordWrap(True);self.setMouseTracking(True);self.setSpacing(0);self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel);smooth(self);self.setItemDelegate(TileDelegate(self));self.setAccessibleName('Фильмы. Нажмите на постер для просмотра.');self.resize_tiles()
     def set_list_mode(self,on):
         on=bool(on)
         if on==self.list_mode:return
@@ -149,9 +153,16 @@ class PosterGrid(QListWidget):
             self.setGridSize(QSize(max(1,w-1),96));return
         # Budget the entire cell (artwork + two title lines + metadata), not just width.
         # At least two *complete* rows at every supported window size.
-        max_cell=max(80,min(226,int((h/2-78)/1.5)+18))
-        cols=max(2,math.ceil(w/max_cell));cell=max(1,w//cols-1)
-        self.setGridSize(QSize(cell,int((cell-18)*1.5)+78))
+        max_cell=max(80,min(226,int((h/2-TEXT_H)/1.5)+18))
+        w=self.layout_width();cols=max(2,math.ceil(w/max_cell));cell=max(1,w//cols-1)
+        self.setGridSize(QSize(cell,int((cell-18)*1.5)+TEXT_H))
+    def layout_width(self):
+        """Icon mode lays tiles out in the whole viewport minus the scroll bar it may need (QListView), not
+        the visible viewport: cells sized to the latter left one empty column at the right edge."""
+        width=self.maximumViewportSize().width();bar=self.verticalScrollBar()
+        if self.verticalScrollBarPolicy()==Qt.ScrollBarPolicy.ScrollBarAsNeeded and not self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollView_ScrollBarOverlap,None,bar):
+            width-=self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent,None,bar)
+        return max(1,width)
     def resizeEvent(self,event):
         super().resizeEvent(event);self.resize_tiles()
     def bookmark_hit(self,pos):

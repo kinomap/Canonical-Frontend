@@ -112,6 +112,33 @@ TEXT.update({
  'Ищем':'Searching for','Смотреть':'Watch','Найти':'Search',
 })
 
+# 0.1.9: title page laid out as on the website (sticky poster, quality and language pickers), in-app updates.
+TEXT.update({
+ 'Назад':'Back','Выбрано:':'Selected:','Релиз:':'Release:','Бюджет:':'Budget:',
+ 'Убрать из кинотеки':'Remove from library',
+ 'Обновления':'Updates','Проверить обновления':'Check for updates','Проверяем обновления…':'Checking for updates…',
+ 'Установлена последняя версия':'You have the latest version','Доступна версия':'Version available',
+ 'Обновить до':'Update to','Скачиваем обновление…':'Downloading the update…','Отмена':'Cancel',
+ 'Обновление отменено':'Update cancelled','Проверяем файл…':'Verifying the file…',
+ 'Устанавливаем обновление…':'Installing the update…',
+ 'Подтвердите установку в системном окне. Плеер перезапустится сам.':'Confirm the installation in the system dialog. The player restarts by itself.',
+ 'Установка отменена. Текущая версия продолжает работать.':'Installation cancelled. The current version keeps working.',
+ 'Не удалось установить обновление. Скачайте пакет на сайте.':'Could not install the update. Download the package from the website.',
+ 'Файл обновления повреждён. Повторите попытку.':'The update file is damaged. Please try again.',
+ 'Не удалось проверить обновления':'Could not check for updates',
+ 'Сборка для этой системы пока не опубликована':'A build for this system is not published yet',
+ 'Обновления доступны с подпиской PRO':'Updates are available with a PRO subscription',
+ 'Войдите, чтобы скачать обновление':'Sign in to download the update',
+ 'Обновление из приложения работает для установленного пакета. Скачайте новую версию на сайте.':'In-app updates work for the installed package. Download the new version from the website.',
+ 'Открыть страницу загрузки':'Open the download page',
+ 'Откройте образ и перенесите KINOSOTA Player в Applications с заменой.':'Open the disk image and drag KINOSOTA Player to Applications, replacing the old copy.',
+ 'Установщик запущен. Плеер закроется, чтобы обновиться.':'The installer is running. The player closes to update.',
+ 'Текущая версия':'Current version',
+ 'Новая версия устанавливается поверх текущей: вход и настройки сохраняются.':'A new version installs over this one: your sign-in and settings stay.',
+ 'Доступно обновление KINOSOTA Player — откройте настройки, раздел «О приложении».':'A KINOSOTA Player update is available: open Settings → About.',
+ 'Не удалось сохранить обновление. Освободите место на диске и повторите.':'Could not save the update. Free some disk space and try again.',
+})
+
 def translate(text, language):
     if language != 'en': return text
     if text in TEXT: return TEXT[text]

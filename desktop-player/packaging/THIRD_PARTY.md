@@ -21,3 +21,11 @@ signing identities. Build scripts do not claim to sign or notarize a candidate.
 ## Manrope font
 
 Bundled static Manrope font weights are distributed under SIL OFL 1.1. The full notice is shipped with the application at kinosota_player/assets/fonts/OFL.txt. See assets/SOURCES.md for origin and conversion details.
+
+## Lucide icons
+
+The line icons of the interface (kinosota_player/icons.py: search, grid, list, chevrons, bookmark, play,
+arrow-left, settings, user, info, circle-help, copy, download, refresh, x, check, plus, rotate-ccw) are
+SVG paths from Lucide 0.428.0, the icon set of the website, under the ISC License. The full notice is
+shipped with the application at kinosota_player/assets/LUCIDE-LICENSE.txt. The RU / UA / EN flags are
+drawn for this project.

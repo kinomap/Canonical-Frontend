@@ -10,8 +10,11 @@ export type TorrentItem = {
  season_list?:TorrentSeason[];
  /** Title page only (/torrents/detail): TMDB credits, studios and production countries. */
  tagline?:string; directors?:string[]; cast?:TorrentCastMember[]; studios?:string[]; countries?:string[]; end_year?:number|null;
+ /** Directors (series creators) with portraits, the full premiere date, the budget (USD, films) and the TMDB status. */
+ director_list?:TorrentPerson[]; country_codes?:string[]; release_date?:string|null; budget?:number|null; status?:string|null;
 }
-export type TorrentCastMember = { name:string; character:string; photo:string|null }
+export type TorrentPerson = { name:string; photo:string|null }
+export type TorrentCastMember = TorrentPerson & { character:string }
 export type TorrentSeason = { season:number; episodes:number; name:string }
 export type TorrentPage = { provider:'tmdb'; mode:'metadata_only'; items:TorrentItem[]; page:number; total:number; total_pages:number; refresh_at?:string; rotation?:string; interpreted_as?:string }
 export type TorrentFilters = { kind:TorrentKind; page?:number; genre?:string; year?:string; rating?:string; q?:string; collection?:'spotlight' }

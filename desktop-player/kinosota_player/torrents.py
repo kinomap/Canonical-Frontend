@@ -1,24 +1,29 @@
 """«Торренты»: the KINOSOTA torrent catalogue inside the desktop app.
 
-Same server contract as the website detail page: Kinoteka / search, quality /
-voice / episode choice, live preparation progress and a short-lived playback
-ticket. The app never sees an infohash, magnet or tracker URL; the stream URL
-goes to mpv over private IPC and the chosen voice becomes mpv ``--alang``.
+Same server contract as the website detail page: Kinoteka / search, quality / language / episode
+choice, live preparation progress and a short-lived playback ticket. The app never sees an infohash,
+magnet or tracker URL; the stream URL goes to mpv over private IPC and the chosen language becomes
+mpv ``--alang``. 0.1.9: the title page has the website layout (fixed backdrop, sticky poster, info
+column, people strips); the voice-over is picked inside mpv, not before the start.
 """
-from PySide6.QtCore import QLocale, Qt, QTimer, Signal
-from PySide6.QtWidgets import (QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidgetItem,
-    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QStyledItemDelegate, QVBoxLayout, QWidget)
+from datetime import date
+from PySide6.QtCore import QLocale, QPoint, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import (QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidgetItem, QProgressBar,
+    QPushButton, QScrollArea, QStackedWidget, QStyledItemDelegate, QVBoxLayout, QWidget)
 from .api import API_ORIGIN, ApiError
 from .artwork import Sink, rounded
 from .catalog import PosterGrid, Posters
 from .filters import FilterCombo, FlowLayout
+from .icons import flag, icon
+from .motion import smooth
 from .preferences import movie_title, translate
+from .title_widgets import PeopleStrip, PersonCard, ShadowHost, StickyColumn, TextBlock, TopBar
 
 QUALITIES = ('2160p', '1080p', '720p', '480p')
 LANGUAGES = ('ru', 'uk', 'en')
+# 0.1.9: language options as on the website: a flag and a short code; the tooltip names the track.
 LANGUAGE_LABELS = {'ru': 'RU', 'uk': 'UA', 'en': 'EN'}
-# 0.1.8: the title page names the languages as the website does (no drawn flags).
-LANGUAGE_PILLS = {'ru': 'Русский', 'uk': 'Українська', 'en': 'English'}
 LANGUAGE_NAMES = {'ru': 'Русская озвучка', 'uk': 'Украинская озвучка', 'en': 'Английская дорожка'}
 # mpv picks the first audio track whose language tag matches, in this order.
 MPV_ALANG = {'ru': 'rus,ru', 'uk': 'ukr,uk', 'en': 'eng,en'}
@@ -30,9 +35,14 @@ PREP_PROGRESS = {'not_queued': 0, 'unavailable': 0, 'queued': 10, 'retrying': 10
 IN_PROGRESS = ('queued', 'searching', 'loading', 'retrying')
 POLL_MS = 4000
 ACTION_TEXT = {'loading': 'Загружаем…', 'retry': 'Повторить', 'subscribe': 'Нужна подписка PRO',
-               'launch': '▶  Смотреть', 'missing': 'Серия не найдена', 'prepare': 'Подготовить раздачу',
+               'launch': 'Смотреть', 'missing': 'Серия не найдена', 'prepare': 'Подготовить раздачу',
                'wait': 'Готовим раздачу…', 'discover': 'Найти раздачи', 'library': 'Добавить в кинотеку'}
+ACTION_ICONS = {'launch': 'play', 'retry': 'refresh-cw', 'prepare': 'download', 'discover': 'search', 'library': 'plus'}
 ACTIONABLE = ('retry', 'launch', 'prepare', 'discover', 'library')
+# TMDB production states as the website badge names them; a released film shows none.
+STATUS_LABELS = {'Ended': 'Завершён', 'Canceled': 'Закрыт', 'Returning Series': 'Продолжается',
+                 'In Production': 'В производстве', 'Post Production': 'Постпродакшн', 'Planned': 'Запланирован',
+                 'Rumored': 'Анонсирован', 'Pilot': 'Пилот'}
 EN = {
     'В очереди': 'Queued', 'Поиск раздач': 'Searching releases', 'Проверка и буферизация': 'Checking and buffering',
     'Готово': 'Ready', 'Раздачи не найдены': 'No releases found', 'Раздача не отвечает': 'Release is not responding',
@@ -216,77 +226,56 @@ def source_name(source):
     return ' '.join(parts) or str((source or {}).get('title') or 'Раздача')[:80]
 
 
-class ElideLabel(QLabel):
-    """One line ending with «…» instead of widening the cast grid."""
-
-    def __init__(self, name):
-        super().__init__()
-        self.setObjectName(name)
-        self.setTextFormat(Qt.TextFormat.PlainText)
-        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.full = ''
-
-    def set_full(self, text):
-        self.full = str(text or '')
-        self.setToolTip(self.full)
-        self.elide()
-
-    def elide(self):
-        width = self.width()
-        fits = not self.isVisible() or width <= 8
-        self.setText(self.full if fits else self.fontMetrics().elidedText(self.full, Qt.TextElideMode.ElideRight, width))
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.elide()
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        self.elide()
+def status_text(state, language='ru'):
+    """Line under the poster: «Готово: старт 7 718 мс», or why the release cannot start; '' while preparing."""
+    if not state:
+        return ''
+    status, _percent, start, label = state
+    t = (lambda s: EN.get(s, s)) if language == 'en' else (lambda s: s)
+    if status in ('playable', 'partial'):
+        if type(start) is int and start > 0:
+            amount = f'{start:,}'.replace(',', ',' if language == 'en' else '\u00a0')
+            return f'Ready: start {amount} ms' if language == 'en' else f'Готово: старт {amount} мс'
+        return t('Готово')
+    if label:
+        return t(label)
+    return '' if status in IN_PROGRESS else t(PREP_LABELS.get(status, ''))
 
 
-class CastCard(QFrame):
-    """«В ролях»: photo (or initials), name and role, as on the website."""
+def clock_text(minutes):
+    """«01:32»: the length of a film as the website shows it."""
+    if type(minutes) is not int or minutes <= 0:
+        return ''
+    return f'{minutes // 60:02d}:{minutes % 60:02d}'
 
-    def __init__(self):
-        super().__init__()
-        self.setObjectName('castCard')
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.person, self.photo_url = {}, ''
-        row = QHBoxLayout(self)
-        row.setContentsMargins(10, 10, 12, 10)
-        row.setSpacing(12)
-        self.photo = QLabel()
-        self.photo.setObjectName('castPhoto')
-        self.photo.setFixedSize(48, 48)
-        self.photo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        row.addWidget(self.photo)
-        text = QVBoxLayout()
-        text.setSpacing(2)
-        self.name = ElideLabel('castName')
-        self.role = ElideLabel('castRole')
-        text.addStretch(1)
-        text.addWidget(self.name)
-        text.addWidget(self.role)
-        text.addStretch(1)
-        row.addLayout(text, 1)
 
-    def set_person(self, person):
-        self.person = person
-        photo = person.get('photo')
-        self.photo_url = photo if isinstance(photo, str) else ''
-        self.name.set_full(person.get('name'))
-        role = person.get('character') if isinstance(person.get('character'), str) else ''
-        self.role.set_full(role)
-        self.role.setVisible(bool(role))
-        self.set_photo(None)
+def money_text(amount):
+    """«$120M»: a TMDB budget in US dollars."""
+    if type(amount) is not int or amount <= 0:
+        return ''
+    for size, suffix in ((10 ** 9, 'B'), (10 ** 6, 'M'), (10 ** 3, 'K')):
+        if amount >= size:
+            value = amount / size
+            text = f'{value:.1f}'.rstrip('0').rstrip('.') if value < 10 else str(round(value))
+            return f'${text}{suffix}'
+    return f'${amount}'
 
-    def set_photo(self, pixmap):
-        if pixmap is not None and not pixmap.isNull():
-            self.photo.setPixmap(rounded(pixmap, 48, 48, 10))
-            return
-        self.photo.clear()
-        self.photo.setText(initials(self.person.get('name')))
+
+def date_text(value, language='ru'):
+    """«19.09.2005» (ISO in English) from a TMDB ``YYYY-MM-DD`` date; '' when it is not one."""
+    if not isinstance(value, str) or len(value) != 10:
+        return ''
+    try:
+        day = date.fromisoformat(value)
+    except ValueError:
+        return ''
+    return day.isoformat() if language == 'en' else day.strftime('%d.%m.%Y')
+
+
+def people(values, limit):
+    """``{name, photo, character}`` entries with a name, at most ``limit``."""
+    return [p for p in (values if isinstance(values, list) else []) if isinstance(p, dict)
+            and isinstance(p.get('name'), str) and p['name'].strip()][:limit]
 
 
 def _pill(text, handler):
@@ -299,7 +288,7 @@ def _pill(text, handler):
 
 
 class TorrentPage(QWidget):
-    """Кинотека / Фильмы / Сериалы → title → quality, voice, episode → mpv."""
+    """Кинотека / Фильмы / Сериалы → title → quality, language, episode → mpv."""
     playRequested = Signal(dict)
     listShown = Signal()
     backdropChanged = Signal(object)  # 0.1.8: the open title's backdrop (QPixmap) or None.
@@ -333,6 +322,7 @@ class TorrentPage(QWidget):
         self.art = Posters(Sink(self, self.render_art), getattr(api, 'origin', API_ORIGIN))
         self.backdrop_url = ''
         self.backdrop_art = Posters(Sink(self, self.render_backdrop), getattr(api, 'origin', API_ORIGIN), size=(1280, 720))
+        self.narrow, self.title_px = None, 0
         self._build_list()
         self._build_detail()
         self.retranslate(language)
@@ -341,7 +331,8 @@ class TorrentPage(QWidget):
     def _build_list(self):
         page = QWidget()
         v = QVBoxLayout(page)
-        v.setContentsMargins(0, 0, 0, 0)
+        # 0.1.9: «Кинотека» in the window keeps air between the glass header and the first row.
+        v.setContentsMargins(0, 18 if self.embedded else 0, 0, 0)
         v.setSpacing(8)
         row = QHBoxLayout()
         row.setSpacing(6)
@@ -373,7 +364,9 @@ class TorrentPage(QWidget):
         self.grid.itemActivated.connect(self.open_item)
         self.grid.bookmarkToggled.connect(self.unsave)
         v.addWidget(self.grid, 1)
-        pages = QHBoxLayout()
+        self.pager = QWidget()
+        pages = QHBoxLayout(self.pager)
+        pages.setContentsMargins(0, 0, 0, 0)
         self.prev = QPushButton()
         self.prev.clicked.connect(lambda: self.change_page(-1))
         self.next = QPushButton()
@@ -385,168 +378,242 @@ class TorrentPage(QWidget):
         pages.addWidget(self.page_label)
         pages.addStretch()
         pages.addWidget(self.next)
-        v.addLayout(pages)
+        self.pager.hide()  # Only when there is more than one page.
+        v.addWidget(self.pager)
         self.stack.addWidget(page)
 
     def _build_detail(self):
+        """Website title page: top bar, sticky poster + info column, «О фильме», people strips."""
+        page = QWidget()
+        page.setObjectName('detailPage')
+        frame = QVBoxLayout(page)
+        frame.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
         scroll.setObjectName('detailScroll')
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        page = QWidget()
-        page.setObjectName('detailBody')
-        scroll.setWidget(page)
-        self.detail_scroll = scroll
-        v = QVBoxLayout(page)
-        v.setContentsMargins(4, 0, 16, 28)
-        v.setSpacing(24)
-        top = QHBoxLayout()
-        self.back = QPushButton()
-        self.back.setObjectName('backChip')
-        self.back.setCursor(Qt.CursorShape.PointingHandCursor)
+        frame.addWidget(scroll)
+        self.detail_page, self.detail_scroll = page, scroll
+        self.topbar = TopBar(page)
+        self.back = self.topbar.back
         self.back.clicked.connect(self.show_list)
-        top.addWidget(self.back)
-        top.addStretch()
-        v.addLayout(top)
-        hero = QHBoxLayout()
-        hero.setSpacing(28)
+        self.topbar.follow(scroll)
+        body = QWidget()
+        body.setObjectName('detailBody')
+        scroll.setWidget(body)
+        outer = QVBoxLayout(body)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self.top_gap = QWidget()
+        self.top_gap.setFixedHeight(self.topbar.sizeHint().height())
+        outer.addWidget(self.top_gap)
+        # Two columns, centred and at most 1240 px wide: the sticky poster and the facts and choices.
+        self.hero = ShadowHost()
+        self.hero.setObjectName('detailHero')
+        self.hero.setMaximumWidth(1240)
+        self.hero_layout = QHBoxLayout(self.hero)
+        self.hero_layout.setContentsMargins(48, 24, 48, 40)
+        self.hero_layout.setSpacing(40)
+        outer.addLayout(self._centred(self.hero))
+        poster_box = QWidget()
+        poster_box.setObjectName('posterColumn')
+        column = QVBoxLayout(poster_box)
+        column.setContentsMargins(0, 28, 0, 0)
+        column.setSpacing(16)
         self.poster = QLabel()
         self.poster.setObjectName('detailPoster')
-        hero.addWidget(self.poster, 0, Qt.AlignmentFlag.AlignTop)
-        info = QVBoxLayout()
-        info.setSpacing(10)
-        self.meta_label = self._label('detailEyebrow')
-        self.title_label = self._label('torrentTitle', wrap=True)
-        self.subtitle_label = self._label('subtitle', wrap=True)
-        for widget in (self.meta_label, self.title_label, self.subtitle_label):
-            info.addWidget(widget)
-        self.facts = QWidget()
-        self.facts_box = FlowLayout(self.facts, 8, 8)
-        self.facts_box.setContentsMargins(0, 2, 0, 2)
-        self.fact_items = None
-        info.addWidget(self.facts)
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 8, 0, 0)
-        self.action_button = QPushButton()
-        self.action_button.setObjectName('watch')
-        self.action_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.action_button.setMinimumWidth(240)
-        self.action_button.clicked.connect(self.act)
-        row.addWidget(self.action_button)
-        row.addStretch()
-        info.addLayout(row)
-        status = QHBoxLayout()
-        status.setSpacing(6)
-        self.progress_label = self._label('progress')
-        self.progress_label.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
-        self.selected_label = self._label('selected', wrap=True)
-        status.addWidget(self.progress_label, 0, Qt.AlignmentFlag.AlignTop)
-        status.addWidget(self.selected_label, 1)
-        info.addLayout(status)
+        self.hero.target = self.poster
+        column.addWidget(self.poster)
+        self.status_label = self._label('posterStatus', wrap=True)
+        column.addWidget(self.status_label)
+        self.progress_box = QWidget()
+        progress = QVBoxLayout(self.progress_box)
+        progress.setContentsMargins(0, 4, 0, 0)
+        progress.setSpacing(6)
+        meta = QHBoxLayout()
+        meta.setSpacing(12)
+        self.progress_caption = self._label('progressMeta')
+        self.progress_value = self._label('progressMeta')
+        meta.addWidget(self.progress_caption, 1)
+        meta.addWidget(self.progress_value)
+        progress.addLayout(meta)
         self.progress = QProgressBar()
         self.progress.setObjectName('prepBar')
         self.progress.setRange(0, 100)
         self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(6)
-        self.progress.setMaximumWidth(520)
-        info.addWidget(self.progress)
-        self.options = QFrame()
-        self.options.setObjectName('optionsCard')
-        grid = QGridLayout(self.options)
-        grid.setContentsMargins(20, 16, 20, 16)
-        grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(12)
-        grid.setColumnStretch(1, 1)
-        self.quality_caption, self.quality_row = self._option_row(grid, 0)
+        self.progress.setFixedHeight(3)
+        progress.addWidget(self.progress)
+        column.addWidget(self.progress_box)
+        column.addStretch(1)
+        self.poster_col = StickyColumn(poster_box)
+        self.hero_layout.addWidget(self.poster_col)
+        info = QWidget()
+        info.setObjectName('detailInfo')
+        v = QVBoxLayout(info)
+        v.setContentsMargins(32, 28, 32, 28)
+        v.setSpacing(0)
+        self.meta_label = self._label('detailMeta', wrap=True)
+        self.title_label = TextBlock('detailName', 1.06)
+        self.tagline_label = TextBlock('tagline', 1.4)
+        for widget in (self.meta_label, self.title_label, self.tagline_label):
+            v.addWidget(widget)
+        self.badges = QWidget()
+        badges = QHBoxLayout(self.badges)
+        badges.setContentsMargins(0, 16, 0, 0)
+        badges.setSpacing(10)
+        self.rating_value = self._label('ratingValue')
+        self.rating_source = self._label('sourceTag')
+        self.rating_source.setText('TMDB')
+        rating = QHBoxLayout()
+        rating.setSpacing(6)  # The score and its source sit 6 px apart, the other badges 10 px.
+        rating.addWidget(self.rating_value)
+        rating.addWidget(self.rating_source, 0, Qt.AlignmentFlag.AlignVCenter)
+        badges.addLayout(rating)
+        self.status_badge = self._label('statusBadge')
+        badges.addWidget(self.status_badge, 0, Qt.AlignmentFlag.AlignVCenter)
+        badges.addStretch(1)
+        v.addWidget(self.badges)
+        self.duration_label = self._label('durationGenres', wrap=True)
+        v.addWidget(self.duration_label)
+        self.actions = QWidget()
+        actions = QHBoxLayout(self.actions)
+        actions.setContentsMargins(0, 20, 0, 0)
+        actions.setSpacing(12)
+        self.action_button = QPushButton()
+        self.action_button.setObjectName('watch')
+        self.action_button.setProperty('hero', True)
+        self.action_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.action_button.setFixedHeight(56)
+        self.action_button.setMinimumWidth(160)
+        self.action_button.setIconSize(QSize(20, 20))
+        self.action_button.clicked.connect(self.act)
+        actions.addWidget(self.action_button)
+        self.library_button = QPushButton()
+        self.library_button.setObjectName('iconBtn')
+        self.library_button.setCheckable(True)
+        self.library_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.library_button.setFixedSize(56, 56)
+        self.library_button.setIconSize(QSize(22, 22))
+        self.library_button.clicked.connect(self.toggle_library)
+        actions.addWidget(self.library_button)
+        actions.addStretch(1)
+        v.addWidget(self.actions)
+        self.selected_label = self._label('selectedInfo', wrap=True)
+        v.addWidget(self.selected_label)
+        self.pickers = QWidget()
+        pickers = QVBoxLayout(self.pickers)
+        pickers.setContentsMargins(0, 16, 0, 0)
+        pickers.setSpacing(16)
+        self.quality_section, self.quality_caption, self.quality_row = self._picker(pickers)
         self.quality_buttons = {}
         for quality in QUALITIES:
-            self.quality_buttons[quality] = _pill(quality, lambda _=False, q=quality: self.pick_quality(q))
-            self.quality_row.layout().addWidget(self.quality_buttons[quality])
-        self.quality_row.layout().addStretch()
-        self.language_caption, self.language_row = self._option_row(grid, 1)
+            self.quality_buttons[quality] = self._option(quality, lambda _=False, q=quality: self.pick_quality(q))
+            self.quality_row.addWidget(self.quality_buttons[quality])
+        self.language_section, self.language_caption, self.language_row = self._picker(pickers)
         self.language_buttons = {}
         for lang in LANGUAGES:
-            self.language_buttons[lang] = _pill(LANGUAGE_PILLS[lang], lambda _=False, l=lang: self.pick_language(l))
-            self.language_row.layout().addWidget(self.language_buttons[lang])
-        self.language_row.layout().addStretch()
-        self.voice_caption = self._caption(grid, 2)
-        self.voice_row = QWidget()
-        self.voice_box = FlowLayout(self.voice_row, 6, 6)
-        self.voice_box.setContentsMargins(0, 0, 0, 0)
-        self.voice_buttons, self.voice_values = [], None
-        grid.addWidget(self.voice_row, 2, 1)
-        self.episode_caption, self.episode_box = self._option_row(grid, 3)
+            button = self._option(LANGUAGE_LABELS[lang], lambda _=False, l=lang: self.pick_language(l))
+            button.setIcon(QIcon(flag(lang)))
+            button.setIconSize(QSize(18, 12))
+            self.language_buttons[lang] = button
+            self.language_row.addWidget(button)
+        self.episode_box, self.episode_caption, episode_row = self._picker(pickers)
         self.season_combo = FilterCombo()
         self.episode_combo = FilterCombo()
-        for combo, width in ((self.season_combo, 170), (self.episode_combo, 150)):
+        for combo, width in ((self.season_combo, 150), (self.episode_combo, 130)):
             combo.setObjectName('detailCombo')
             combo.setItemDelegate(QStyledItemDelegate(combo))
             combo.setCursor(Qt.CursorShape.PointingHandCursor)
             combo.setMinimumWidth(width)
-            self.episode_box.layout().addWidget(combo)
-        self.episode_box.layout().addStretch()
+            episode_row.addWidget(combo)
         self.season_combo.activated.connect(self.pick_season)
         self.episode_combo.activated.connect(self.pick_episode)
-        info.addSpacing(6)
-        info.addWidget(self.options)
-        self.hint_label = self._label('hint', wrap=True)
-        info.addWidget(self.hint_label)
-        info.addStretch(1)
-        hero.addLayout(info, 1)
-        v.addLayout(hero)
+        v.addWidget(self.pickers)
+        self.hint_label = self._label('detailHint', wrap=True)
+        v.addWidget(self.hint_label)
+        v.addStretch(1)
+        self.hero_layout.addWidget(info, 1)
+        # «О фильме» (overview ≤ 720 px, release / studio / budget chips), the director and «В ролях».
+        self.details = QWidget()
+        self.details.setObjectName('detailDetails')
+        self.details.setMaximumWidth(1240)
+        self.details_layout = QVBoxLayout(self.details)
+        self.details_layout.setContentsMargins(48, 32, 48, 80)
+        self.details_layout.setSpacing(32)
+        outer.addLayout(self._centred(self.details))
+        outer.addStretch(1)
         self.about = QWidget()
         about = QVBoxLayout(self.about)
-        about.setContentsMargins(0, 4, 0, 0)
-        about.setSpacing(12)
+        about.setContentsMargins(0, 0, 0, 0)
+        about.setSpacing(0)
         self.about_caption = self._label('sectionCaption')
         about.addWidget(self.about_caption)
-        body = QHBoxLayout()
-        body.setSpacing(48)
-        self.overview_label = self._label('overview', wrap=True)
-        self.overview_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        body.addWidget(self.overview_label, 3)
-        self.credits = QWidget()
-        self.credits_box = QGridLayout(self.credits)
-        self.credits_box.setContentsMargins(0, 0, 0, 0)
-        self.credits_box.setHorizontalSpacing(18)
-        self.credits_box.setVerticalSpacing(8)
-        self.credits_box.setColumnStretch(1, 1)
-        self.credit_rows = None
-        body.addWidget(self.credits, 2, Qt.AlignmentFlag.AlignTop)
-        about.addLayout(body)
-        v.addWidget(self.about)
-        self.cast_section = QWidget()
-        cast = QVBoxLayout(self.cast_section)
-        cast.setContentsMargins(0, 4, 0, 0)
-        cast.setSpacing(12)
-        self.cast_caption = self._label('sectionCaption')
-        cast.addWidget(self.cast_caption)
-        self.cast_grid = QGridLayout()
-        self.cast_grid.setHorizontalSpacing(12)
-        self.cast_grid.setVerticalSpacing(12)
-        cast.addLayout(self.cast_grid)
-        self.cast_cards, self.cast_people, self.cast_columns = [], None, 0
-        v.addWidget(self.cast_section)
-        v.addStretch(1)
+        self.overview_label = TextBlock('overview', 1.7)
+        self.overview_label.setMaximumWidth(720)
+        about.addWidget(self.overview_label)
+        self.chips = QWidget()
+        self.chips_box = FlowLayout(self.chips, 8, 8)
+        self.chips_box.setContentsMargins(0, 10, 0, 0)
+        self.chip_items = None
+        about.addWidget(self.chips)
+        self.details_layout.addWidget(self.about)
+        self.directors_section, self.directors_caption, self.director_strip = self._people_section()
+        self.cast_section, self.cast_caption, self.cast_strip = self._people_section()
+        self.director_people = self.cast_people = None
         self.about.hide()
-        self.cast_section.hide()
-        self.stack.addWidget(scroll)
+        self.stack.addWidget(page)
+        smooth(scroll)
+        scroll.verticalScrollBar().valueChanged.connect(self.on_detail_scroll)
         self.adapt()
 
-    def _caption(self, grid, row):
-        label = self._label('caption')
-        grid.addWidget(label, row, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        return label
+    @staticmethod
+    def _centred(widget):
+        """A row that keeps ``widget`` centred once it reaches its maximum width (CSS margin: 0 auto)."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        row.addStretch(1)
+        row.addWidget(widget, 10000)
+        row.addStretch(1)
+        return row
 
-    def _option_row(self, grid, row):
-        caption = self._caption(grid, row)
-        box = QWidget()
-        layout = QHBoxLayout(box)
+    def _picker(self, box):
+        """«КАЧЕСТВО»-style caption over a wrapping row of options."""
+        section = QWidget()
+        layout = QVBoxLayout(section)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        grid.addWidget(box, row, 1)
-        return caption, box
+        layout.setSpacing(8)
+        caption = self._label('pickerLabel')
+        layout.addWidget(caption)
+        row = QWidget()
+        flow = FlowLayout(row, 6, 6)
+        flow.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(row)
+        box.addWidget(section)
+        return section, caption, flow
+
+    @staticmethod
+    def _option(text, handler):
+        button = QPushButton(text)
+        button.setObjectName('opt')
+        button.setCheckable(True)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.clicked.connect(handler)
+        return button
+
+    def _people_section(self):
+        section = QWidget()
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        caption = self._label('sectionCaption')
+        layout.addWidget(caption)
+        strip = PeopleStrip()
+        layout.addWidget(strip)
+        self.details_layout.addWidget(section)
+        section.hide()
+        return section, caption, strip
 
     @staticmethod
     def _label(name, wrap=False):
@@ -569,12 +636,11 @@ class TorrentPage(QWidget):
         self.next.setText(self.t('Далее →'))
         self.back.setText(self.back_text())
         for label, text in ((self.quality_caption, 'КАЧЕСТВО'), (self.language_caption, 'ЯЗЫК'),
-                            (self.voice_caption, 'ОЗВУЧКА'), (self.episode_caption, 'СЕРИЯ'),
-                            (self.cast_caption, 'В РОЛЯХ')):
+                            (self.episode_caption, 'СЕРИЯ'), (self.cast_caption, 'В РОЛЯХ')):
             label.setText(self.t(text))
         for lang, button in self.language_buttons.items():
             button.setToolTip(self.t(LANGUAGE_NAMES[lang]))
-        self.fact_items = self.credit_rows = None
+        self.chip_items = self.director_people = self.cast_people = None
         self.render()
         self.render_meta()
 
@@ -660,6 +726,7 @@ class TorrentPage(QWidget):
         self.prev.setEnabled(page > 1)
         self.next.setEnabled(page < self.total_pages)
         self.page_label.setText(f'{page} / {self.total_pages}')
+        self.pager.setVisible(self.total_pages > 1)
 
     def unsave(self, item):
         """Ribbon in «Кинотека»: remove the title from the personal library."""
@@ -703,14 +770,13 @@ class TorrentPage(QWidget):
         self.notify('')
         self.stack.setCurrentIndex(1)
         self.render_backdrop()
-        self.detail_scroll.verticalScrollBar().setValue(0)
+        smooth(self.detail_scroll).scroll_to(0, animated=False)
         self.art.load(self.item.get('poster'))
         self.adapt()
         self.render_meta()
         self.render()
         self.refresh()
         self.load_meta()
-
     def show_list(self):
         self.detail_generation += 1
         self.poll.stop()
@@ -804,9 +870,8 @@ class TorrentPage(QWidget):
             self.backdrop_url = backdrop if isinstance(backdrop, str) else ''
             self.backdrop_art.load(self.backdrop_url)
             self.art.load(self.item.get('poster') or data.get('poster'))
-            for person in (data.get('cast') or [])[:8]:
-                if isinstance(person, dict):
-                    self.art.load(person.get('photo'))
+            for person in people(data.get('director_list'), 4) + people(data.get('cast'), 12):
+                self.art.load(person.get('photo'))
             self.render_meta()
             self.render()
             self.render_backdrop()
@@ -912,14 +977,6 @@ class TorrentPage(QWidget):
             self.choose(best_source(options, quality=(selected or {}).get('quality'), episode=self.current_episode()))
         self.render()
 
-    def pick_voice(self, voice):
-        selected = self.selected()
-        if not selected or voice not in (selected.get('voices') or []):
-            options = [s for s in self.sources() if voice in (s.get('voices') or []) and s.get('state') != 'failed']
-            self.choose(best_source(options, quality=(selected or {}).get('quality'), language=self.lang,
-                                    episode=self.current_episode()))
-        self.render()
-
     def follow_episode(self):
         episode, selected = self.current_episode(), self.selected()
         if not episode or not selected or has_episode(selected, episode):
@@ -1006,34 +1063,80 @@ class TorrentPage(QWidget):
         kind, tmdb_id = self.item['kind'], self.item['tmdb_id']
         self._run('library', lambda: self.api.add_to_library(kind, tmdb_id), 'Добавлено в кинотеку — ищем раздачи')
 
+    def toggle_library(self):
+        """Bookmark next to «Смотреть»: add the title to «Кинотека» or take it out again."""
+        if self.busy or not self.item or self.view is None:
+            self.render()
+            return
+        kind, tmdb_id = self.item['kind'], self.item['tmdb_id']
+        if not self.view.get('in_library'):
+            self.add_library()
+        elif hasattr(self.api, 'remove_from_library'):
+            self._run('library', lambda: self.api.remove_from_library(kind, tmdb_id), 'Удалено из кинотеки')
+        else:
+            self.render()
+
     # ---------- render ----------
     def back_text(self):
-        return '‹  ' + self.t(self.back_caption) if self.back_caption else self.t('← К списку')
+        return self.t('Назад')
 
-    def eyebrow(self):
-        """«СЕРИАЛ · 2004–2012 · США»."""
+    def meta_line(self):
+        """«2004–2012, США»: the year (years of a series) and up to two production countries."""
         item, meta = self.item, self.meta
-        parts = [self.t('Сериал') if item['kind'] == 'tv' else self.t('Фильм')]
+        parts = []
         year = item.get('year') if type(item.get('year')) is int else meta.get('year')
         if type(year) is int:
             end = meta.get('end_year')
             parts.append(f'{year}–{end}' if item['kind'] == 'tv' and type(end) is int and end > year else str(year))
-        parts += country_names(meta, self.language, 1)
-        return ' · '.join(parts).upper()
+        parts += country_names(meta, self.language, 2)
+        return ', '.join(parts).upper()
 
-    def subtitle_text(self):
-        """«House · «Уже лучше?»»: the other title, then the tagline."""
+    def other_title(self):
+        """The original (or the other language) title: the tooltip of the heading."""
         item, meta, shown = self.item, self.meta, self.display_title()
-        parts = []
         for other in (item.get('original_title') or meta.get('original_title'), item.get('title') or meta.get('title')):
             if isinstance(other, str) and other.strip() and other.strip() != shown:
-                parts.append(other.strip())
-                break
-        tagline = meta.get('tagline')
-        tagline = tagline.strip().strip('«»"').strip() if isinstance(tagline, str) else ''
-        if tagline:
-            parts.append(f'«{tagline}»')
-        return ' · '.join(parts)
+                return other.strip()
+        return ''
+
+    def tagline_text(self):
+        tagline = self.meta.get('tagline')
+        tagline = tagline.strip().strip('«»“”"').strip() if isinstance(tagline, str) else ''
+        if not tagline:
+            return ''
+        return f'“{tagline}”' if self.language == 'en' else f'«{tagline}»'
+
+    def status_badge_text(self):
+        status = self.meta.get('status')
+        if not isinstance(status, str) or status not in STATUS_LABELS:
+            return ''
+        return status if self.language == 'en' else STATUS_LABELS[status]
+
+    def duration_text(self):
+        """«01:32 • Драма | Комедия», for a series «8 сезонов · 176 серий • Драма»."""
+        meta = self.meta
+        length = (count_text(meta.get('seasons'), meta.get('episodes'), self.language) if self.item['kind'] == 'tv'
+                  else clock_text(meta.get('runtime')))
+        genres = ' | '.join(name[:1].upper() + name[1:] for name in names(meta.get('genres'), 4))
+        return ' • '.join(part for part in (length, genres) if part)
+
+    def selected_text(self, selected):
+        """«✓ Выбрано: 2160p WEB-DL · ▲ 50 сидов · 20,0 ГБ»."""
+        if not selected:
+            return ''
+        seeds = seeds_text(selected.get('seeders'), self.language)
+        parts = [source_name(selected), '▲ ' + seeds if seeds else '', size_text(selected.get('size_bytes'), self.language)]
+        return '✓ ' + self.t('Выбрано:') + ' ' + ' · '.join(part for part in parts if part)
+
+    def quality_text(self, quality, selected, offered):
+        """«1080p WEB-DL»: the bucket with the release type that a click would pick."""
+        if selected and selected.get('quality') == quality:
+            source = selected
+        else:
+            source = best_source([s for s in offered if s.get('quality') == quality], language=self.lang,
+                                 episode=self.current_episode())
+        kind = (source or {}).get('source_type')
+        return f'{quality} {kind.strip()}' if isinstance(kind, str) and kind.strip() else quality
 
     @staticmethod
     def _tone(widget, tone):
@@ -1042,109 +1145,94 @@ class TorrentPage(QWidget):
             widget.style().unpolish(widget)
             widget.style().polish(widget)
 
+    @staticmethod
+    def _show(label, text):
+        label.setText(text)
+        label.setVisible(bool(text))
+
     def render(self):
         if not hasattr(self, 'action_button') or not self.item:
             return
         t = self.t
         self.back.setText(self.back_text())
-        self.title_label.setText(self.display_title())
-        self.meta_label.setText(self.eyebrow())
-        subtitle = self.subtitle_text()
-        self.subtitle_label.setText(subtitle)
-        self.subtitle_label.setVisible(bool(subtitle))
+        self.back.setToolTip(t(self.back_caption) if self.back_caption else '')
+        self.title_label.set_text(self.display_title())
+        self.title_label.setToolTip(self.other_title())
+        self._show(self.meta_label, self.meta_line())
+        self.tagline_label.set_text(self.tagline_text())
+        self.tagline_label.setVisible(bool(self.tagline_label.plain))
+        rating = self.meta.get('rating') or self.item.get('rating')
+        rated = isinstance(rating, (int, float)) and not isinstance(rating, bool) and rating > 0
+        self.rating_value.setText(f'{rating:.1f}' if rated else '')
+        self.rating_value.setVisible(rated)
+        self.rating_source.setVisible(rated)
+        self._show(self.status_badge, self.status_badge_text())
+        self.badges.setVisible(rated or bool(self.status_badge.text()))
+        self._show(self.duration_label, self.duration_text())
         selected = self.selected()
         state = progress_state(self.view, selected)
         ready = bool(state) and state[0] in ('playable', 'partial')
         active = bool(state) and state[0] in IN_PROGRESS and not state[3]
-        self.progress.setVisible(active)
-        self.progress_label.setVisible(bool(state))
-        if state:
-            status, percent = state[0], state[1]
-            self.progress.setValue(100 if ready else 0 if status == 'unavailable' else max(0, min(100, percent)))
-            self.progress_label.setText('● ' + t('Готово') if ready else progress_text(state, self.language))
-            self._tone(self.progress_label, 'ready' if ready else 'active' if active else 'muted')
-        parts = []
-        if selected:
-            parts = [source_name(selected), seeds_text(selected.get('seeders'), self.language),
-                     size_text(selected.get('size_bytes'), self.language)]
-            if ready:
-                parts.append(start_text(state[2] if type(state[2]) is int else selected.get('start_ms'), self.language))
-        details = ' · '.join(p for p in parts if p)
-        self.selected_label.setText(('· ' if state else '') + details if details else '')
-        self.selected_label.setVisible(bool(details))
+        self._show(self.status_label, status_text(state, self.language))
+        self._tone(self.status_label, 'ready' if ready else 'loading')
+        self.progress_box.setVisible(active)
+        if active:
+            percent = max(0, min(100, int(state[1])))
+            label = PREP_LABELS.get(state[0], '')
+            self.progress_caption.setText(EN.get(label, label) if self.language == 'en' else label)
+            self.progress_value.setText(f'{percent}%')
+            self.progress.setValue(percent)
+        self._show(self.selected_label, self.selected_text(selected))
         self.selected_label.setToolTip(str((selected or {}).get('title') or ''))
         offered = [s for s in self.sources() if s.get('state') != 'failed']
         qualities = {s.get('quality') for s in offered}
         languages = {lang for s in offered for lang in s.get('languages') or []}
         audio = self.audio_language()
-        self.options.setVisible(bool(self.sources()))
         shown = False
         for quality, button in self.quality_buttons.items():
             checked = bool(selected) and selected.get('quality') == quality
+            button.setText(self.quality_text(quality, selected, offered))
             button.setVisible(quality in qualities or checked)
             button.setEnabled(quality in qualities and not self.busy)
             button.setChecked(checked)
             shown = shown or quality in qualities or checked
-        self.quality_caption.setVisible(shown)
-        self.quality_row.setVisible(shown)
+        self.quality_section.setVisible(shown)
         shown = False
         for lang, button in self.language_buttons.items():
             button.setVisible(lang in languages or audio == lang)
             button.setEnabled(lang in languages and not self.busy)
             button.setChecked(audio == lang)
             shown = shown or lang in languages or audio == lang
-        self.language_caption.setVisible(shown)
-        self.language_row.setVisible(shown)
-        self._render_voices(selected)
+        self.language_section.setVisible(shown)
         self._render_episodes()
+        self.pickers.setVisible(any(not w.isHidden() for w in (self.quality_section, self.language_section,
+                                                              self.episode_box)))
         action = self.action()
         text = t('Подождите…') if self.busy else t(ACTION_TEXT[action])
         episode = self.current_episode()
         if action == 'launch' and episode and not self.busy:
             text += (f' · S{episode[0]} E{episode[1]}' if self.language == 'en'
                      else f' · {episode[0]} сезон, {episode[1]} серия')
+        enabled = action in ACTIONABLE and not self.busy
+        glyph = None if self.busy else ACTION_ICONS.get(action)
         self.action_button.setText(text)
-        self.action_button.setEnabled(action in ACTIONABLE and not self.busy)
+        self.action_button.setIcon(icon(glyph, '#11120e', 20, fill='#11120e' if glyph == 'play' else 'none') if glyph else QIcon())
+        self.action_button.setEnabled(enabled)
         name = 'watch' if action == 'launch' else 'primary'
         if self.action_button.objectName() != name:
             self.action_button.setObjectName(name)
             self.action_button.style().unpolish(self.action_button)
             self.action_button.style().polish(self.action_button)
-        self.hint_label.setText(t(self.hint))
-        self.hint_label.setVisible(bool(self.hint))
-
-    def voice_options(self):
-        """Voice-over studios of the offered releases, best-ranked first (at most 12), as the site."""
-        values = []
-        offered = [s for s in self.sources() if s.get('state') != 'failed']
-        for source in sorted(offered, key=lambda s: s.get('rank') if type(s.get('rank')) is int else 10 ** 9):
-            values += [v.strip() for v in source.get('voices') or [] if isinstance(v, str) and v.strip()]
-        values += [v['value'].strip() for v in (self.view or {}).get('voices') or []
-                   if isinstance(v, dict) and isinstance(v.get('value'), str) and v['value'].strip()]
-        return list(dict.fromkeys(values))[:12]
-
-    def _render_voices(self, selected):
-        values = self.voice_options()
-        if values != self.voice_values:
-            self.voice_values = values
-            while self.voice_box.count():
-                self.voice_box.takeAt(0)
-            for button in self.voice_buttons:
-                button.hide()
-                button.deleteLater()
-            self.voice_buttons = []
-            for value in values:
-                button = _pill(value, lambda _=False, v=value: self.pick_voice(v))
-                button.setObjectName('voice')
-                self.voice_box.addWidget(button)
-                self.voice_buttons.append(button)
-            self.voice_box.invalidate()
-        current = (selected or {}).get('voices') or []
-        for button, value in zip(self.voice_buttons, values):
-            button.setChecked(value in current)
-            button.setEnabled(not self.busy)
-        self.voice_caption.setVisible(bool(values))
-        self.voice_row.setVisible(bool(values))
+        saved = bool((self.view or {}).get('in_library'))
+        self.library_button.setVisible(self.view is not None)
+        self.library_button.setChecked(saved)
+        self.library_button.setEnabled(not self.busy)
+        self.library_button.setIcon(icon('bookmark-check' if saved else 'bookmark', '#ffd24d' if saved else '#c9ced6', 22))
+        self.library_button.setToolTip(t('Убрать из кинотеки') if saved else t('Добавить в кинотеку'))
+        self.library_button.setAccessibleName(self.library_button.toolTip())
+        self._show(self.hint_label, t(self.hint))
+        self.poster_col.refresh()
+        self.on_detail_scroll()
 
     def _render_episodes(self):
         episodes = self.known_episodes()
@@ -1179,72 +1267,70 @@ class TorrentPage(QWidget):
                 widget.hide()
                 widget.deleteLater()
 
+    def chip_texts(self):
+        """«Релиз: 19.09.2005», up to three studios, «Бюджет: $120M» (films)."""
+        meta, t = self.meta, self.t
+        chips = []
+        released = date_text(meta.get('release_date'), self.language)
+        if released:
+            chips.append(t('Релиз:') + ' ' + released)
+        chips += names(meta.get('studios'), 3)
+        budget = money_text(meta.get('budget')) if self.item['kind'] == 'movie' else ''
+        if budget:
+            chips.append(t('Бюджет:') + ' ' + budget)
+        return chips
+
     def render_meta(self):
-        """Facts chips, «О фильме / О сериале» with credits and «В ролях» from /torrents/detail."""
-        if not hasattr(self, 'facts_box') or not self.item:
+        """«О фильме / О сериале» with its chips, the director (creator) cards and «В ролях»."""
+        if not hasattr(self, 'chips_box') or not self.item:
             return
         t, meta, item = self.t, self.meta, self.item
-        tv = item['kind'] == 'tv'
-        facts = []
-        rating = meta.get('rating') or item.get('rating')
-        if isinstance(rating, (int, float)) and not isinstance(rating, bool) and rating > 0:
-            facts.append(('factRating', f'★ {rating:.1f} TMDB'))
-        length = (count_text(meta.get('seasons'), meta.get('episodes'), self.language) if tv
-                  else runtime_text(meta.get('runtime'), self.language))
-        if length:
-            facts.append(('fact', length))
-        facts += [('fact', genre.lower()) for genre in names(meta.get('genres'), 4)]
-        if facts != self.fact_items:
-            self.fact_items = facts
-            self._clear(self.facts_box)
-            for name, text in facts:
-                label = self._label(name)
-                label.setText(text)
-                self.facts_box.addWidget(label)
-            self.facts_box.invalidate()
-        self.facts.setVisible(bool(facts))
-        rows = []
-        directors = names(meta.get('directors'), 4)
-        if directors:
-            key = ('Создатель', 'Создатели') if tv else ('Режиссёр', 'Режиссёры')
-            rows.append((t(key[len(directors) > 1]), ', '.join(directors)))
-        for values, one, many in ((names(meta.get('studios'), 4), 'Студия', 'Студии'),
-                                  (country_names(meta, self.language, 4), 'Страна', 'Страны')):
-            if values:
-                rows.append((t(many if len(values) > 1 else one), ', '.join(values)))
-        if rows != self.credit_rows:
-            self.credit_rows = rows
-            self._clear(self.credits_box)
-            for index, (key, value) in enumerate(rows):
-                label = self._label('factKey')
-                label.setText(key)
-                self.credits_box.addWidget(label, index, 0, Qt.AlignmentFlag.AlignTop)
-                label = self._label('factValue', wrap=True)
-                label.setText(value)
-                self.credits_box.addWidget(label, index, 1)
-        self.credits.setVisible(bool(rows))
         overview = meta.get('overview') or item.get('overview')
         overview = overview.strip() if isinstance(overview, str) else ''
-        self.about_caption.setText(t('О СЕРИАЛЕ') if tv else t('О ФИЛЬМЕ'))
-        self.overview_label.setText(overview or t('Описание на русском языке пока недоступно.'))
-        self.about.setVisible(bool(overview or rows or self.meta_loaded))
-        people = [p for p in meta.get('cast') or [] if isinstance(p, dict) and isinstance(p.get('name'), str)
-                  and p['name'].strip()][:8]
-        if people != self.cast_people:
-            self.cast_people = people
-            for card in self.cast_cards:
-                self.cast_grid.removeWidget(card)
-                card.hide()
-                card.deleteLater()
-            self.cast_cards = []
-            for person in people:
-                card = CastCard()
-                card.set_person(person)
-                self.cast_cards.append(card)
-            self.cast_columns = 0
-        self.cast_section.setVisible(bool(people))
+        self.about_caption.setText(t('О СЕРИАЛЕ') if item['kind'] == 'tv' else t('О ФИЛЬМЕ'))
+        self.overview_label.set_text(overview or t('Описание на русском языке пока недоступно.'))
+        chips = self.chip_texts()
+        if chips != self.chip_items:
+            self.chip_items = chips
+            self._clear(self.chips_box)
+            for text in chips:
+                chip = self._label('detailChip')
+                chip.setText(text)
+                self.chips_box.addWidget(chip)
+            self.chips_box.invalidate()
+        self.chips.setVisible(bool(chips))
+        self.about.setVisible(bool(overview or chips or self.meta_loaded))
+        self.render_people()
         self.render_art()
         self.adapt()
+
+    def render_people(self):
+        meta, t, tv = self.meta, self.t, self.item['kind'] == 'tv'
+        directors = people(meta.get('director_list'), 4) or [{'name': name} for name in names(meta.get('directors'), 4)]
+        role = t('Создатель') if tv else t('Режиссёр')
+        many = t('Создатели') if tv else t('Режиссёры')
+        self.directors_caption.setText((many if len(directors) > 1 else role).upper())
+        key = [(p['name'], p.get('photo')) for p in directors] + [role]
+        if key != self.director_people:
+            self.director_people = key
+            self.director_strip.set_cards([self._person(p, role) for p in directors])
+        self.directors_section.setVisible(bool(directors))
+        cast = people(meta.get('cast'), 12)
+        key = [(p['name'], p.get('character'), p.get('photo')) for p in cast]
+        if key != self.cast_people:
+            self.cast_people = key
+            self.cast_strip.set_cards([self._person(p, p.get('character') if isinstance(p.get('character'), str) else '')
+                                       for p in cast])
+        self.cast_section.setVisible(bool(cast))
+
+    @property
+    def cast_cards(self):
+        return self.cast_strip.cards
+
+    def _person(self, person, role):
+        card = PersonCard()
+        card.set_person(person, role)
+        return card
 
     def render_art(self):
         if not hasattr(self, 'poster') or not self.item:
@@ -1252,35 +1338,52 @@ class TorrentPage(QWidget):
         width, height = self.poster_size
         if width:
             source = self.art.get(self.item.get('poster') or self.meta.get('poster'))
-            self.poster.setPixmap(rounded(source, width, height, 16))
-        for card in self.cast_cards:
+            self.poster.setPixmap(rounded(source, width, height, 10))
+        for card in self.director_strip.cards + self.cast_strip.cards:
             card.set_photo(self.art.get(card.photo_url))
 
     def render_backdrop(self):
-        """The title backdrop behind the page header, as the website hero; only on the title page."""
+        """The title backdrop behind the whole window, as the website hero; only on the title page."""
         shown = bool(self.item) and self.stack.currentIndex() == 1 and bool(self.backdrop_url)
         pixmap = self.backdrop_art.get(self.backdrop_url) if shown else None
         self.backdropChanged.emit(pixmap if pixmap is not None and not pixmap.isNull() else None)
 
+    def on_detail_scroll(self, *_):
+        """The top bar darkens once the page moves; the poster sticks under it (CSS position: sticky)."""
+        if not hasattr(self, 'poster_col'):
+            return
+        self.topbar.set_strength(self.detail_scroll.verticalScrollBar().value() / 48)
+        before = self.poster_col.offset
+        top = self.hero.mapFrom(self.detail_scroll.viewport(), QPoint(0, 0)).y()
+        self.poster_col.stick(top, max(0, self.topbar.height() - 10))
+        if self.poster_col.offset != before:
+            self.hero.update(self.poster_col.geometry().adjusted(-64, -64, 64, 96))  # Its soft shadow moves too.
+
     def adapt(self):
-        """Poster and cast columns follow the window width, like the website breakpoints."""
+        """Website breakpoints by the page width: up to 900 px a 180 px poster and tighter padding."""
         if not hasattr(self, 'poster'):
             return
-        width = self.width()
-        size = (264, 396) if width >= 1150 else (220, 330) if width >= 940 else (168, 252)
-        if size != self.poster_size:
-            self.poster_size = size
-            self.poster.setFixedSize(*size)
+        width = max(1, self.width())
+        narrow = width <= 900
+        if narrow != self.narrow:
+            self.narrow = narrow
+            self.hero_layout.setContentsMargins(*((24, 16, 24, 40) if narrow else (48, 24, 48, 40)))
+            self.hero_layout.setSpacing(28 if narrow else 40)
+            self.details_layout.setContentsMargins(*((24, 32, 24, 48) if narrow else (48, 32, 48, 80)))
+            self.topbar.set_padding(10 if narrow else 16, 24 if narrow else 40)
+            self.top_gap.setFixedHeight(self.topbar.sizeHint().height())
+            column = 180 if narrow else 340
+            self.poster_size = (column, column * 3 // 2)
+            self.poster.setFixedSize(*self.poster_size)
+            self.poster_col.setFixedWidth(column)
             self.render_art()
-        columns = 4 if width >= 1100 else 3 if width >= 860 else 2
-        if columns != self.cast_columns:
-            self.cast_columns = columns
-            for card in self.cast_cards:
-                self.cast_grid.removeWidget(card)
-            for index, card in enumerate(self.cast_cards):
-                self.cast_grid.addWidget(card, index // columns, index % columns)
-            for column in range(4):
-                self.cast_grid.setColumnStretch(column, 1 if column < columns else 0)
+        # font-size: clamp(2.2rem, 4vw, 3.4rem); up to 900 px clamp(1.6rem, 5vw, 2.4rem).
+        size = round(max(25.6, min(38.4, width * .05)) if narrow else max(35.2, min(54.4, width * .04)))
+        if size != self.title_px:
+            self.title_px = size
+            self.title_label.setStyleSheet(f'font-size:{size}px;letter-spacing:{-round(size * .02, 1)}px;')
+        self.poster_col.refresh()
+        self.on_detail_scroll()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

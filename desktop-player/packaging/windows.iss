@@ -1,8 +1,13 @@
 ; Build on Windows with Inno Setup 6, after packaging/build.py freezes the app.
+; packaging/build.py passes /DAppVersion=<kinosota_player.__version__>; there is no second copy here.
+#ifndef AppVersion
+  #error Run packaging/build.py (ISCC /DAppVersion=X.Y.Z)
+#endif
 [Setup]
 AppId={{75E1F526-17EE-46D1-A76F-B49889A80145}
 AppName=KINOSOTA Player
-AppVersion=0.1.8
+AppVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}
 AppPublisher=KINOSOTA
 AppPublisherURL=https://watch.scenrix.com
 AppSupportURL=https://watch.scenrix.com/player
@@ -37,3 +42,5 @@ Root: HKCU; Subkey: "Software\Classes\kinosota\shell\open\command"; ValueType: s
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 [Run]
 Filename: "{app}\kinosota-player.exe"; Description: "Launch KINOSOTA Player"; Flags: nowait postinstall skipifsilent
+; In-app update (0.1.9): the player starts the setup with /SILENT and quits; start the new version again.
+Filename: "{app}\kinosota-player.exe"; Flags: nowait skipifnotsilent

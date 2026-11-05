@@ -1,6 +1,13 @@
 """Desktop/software-center identity. No root GUI or install-time app launch."""
+import os,time
 from pathlib import Path
 from xml.etree import ElementTree as ET
+
+def release_date():
+    """AppStream release date: the reproducible build time (SOURCE_DATE_EPOCH) or today, in UTC."""
+    try:stamp=int(os.environ.get('SOURCE_DATE_EPOCH') or time.time())
+    except ValueError:stamp=int(time.time())
+    return time.strftime('%Y-%m-%d',time.gmtime(stamp))
 
 def write_metadata(stage,version,architecture,libc):
     stage=Path(stage)
@@ -16,7 +23,7 @@ def write_metadata(stage,version,architecture,libc):
     child('launchable','kinosota-player.desktop',{'type':'desktop-id'});child('url','https://watch.scenrix.com/player',{'type':'homepage'});child('icon','kinosota-player',{'type':'stock'});child('pkgname','kinosota-player')
     categories=ET.SubElement(component,'categories')
     for category in ['AudioVideo','Video','Player']:ET.SubElement(categories,'category').text=category
-    releases=ET.SubElement(component,'releases');ET.SubElement(releases,'release',{'version':version,'date':'2026-11-03','type':'development'})
+    releases=ET.SubElement(component,'releases');ET.SubElement(releases,'release',{'version':version,'date':release_date(),'type':'development'})
     ET.indent(component);ET.ElementTree(component).write(stage/'usr/share/metainfo/com.kinosota.Player.metainfo.xml',encoding='utf-8',xml_declaration=True)
     # Refresh discovery caches only; never start a GUI as root or guess a desktop user.
     for name in ['postinst','postrm']:

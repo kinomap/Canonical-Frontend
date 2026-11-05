@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatSeconds, formatSize, plural } from '@/utils/ruFormat'
+import { formatBudget, formatClock, formatDate, formatSeconds, formatSize, plural } from '@/utils/ruFormat'
 
 describe('Russian title page wording', () => {
   it('declines counts', () => {
@@ -21,5 +21,13 @@ describe('Russian title page wording', () => {
     expect(formatSeconds(2000)).toBe('2 с')
     expect(formatSeconds(0)).toBe('0 с')
     expect([null, -5, Infinity].map((v) => formatSeconds(v as number))).toEqual(['', '', ''])
+  })
+  it('words the title page chips: release date, budget and film length', () => {
+    expect(formatDate('2005-09-19')).toBe('19.09.2005')
+    expect(['2005', '2005-13-01', '2023-02-29', '', null, undefined].map((v) => formatDate(v as string))).toEqual(['', '', '', '', '', ''])
+    expect([120_000_000, 185_000_000, 1_250_000_000, 2_500_000, 950_000, 500].map(formatBudget)).toEqual(['$120M', '$185M', '$1.3B', '$2.5M', '$950K', '$500'])
+    expect([0, -1, 2.5, NaN, null].map((v) => formatBudget(v as number))).toEqual(['', '', '', '', ''])
+    expect([92, 152, 45, 600].map(formatClock)).toEqual(['01:32', '02:32', '00:45', '10:00'])
+    expect([0, -3, 1.5, null].map((v) => formatClock(v as number))).toEqual(['', '', '', ''])
   })
 })

@@ -4,14 +4,17 @@ from pathlib import Path
 from PySide6.QtCore import Qt,QRect,QPropertyAnimation,QEasingCurve,QEvent,Signal,QSize
 from PySide6.QtGui import QPixmap,QIcon,QPainter
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QWidget,QFrame,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QApplication,QScrollArea,QStackedWidget,QSizePolicy,QStyledItemDelegate
+from PySide6.QtWidgets import QWidget,QFrame,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QApplication,QScrollArea,QStackedWidget,QSizePolicy,QStyledItemDelegate,QProgressBar
 from .preferences import translate
 from .filters import FilterCombo
 from . import __version__
+from .icons import icon as lucide
+from .motion import smooth
 
+LINE_ICONS={'settings':'settings','account':'user','about':'info','help':'circle-help','copy':'copy'}
 def line_icon(name):
-    paths={'settings':'<path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"/><circle cx="12" cy="12" r="5"/>','account':'<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0116 0v2"/>','about':'<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>','help':'<circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 016 0c0 3-3 2-3 5m0 3v1"/>','copy':'<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V3H3v13h5"/>'}
-    svg=('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="#ffda68" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+paths[name]+'</g></svg>').encode();pix=QPixmap(24,24);pix.fill(Qt.GlobalColor.transparent);q=QPainter(pix);QSvgRenderer(svg).render(q);q.end();return QIcon(pix)
+    """Lucide line icons (ISC), honey on the dark rail as on the website."""
+    return lucide(LINE_ICONS[name],'#ffda68',24)
 
 class SettingsDrawer(QWidget):
     languageChanged=Signal(str);titlesChanged=Signal(str);refreshRequested=Signal();signOutRequested=Signal()
@@ -43,8 +46,18 @@ class SettingsDrawer(QWidget):
         self.refresh=self.action(card,'Обновить данные аккаунта',self.refreshRequested.emit)
         self.action(card,'Управлять подпиской на сайте',lambda:webbrowser.open('https://watch.scenrix.com/profile?tab=billing'))
         self.signout=self.action(card,'Выйти из аккаунта',self.signOutRequested.emit,'danger');account.addStretch()
-        about=self.page();card=self.card(about,'Приложение','Версия и системная информация.');card.addWidget(QLabel('KINOSOTA Player · '+__version__));system=QLabel(platform.system()+' · '+platform.machine());card.addWidget(system)
-        self.action(card,'Проверить доступные версии',lambda:webbrowser.open('https://watch.scenrix.com/player'))
+        about=self.page();self.updater=None
+        # 0.1.9: updates are installed over this copy from here, without removing the app first.
+        card=self.card(about,'Обновления','Новая версия устанавливается поверх текущей: вход и настройки сохраняются.')
+        self.update_status=QLabel();self.update_status.setObjectName('updateStatus');self.update_status.setTextFormat(Qt.TextFormat.PlainText);self.update_status.setWordWrap(True);card.addWidget(self.update_status)
+        self.update_bar=QProgressBar();self.update_bar.setObjectName('prepBar');self.update_bar.setRange(0,100);self.update_bar.setTextVisible(False);self.update_bar.setFixedHeight(4);self.update_bar.hide();card.addWidget(self.update_bar)
+        row=QHBoxLayout();row.setSpacing(8);self.update_now=QPushButton();self.update_now.setObjectName('primary');self.update_now.setIcon(lucide('download','#11120e',18));self.update_now.setIconSize(QSize(18,18))
+        self.update_check=QPushButton();self.update_check.setIcon(lucide('refresh-cw','#d5dbe0',16));self.update_cancel=QPushButton();self.update_site=QPushButton()
+        for b,text in ((self.update_now,''),(self.update_check,'Проверить обновления'),(self.update_cancel,'Отмена'),(self.update_site,'Открыть страницу загрузки')):
+            b.setCursor(Qt.CursorShape.PointingHandCursor);row.addWidget(b)
+            if text:self.bound.append((b,text))
+        row.addStretch(1);card.addLayout(row);self.update_site.clicked.connect(lambda:webbrowser.open('https://watch.scenrix.com/player'))
+        card=self.card(about,'Приложение','Версия и системная информация.');card.addWidget(QLabel('KINOSOTA Player · '+__version__));system=QLabel(platform.system()+' · '+platform.machine());card.addWidget(system)
         self.action(card,'Удалить приложение…',self.uninstall,'danger');card.addWidget(self.text('Удаление потребует подтверждения ОС. Данные аккаунта на сайте останутся.','hint',True));about.addStretch()
         help_page=self.page();card=self.card(help_page,'Помощь','Установка и безопасность.');card.addWidget(self.text('Windows: запуск после установки включён в мастере. macOS: перенесите приложение в Applications и откройте его. Linux: откройте пакет в менеджере приложений, затем нажмите «Открыть» или запустите KINOSOTA из меню.','hint',True));card.addWidget(self.text('Не отключайте защиту ОС. Подпись Windows и notarization macOS пока не подтверждены.','hint',True));self.action(card,'Открыть руководство на сайте',lambda:webbrowser.open('https://watch.scenrix.com/player'));help_page.addStretch()
         self.animation=QPropertyAnimation(self.panel,b'geometry',self);self.animation.setDuration(180);self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -54,7 +67,7 @@ class SettingsDrawer(QWidget):
     def action(self,v,text,callback,name=''):
         b=QPushButton();b.setObjectName(name);self.bound.append((b,text));b.clicked.connect(callback);v.addWidget(b);return b
     def page(self):
-        area=QScrollArea();area.setWidgetResizable(True);area.setFrameShape(QFrame.Shape.NoFrame);area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);content=QWidget();v=QVBoxLayout(content);v.setContentsMargins(0,0,4,0);v.setSpacing(16);area.setWidget(content);self.stack.addWidget(area);return v
+        area=QScrollArea();area.setWidgetResizable(True);area.setFrameShape(QFrame.Shape.NoFrame);area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);smooth(area);content=QWidget();v=QVBoxLayout(content);v.setContentsMargins(0,0,4,0);v.setSpacing(16);area.setWidget(content);self.stack.addWidget(area);return v
     def card(self,v,title,hint):
         frame=QFrame();frame.setObjectName('settingsCard');x=QVBoxLayout(frame);x.setContentsMargins(18,16,18,16);x.setSpacing(10);x.addWidget(self.text(title,'sectionTitle'));x.addWidget(self.text(hint,'hint',True));v.addWidget(frame);return x
     def selector(self,v,title,value):
@@ -69,6 +82,7 @@ class SettingsDrawer(QWidget):
         self.select_page(self.stack.currentIndex());self.close_button.setAccessibleName(translate('Закрыть настройки',language))
         for key,b in self.copy_buttons.items():b.setAccessibleName(translate('Копировать',language)+' '+key)
         self.render_account()
+        self.render_update()
     def render_account(self):
         statuses={'active_paid':'Активная платная','trial':'Пробная','free':'Бесплатная','expired':'Истекла'}
         for key,widget in self.fields.items():
@@ -77,6 +91,24 @@ class SettingsDrawer(QWidget):
             widget.setText(value[:160]);widget.setToolTip(value[:320]);widget.setAccessibleName(value[:320])
         user=str(self.account.get('username') or translate('Гость',self.language));self.summary.setText(self.summary.fontMetrics().elidedText(user[:160],Qt.TextElideMode.ElideRight,max(100,self.rail.width()-38)));self.summary.setToolTip(user[:160]);self.account_state.setText(translate(self.state,self.language));self.refresh.setEnabled(self.state!='Загружаем аккаунт…')
         for key,b in self.copy_buttons.items():b.setEnabled(bool(self.account.get(key)))
+    def set_updater(self,updater):
+        """Connect the «Обновления» card to the window's updater (check, update, cancel)."""
+        self.updater=updater;updater.changed.connect(self.render_update)
+        self.update_check.clicked.connect(lambda:updater.check());self.update_now.clicked.connect(updater.start);self.update_cancel.clicked.connect(updater.cancel)
+        self.render_update()
+    def render_update(self):
+        u=self.updater
+        if u is None:
+            self.update_status.setText(translate('Текущая версия',self.language)+': '+__version__)
+            for b in (self.update_now,self.update_cancel,self.update_site,self.update_check):b.hide()
+            return
+        actions=u.actions();self.update_status.setText(u.text(self.language))
+        self.update_now.setText(translate('Обновить до',self.language)+' '+u.version);self.update_now.setVisible(actions['update'])
+        self.update_check.setVisible(actions['check']);self.update_check.setEnabled(not u.busy)
+        self.update_cancel.setVisible(actions['cancel']);self.update_site.setVisible(actions['website'])
+        downloading=u.state=='downloading';self.update_bar.setVisible(downloading)
+        if downloading:
+            self.update_bar.setRange(0,100 if u.total else 0);self.update_bar.setValue(u.percent())
     def update_account(self,data=None,state=''):
         if data is not None:self.account=dict(data)
         self.state=state;self.render_account()

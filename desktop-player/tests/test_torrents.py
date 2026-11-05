@@ -1,4 +1,4 @@
-"""«Торренты» in the desktop app: same choices as the website, voice → mpv --alang."""
+"""«Торренты» in the desktop app: same choices as the website, language → mpv --alang."""
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import copy, json
@@ -186,25 +186,35 @@ def test_detail_page_shows_selection_progress_and_white_watch_button():
     page, notes, errors = page_for(api)
     page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008})
     assert api.calls == [('sources', 'movie', 155)] and not errors
-    assert page.stack.currentIndex() == 1 and page.title_label.text() == 'Тёмный рыцарь'
-    assert page.meta_label.text() == 'ФИЛЬМ · 2008'
-    assert page.progress_label.text() == '● Готово' and page.progress.value() == 100
-    assert page.selected_label.text() == '· 2160p WEB-DL · 50 сидов · 20,0 ГБ · старт 1,2 с'
+    assert page.stack.currentIndex() == 1 and page.title_label.plain == 'Тёмный рыцарь'
+    assert page.meta_label.text() == '2008' and page.back.text() == 'Назад'
+    assert page.status_label.text() == 'Готово: старт 1\u00a0234 мс' and page.status_label.property('tone') == 'ready'
+    assert not page.progress_box.isVisibleTo(page)  # Only while a release is being prepared.
+    assert page.selected_label.text() == '✓ Выбрано: 2160p WEB-DL · ▲ 50 сидов · 20,0 ГБ'
     q = page.quality_buttons
     assert q['2160p'].isEnabled() and q['2160p'].isChecked() and q['1080p'].isEnabled() and not q['1080p'].isChecked()
+    assert q['2160p'].text() == '2160p WEB-DL' and q['1080p'].text() == '1080p BDRip'
     assert not q['720p'].isEnabled() and not q['480p'].isEnabled()  # Only a failed 720p, no 480p at all.
+    assert not q['720p'].isVisibleTo(page) and not q['480p'].isVisibleTo(page)
     lang = page.language_buttons
     assert lang['ru'].isChecked() and lang['en'].isEnabled() and lang['uk'].isEnabled() and not lang['en'].isChecked()
-    assert lang['ru'].text() == 'Русский' and lang['uk'].text() == 'Українська' and lang['en'].text() == 'English'
-    assert page.action_button.text() == '▶  Смотреть' and page.action_button.objectName() == 'watch'
-    assert page.action_button.isEnabled() and not page.episode_box.isVisibleTo(page)
+    assert [lang[k].text() for k in ('ru', 'uk', 'en')] == ['RU', 'UA', 'EN'] and not lang['uk'].icon().isNull()
+    assert lang['uk'].toolTip() == 'Украинская озвучка'
+    assert page.action_button.text() == 'Смотреть' and page.action_button.objectName() == 'watch'
+    assert page.action_button.isEnabled() and not page.action_button.icon().isNull()
+    assert not page.episode_box.isVisibleTo(page) and not hasattr(page, 'voice_buttons')  # The voice is picked in mpv.
+    assert page.library_button.isChecked() and page.library_button.toolTip() == 'Убрать из кинотеки'
     played = []
     page.playRequested.connect(played.append)
-    page.pick_language('en')  # The 2160p release has an English track: keep it, switch the voice.
+    page.pick_language('en')  # The 2160p release has an English track: keep it, switch the audio.
     assert page.selected()['source_id'] == A and lang['en'].isChecked() and not lang['ru'].isChecked()
     page.action_button.click()
     assert played == [{'kind': 'movie', 'tmdb_id': 155, 'source_id': A, 'season': None, 'episode': None,
                        'audio_lang': 'en', 'title': 'Тёмный рыцарь'}]
+    page.retranslate('en')
+    assert page.back.text() == 'Back' and page.status_label.text() == 'Ready: start 1,234 ms'
+    assert page.selected_label.text() == '✓ Selected: 2160p WEB-DL · ▲ 50 seeds · 20.0 GB'
+    assert page.action_button.text() == 'Watch' and page.library_button.toolTip() == 'Remove from library'
     page.close()
 
 
@@ -218,7 +228,8 @@ def test_choosing_an_unprepared_quality_queues_it_and_shows_live_progress():
     page.pick_quality('1080p')
     assert ('prepare', B) in api.calls and api.calls[-1] == ('sources', 'movie', 155)
     assert page.selected()['source_id'] == B and page.quality_buttons['1080p'].isChecked()
-    assert page.progress_label.text() == 'В очереди 10%' and page.progress.value() == 10
+    assert page.progress_box.isVisibleTo(page) and page.status_label.isHidden()
+    assert (page.progress_caption.text(), page.progress_value.text(), page.progress.value()) == ('В очереди', '10%', 10)
     assert page.action_button.text() == 'Готовим раздачу…' and not page.action_button.isEnabled()
     assert page.action_button.objectName() == 'primary'
     assert page.hint_label.text() == 'Раздача поставлена в очередь на проверку'
@@ -235,11 +246,14 @@ def test_title_outside_library_offers_add_then_discovery_without_infohash():
     page, notes, errors = page_for(api)
     page.open_title({'kind': 'movie', 'tmdb_id': 680, 'title': 'Криминальное чтиво'})
     assert page.action_button.text() == 'Добавить в кинотеку' and page.action_button.isEnabled()
-    assert not page.quality_buttons['1080p'].isVisibleTo(page) and not page.progress.isVisibleTo(page)
+    assert not page.quality_buttons['1080p'].isVisibleTo(page) and not page.progress_box.isVisibleTo(page)
+    assert not page.pickers.isVisibleTo(page) and page.selected_label.isHidden()
+    assert not page.library_button.isChecked() and page.library_button.toolTip() == 'Добавить в кинотеку'
     api.views = [added]
     page.action_button.click()
     assert ('library_add', 'movie', 680) in api.calls
-    assert page.progress_label.text() == 'Поиск раздач 35%' and page.action_button.text() == 'Готовим раздачу…'
+    assert (page.progress_caption.text(), page.progress_value.text()) == ('Поиск раздач', '35%')
+    assert page.action_button.text() == 'Готовим раздачу…' and page.library_button.isChecked()
     assert page.hint_label.text() == 'Добавлено в кинотеку — ищем раздачи'
     locked = FakeApi(view={**empty, 'allowed': False})
     page2, _, _ = page_for(locked)
@@ -247,6 +261,32 @@ def test_title_outside_library_offers_add_then_discovery_without_infohash():
     assert page2.action_button.text() == 'Нужна подписка PRO' and not page2.action_button.isEnabled()
     page.close()
     page2.close()
+
+
+class LibraryApi(FakeApi):
+    def add_to_library(self, kind, tmdb_id):
+        self.views = [{**self.views[0], 'in_library': True}]
+        return super().add_to_library(kind, tmdb_id)
+
+    def remove_from_library(self, kind, tmdb_id):
+        self.calls.append(('library_remove', kind, tmdb_id))
+        self.views = [{**self.views[0], 'in_library': False}]
+        return {'saved': False}
+
+
+def test_bookmark_next_to_watch_adds_and_removes_the_title_from_the_library():
+    api = LibraryApi()
+    page, notes, errors = page_for(api)
+    page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008})
+    assert page.library_button.isChecked() and page.library_button.isVisibleTo(page)
+    page.library_button.click()
+    assert ('library_remove', 'movie', 155) in api.calls and errors == []
+    assert not page.library_button.isChecked() and page.library_button.toolTip() == 'Добавить в кинотеку'
+    assert page.hint_label.text() == 'Удалено из кинотеки' and page.action_button.text() == 'Смотреть'
+    page.library_button.click()
+    assert ('library_add', 'movie', 155) in api.calls and page.library_button.isChecked()
+    assert page.library_button.accessibleName() == 'Убрать из кинотеки'
+    page.close()
 
 
 def test_series_episode_choice_follows_a_release_that_contains_the_episode():
@@ -514,7 +554,8 @@ def test_search_suggestions_under_the_header_search_follow_the_keyboard():
     w.fill_results(found, state)
     assert key(Qt.Key.Key_Down) and key(Qt.Key.Key_Return)
     assert s.isHidden() and w.pages.currentIndex() == 2 and w.torrents.item['tmdb_id'] == 155
-    assert ('sources', 'movie', 155) in api.calls and w.torrents.back.text() == '‹  Главная'
+    assert ('sources', 'movie', 155) in api.calls and w.torrents.back.text() == 'Назад'
+    assert w.torrents.back.toolTip() == 'Главная'
     assert highlight_parts('Тёмного рыцаря', ['тёмный рыцарь']) == [('Тёмного рыцаря', True)]
     assert highlight_parts('Рыцарь дорог', ['ntvysq']) == [('Рыцарь дорог', False)]
     w.close()
@@ -522,37 +563,88 @@ def test_search_suggestions_under_the_header_search_follow_the_keyboard():
 
 
 def test_title_page_shows_facts_credits_and_cast_like_the_website():
-    api = DetailApi(view=tv_view(), detail=HOUSE)
+    detail = {**HOUSE, 'status': 'Ended', 'release_date': '2004-11-16'}
+    api = DetailApi(view=tv_view(), detail=detail)
     page, notes, errors = page_for(api)
     page.open_title({'kind': 'tv', 'tmdb_id': 1408, 'title': 'Доктор Хаус', 'original_title': 'House', 'year': 2004,
                      'poster': None})
     assert ('detail', 'tv', 1408) in api.calls and errors == []
-    assert page.meta_label.text() == 'СЕРИАЛ · 2004–2012 · США'
-    assert page.subtitle_label.text() == 'House · «Уже лучше?»' and not page.subtitle_label.isHidden()
-    assert page.fact_items == [('factRating', '★ 8.6 TMDB'), ('fact', '8 сезонов · 176 серий'),
-                               ('fact', 'драма'), ('fact', 'детектив'), ('fact', 'комедия')]
-    assert page.credit_rows == [('Создатель', 'Дэвид Шор'),
-                                ('Студии', 'Heel & Toe Films, Shore Z Productions, Bad Hat Harry'), ('Страна', 'США')]
-    assert page.about_caption.text() == 'О СЕРИАЛЕ' and page.overview_label.text().startswith('Блестящий диагност')
-    assert [(c.name.full, c.role.full) for c in page.cast_cards] == [
+    assert page.meta_label.text() == '2004–2012, США' and page.title_label.plain == 'Доктор Хаус'
+    assert page.title_label.toolTip() == 'House'  # The original title on hover.
+    assert page.tagline_label.plain == '«Уже лучше?»' and not page.tagline_label.isHidden()
+    assert (page.rating_value.text(), page.rating_source.text(), page.status_badge.text()) == ('8.6', 'TMDB', 'Завершён')
+    assert page.duration_label.text() == '8 сезонов · 176 серий • Драма | Детектив | Комедия'
+    assert page.about_caption.text() == 'О СЕРИАЛЕ' and page.overview_label.plain.startswith('Блестящий диагност')
+    assert page.chip_items == ['Релиз: 16.11.2004', 'Heel & Toe Films', 'Shore Z Productions', 'Bad Hat Harry']
+    assert page.directors_caption.text() == 'СОЗДАТЕЛЬ' and not page.directors_section.isHidden()
+    assert [(c.name.text(), c.role.text(), c.photo.text()) for c in page.director_strip.cards] == [
+        ('Дэвид Шор', 'Создатель', 'ДШ')]
+    assert [(c.name.text(), c.role.text()) for c in page.cast_cards] == [
         ('Хью Лори', 'Грегори Хаус'), ('Лиза Эдельштейн', 'Лиза Кадди'), ('Омар Эппс', '')]
     assert page.cast_cards[2].role.isHidden() and not page.cast_section.isHidden() and not page.about.isHidden()
+    assert page.cast_caption.text() == 'В РОЛЯХ' and page.cast_cards[0].toolTip() == 'Хью Лори — Грегори Хаус'
     page.retranslate('en')
-    assert page.meta_label.text() == translate('Сериал', 'en').upper() + ' · 2004–2012 · USA'
-    assert page.credit_rows[-1] == (translate('Страна', 'en'), 'USA')
+    assert page.meta_label.text() == '2004–2012, USA' and page.status_badge.text() == 'Ended'
     assert page.about_caption.text() == 'ABOUT THE SERIES' and page.cast_caption.text() == 'CAST'
-    assert page.fact_items[1] == ('fact', '8 seasons · 176 episodes') and page.credit_rows[0] == ('Creator', 'Дэвид Шор')
+    assert page.duration_label.text().startswith('8 seasons · 176 episodes • ')
+    assert page.chip_items[0] == 'Release: 2004-11-16' and page.directors_caption.text() == 'CREATOR'
+    assert page.director_strip.cards[0].role.text() == 'Creator'
     # Without the extras the page still offers the releases and the watch button.
     plain = DetailApi(view=movie_view(), detail_error=ApiError(503))
     page, notes, errors = page_for(plain)
     page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008, 'poster': None})
     assert ('detail', 'movie', 155) in plain.calls and errors == []
-    assert page.meta_label.text() == 'ФИЛЬМ · 2008' and page.subtitle_label.isHidden()
-    assert page.about.isHidden() and page.cast_section.isHidden() and page.facts.isHidden()
-    assert page.action_button.isEnabled()
+    assert page.meta_label.text() == '2008' and page.tagline_label.isHidden() and page.badges.isHidden()
+    assert page.about.isHidden() and page.cast_section.isHidden() and page.directors_section.isHidden()
+    assert page.duration_label.isHidden() and page.action_button.isEnabled()
 
 
-def test_server_rank_preselected_release_and_voice_pills():
+def test_movie_page_shows_budget_release_and_director_cards():
+    detail = {'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'original_title': 'The Dark Knight',
+              'year': 2008, 'runtime': 152, 'rating': 8.5, 'status': 'Released', 'release_date': '2008-07-16',
+              'budget': 185_000_000, 'tagline': '«Добро пожаловать в мир Хаоса!»',
+              'genres': [{'id': 18, 'name': 'драма'}, {'id': 28, 'name': 'боевик'}],
+              'directors': ['Кристофер Нолан'], 'studios': ['Warner Bros. Pictures', 'Legendary Pictures',
+                                                            'Syncopy', 'DC Comics'],
+              'countries': ['США', 'Великобритания', 'Канада'], 'country_codes': ['US', 'GB', 'CA'],
+              'cast': [{'name': 'Кристиан Бейл', 'character': 'Брюс Уэйн', 'photo': None}]}
+    page, notes, errors = page_for(DetailApi(view=movie_view(), detail=detail))
+    page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008, 'poster': None})
+    assert errors == [] and page.meta_label.text() == '2008, США, ВЕЛИКОБРИТАНИЯ'
+    assert page.tagline_label.plain == '«Добро пожаловать в мир Хаоса!»'  # No doubled quotes.
+    assert page.status_badge.isHidden() and not page.badges.isHidden()  # «Released» says nothing new.
+    assert page.duration_label.text() == '02:32 • Драма | Боевик' and page.about_caption.text() == 'О ФИЛЬМЕ'
+    assert page.chip_items == ['Релиз: 16.07.2008', 'Warner Bros. Pictures', 'Legendary Pictures', 'Syncopy',
+                               'Бюджет: $185M']
+    assert page.directors_caption.text() == 'РЕЖИССЁР'
+    assert [(c.name.text(), c.role.text(), c.photo.text()) for c in page.director_strip.cards] == [
+        ('Кристофер Нолан', 'Режиссёр', 'КН')]
+    # The server's director cards (with photos) win over the plain names.
+    page2, _, _ = page_for(DetailApi(view=movie_view(), detail={
+        **detail, 'director_list': [{'name': 'Лана Вачовски', 'photo': None}, {'name': 'Лилли Вачовски', 'photo': None}]}))
+    page2.open_title({'kind': 'movie', 'tmdb_id': 603, 'title': 'Матрица', 'year': 1999, 'poster': None})
+    assert page2.directors_caption.text() == 'РЕЖИССЁРЫ'
+    assert [c.name.text() for c in page2.director_strip.cards] == ['Лана Вачовски', 'Лилли Вачовски']
+    page.close()
+    page2.close()
+
+
+def test_title_helpers_format_status_length_money_and_dates():
+    from kinosota_player.torrents import clock_text, date_text, money_text, status_text
+    assert status_text(('playable', 100, 1234, None)) == 'Готово: старт 1\u00a0234 мс'
+    assert status_text(('playable', 100, 1234, None), 'en') == 'Ready: start 1,234 ms'
+    assert status_text(('playable', 100, None, None)) == 'Готово' and status_text(None) == ''
+    assert status_text(('queued', 10, None, None)) == ''  # The progress bar tells it instead.
+    assert status_text(('unavailable', 0, None, 'Раздача не отвечает')) == 'Раздача не отвечает'
+    assert clock_text(92) == '01:32' and clock_text(152) == '02:32' and clock_text(0) == '' and clock_text(None) == ''
+    assert money_text(120_000_000) == '$120M' and money_text(5_500_000) == '$5.5M'
+    assert money_text(1_200_000_000) == '$1.2B' and money_text(950_000) == '$950K'
+    assert money_text(0) == '' and money_text(None) == '' and money_text(True) == ''
+    assert date_text('2005-09-19') == '19.09.2005' and date_text('2005-09-19', 'en') == '2005-09-19'
+    assert date_text('19/09/2005') == '' and date_text(None) == '' and date_text('2005-13-40') == ''
+
+
+def test_server_rank_preselects_the_release_and_the_voice_stays_in_the_player():
     view = movie_view()
     view['sources'][0].update(rank=2, voices=['Дубляж', 'LostFilm'])
     view['sources'][1].update(state='ready', progress=100, start_ms=800, seeders=5, rank=1,
@@ -565,13 +657,13 @@ def test_server_rank_preselected_release_and_voice_pills():
     page, notes, errors = page_for(api)
     page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008, 'poster': None})
     assert page.selected()['source_id'] == B and errors == []
-    assert page.voice_values == ['Дубляж', 'Кубик в Кубе', 'LostFilm', 'TVShows']
-    assert [b.text() for b in page.voice_buttons if b.isChecked()] == ['Дубляж', 'Кубик в Кубе']
-    page.pick_voice('LostFilm')
-    assert page.selected()['source_id'] == A
-    assert [b.text() for b in page.voice_buttons if b.isChecked()] == ['Дубляж', 'LostFilm']
-    page.pick_voice('TVShows')  # No offered release carries it yet: the current choice stays.
+    assert page.quality_buttons['1080p'].isChecked() and page.quality_buttons['1080p'].text() == '1080p BDRip'
+    assert page.selected_label.text() == '✓ Выбрано: 1080p BDRip · ▲ 5 сидов · 8,0 ГБ'
+    assert page.status_label.text() == 'Готово: старт 800 мс'
+    assert not hasattr(page, 'pick_voice')  # 0.1.9: the voice-over is switched in mpv, not on the title page.
+    page.pick_quality('2160p')
     assert page.selected()['source_id'] == A and not any(call[0] == 'prepare' for call in api.calls)
+    page.close()
 
 
 def test_library_list_has_no_found_counter():

@@ -1,10 +1,12 @@
 """HTTPS API client. No passwords on disk, no tokens in URLs or logs."""
-import re, threading, time, uuid
+import hashlib, json, os, re, secrets, threading, time, uuid
+from pathlib import Path
 from urllib.parse import urlsplit
 import httpx
+from . import __version__
 
 API_ORIGIN='https://watch.scenrix.com'
-USER_AGENT='KINOSOTA-Player/0.1.8'
+USER_AGENT='KINOSOTA-Player/'+__version__
 # Stream warm-up: the first bytes of a cold torrent may take a while; mpv gets the URL only once they flow.
 WARM_RANGE='bytes=0-262143';WARM_ENOUGH=65536
 STALE_STREAM=(400,401,403,404,410)
@@ -21,6 +23,11 @@ TICKET_ERRORS={403:'Для просмотра торрентов нужна по
     409:'Раздача ещё готовится. Попробуйте через минуту.',422:'Такой серии нет в выбранной раздаче.',
     503:'Медиасервер временно недоступен. Попробуйте открыть фильм чуть позже.'}
 KINDS=('movie','tv')
+# 0.1.9 in-app updates: the website's published build of each OS, at most 512 MiB, checked by SHA-256.
+RELEASE_FILES={'windows':'KINOSOTA-Player-Setup.exe','macos':'KINOSOTA-Player.dmg','linux':'kinosota-player.deb'}
+RELEASE_LIMIT=512*1024*1024
+RELEASE_ERRORS={'PLAYER_BUILD_NOT_PUBLISHED':'Сборка для этой системы пока не опубликована',
+    'PLAYER_BUILD_INTEGRITY_ERROR':'Файл обновления повреждён. Повторите попытку.'}
 
 def _kind(kind):
     if kind not in KINDS:raise ValueError('Unsupported kind')
@@ -58,6 +65,9 @@ class Api:
             headers={'User-Agent':USER_AGENT,'Accept':'application/json'})
         # Media node client: no session token, no redirects; the signed stream URL is the only credential.
         self.media=httpx.Client(timeout=httpx.Timeout(30,connect=10),follow_redirects=False,transport=transport,headers={'User-Agent':USER_AGENT})
+        # Player builds: long transfers on their own client, so catalogue requests never wait behind them.
+        self.downloads=httpx.Client(base_url=self.origin+'/api/v1/',timeout=httpx.Timeout(60,connect=10),follow_redirects=False,
+            transport=transport,headers={'User-Agent':USER_AGENT})
     def request(self,method,path,body=None,extra_headers=None):
         if not path.startswith('/') or path.startswith('//') or '://' in path:raise ValueError('Relative API path required')
         with self.lock:
@@ -180,8 +190,51 @@ class Api:
             sleep(pause);delay=min(6.0,delay*1.6)
         if cancelled():return 0
         raise ApiError(0,message='Раздача пока не отдаёт видео. Попробуйте ещё раз через минуту.')
+    def releases(self):return self.request('GET','/desktop/releases')
+    def download_release(self,os_name,folder,sha256,progress=lambda received,total:None,cancelled=lambda:False,limit=RELEASE_LIMIT):
+        """Stream this OS's published build into ``folder`` and check it against the manifest SHA-256.
+
+        Returns the file path, or None when cancelled. Runs without the API lock; the partial file
+        never survives a failure, a cancel or a checksum mismatch."""
+        name=RELEASE_FILES.get(os_name)
+        if not name:raise ValueError('Unknown platform')
+        broken=RELEASE_ERRORS['PLAYER_BUILD_INTEGRITY_ERROR']
+        if not isinstance(sha256,str) or not re.fullmatch('[0-9a-f]{64}',sha256):raise ApiError(0,'PLAYER_BUILD_INTEGRITY_ERROR',broken)
+        folder=Path(folder);target=folder/name;partial=folder/(name+'.part')
+        headers={'Authorization':'Bearer '+self.token} if self.token else {}
+        digest=hashlib.sha256();received=0;finished=False
+        try:
+            with self.downloads.stream('GET','desktop/download/'+os_name,headers=headers) as r:
+                if not r.is_success:
+                    code=''
+                    try:
+                        detail=json.loads(r.read()[:65536] or b'{}').get('detail')
+                        code=detail if isinstance(detail,str) else str((detail or {}).get('code') or '')
+                    except (ValueError,AttributeError,TypeError):pass
+                    if r.status_code==401:self.token=''
+                    raise ApiError(r.status_code,code,RELEASE_ERRORS.get(code,''))
+                length=r.headers.get('Content-Length') or ''
+                total=int(length) if length.isdigit() else 0
+                if total>limit:raise ApiError(0,'PLAYER_BUILD_TOO_LARGE',broken)
+                with open(partial,'wb') as out:
+                    for chunk in r.iter_bytes(1024*1024):
+                        if cancelled():return None
+                        received+=len(chunk)
+                        if received>limit:raise ApiError(0,'PLAYER_BUILD_TOO_LARGE',broken)
+                        digest.update(chunk);out.write(chunk);progress(received,total)
+            if cancelled():return None
+            if (total and received!=total) or not secrets.compare_digest(digest.hexdigest(),sha256):
+                raise ApiError(0,'PLAYER_BUILD_INTEGRITY_ERROR',broken)
+            os.replace(partial,target);finished=True
+            return str(target)
+        except httpx.HTTPError:raise ApiError(0,message='Нет соединения. Проверьте интернет и повторите.') from None
+        except OSError:raise ApiError(0,message='Не удалось сохранить обновление. Освободите место на диске и повторите.') from None
+        finally:
+            if not finished:
+                try:partial.unlink()
+                except OSError:pass
     def logout(self):
         try:
             if self.token:self.request('POST','/auth/logout',{})
         finally:self.token='';self.client.cookies.clear()
-    def close(self):self.client.close();self.media.close()
+    def close(self):self.client.close();self.media.close();self.downloads.close()

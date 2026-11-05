@@ -7,6 +7,7 @@ import pytest
 from PySide6.QtCore import Qt, QPoint
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QListWidgetItem
+from kinosota_player import __version__
 from kinosota_player.api import Api, ApiError
 from kinosota_player.app import Window
 from kinosota_player.browse import Genres, default_state, fetch_page, load_genres, page_numbers, signature
@@ -445,5 +446,5 @@ def test_catalogue_requests_follow_the_server_contract():
     assert seen[-1].method == 'DELETE' and seen[-1].url.path == '/api/v1/account/library/tv/1399'
     api.torrent_genres('tv')
     assert seen[-1].url.path == '/api/v1/torrents/genres' and seen[-1].url.params['kind'] == 'tv'
-    assert seen[-1].headers['User-Agent'] == 'KINOSOTA-Player/0.1.8'
+    assert seen[-1].headers['User-Agent'] == 'KINOSOTA-Player/' + __version__ == 'KINOSOTA-Player/0.1.9'
     api.close()

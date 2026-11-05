@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLayout, 
     QSizePolicy, QStyledItemDelegate, QVBoxLayout, QWidget)
 from .browse import Genres
 from .preferences import translate
-from .theme import icon
+from .theme import icon, paint_glass
 
 RATINGS = (None, 5.0, 6.0, 7.0, 8.0)
 SOURCE_TEXT = {'all': 'Все источники', 'site': 'KINOSOTA', 'tmdb': 'Торренты'}
@@ -136,8 +136,9 @@ class FilterBar(QFrame):
         self.genre_timer.setSingleShot(True)
         self.genre_timer.setInterval(450)
         self.genre_timer.timeout.connect(self.changed.emit)
+        self.radius = 14  # Glass panel (0.1.9): painted in paintEvent, its shadow by the window scene.
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(12, 7, 12, 7)
+        outer.setContentsMargins(12, 8, 12, 8)
         outer.setSpacing(14)
         self.toggle = QPushButton()
         self.toggle.setObjectName('filterToggle')
@@ -371,6 +372,11 @@ class FilterBar(QFrame):
         parts.append(self.t(SOURCE_TEXT['tmdb' if self.kind == 'tv' else self.source]))
         parts.append(self.t(SORT_TEXT[self.sort]))
         return '  ·  '.join(parts)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        paint_glass(self, painter, self.radius)
+        painter.end()
 
     def set_collapsed(self, collapsed, user=False):
         if user:

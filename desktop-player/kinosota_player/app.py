@@ -5,7 +5,7 @@ from .engine import child_environment, native_loader
 from pathlib import Path
 from PySide6.QtCore import Qt, QEvent, QObject, QRunnable, QThreadPool, Signal, QTimer, QSize
 from PySide6.QtGui import QIcon, QPixmap, QFontDatabase, QKeySequence, QShortcut
-from .theme import CinemaBackdrop, PREMIUM_STYLE, icon
+from .theme import CinemaBackdrop, GlassFrame, PREMIUM_STYLE, icon
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,
  QLineEdit,QPushButton,QStackedWidget,QListWidget,QListWidgetItem,QCheckBox,QFormLayout,QFrame,QScrollArea,QSizePolicy,QButtonGroup)
 from . import __version__
@@ -17,6 +17,7 @@ from .browse import Genres, fetch_page, filtered, page_numbers, signature, load_
 from .filters import FilterBar
 from .preferences import Preferences,translate,movie_title
 from .settings import SettingsDrawer
+from .updater import Updater
 from .torrents import TorrentPage, audio_args, media_title_args
 from .deeplink import parse_launch
 from .suggest import SuggestPopup
@@ -77,14 +78,15 @@ class Window(QMainWindow):
         self.section=self.catalog_section='home';self.totals={};self.found_total=None;self.genres=Genres();self.genres_loading=False;self.bookmark_pending=set();self.nav_compact=None;self.pager_width=7
         self.setWindowTitle('KINOSOTA Player');self.setWindowIcon(QIcon(str(ASSET)));self.resize(1240,840);self.setMinimumSize(760,600)
         root=CinemaBackdrop();self.backdrop=root;layout=QVBoxLayout(root);layout.setContentsMargins(16,10,16,6);layout.setSpacing(8);self.root_layout=layout
-        head=QHBoxLayout();head.setSpacing(4);self.logo=label('');self.logo.setPixmap(QPixmap(str(ASSET)).scaled(32,32,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));head.addWidget(self.logo);head.addSpacing(4)
+        # 0.1.9: the header is a frosted glass bar; its 6 px inset keeps the 8 px tabs concentric with its 14 px corners.
+        self.header=GlassFrame('header',14);head=QHBoxLayout(self.header);head.setContentsMargins(12,6,10,6);head.setSpacing(4);self.logo=label('');self.logo.setPixmap(QPixmap(str(ASSET)).scaled(32,32,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));head.addWidget(self.logo);head.addSpacing(4)
         self.brand=self.brand_label();head.addWidget(self.brand);head.addSpacing(14)
         self.nav={}
         for name,_ in NAV:self.nav[name]=self.nav_button(lambda _=False,n=name:self.show_section(n));head.addWidget(self.nav[name])
         self.nav_catalog=self.nav['home'];self.nav_torrents=self.nav['torrents'];head.addSpacing(12)
         self.search=SearchField();self.search.setMaxLength(100);self.search.setClearButtonEnabled(True);self.search.setMinimumWidth(150);self.search.setMaximumWidth(430);self.search.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed);head.addWidget(self.search,1);head.addStretch(0)
         # 0.1.8: the avatar opens settings (as on the website); there is no separate gear button.
-        self.avatar=QPushButton('K');self.avatar.setObjectName('avatar');self.avatar.setCursor(Qt.CursorShape.PointingHandCursor);self.avatar.clicked.connect(self.open_settings);head.addSpacing(4);head.addWidget(self.avatar);layout.addLayout(head)
+        self.avatar=QPushButton('K');self.avatar.setObjectName('avatar');self.avatar.setCursor(Qt.CursorShape.PointingHandCursor);self.avatar.clicked.connect(self.open_settings);head.addSpacing(4);head.addWidget(self.avatar);layout.addWidget(self.header)
         self.shortcut=QShortcut(QKeySequence('Ctrl+K'),self);self.shortcut.activated.connect(self.focus_search)
         self.pages=QStackedWidget();layout.addWidget(self.pages,1)
         self.make_login();self.make_catalog();self.message=StatusLabel(self)
@@ -94,9 +96,11 @@ class Window(QMainWindow):
         for x in (self.prev,self.next):x.setObjectName('pageNav')
         self.pager_numbers=QHBoxLayout();self.pager_numbers.setSpacing(4);row.addWidget(self.prev);row.addLayout(self.pager_numbers);row.addWidget(self.next);self.pager.hide();bottom.addWidget(self.pager,0,Qt.AlignmentFlag.AlignVCenter);layout.addLayout(bottom)
         self.page_label=label('','hint');self.page_label.hide()
-        self.make_torrents()
+        self.make_torrents();root.glass=[self.header,self.filters]
         self.setCentralWidget(root);self.setStyleSheet(PREMIUM_STYLE)
         self.drawer=SettingsDrawer(root,self.preferences);self.drawer.languageChanged.connect(self.set_language);self.drawer.titlesChanged.connect(self.set_title_language);self.drawer.refreshRequested.connect(self.refresh_account);self.drawer.signOutRequested.connect(self.logout)
+        # 0.1.9: Settings → «О приложении» installs a newer published build over this one.
+        self.updater=Updater(self.api,pool=self.pool,parent=self);self.updater.quitRequested.connect(self.close);self.updater.changed.connect(self.announce_update);self.announced='';self.drawer.set_updater(self.updater)
         self.suggest=SuggestPopup(root,getattr(self.api,'origin',API_ORIGIN));self.suggest.chosen.connect(self.choose_suggestion);self.search.installEventFilter(self)
         self.retranslate();self.pages.currentChanged.connect(self.page_changed);self.page_changed(self.pages.currentIndex())
         self.pair_timer=QTimer(self);self.pair_timer.setInterval(5000);self.pair_timer.timeout.connect(self.poll_pair)
@@ -272,6 +276,12 @@ class Window(QMainWindow):
         self.update_nav();self.new_search()
         if not self.genres:self.load_genres()
         if self.pending_launch:self.redeem_launch()
+        self.updater.signed_in=True;QTimer.singleShot(1500,lambda:self.updater.check(quiet=True))  # Quiet: errors stay unspoken.
+    def announce_update(self):
+        """Once per version: a newer build is ready to install from the settings."""
+        u=self.updater
+        if u.state=='available' and not u.note and u.version and u.version!=self.announced and self.pages.currentIndex()!=0:
+            self.announced=u.version;self.message.setText('Доступно обновление KINOSOTA Player — откройте настройки, раздел «О приложении».')
     def set_avatar(self,name):
         name=str(name or '').strip();self.avatar.setText((name[:1] or 'K').upper());self.avatar.setToolTip(name or translate('Мой аккаунт',self.language))
     def load_genres(self):
@@ -462,7 +472,7 @@ class Window(QMainWindow):
                 self.epoch+=1;self.search_timer.stop();self.search_generation+=1;self.search_running=False;self.search_queued=False;self.pair_timer.stop();self.pair=None;self.pending_poll=False;self.login_button.setEnabled(True);self.drawer.dismiss();self.account={};self.drawer.update_account({});self.results.posters.clear();self.results.clear();self.password.clear();self.otp.clear();self.vault.clear();self.stop();self.torrents.reset();self.clear_catalog();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False);self.identity.setFocus()
         else:self.message.setText('Не удалось выполнить действие. Проверьте установку mpv и соединение.')
     def logout(self):
-        self.drawer.dismiss();self.account={};self.drawer.update_account({})
+        self.drawer.dismiss();self.account={};self.drawer.update_account({});self.updater.signed_in=False;self.updater.cancel()
         self.search_timer.stop();self.search_generation+=1;self.search_running=False;self.search_queued=False;self.results.posters.clear();self.epoch+=1;self.busy=False;self.pending_beat=False;self.pending_poll=False;self.login_button.setEnabled(True)
         self.stop();self.pair_timer.stop();self.vault.clear();self.pending_launch='';self.torrents.reset();self.clear_catalog();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False);self.results.clear()
         self.work(self.api.logout,lambda _:self.message.setText('Вы вышли из аккаунта. Сайт также может запросить повторный вход.'))
@@ -553,7 +563,7 @@ class Window(QMainWindow):
             else:self.show_error(error)
         self.work(lambda:self.api.open_launch(launch),done,fail)
     def closeEvent(self,event):
-        self.search.removeEventFilter(self);self.suggest.dismiss();self.drawer.dismiss();self.torrents.shutdown();self.filters.genre_timer.stop()
+        self.updater.shutdown();self.search.removeEventFilter(self);self.suggest.dismiss();self.drawer.dismiss();self.torrents.shutdown();self.filters.genre_timer.stop()
         self.search_timer.stop();self.results.posters.clear();self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close();event.accept()
 
 def main():
