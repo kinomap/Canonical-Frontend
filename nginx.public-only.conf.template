@@ -38,10 +38,11 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto https;
     proxy_set_header X-Forwarded-For $remote_addr;
-    location = /movies { root /usr/share/nginx/html/public; try_files /movies/index.html /index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
-    location = /series { root /usr/share/nginx/html/public; try_files /series/index.html /index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
-    location ~ "^/(movies|series)/[0-9a-f-]{36}(/[a-z0-9-]+)?$" { root /usr/share/nginx/html/public; try_files $uri/index.html /index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
-    location = /genres { root /usr/share/nginx/html/public; try_files $genre_snapshot /genres/index.html /index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
+    # SEO pre-rendered content pages: try SEO volume first, then built SPA, then SPA fallback.
+    location = /movies { root /usr/share/nginx/html; try_files /seo/movies/index.html /public/movies/index.html /public/index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
+    location = /series { root /usr/share/nginx/html; try_files /seo/series/index.html /public/series/index.html /public/index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
+    location ~ "^/(movies|series)/[0-9a-f-]{36}(/[a-z0-9-]+)?$" { root /usr/share/nginx/html; try_files /seo$uri/index.html /public$uri/index.html /public/index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
+    location = /genres { root /usr/share/nginx/html; try_files /seo$genre_snapshot /seo/genres/index.html /public/genres/index.html /public/index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
     location ^~ /posters/v1/ { root /usr/share/nginx/html/public; try_files $uri =404; add_header Cache-Control "public, max-age=31536000, immutable"; add_header X-Content-Type-Options nosniff always; }
     location ^~ /cinema/ {
         root /usr/share/nginx/html/public;
@@ -55,8 +56,8 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable";
         add_header X-Content-Type-Options nosniff always;
     }
-    location = /robots.txt { root /usr/share/nginx/html/public; try_files $uri =404; }
-    location = /sitemap.xml { root /usr/share/nginx/html/public; try_files $uri =404; }
+    location = /robots.txt { root /usr/share/nginx/html; try_files /seo/robots.txt /public/robots.txt =404; }
+    location = /sitemap.xml { root /usr/share/nginx/html; try_files /seo/sitemap.xml /public/sitemap.xml =404; }
     location = /healthz { access_log off; return 200 'ok'; }
     location = /admin { return 403; }
     location ^~ /admin/ { return 403; }
@@ -70,6 +71,6 @@ server {
     location = /stream { return 404; }
     location ^~ /stream/ { return 404; }
     location ^~ /assets/ { root /usr/share/nginx/html/public; try_files $uri =404; add_header Cache-Control "public, max-age=31536000, immutable"; add_header X-Content-Type-Options nosniff always; }
-    location = /index.html { root /usr/share/nginx/html/public; add_header Cache-Control "no-cache"; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
+    location = /index.html { root /usr/share/nginx/html; try_files /seo/index.html /public/index.html =404; add_header Cache-Control "no-cache"; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
     location / { root /usr/share/nginx/html/public; try_files $uri /index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
 }
