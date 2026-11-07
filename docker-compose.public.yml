@@ -39,7 +39,7 @@ services:
     volumes:
       - ${FRONTEND_RUNTIME_DIR:?Separate runtime state required}/seo:/app/seo-output
     environment:
-      SEO_PUBLIC_ORIGIN: "https://${KINOSOTA_DOMAIN:?Public domain required}"
+      SEO_PUBLIC_ORIGIN: "https://${KINOSOTA_DOMAIN:-localhost}"
       SEO_OUTPUT_DIR: "/app/seo-output"
     network_mode: "host"
     profiles: ["seo"]
