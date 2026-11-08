@@ -40,6 +40,7 @@ services:
       - ${FRONTEND_RUNTIME_DIR:?Separate runtime state required}/seo:/app/seo-output
     environment:
       SEO_PUBLIC_ORIGIN: "https://${KINOSOTA_DOMAIN:-localhost}"
+      CATALOG_API_BASE: "http://${BACKEND_WG_ADDRESS:-10.8.0.1}:8888"
       SEO_OUTPUT_DIR: "/app/seo-output"
     network_mode: "host"
     profiles: ["seo"]
