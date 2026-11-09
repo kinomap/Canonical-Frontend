@@ -1,7 +1,13 @@
-/** Only the approved Media Node may supply video bytes. Never proxy via the control plane. */
+/** Media Nodes: tg-node-1, torrent-node-1, legacy node-1 and any other *.scenrix.com host. */
+const MEDIA_NODE_SUFFIX = '.scenrix.com'
+/** Control-plane hosts on the same domain must never supply video bytes. */
+const CONTROL_PLANE_HOSTS = new Set(['watch.scenrix.com'])
+/** Only approved Media Nodes may supply video bytes. Never proxy via the control plane. */
 export function nodeMediaUrl(value: string): string {
   const u = new URL(value)
-  if (u.protocol !== 'https:' || u.origin !== 'https://node-1.scenrix.com' || u.username || u.password) throw Error('Видео недоступно: адрес не принадлежит Media Node')
+  // Parsed hostname is lower-cased; the suffix check rejects node-1.scenrix.com.evil.test, the leading dot rejects scenrix.com and evilscenrix.com.
+  // u.port is '' for the default 443; other ports stay rejected (CSP https://*.scenrix.com allows 443 only).
+  if (u.protocol !== 'https:' || u.username || u.password || u.port || !u.hostname.endsWith(MEDIA_NODE_SUFFIX) || CONTROL_PLANE_HOSTS.has(u.hostname)) throw Error('Видео недоступно: адрес не принадлежит Media Node')
   return u.href
 }
 export function placementBody(d: any) {
