@@ -1,7 +1,25 @@
-/** Only the approved Media Node may supply video bytes. Never proxy via the control plane. */
-export function nodeMediaUrl(value: string): string {
+/** Exact HTTPS origins only: malformed, plain-HTTP, path-bearing or credentialed entries are never trusted. */
+export function mediaOrigins(values: readonly unknown[]): string[] {
+  const out: string[] = []
+  for (const value of values) {
+    if (typeof value !== 'string' || !value) continue
+    try {
+      const u = new URL(value)
+      if (u.protocol === 'https:' && !u.username && !u.password && u.pathname === '/' && !u.search && !u.hash && !out.includes(u.origin)) out.push(u.origin)
+    } catch { /* not a URL: never trusted */ }
+  }
+  return out
+}
+/** Media Nodes are added at runtime (wizard, domain cutover): trust every registered non-REMOVED node from /api/v1/admin/media/nodes, never one hard-coded host. */
+export function nodeRegistryOrigins(nodes: unknown, extra: readonly unknown[] = []): string[] {
+  const values: unknown[] = [...extra]
+  for (const n of Array.isArray(nodes) ? nodes : []) if (n && n.status !== 'REMOVED') values.push(n.media_endpoint, n.public_url)
+  return mediaOrigins(values)
+}
+/** Only a registered Media Node may supply video bytes. Never proxy via the control plane. */
+export function nodeMediaUrl(value: string, origins: readonly string[]): string {
   const u = new URL(value)
-  if (u.protocol !== 'https:' || u.origin !== 'https://node-1.scenrix.com' || u.username || u.password) throw Error('Видео недоступно: адрес не принадлежит Media Node')
+  if (u.protocol !== 'https:' || u.username || u.password || u.origin === (globalThis as any).location?.origin || !mediaOrigins(origins).includes(u.origin)) throw Error('Видео недоступно: адрес не принадлежит Media Node')
   return u.href
 }
 export function placementBody(d: any) {
