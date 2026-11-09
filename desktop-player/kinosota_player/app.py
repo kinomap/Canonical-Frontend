@@ -515,7 +515,7 @@ class Window(QMainWindow):
             # 0.1.8: wake the stream first: a cold torrent may need up to a minute for its first bytes.
             if hasattr(self.api,'warm_stream'):self.api.warm_stream(ticket['stream_url'],cancelled)
             if cancelled():raise RuntimeError('Cancelled')
-            self.engine.start(ticket['stream_url'],extra_args=[*audio_args(choice.get('audio_lang')),*media_title_args(title)])
+            self.engine.start(ticket['stream_url'],extra_args=[*audio_args(choice.get('audio_lang'),choice.get('audio_track')),*media_title_args(title)])
             if cancelled():self.engine.stop();raise RuntimeError('Cancelled')
             return ticket
         def done(ticket):
@@ -559,7 +559,7 @@ class Window(QMainWindow):
             if isinstance(error,ApiError) and error.status==401:self.pending_launch=launch;self.show_error(error)
             elif isinstance(error,ApiError) and error.status==404 and 'недоступен' in str(error):self.message.setText(str(error))
             elif isinstance(error,ApiError) and error.status==404:self.message.setText('Этот запуск создан другим аккаунтом. Войдите в приложение тем же аккаунтом, что и на сайте.')
-            elif isinstance(error,ApiError) and error.status==410:self.message.setText('Ссылка устарела. Нажмите «Смотреть» на сайте ещё раз.')
+            elif isinstance(error,ApiError) and error.status==410:self.message.setText('Ссылка устарела. Нажмите «Смотреть�� на сайте ещё раз.')
             else:self.show_error(error)
         self.work(lambda:self.api.open_launch(launch),done,fail)
     def closeEvent(self,event):

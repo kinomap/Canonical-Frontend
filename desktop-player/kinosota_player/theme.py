@@ -181,7 +181,7 @@ QPushButton#danger{color:#ffb0ab;border-color:#a64640;background:#25181b;} QPush
 QScrollArea{border:0;background:transparent;}
 """
 
-# Torrents section: header tabs, quality / voice pills, white «▶ Смотреть» button.
+# Torrents section: header tabs, quality pills, white «▶ Смотреть» button.
 PREMIUM_STYLE += """
 QPushButton#nav{padding:8px 14px;border:1px solid transparent;background:transparent;min-height:20px;border-radius:8px;}
 QPushButton#nav:hover{border-color:#5e542c;} QPushButton#nav:checked{background:#332e1a;border-color:#a88a24;color:#ffe28b;}
@@ -288,9 +288,6 @@ QPushButton#pill{background:rgba(255,255,255,8);border:1px solid rgba(255,255,25
 QPushButton#pill:hover{background:rgba(255,255,255,18);border-color:rgba(255,255,255,46);}
 QPushButton#pill:checked{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffe36e,stop:.46 #ffc21a,stop:1 #ff9e1b);color:#11120e;border:1px solid rgba(255,227,110,180);}
 QPushButton#pill:disabled{color:#5f6870;background:transparent;border-color:rgba(255,255,255,13);}
-QPushButton#voice{padding:5px 12px;min-height:18px;border-radius:14px;background:rgba(255,255,255,8);border:1px solid rgba(255,255,255,26);font-size:13px;font-weight:600;}
-QPushButton#voice:hover{background:rgba(255,255,255,18);border-color:rgba(255,255,255,46);}
-QPushButton#voice:checked{background:rgba(255,194,26,36);border-color:rgba(255,194,26,150);color:#ffd24d;}
 QScrollArea#detailScroll,QWidget#detailBody{background:transparent;}
 QPushButton#backChip{padding:6px 12px 6px 10px;border-radius:8px;font-size:13px;font-weight:600;color:rgba(245,246,248,173);background:rgba(255,255,255,13);border:none;}
 QPushButton#backChip:hover{color:#f5f6f8;background:rgba(255,255,255,23);}
@@ -375,3 +372,23 @@ QLabel#personRole[hover="true"]{color:#333333;}
 """
 # 0.1.9: the «Обновления» card in Settings → «О приложении».
 PREMIUM_STYLE += '\nQLabel#updateStatus{font-size:15px;font-weight:600;color:#f3f5f7;}\n'
+# 0.2.0: the card of choices under the facts (it ends on the poster's line), the «Аудио» button and
+# AudioTrackDialog: centred dark glass, language groups of checkable tracks, the 💬 tip about mpv.
+PREMIUM_STYLE += """
+QWidget#detailInfoBody,QWidget#audioList,QScrollArea#audioScroll{background:transparent;}
+QFrame#detailControls{background:rgba(255,255,255,8);border:1px solid rgba(255,255,255,20);border-radius:16px;}
+QPushButton#audioButton{padding:6px 14px;min-height:20px;border-radius:16px;font-weight:600;color:#ffd24d;background:rgba(255,194,26,20);border:1px solid rgba(255,194,26,110);}
+QPushButton#audioButton:hover{background:rgba(255,194,26,36);border-color:rgba(255,194,26,170);}
+QPushButton#audioButton:disabled{color:#5f6870;background:transparent;border-color:rgba(255,255,255,13);}
+QDialog#audioDialog{background:transparent;}
+QFrame#audioCard{background:rgba(14,18,26,246);border:1px solid rgba(255,255,255,28);border-radius:18px;}
+QLabel#audioDialogTitle{font-size:20px;font-weight:700;color:#ffffff;}
+QLabel#audioDialogMeta{font-size:13px;color:rgba(255,255,255,140);margin-top:4px;}
+QLabel#audioGroup{font-size:11px;font-weight:700;color:rgba(255,255,255,89);letter-spacing:1.5px;margin-top:10px;margin-bottom:2px;}
+QPushButton#audioTrack{text-align:left;padding:10px 14px;min-height:20px;border-radius:10px;font-size:14px;font-weight:600;background:rgba(255,255,255,6);border:1px solid rgba(255,255,255,18);}
+QPushButton#audioTrack:hover{background:rgba(255,255,255,14);border-color:rgba(255,255,255,40);}
+QPushButton#audioTrack:checked{color:#ffd24d;background:rgba(255,194,26,30);border-color:rgba(255,194,26,160);}
+QPushButton#audioTrack:focus{border:1px solid #fff1b8;}
+QFrame#audioTip{background:rgba(255,194,26,14);border:1px solid rgba(255,194,26,60);border-radius:12px;}
+QLabel#audioTipText{font-size:13px;color:rgba(255,255,255,204);}
+"""

@@ -1,8 +1,10 @@
 """Local, non-secret preferences and deterministic RU/EN presentation.
 
 Catalogue providers do not always supply an English translation. Never invent one:
-prefer title_en, then provider original_title, then the catalogue title.
+prefer title_en, then provider original_title, then the catalogue title. 0.2.0: in Russian the
+Russian title is the heading (as on the website) and the original one goes under it.
 """
+import re
 from PySide6.QtCore import QSettings
 
 TEXT = {
@@ -139,6 +141,16 @@ TEXT.update({
  'Не удалось сохранить обновление. Освободите место на диске и повторите.':'Could not save the update. Free some disk space and try again.',
 })
 
+# 0.2.0: one «Аудио» button and the audio track dialog on the title page.
+TEXT.update({
+ 'АУДИО':'AUDIO','Аудио:':'Audio:','Выбор аудиодорожки':'Choose an audio track','Выбрать':'Select',
+ 'Русский':'Russian','Украинский':'Ukrainian','Английский':'English',
+ 'Дубляж':'Dubbing','Многоголосый':'Multi-voice','Двухголосый':'Two-voice','Одноголосый':'Single-voice',
+ 'Авторский':'Author voice-over',
+ 'Быстро переключить звуковую дорожку во время просмотра можно прямо в плеере (кнопка 💬 на нижней панели управления)':
+  'You can switch the audio track while watching right in the player (the 💬 button on the bottom control bar)',
+})
+
 def translate(text, language):
     if language != 'en': return text
     if text in TEXT: return TEXT[text]
@@ -157,6 +169,37 @@ class Preferences:
             raise ValueError('Unsupported preference')
         self.settings.setValue(key,value);self.settings.sync()
 
+_CYRILLIC = re.compile('[а-яёіїєґ]', re.IGNORECASE)
+
+
+def cyrillic(text):
+    """True for a Russian / Ukrainian title («Терминатор»), False for «The Terminator»."""
+    return isinstance(text, str) and bool(_CYRILLIC.search(text))
+
+
+def _titles(movie, keys):
+    found = []
+    for key in keys:
+        value = (movie or {}).get(key)
+        value = value.strip() if isinstance(value, str) else ''
+        if value and value not in found:
+            found.append(value)
+    return found
+
+
 def movie_title(movie, language='ru'):
-    keys=('title_en','original_title','title') if language=='en' else ('title_ru','title','original_title')
-    return next((movie[k].strip() for k in keys if isinstance(movie.get(k),str) and movie[k].strip()),'KINOSOTA')
+    """The heading. EN: title_en, original_title, title. RU: title_ru, title, original_title with a Cyrillic
+    one first, as on the website («Терминатор», not «The Terminator»)."""
+    if language == 'en':
+        titles = _titles(movie, ('title_en', 'original_title', 'title'))
+    else:
+        titles = sorted(_titles(movie, ('title_ru', 'title', 'original_title')), key=lambda value: not cyrillic(value))
+    return titles[0] if titles else 'KINOSOTA'
+
+
+def secondary_title(movie, language='ru'):
+    """The other title under the heading: the original in Russian, the Russian one in English; '' if none."""
+    shown = movie_title(movie, language).casefold()
+    keys = (('original_title', 'title_ru', 'title') if language == 'en'
+            else ('original_title', 'title_en', 'title', 'title_ru'))
+    return next((value for value in _titles(movie, keys) if value.casefold() != shown), '')

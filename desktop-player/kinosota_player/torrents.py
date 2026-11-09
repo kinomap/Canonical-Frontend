@@ -4,20 +4,23 @@ Same server contract as the website detail page: Kinoteka / search, quality / la
 choice, live preparation progress and a short-lived playback ticket. The app never sees an infohash,
 magnet or tracker URL; the stream URL goes to mpv over private IPC and the chosen language becomes
 mpv ``--alang``. 0.1.9: the title page has the website layout (fixed backdrop, sticky poster, info
-column, people strips); the voice-over is picked inside mpv, not before the start.
+column, people strips). 0.2.0: the Russian title is the heading with the original one under it; one
+«Аудио» button opens AudioTrackDialog with the start track for mpv (``--alang``, ``--aid`` when the
+server knows the container numbering). The prepared file keeps every track and mpv switches them on
+the fly (💬), so a voice-over is never a new preparation.
 """
 from datetime import date
 from PySide6.QtCore import QLocale, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidgetItem, QProgressBar,
-    QPushButton, QScrollArea, QStackedWidget, QStyledItemDelegate, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QButtonGroup, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidgetItem,
+    QProgressBar, QPushButton, QScrollArea, QStackedWidget, QStyledItemDelegate, QVBoxLayout, QWidget)
 from .api import API_ORIGIN, ApiError
 from .artwork import Sink, rounded
 from .catalog import PosterGrid, Posters
 from .filters import FilterCombo, FlowLayout
-from .icons import flag, icon
+from .icons import flag, glyph, icon
 from .motion import smooth
-from .preferences import movie_title, translate
+from .preferences import cyrillic, movie_title, secondary_title, translate
 from .title_widgets import PeopleStrip, PersonCard, ShadowHost, StickyColumn, TextBlock, TopBar
 
 QUALITIES = ('2160p', '1080p', '720p', '480p')
@@ -27,6 +30,12 @@ LANGUAGE_LABELS = {'ru': 'RU', 'uk': 'UA', 'en': 'EN'}
 LANGUAGE_NAMES = {'ru': 'Русская озвучка', 'uk': 'Украинская озвучка', 'en': 'Английская дорожка'}
 # mpv picks the first audio track whose language tag matches, in this order.
 MPV_ALANG = {'ru': 'rus,ru', 'uk': 'ukr,uk', 'en': 'eng,en'}
+# 0.2.0: AudioTrackDialog groups a release's tracks by language; the tip points at mpv's own switch.
+AUDIO_GROUPS = {'ru': 'Русский', 'uk': 'Украинский', 'en': 'Английский'}
+AUDIO_TAGS = {'rus': 'ru', 'ukr': 'uk', 'eng': 'en'}
+AUDIO_TIP = ('Быстро переключить звуковую дорожку во время просмотра можно прямо в плеере '
+             '(кнопка 💬 на нижней панели управления)')
+TITLE_KEYS = ('title_ru', 'title', 'original_title', 'title_en')
 PREP_LABELS = {'queued': 'В очереди', 'retrying': 'В очереди', 'searching': 'Поиск раздач',
                'loading': 'Проверка и буферизация', 'partial': 'Готово', 'playable': 'Готово',
                'unavailable': 'Раздачи не найдены'}
@@ -50,9 +59,51 @@ EN = {
 }
 
 
-def audio_args(language):
+def audio_args(language, track=None):
+    """mpv start audio: the language order (--alang); the container track (--aid) only when it is known."""
     value = MPV_ALANG.get(language)
-    return ['--alang=' + value] if value else []
+    args = ['--alang=' + value] if value else []
+    if type(track) is int and 0 < track < 100:
+        args.append(f'--aid={track}')
+    return args
+
+
+def audio_tracks(source):
+    """The audio of one release for AudioTrackDialog, grouped RU, UA, EN.
+
+    Container tracks (``audio_tracks``: language, title, 1-based ``index``) when the server sends them;
+    otherwise the voice-overs the release title names (studios, then voice types) under Russian and one
+    entry per other language. Entries: ``{'id', 'language', 'label', 'index'}``; ``index`` stays None
+    unless the container numbering is known (then mpv also gets ``--aid``).
+    """
+    source = source if isinstance(source, dict) else {}
+    languages = [lang for lang in LANGUAGES if lang in (source.get('languages') or [])]
+    tracks, seen = [], set()
+
+    def add(language, label, index=None):
+        language = str(language or '').lower()
+        language = AUDIO_TAGS.get(language, language)
+        label = ' '.join(str(label or '').split())[:60]
+        if language in LANGUAGES and label and (language, label.casefold()) not in seen:
+            seen.add((language, label.casefold()))
+            tracks.append({'id': f'{language}:{label}', 'language': language, 'label': label,
+                           'index': index if type(index) is int and 0 < index < 100 else None})
+
+    for entry in source.get('audio_tracks') or []:
+        if isinstance(entry, dict):
+            add(entry.get('language'), entry.get('title') or entry.get('label'), entry.get('index'))
+    if tracks:
+        return sorted(tracks, key=lambda track: LANGUAGES.index(track['language']))
+    if 'ru' in languages or not languages:
+        for voice in source.get('voices') or []:
+            if isinstance(voice, str):
+                add('ru', voice)
+        if 'ru' in languages and not tracks:
+            add('ru', LANGUAGE_NAMES['ru'])
+    for lang in ('uk', 'en'):
+        if lang in languages:
+            add(lang, LANGUAGE_NAMES[lang])
+    return tracks
 
 
 def media_title_args(title):
@@ -75,7 +126,7 @@ def best_source(sources, quality=None, language=None, episode=None):
         return (s.get('state') == 'failed', bool(quality) and s.get('quality') != quality,
                 bool(language) and language not in (s.get('languages') or []),
                 bool(episode) and not has_episode(s, episode), s.get('state') != 'ready',
-                # Server viewer rank (1080p > 2160p > 720p, ru/en/uk voices, more voices, seeders).
+                # Server viewer rank (1080p > 2160p > 720p, the richest audio package, seeders).
                 s.get('rank') if type(s.get('rank')) is int else 10 ** 9,
                 -int(s.get('seeders') or 0), -int(s.get('size_bytes') or 0))
     return min(sources, key=rank) if sources else None
@@ -131,6 +182,13 @@ def plural(count, one, few, many):
         return many
     n %= 10
     return one if n == 1 else few if 2 <= n <= 4 else many
+
+
+def track_count_text(count, language='ru'):
+    """«4 дорожки» / «4 tracks»: the size of a release's audio package."""
+    if language == 'en':
+        return f'{count} track' + ('' if count == 1 else 's')
+    return f'{count} ' + plural(count, 'дорожка', 'дорожки', 'дорожек')
 
 
 def seeds_text(count, language='ru'):
@@ -287,6 +345,153 @@ def _pill(text, handler):
     return button
 
 
+class AudioTrackDialog(QDialog):
+    """«Выбор аудиодорожки»: the start audio track of the chosen release, centred, in dark glass.
+
+    The release's tracks are grouped by language (RU, UA, EN); «Выбрать» hands the pick to the page, which
+    starts mpv with it (``--alang``; ``--aid`` when the server knows the container numbering). Nothing is
+    prepared again: the prepared file keeps every track and mpv switches them on the fly (💬).
+    """
+    trackChosen = Signal(dict)
+
+    def __init__(self, page, tracks, current=None, caption=''):
+        super().__init__(page.window() if page is not None else None)
+        self.language = getattr(page, 'language', 'ru')
+        self.tracks = [dict(track) for track in tracks or [] if isinstance(track, dict) and track.get('id')]
+        self.setObjectName('audioDialog')
+        self.setWindowTitle(self.t('Выбор аудиодорожки'))
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setModal(True)
+        self.setFixedWidth(480)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.card = QFrame()
+        self.card.setObjectName('audioCard')
+        outer.addWidget(self.card)
+        box = QVBoxLayout(self.card)
+        box.setContentsMargins(24, 20, 24, 22)
+        box.setSpacing(0)
+        head = QHBoxLayout()
+        head.setSpacing(12)
+        self.title_label = QLabel(self.t('Выбор аудиодорожки'))
+        self.title_label.setObjectName('audioDialogTitle')
+        head.addWidget(self.title_label, 1)
+        self.close_button = QPushButton()
+        self.close_button.setObjectName('iconButton')
+        self.close_button.setIcon(icon('x', '#c9ced6', 18))
+        self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.close_button.setToolTip(self.t('Закрыть'))
+        self.close_button.setAccessibleName(self.close_button.toolTip())
+        self.close_button.clicked.connect(self.reject)
+        head.addWidget(self.close_button, 0, Qt.AlignmentFlag.AlignTop)
+        box.addLayout(head)
+        self.meta_label = QLabel(caption)
+        self.meta_label.setObjectName('audioDialogMeta')
+        self.meta_label.setWordWrap(True)
+        self.meta_label.setVisible(bool(caption))
+        box.addWidget(self.meta_label)
+        box.addSpacing(14)
+        # Language groups of checkable rows, one checked: the track mpv starts with.
+        listing = QWidget()
+        listing.setObjectName('audioList')
+        rows = QVBoxLayout(listing)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(6)
+        self.group = QButtonGroup(self)
+        self.group.setExclusive(True)
+        self.track_buttons, self.group_labels = {}, {}
+        for language in LANGUAGES:
+            entries = [track for track in self.tracks if track.get('language') == language]
+            if not entries:
+                continue
+            heading = QLabel(self.t(AUDIO_GROUPS[language]).upper())
+            heading.setObjectName('audioGroup')
+            rows.addWidget(heading)
+            self.group_labels[language] = heading
+            for track in entries:
+                button = QPushButton(self.t(track['label']))
+                button.setObjectName('audioTrack')
+                button.setCheckable(True)
+                button.setCursor(Qt.CursorShape.PointingHandCursor)
+                button.setIcon(QIcon(flag(language)))
+                button.setIconSize(QSize(18, 12))
+                self.group.addButton(button)
+                self.track_buttons[track['id']] = button
+                rows.addWidget(button)
+        rows.addStretch(1)
+        self.scroll = QScrollArea()
+        self.scroll.setObjectName('audioScroll')
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setWidget(listing)
+        box.addWidget(self.scroll, 1)
+        box.addSpacing(16)
+        self.tip = QFrame()
+        self.tip.setObjectName('audioTip')
+        tip = QHBoxLayout(self.tip)
+        tip.setContentsMargins(14, 12, 14, 12)
+        tip.setSpacing(10)
+        self.tip_icon = QLabel()
+        self.tip_icon.setObjectName('audioTipIcon')
+        self.tip_icon.setPixmap(glyph('message-square', '#ffd24d', 18))
+        tip.addWidget(self.tip_icon, 0, Qt.AlignmentFlag.AlignTop)
+        self.tip_text = QLabel(self.t(AUDIO_TIP))
+        self.tip_text.setObjectName('audioTipText')
+        self.tip_text.setWordWrap(True)
+        tip.addWidget(self.tip_text, 1)
+        box.addWidget(self.tip)
+        box.addSpacing(20)
+        buttons = QHBoxLayout()
+        buttons.setSpacing(10)
+        buttons.addStretch(1)
+        self.cancel_button = QPushButton(self.t('Отмена'))
+        self.cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.cancel_button.clicked.connect(self.reject)
+        buttons.addWidget(self.cancel_button)
+        self.choose_button = QPushButton(self.t('Выбрать'))
+        self.choose_button.setObjectName('primary')
+        self.choose_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.choose_button.setDefault(True)
+        self.choose_button.clicked.connect(self.confirm)
+        buttons.addWidget(self.choose_button)
+        box.addLayout(buttons)
+        wanted = self.track_buttons.get((current or {}).get('id')) or next(iter(self.track_buttons.values()), None)
+        if wanted is not None:
+            wanted.setChecked(True)
+        self.choose_button.setEnabled(wanted is not None)
+
+    def t(self, text):
+        return translate(text, self.language)
+
+    def selected_track(self):
+        """The checked track (a copy), or None."""
+        button = self.group.checkedButton()
+        hit = next((track for track in self.tracks if self.track_buttons.get(track['id']) is button), None)
+        return dict(hit) if button is not None and hit else None
+
+    def confirm(self):
+        track = self.selected_track()
+        if track is None:
+            return
+        self.trackChosen.emit(track)
+        self.accept()
+
+    def centre(self):
+        """Over the middle of the app window: a frameless dialog gets no placement from the window manager."""
+        self.adjustSize()
+        host = self.parentWidget()
+        if host is None:
+            return
+        middle = host.mapToGlobal(host.rect().center())
+        self.move(middle.x() - self.width() // 2, middle.y() - self.height() // 2)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.centre()
+
+
 class TorrentPage(QWidget):
     """Кинотека / Фильмы / Сериалы → title → quality, language, episode → mpv."""
     playRequested = Signal(dict)
@@ -305,6 +510,7 @@ class TorrentPage(QWidget):
         self.loaded = False
         self.item = self.view = None
         self.selected_id = self.lang = self.season = self.episode = None
+        self.audio_track = self.audio_dialog = None  # 0.2.0: the dialog's start track, the open dialog.
         self.busy, self.hint, self.load_failed = '', '', False
         self.poll = QTimer(self)
         self.poll.setSingleShot(True)
@@ -450,8 +656,17 @@ class TorrentPage(QWidget):
         self.hero_layout.addWidget(self.poster_col)
         info = QWidget()
         info.setObjectName('detailInfo')
-        v = QVBoxLayout(info)
-        v.setContentsMargins(32, 28, 32, 28)
+        info_layout = QVBoxLayout(info)
+        # 0.2.0: the poster column's 28 px top and a body at least as tall as the poster (adapt): the facts
+        # go up, the card of choices and actions goes down and ends on the poster's bottom line.
+        info_layout.setContentsMargins(32, 28, 32, 28)
+        info_layout.setSpacing(0)
+        self.info_body = QWidget()
+        self.info_body.setObjectName('detailInfoBody')
+        info_layout.addWidget(self.info_body)
+        info_layout.addStretch(1)
+        v = QVBoxLayout(self.info_body)
+        v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
         self.meta_label = self._label('detailMeta', wrap=True)
         self.title_label = TextBlock('detailName', 1.06)
@@ -476,9 +691,18 @@ class TorrentPage(QWidget):
         v.addWidget(self.badges)
         self.duration_label = self._label('durationGenres', wrap=True)
         v.addWidget(self.duration_label)
+        v.addStretch(1)
+        v.addSpacing(24)
+        # The card of choices and actions: watch / library, the chosen release, quality, language and audio.
+        self.controls = QFrame()
+        self.controls.setObjectName('detailControls')
+        controls = QVBoxLayout(self.controls)
+        controls.setContentsMargins(24, 20, 24, 20)
+        controls.setSpacing(0)
+        v.addWidget(self.controls)
         self.actions = QWidget()
         actions = QHBoxLayout(self.actions)
-        actions.setContentsMargins(0, 20, 0, 0)
+        actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(12)
         self.action_button = QPushButton()
         self.action_button.setObjectName('watch')
@@ -498,9 +722,9 @@ class TorrentPage(QWidget):
         self.library_button.clicked.connect(self.toggle_library)
         actions.addWidget(self.library_button)
         actions.addStretch(1)
-        v.addWidget(self.actions)
+        controls.addWidget(self.actions)
         self.selected_label = self._label('selectedInfo', wrap=True)
-        v.addWidget(self.selected_label)
+        controls.addWidget(self.selected_label)
         self.pickers = QWidget()
         pickers = QVBoxLayout(self.pickers)
         pickers.setContentsMargins(0, 16, 0, 0)
@@ -518,6 +742,12 @@ class TorrentPage(QWidget):
             button.setIconSize(QSize(18, 12))
             self.language_buttons[lang] = button
             self.language_row.addWidget(button)
+        # 0.2.0: one «Аудио» button next to the languages instead of a row of voice-overs (AudioTrackDialog).
+        self.audio_button = QPushButton()
+        self.audio_button.setObjectName('audioButton')
+        self.audio_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.audio_button.clicked.connect(self.open_audio_dialog)
+        self.language_row.addWidget(self.audio_button)
         self.episode_box, self.episode_caption, episode_row = self._picker(pickers)
         self.season_combo = FilterCombo()
         self.episode_combo = FilterCombo()
@@ -529,10 +759,9 @@ class TorrentPage(QWidget):
             episode_row.addWidget(combo)
         self.season_combo.activated.connect(self.pick_season)
         self.episode_combo.activated.connect(self.pick_episode)
-        v.addWidget(self.pickers)
+        controls.addWidget(self.pickers)
         self.hint_label = self._label('detailHint', wrap=True)
-        v.addWidget(self.hint_label)
-        v.addStretch(1)
+        controls.addWidget(self.hint_label)
         self.hero_layout.addWidget(info, 1)
         # «О фильме» (overview ≤ 720 px, release / studio / budget chips), the director and «В ролях».
         self.details = QWidget()
@@ -759,12 +988,14 @@ class TorrentPage(QWidget):
         prefs = prefs or {}
         self.detail_generation += 1
         self.poll.stop()
+        self.close_audio_dialog()
         self.item = {k: row.get(k) for k in ('kind', 'tmdb_id', 'title', 'original_title', 'title_en', 'title_ru', 'year',
                                              'poster', 'rating', 'overview')}
         self.meta, self.meta_loaded, self.backdrop_url = {}, False, ''
         self.view, self.load_failed, self.busy, self.hint = None, False, '', ''
         self.selected_id = prefs.get('source_id') or None
         self.lang = prefs.get('audio_lang') if prefs.get('audio_lang') in LANGUAGES else None
+        self.audio_track = None
         tv = row.get('kind') == 'tv' and type(prefs.get('season')) is int and type(prefs.get('episode')) is int
         self.season, self.episode = (prefs['season'], prefs['episode']) if tv else (None, None)
         self.notify('')
@@ -780,6 +1011,7 @@ class TorrentPage(QWidget):
     def show_list(self):
         self.detail_generation += 1
         self.poll.stop()
+        self.close_audio_dialog()
         self.item = self.view = None
         self.meta, self.back_caption, self.backdrop_url = {}, None, ''
         self.stack.setCurrentIndex(0)
@@ -797,6 +1029,7 @@ class TorrentPage(QWidget):
         self.return_to = None
         self.detail_generation += 1
         self.poll.stop()
+        self.close_audio_dialog()
         self.item = self.view = None
         self.meta, self.back_caption, self.backdrop_url = {}, None, ''
         self.stack.setCurrentIndex(0)
@@ -810,6 +1043,7 @@ class TorrentPage(QWidget):
         self.list_generation += 1
         self.detail_generation += 1
         self.poll.stop()
+        self.close_audio_dialog()
         self.search_timer.stop()
         self.grid.posters.clear()
         self.grid.clear()
@@ -943,15 +1177,31 @@ class TorrentPage(QWidget):
             return 'discover' if view.get('in_library') else 'library'
         return 'discover'
 
+    def title_fields(self):
+        """The open title's names completed by its details: a catalogue row may know only «The Terminator»
+        while /torrents/detail has «Терминатор»; that one becomes title_ru, so the Russian heading wins."""
+        item, meta = self.item or {}, self.meta or {}
+        fields = {key: item.get(key) for key in TITLE_KEYS}
+        for key in TITLE_KEYS:
+            if not (isinstance(fields[key], str) and fields[key].strip()) and isinstance(meta.get(key), str):
+                fields[key] = meta[key]
+        if not cyrillic(fields['title_ru']) and cyrillic(meta.get('title')):
+            fields['title_ru'] = meta['title']
+        return fields
+
     def display_title(self):
-        return movie_title(self.item or {}, self.title_language)
+        return movie_title(self.title_fields(), self.title_language)
 
     def choice(self):
         selected, episode = self.selected(), self.current_episode()
-        return {'kind': self.item['kind'], 'tmdb_id': self.item['tmdb_id'],
-                'source_id': (selected or {}).get('source_id'), 'season': episode[0] if episode else None,
-                'episode': episode[1] if episode else None, 'audio_lang': self.audio_language(),
-                'title': self.display_title()}
+        result = {'kind': self.item['kind'], 'tmdb_id': self.item['tmdb_id'],
+                  'source_id': (selected or {}).get('source_id'), 'season': episode[0] if episode else None,
+                  'episode': episode[1] if episode else None, 'audio_lang': self.audio_language(),
+                  'title': self.display_title()}
+        track = self.picked_audio_track()
+        if track and track.get('index'):
+            result['audio_track'] = track['index']  # mpv --aid: only a container number the server knows.
+        return result
 
     # ---------- choices ----------
     def choose(self, source):
@@ -971,6 +1221,7 @@ class TorrentPage(QWidget):
 
     def pick_language(self, language):
         self.lang = language
+        self.audio_track = None  # A language click starts with that language's first track again.
         selected = self.selected()
         if not selected or language not in (selected.get('languages') or []):
             options = [s for s in self.sources() if language in (s.get('languages') or []) and s.get('state') != 'failed']
@@ -1092,12 +1343,12 @@ class TorrentPage(QWidget):
         return ', '.join(parts).upper()
 
     def other_title(self):
-        """The original (or the other language) title: the tooltip of the heading."""
-        item, meta, shown = self.item, self.meta, self.display_title()
-        for other in (item.get('original_title') or meta.get('original_title'), item.get('title') or meta.get('title')):
-            if isinstance(other, str) and other.strip() and other.strip() != shown:
-                return other.strip()
-        return ''
+        """The original (or the other language) title: under the heading and its tooltip."""
+        return secondary_title(self.title_fields(), self.title_language)
+
+    def subtitle_text(self):
+        """The line under the heading, as on the website: «The Terminator • «Слоган»», or one of them."""
+        return ' • '.join(part for part in (self.other_title(), self.tagline_text()) if part)
 
     def tagline_text(self):
         tagline = self.meta.get('tagline')
@@ -1159,7 +1410,7 @@ class TorrentPage(QWidget):
         self.title_label.set_text(self.display_title())
         self.title_label.setToolTip(self.other_title())
         self._show(self.meta_label, self.meta_line())
-        self.tagline_label.set_text(self.tagline_text())
+        self.tagline_label.set_text(self.subtitle_text())
         self.tagline_label.setVisible(bool(self.tagline_label.plain))
         rating = self.meta.get('rating') or self.item.get('rating')
         rated = isinstance(rating, (int, float)) and not isinstance(rating, bool) and rating > 0
@@ -1203,7 +1454,8 @@ class TorrentPage(QWidget):
             button.setEnabled(lang in languages and not self.busy)
             button.setChecked(audio == lang)
             shown = shown or lang in languages or audio == lang
-        self.language_section.setVisible(shown)
+        tracks = self._render_audio()
+        self.language_section.setVisible(shown or bool(tracks))
         self._render_episodes()
         self.pickers.setVisible(any(not w.isHidden() for w in (self.quality_section, self.language_section,
                                                               self.episode_box)))
@@ -1233,6 +1485,82 @@ class TorrentPage(QWidget):
         self._show(self.hint_label, t(self.hint))
         self.poster_col.refresh()
         self.on_detail_scroll()
+
+    # ---------- audio ----------
+    def offered_tracks(self):
+        """The audio of the selected release for AudioTrackDialog, grouped RU, UA, EN."""
+        return audio_tracks(self.selected())
+
+    def picked_audio_track(self, tracks=None):
+        """The dialog's pick while the selected release and the audio language still have it; else None."""
+        chosen = (self.audio_track or {}).get('id')
+        if not chosen:
+            return None
+        tracks = self.offered_tracks() if tracks is None else tracks
+        hit = next((track for track in tracks if track['id'] == chosen), None)
+        return hit if hit and hit['language'] == self.audio_language() else None
+
+    def current_audio_track(self, tracks=None):
+        """The start track: the dialog's pick, else the first track of the audio language."""
+        tracks = self.offered_tracks() if tracks is None else tracks
+        language = self.audio_language()
+        return (self.picked_audio_track(tracks) or next((t for t in tracks if t['language'] == language), None)
+                or (tracks[0] if tracks else None))
+
+    def _render_audio(self):
+        """«Аудио: Дубляж» for a pick (or the only track), else «Аудио: 4 дорожки»; hidden without audio."""
+        tracks = self.offered_tracks()
+        button = self.audio_button
+        button.setVisible(bool(tracks))
+        if not tracks:
+            return tracks
+        picked = self.picked_audio_track(tracks) or (tracks[0] if len(tracks) == 1 else None)
+        name = self.t(picked['label']) if picked else track_count_text(len(tracks), self.language)
+        button.setText(self.t('Аудио:') + ' ' + name)
+        if picked:
+            button.setIcon(QIcon(flag(picked['language'])))
+            button.setIconSize(QSize(18, 12))
+        else:
+            button.setIcon(icon('audio-lines', '#ffd24d', 16))
+            button.setIconSize(QSize(16, 16))
+        button.setEnabled(not self.busy)
+        button.setToolTip(self.t('Выбор аудиодорожки'))
+        button.setAccessibleName(button.text())
+        return tracks
+
+    def open_audio_dialog(self):
+        """«Аудио»: the centred track dialog (window-modal, non-blocking); the pick returns via trackChosen."""
+        tracks = self.offered_tracks()
+        if not tracks or self.busy:
+            return None
+        self.close_audio_dialog()
+        selected = self.selected()
+        caption = ' · '.join(part for part in (source_name(selected) if selected else '',
+                                               track_count_text(len(tracks), self.language)) if part)
+        dialog = AudioTrackDialog(self, tracks, self.current_audio_track(tracks), caption)
+        dialog.trackChosen.connect(self.apply_audio_track)
+        dialog.finished.connect(lambda _=0, d=dialog: self._audio_dialog_closed(d))
+        self.audio_dialog = dialog
+        dialog.open()
+        return dialog
+
+    def _audio_dialog_closed(self, dialog):
+        if self.audio_dialog is dialog:
+            self.audio_dialog = None
+        dialog.deleteLater()
+
+    def close_audio_dialog(self):
+        dialog, self.audio_dialog = self.audio_dialog, None
+        if dialog is not None:
+            dialog.reject()
+
+    def apply_audio_track(self, track):
+        """The dialog's pick becomes the start track of this release; nothing is prepared again."""
+        if not isinstance(track, dict) or track.get('language') not in LANGUAGES or not track.get('id'):
+            return
+        self.audio_track = {key: track.get(key) for key in ('id', 'language', 'label', 'index')}
+        self.lang = track['language']
+        self.render()
 
     def _render_episodes(self):
         episodes = self.known_episodes()
@@ -1376,6 +1704,7 @@ class TorrentPage(QWidget):
             self.poster_size = (column, column * 3 // 2)
             self.poster.setFixedSize(*self.poster_size)
             self.poster_col.setFixedWidth(column)
+            self.info_body.setMinimumHeight(self.poster_size[1])  # The card of choices ends on the poster's line.
             self.render_art()
         # font-size: clamp(2.2rem, 4vw, 3.4rem); up to 900 px clamp(1.6rem, 5vw, 2.4rem).
         size = round(max(25.6, min(38.4, width * .05)) if narrow else max(35.2, min(54.4, width * .04)))

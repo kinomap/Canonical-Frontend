@@ -571,7 +571,8 @@ def test_title_page_shows_facts_credits_and_cast_like_the_website():
     assert ('detail', 'tv', 1408) in api.calls and errors == []
     assert page.meta_label.text() == '2004–2012, США' and page.title_label.plain == 'Доктор Хаус'
     assert page.title_label.toolTip() == 'House'  # The original title on hover.
-    assert page.tagline_label.plain == '«Уже лучше?»' and not page.tagline_label.isHidden()
+    # 0.2.0: as on the website, the original title and the tagline under the Russian heading.
+    assert page.tagline_label.plain == 'House • «Уже лучше?»' and not page.tagline_label.isHidden()
     assert (page.rating_value.text(), page.rating_source.text(), page.status_badge.text()) == ('8.6', 'TMDB', 'Завершён')
     assert page.duration_label.text() == '8 сезонов · 176 серий • Драма | Детектив | Комедия'
     assert page.about_caption.text() == 'О СЕРИАЛЕ' and page.overview_label.plain.startswith('Блестящий диагност')
@@ -611,7 +612,7 @@ def test_movie_page_shows_budget_release_and_director_cards():
     page, notes, errors = page_for(DetailApi(view=movie_view(), detail=detail))
     page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008, 'poster': None})
     assert errors == [] and page.meta_label.text() == '2008, США, ВЕЛИКОБРИТАНИЯ'
-    assert page.tagline_label.plain == '«Добро пожаловать в мир Хаоса!»'  # No doubled quotes.
+    assert page.tagline_label.plain == 'The Dark Knight • «Добро пожаловать в мир Хаоса!»'  # No doubled quotes.
     assert page.status_badge.isHidden() and not page.badges.isHidden()  # «Released» says nothing new.
     assert page.duration_label.text() == '02:32 • Драма | Боевик' and page.about_caption.text() == 'О ФИЛЬМЕ'
     assert page.chip_items == ['Релиз: 16.07.2008', 'Warner Bros. Pictures', 'Legendary Pictures', 'Syncopy',
@@ -705,3 +706,133 @@ def test_country_names_follow_the_interface_language():
     assert country_names({'countries': ['США']}, 'en', 4) == ['США']
     assert country_names({'countries': ['США', 'Канада'], 'country_codes': ['US']}, 'en', 4) == ['США', 'Канада']
     assert country_names({'countries': None, 'country_codes': 'US'}, 'en', 4) == []
+
+
+def test_audio_tracks_group_the_release_audio_for_the_dialog():
+    from kinosota_player.torrents import audio_tracks, track_count_text
+    # 0.2.0: the voice-overs the release title names go under Russian, one entry for each other language.
+    release = {'languages': ['ru', 'uk', 'en'], 'voices': ['Дубляж', 'LostFilm', ' дубляж ', 7]}
+    assert [(t['language'], t['label'], t['index']) for t in audio_tracks(release)] == [
+        ('ru', 'Дубляж', None), ('ru', 'LostFilm', None), ('uk', 'Украинская озвучка', None),
+        ('en', 'Английская дорожка', None)]
+    assert audio_tracks(release)[0]['id'] == 'ru:Дубляж'
+    assert [t['label'] for t in audio_tracks({'languages': ['ru', 'en']})] == ['Русская озвучка', 'Английская дорожка']
+    assert [t['label'] for t in audio_tracks({'languages': ['en'], 'voices': ['Дубляж']})] == ['Английская дорожка']
+    assert [t['label'] for t in audio_tracks({'voices': ['MVO']})] == ['MVO']
+    assert audio_tracks(None) == [] and audio_tracks({'languages': []}) == []
+    # Container tracks from the server win: grouped RU, UA, EN, with the numbering mpv --aid needs.
+    container = {'languages': ['ru', 'en'], 'voices': ['Дубляж'],
+                 'audio_tracks': [{'language': 'eng', 'title': 'eng ac3', 'index': 3},
+                                  {'language': 'rus', 'title': 'DUB BD', 'index': 1},
+                                  {'language': 'ru', 'label': 'MVO Позитив-мультимедиа', 'index': 2},
+                                  {'language': 'de', 'title': 'Deutsch', 'index': 4},
+                                  {'language': 'ukr', 'title': 'Укр', 'index': 'x'}]}
+    assert [(t['language'], t['label'], t['index']) for t in audio_tracks(container)] == [
+        ('ru', 'DUB BD', 1), ('ru', 'MVO Позитив-мультимедиа', 2), ('uk', 'Укр', None), ('en', 'eng ac3', 3)]
+    assert [track_count_text(n) for n in (1, 2, 5, 11, 21, 22)] == [
+        '1 дорожка', '2 дорожки', '5 дорожек', '11 дорожек', '21 дорожка', '22 дорожки']
+    assert track_count_text(1, 'en') == '1 track' and track_count_text(4, 'en') == '4 tracks'
+    # mpv gets the language order always and the container track only when its number is known.
+    assert audio_args('ru', 2) == ['--alang=rus,ru', '--aid=2'] and audio_args('en', 3) == ['--alang=eng,en', '--aid=3']
+    assert audio_args('ru', None) == audio_args('ru', 0) == audio_args('ru', True) == audio_args('ru', '2') == [
+        '--alang=rus,ru']
+
+
+def test_title_heading_is_russian_with_the_original_title_under_it():
+    detail = {'kind': 'movie', 'tmdb_id': 218, 'title': 'Терминатор', 'original_title': 'The Terminator',
+              'year': 1984, 'tagline': 'Твоё будущее в его руках'}
+    page, notes, errors = page_for(DetailApi(view=movie_view(), detail=detail))
+    # 0.2.0: a catalogue row may know only the original name; the details bring the Russian heading.
+    page.open_title({'kind': 'movie', 'tmdb_id': 218, 'title': 'The Terminator', 'year': 1984, 'poster': None})
+    assert errors == [] and page.title_label.plain == 'Терминатор'
+    assert page.tagline_label.plain == 'The Terminator • «Твоё будущее в его руках»'
+    assert page.title_label.toolTip() == 'The Terminator' and page.choice()['title'] == 'Терминатор'
+    page.close()
+
+
+def test_audio_button_replaces_the_voice_pills_and_opens_the_track_dialog():
+    from PySide6.QtWidgets import QPushButton
+    from kinosota_player.torrents import AUDIO_TIP, AudioTrackDialog
+    view = movie_view()
+    view['sources'][0].update(voices=['Дубляж', 'MVO Позитив-мультимедиа'])
+    api = FakeApi(view=view)
+    page, notes, errors = page_for(api)
+    page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008, 'poster': None})
+    assert page.selected()['source_id'] == A and errors == []
+    # 0.2.0: no row of voice-over pills; one «Аудио» button right after the RU / UA / EN choices.
+    assert not page.findChildren(QPushButton, 'voice')
+    assert [page.language_row.indexOf(button) for button in page.language_buttons.values()] == [0, 1, 2]
+    assert page.language_row.indexOf(page.audio_button) == 3 and page.audio_button.isVisibleTo(page)
+    assert page.audio_button.text() == 'Аудио: 3 дорожки' and page.audio_button.toolTip() == 'Выбор аудиодорожки'
+    page.audio_button.click()
+    dialog = page.audio_dialog
+    assert isinstance(dialog, AudioTrackDialog) and dialog.isVisible() and dialog.isModal()
+    assert dialog.title_label.text() == 'Выбор аудиодорожки' and dialog.meta_label.text() == '2160p WEB-DL · 3 дорожки'
+    assert [label.text() for label in dialog.group_labels.values()] == ['РУССКИЙ', 'АНГЛИЙСКИЙ']
+    assert [button.text() for button in dialog.track_buttons.values()] == [
+        'Дубляж', 'MVO Позитив-мультимедиа', 'Английская дорожка']
+    assert dialog.track_buttons['ru:Дубляж'].isChecked()  # The start track: the first of the audio language.
+    # The quick switch in the player (💬) is explained right in the dialog.
+    assert dialog.tip_text.text() == AUDIO_TIP and AUDIO_TIP.startswith('Быстро переключить звуковую дорожку')
+    assert '💬' in AUDIO_TIP and not dialog.tip_icon.pixmap().isNull() and not dialog.tip.isHidden()
+    assert (dialog.cancel_button.text(), dialog.choose_button.text()) == ('Отмена', 'Выбрать')
+    dialog.track_buttons['ru:MVO Позитив-мультимедиа'].click()
+    dialog.choose_button.click()
+    assert page.audio_dialog is None and not dialog.isVisible()
+    assert page.audio_track['id'] == 'ru:MVO Позитив-мультимедиа'
+    assert page.audio_button.text() == 'Аудио: MVO Позитив-мультимедиа'
+    assert page.choice()['audio_lang'] == 'ru' and 'audio_track' not in page.choice()  # No container numbering.
+    assert not any(call[0] == 'prepare' for call in api.calls)  # mpv switches tracks: nothing is prepared again.
+    page.audio_button.click()
+    dialog = page.audio_dialog
+    assert dialog.track_buttons['ru:MVO Позитив-мультимедиа'].isChecked()  # The dialog opens on the pick.
+    dialog.track_buttons['en:Английская дорожка'].click()
+    dialog.confirm()
+    assert page.choice()['audio_lang'] == 'en' and page.language_buttons['en'].isChecked()
+    assert page.audio_button.text() == 'Аудио: Английская дорожка'
+    page.pick_language('ru')  # A language click starts with that language's first track again.
+    assert page.audio_track is None and page.audio_button.text() == 'Аудио: 3 дорожки'
+    page.audio_button.click()
+    page.audio_dialog.cancel_button.click()
+    assert page.audio_dialog is None and page.audio_track is None
+    page.retranslate('en')
+    assert page.audio_button.text() == 'Audio: 3 tracks' and page.audio_button.toolTip() == 'Choose an audio track'
+    page.close()
+
+
+def test_container_track_pick_starts_mpv_on_that_track():
+    app = QApplication.instance() or QApplication([])
+    view = movie_view()
+    view['sources'][0]['audio_tracks'] = [{'language': 'rus', 'title': 'DUB BD', 'index': 1},
+                                          {'language': 'rus', 'title': 'MVO DDV', 'index': 2},
+                                          {'language': 'eng', 'title': 'eng ac3', 'index': 3}]
+    api, engine = FakeApi(view=view), FakeEngine()
+    w = window_for(api, engine)
+    w.signed_in({'username': 'viewer'})
+    page = w.torrents
+    page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008, 'poster': None})
+    assert page.audio_button.text() == 'Аудио: 3 дорожки' and 'audio_track' not in page.choice()
+    page.apply_audio_track(page.offered_tracks()[1])  # «Выбрать» in AudioTrackDialog.
+    assert page.audio_button.text() == 'Аудио: MVO DDV' and page.choice()['audio_track'] == 2
+    page.act()
+    assert ('ticket', 'movie', 155, A, None, None) in api.calls
+    assert engine.started == [('https://torrent-01.scenrix.com/stream/opaque-ticket',
+                               ['--alang=rus,ru', '--aid=2', '--force-media-title=Тёмный рыцарь'])]
+    w.close()
+    app.processEvents()
+
+
+def test_card_of_choices_ends_on_the_poster_line_in_both_layouts():
+    app = QApplication.instance() or QApplication([])
+    page, notes, errors = page_for(FakeApi(view=movie_view()))
+    page.open_title({'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'year': 2008, 'poster': None})
+    # Watch, the chosen release, quality, language and «Аудио» share one card at the foot of the info column.
+    assert page.controls.parentWidget() is page.info_body and page.pickers.parentWidget() is page.controls
+    assert page.poster_size == (180, 270) and page.info_body.minimumHeight() == 270  # 900 px: the narrow layout.
+    page.resize(1240, 840)
+    app.processEvents()
+    assert page.poster_size == (340, 510) and page.info_body.minimumHeight() == 510
+    page.resize(800, 700)
+    app.processEvents()
+    assert page.poster_size == (180, 270) and page.info_body.minimumHeight() == 270
+    page.close()
