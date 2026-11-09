@@ -147,7 +147,8 @@ function closeNotice() {
   const current = issue.value
   issue.value = null
   riskAccepted.value = true
-  if (current && !current.stopped) ignoreSilent = true
+  if (current?.stopped) stopPlayback()
+  else if (current && !current.stopped) ignoreSilent = true
 }
 // Another quality / voice / episode: never keep playing the previous stream.
 watch(() => JSON.stringify(props.choice ?? {}), reset)
@@ -193,7 +194,7 @@ defineExpose({ startPlayback, playInBrowser })
         <div class="player-ready-copy">
           <p v-if="torrentStatus==='partial'" class="status-hint">Доступны не все серии — остальные появятся позже.</p>
           <p v-if="streamError" role="alert" class="stream-error">{{ streamError }}</p>
-          <button type="button" class="browser-play" :disabled="streamLoading" @click="startPlayback()">
+          <button type="button" class="browser-play" :disabled="streamLoading" @click="startPlayback(true)">
             {{ streamLoading ? 'Подготовка…' : '▶ Смотреть в браузере' }}
           </button>
           <p class="player-note">Максимальное качество и все аудиодорожки — в приложении KINOSOTA Player.</p>

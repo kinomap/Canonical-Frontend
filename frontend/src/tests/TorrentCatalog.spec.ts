@@ -172,6 +172,31 @@ describe('torrent watch panel and live preparation',()=>{
   expect(vi.mocked(torrentPlaybackApi.discover).mock.calls.length).toBe(before+1);expect(torrentPlaybackApi.discover).toHaveBeenLastCalledWith('tv',7)
   expect(w.find('.watch-message').text()).toBe('Проверяем новые серии…')
  })
+ it('defaults to season 1 episode 1 even when specials (season 0) exist and allows picking specials',async()=>{
+  vi.mocked(torrentsApi.detail).mockResolvedValue({...entry,kind:'tv',tmdb_id:19885,season_list:[{season:0,episodes:1,name:'Specials'},{season:1,episodes:3,name:'S1'}],genres:[]} as any)
+  const eps=[{season:0,episode:0},{season:1,episode:1},{season:1,episode:2},{season:1,episode:3}]
+  const seasons=[
+    {season:0,episodes:[{episode:0,source_id:'s1080',size_bytes:5000000000}]},
+    {season:1,episodes:[{episode:1,source_id:'s1080',size_bytes:5000000000},{episode:2,source_id:'s1080',size_bytes:5000000000},{episode:3,source_id:'s1080',size_bytes:5000000000}]}
+  ]
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready({status:{status:'playable',playable:true,progress:100,start_ms:640},sources:[src({episodes:eps,file_count:4})],episodes:eps,seasons}) as any)
+  const{w}=await at('/torrents/tv/19885');const series=w.find('[data-testid="watch-series"]')
+  const season=series.find('[data-testid="season-select"] [role="combobox"]'),episode=series.find('[data-testid="episode-select"] [role="combobox"]')
+  expect(season.text()).toBe('1 сезон')
+  expect(episode.text()).toBe('1 серия')
+  expect(w.find('[data-testid="watch-button"]').text()).toBe('Смотреть · 1 сезон, 1 серия')
+  await season.trigger('click')
+  const seasonOpts=series.findAll('[data-testid="season-select"] [role="option"]')
+  expect(seasonOpts.map(o=>o.find('.kselect-label').text())).toEqual(['Спецвыпуски','1 сезон'])
+  await seasonOpts[0].trigger('click');await flushPromises()
+  expect(season.text()).toBe('Спецвыпуски')
+  expect(episode.text()).toBe('Спецвыпуск')
+  expect(w.find('[data-testid="watch-button"]').text()).toBe('Смотреть · Спецвыпуск')
+  await episode.trigger('click')
+  const epOpts=series.findAll('[data-testid="episode-select"] [role="option"]')
+  expect(epOpts).toHaveLength(2)
+  expect(epOpts[0].text()).toContain('Спецвыпуск')
+ })
  it('shows a source without a named language as an UND pill',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready({sources:[src({languages:[]})],languages:[{value:'ru',available:false},{value:'uk',available:false},{value:'en',available:false}]}) as any)
   const{w}=await at('/torrents/movie/1');const pills=w.findAll('[data-testid="watch-panel"] .watch-pill')

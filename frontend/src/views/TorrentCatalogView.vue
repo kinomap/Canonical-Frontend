@@ -221,7 +221,7 @@ onBeforeUnmount(()=>{++generation;controller?.abort();clearTimeout(heroTimer)})
 .back-link{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border:1px solid rgba(255,255,255,.12);border-radius:6px;background:rgba(9,13,20,.35);color:rgba(255,255,255,.65);font-size:13px;line-height:18px;font-weight:500;text-decoration:none;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:border-color .2s,color .2s}
 .back-link:hover{border-color:rgba(255,255,255,.3);color:#fff}
 .back-link:focus-visible{outline:2px solid #ffd24d;outline-offset:2px}
-.torrent-detail{display:grid;grid-template-columns:340px minmax(0,1fr);gap:40px;max-width:1240px;width:100%;margin:0 auto;padding:24px 48px 40px;box-sizing:border-box}
+.torrent-detail{position:relative;z-index:20;display:grid;grid-template-columns:340px minmax(0,1fr);gap:40px;max-width:1240px;width:100%;margin:0 auto;padding:24px 48px 40px;box-sizing:border-box}
 .poster-col{position:sticky;top:var(--title-sticky);align-self:start;display:flex;flex-direction:column;gap:16px;min-width:0;padding-top:28px}
 .detail-poster{aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:#1a2236;box-shadow:0 24px 64px rgba(0,0,0,.85),0 4px 12px rgba(0,0,0,.6)}
 .detail-poster>img{display:block;width:100%;height:100%;object-fit:cover}
@@ -239,7 +239,7 @@ onBeforeUnmount(()=>{++generation;controller?.abort();clearTimeout(heroTimer)})
 .title-genre:hover{color:#ffd24d}
 .title-genre:focus-visible{outline:2px solid #ffd24d;outline-offset:2px;border-radius:2px}
 .title-dot,.title-sep{color:rgba(255,255,255,.35)}
-.title-details{max-width:1240px;width:100%;margin:0 auto;padding:0 48px 80px;box-sizing:border-box}
+.title-details{position:relative;z-index:1;max-width:1240px;width:100%;margin:0 auto;padding:0 48px 80px;box-sizing:border-box}
 .title-block{margin-top:32px}
 .title-block h2{margin:0 0 16px;font-size:11px;line-height:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.35);text-shadow:0 1px 6px rgba(0,0,0,.8)}
 .overview{margin:0;max-width:720px;font-size:16px;line-height:1.7;color:rgba(255,255,255,.7);text-shadow:0 1px 8px rgba(0,0,0,.8);text-wrap:pretty}

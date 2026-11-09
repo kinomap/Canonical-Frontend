@@ -183,22 +183,39 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (season.value === null) return []
     const files = new Map((seasonFiles.value.find((s) => s.season === season.value)?.episodes ?? []).map((e) => [e.episode, e]))
     const available = new Set(knownEpisodes.value.filter((e) => e.season === season.value).map((e) => e.episode))
-    const count = Math.min(2000, Math.max(seasonOptions.value.find((s) => s.value === season.value)?.episodes ?? 0, 0, ...available))
-    return Array.from({ length: count }, (_, i) => {
-      const file = files.get(i + 1)
-      return {
-        value: i + 1, available: available.has(i + 1),
+    const hasZero = available.has(0) || files.has(0)
+    const maxEp = Math.max(seasonOptions.value.find((s) => s.value === season.value)?.episodes ?? 0, 0, ...available)
+    const count = Math.min(2000, maxEp)
+    const list: EpisodeOption[] = []
+    if (hasZero) {
+      const file0 = files.get(0)
+      list.push({
+        value: 0,
+        available: available.has(0),
+        sizeMb: file0 && file0.size_bytes > 0 ? Math.round(file0.size_bytes / 1048576) : null,
+        sourceId: file0?.source_id ?? null,
+      })
+    }
+    for (let i = 1; i <= count; i++) {
+      const file = files.get(i)
+      list.push({
+        value: i,
+        available: available.has(i),
         sizeMb: file && file.size_bytes > 0 ? Math.round(file.size_bytes / 1048576) : null,
         sourceId: file?.source_id ?? null,
-      }
-    })
+      })
+    }
+    return list
   })
   const currentEpisode = computed<TorrentEpisode | null>(() =>
     showEpisodes.value && season.value !== null && episode.value !== null ? { season: season.value, episode: episode.value } : null)
   const episodeReady = computed(() => !currentEpisode.value || (!!selected.value && hasEpisode(selected.value, currentEpisode.value)))
   watch(knownEpisodes, (list) => {
     if (!isTv.value || !list.length || (season.value !== null && episode.value !== null)) return
-    const first = selected.value?.episodes[0] ?? list[0]
+    const s1e1 = list.find((e) => e.season === 1 && e.episode === 1)
+    const s1 = list.find((e) => e.season === 1)
+    const reg = list.find((e) => e.season > 0)
+    const first = s1e1 ?? s1 ?? reg ?? selected.value?.episodes[0] ?? list[0]
     season.value = first.season
     episode.value = first.episode
   }, { immediate: true })
@@ -337,11 +354,13 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (!Number.isInteger(value)) return
     season.value = value
     const inSeason = knownEpisodes.value.filter((e) => e.season === value)
-    episode.value = (selected.value?.episodes.find((e) => e.season === value) ?? inSeason[0])?.episode ?? 1
+    const fromSelected = selected.value?.episodes.find((e) => e.season === value)
+    const defaultEp = (value === 1 ? inSeason.find((e) => e.episode === 1) : null) ?? fromSelected ?? inSeason[0]
+    episode.value = defaultEp?.episode ?? (value === 0 ? 0 : 1)
     followEpisode()
   }
   function pickEpisode(value: number) {
-    if (!Number.isInteger(value) || value < 1) return
+    if (!Number.isInteger(value) || value < 0) return
     episode.value = value
     followEpisode()
   }
@@ -419,7 +438,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       if (ctl.signal.aborted) return
       openDeepLink(res.deep_link)
       message.value = 'Открываем KINOSOTA Player…'
-      const opened = await waitForPlayer(res.launch_id, { signal: ctl.signal })
+      const opened = await waitForPlayer(res.launch_id, { signal: ctl.signal, quietMs: 3500 })
       if (ctl.signal.aborted) return
       if (opened) {
         message.value = 'Открыто в KINOSOTA Player'

@@ -112,7 +112,7 @@ onBeforeUnmount(() => { if (typeof document !== 'undefined') document.removeEven
 </template>
 <style scoped>
 .kselect{position:relative;min-width:160px}
-.kselect.open{z-index:30}
+.kselect.open{z-index:50}
 .kselect-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;height:40px;padding:0 12px;border:0;border-radius:12px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);color:#f5f6f8;font:inherit;font-size:14px;line-height:20px;font-weight:500;text-align:left;cursor:pointer;transition:background-color .3s cubic-bezier(.22,1,.36,1),box-shadow .3s cubic-bezier(.22,1,.36,1)}
 .kselect-trigger:hover:not(:disabled){background:rgba(255,255,255,.1)}
 .kselect.open .kselect-trigger,.kselect-trigger:focus-visible{outline:0;box-shadow:inset 0 0 0 1px rgba(255,194,26,.55),0 0 0 4px rgba(255,194,26,.12)}
@@ -120,7 +120,7 @@ onBeforeUnmount(() => { if (typeof document !== 'undefined') document.removeEven
 .kselect-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kselect-chevron{flex:none;color:rgba(245,246,248,.68);transition:transform .3s cubic-bezier(.22,1,.36,1)}
 .kselect.open .kselect-chevron{transform:rotate(180deg)}
-.kselect-list{position:absolute;left:0;top:calc(100% + 8px);min-width:100%;width:max-content;max-width:min(360px,80vw);max-height:320px;overflow-y:auto;margin:0;padding:8px;list-style:none;box-sizing:border-box;border-radius:16px;background:rgba(23,26,33,.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 0 0 1px rgba(255,255,255,.07),0 24px 48px rgba(0,0,0,.5);scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.kselect-list{position:absolute;left:0;top:calc(100% + 8px);z-index:100;min-width:100%;width:max-content;max-width:min(360px,80vw);max-height:320px;overflow-y:auto;margin:0;padding:8px;list-style:none;box-sizing:border-box;border-radius:16px;background:rgba(23,26,33,.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 0 0 1px rgba(255,255,255,.07),0 24px 48px rgba(0,0,0,.5);scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
 .kselect-option{display:flex;align-items:center;gap:12px;min-height:36px;padding:8px 12px;border-radius:12px;color:rgba(245,246,248,.84);font-size:14px;line-height:20px;cursor:pointer;transition:background-color .2s cubic-bezier(.22,1,.36,1),color .2s cubic-bezier(.22,1,.36,1)}
 .kselect-option.active{background:rgba(255,255,255,.07);color:#f5f6f8}
 .kselect-option.selected{color:#ffd24d;font-weight:600}

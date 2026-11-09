@@ -24,7 +24,9 @@ type SelectOption = { value: number; label: string; hint?: string; disabled?: bo
 
 const episodeText = computed(() => {
   const e = props.state.currentEpisode
-  return e ? `${e.season ? `${e.season} сезон` : 'Спецвыпуск'}, ${e.episode} серия` : ''
+  if (!e) return ''
+  if (e.season === 0) return e.episode === 0 ? 'Спецвыпуск' : `Спецвыпуск, ${e.episode} серия`
+  return `${e.season} сезон, ${e.episode} серия`
 })
 const label = computed(() => {
   if (props.state.busy === 'launch') return 'Открываем…'
@@ -84,7 +86,7 @@ const seasonItems = computed<SelectOption[]>(() => props.state.seasonOptions.map
   value: s.value, label: s.label, hint: s.available ? undefined : 'нет раздач',
 })))
 const episodeItems = computed<SelectOption[]>(() => props.state.episodeOptions.map((e) => ({
-  value: e.value, label: `${e.value} серия`, disabled: !e.available,
+  value: e.value, label: e.value === 0 ? 'Спецвыпуск' : `${e.value} серия`, disabled: !e.available,
   hint: !e.available ? 'нет раздачи' : e.sizeMb ? formatSize(e.sizeMb * 1048576) : undefined,
 })))
 function browser() {
