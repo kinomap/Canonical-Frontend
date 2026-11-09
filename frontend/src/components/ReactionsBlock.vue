@@ -36,10 +36,21 @@ async function fetchReactions() {
   }
 }
 
+// Server toggles run one after another in click order: with one reaction per
+// viewer the result depends on that order.
+let pendingToggle: Promise<void> = Promise.resolve()
+
 async function toggleReaction(reaction_type: string) {
   if (!isAuthenticated.value) return // Handled by App/router globally usually, but we keep it safe
-  
-  // Optimistic update
+
+  // Optimistic update. One reaction per viewer: a new pick takes the previous
+  // one back, the same pick again removes it.
+  for (const other of reactions.value) {
+    if (other.reaction_type !== reaction_type && other.user_reacted) {
+      other.user_reacted = false
+      other.count = Math.max(0, other.count - 1)
+    }
+  }
   const r = reactions.value.find(x => x.reaction_type === reaction_type)
   if (r) {
     if (r.user_reacted) {
@@ -56,14 +67,18 @@ async function toggleReaction(reaction_type: string) {
       user_reacted: true
     })
   }
-  
-  try {
-    await apiClient.toggleReaction(props.targetId, props.targetType, reaction_type)
-  } catch (err) {
-    console.error("Failed to toggle reaction", err)
-    // Revert optimistic if needed... (skipped for brevity)
-    await fetchReactions()
-  }
+
+  const targetId = props.targetId
+  const targetType = props.targetType
+  const request = pendingToggle
+    .then(() => apiClient.toggleReaction(targetId, targetType, reaction_type))
+    .then(() => {}, async (err) => {
+      console.error("Failed to toggle reaction", err)
+      // Show the server's state again: it may differ from the optimistic one.
+      if (targetId === props.targetId) await fetchReactions()
+    })
+  pendingToggle = request
+  await request
 }
 
 onMounted(() => {

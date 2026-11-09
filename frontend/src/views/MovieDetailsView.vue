@@ -84,6 +84,11 @@ function continueInBrowser() {
 function openInPlayer() {
   void handoff.launch()
 }
+/** ✕ on the incompatibility notice: close it and stay on the page. */
+function dismissCompatibility() {
+  codecIssue.value = null
+  compatibilityWarning.value = false
+}
 const commentError = ref<string | null>(null) // inline error in comments section
 
 
@@ -390,12 +395,12 @@ onMounted(() => {
       <PlaybackSubscription v-if="subscriptionRequired" :poster="movie.backdrop || movie.poster || undefined" />
       <VideoPlayer ref="videoPlayer" :key="selectedSourceId || movieId" :history-session-id="historySessionId" :initial-position="resumePosition" :traffic-id="trafficId" :target-id="isAuthenticated?movie?.id:undefined" target-type="movie" v-show="shouldPlay" :requested="shouldPlay" :src="streamUrl||''" :poster="movie.backdrop || movie.poster || undefined" :title="movie.title" @ended="handlePlaybackEnded" @media-error="handleMediaError" @codec-issue="onCodecIssue">
         <template #overlay>
-          <PlaybackCompatibility v-if="codecIssue" overlay can-browse :issue="codecIssue" :busy="handoff.busy" :status="handoff.status" :error="handoff.error" :pro="handoff.pro" @desktop="openInPlayer" @browser="continueInBrowser" />
+          <PlaybackCompatibility v-if="codecIssue" overlay can-browse :issue="codecIssue" :busy="handoff.busy" :status="handoff.status" :error="handoff.error" :pro="handoff.pro" @desktop="openInPlayer" @browser="continueInBrowser" @close="dismissCompatibility" />
         </template>
       </VideoPlayer>
       <p v-if="diagnosing" role="status">Проверяем доступность фильма…</p>
       <PlaybackUnavailable v-if="unavailableWarning" />
-      <PlaybackCompatibility v-else-if="compatibilityWarning" :poster="movie.backdrop || movie.poster || undefined" :issue="compatIssue || 'codec'" :busy="handoff.busy" :status="handoff.status" :error="handoff.error" :pro="handoff.pro" @desktop="openInPlayer" />
+      <PlaybackCompatibility v-else-if="compatibilityWarning" :poster="movie.backdrop || movie.poster || undefined" :issue="compatIssue || 'codec'" :busy="handoff.busy" :status="handoff.status" :error="handoff.error" :pro="handoff.pro" @desktop="openInPlayer" @close="dismissCompatibility" />
       <p v-else-if="handoff.status && !codecIssue" class="handoff-status" role="status">{{ handoff.status }}</p>
       <DesktopPlayerModal :show="handoff.installPrompt" :can-browse="!!codecIssue" @close="handoff.closeInstall()" @browser="continueInBrowser" />
       <!-- Inline player error (non-auth failures only) -->

@@ -3,6 +3,7 @@ import {mount,flushPromises} from '@vue/test-utils'
 const api=vi.hoisted(()=>({playbackTicket:vi.fn()}))
 vi.mock('@/api/torrents',async(orig)=>({...(await orig<typeof import('@/api/torrents')>()),torrentPlaybackApi:api}))
 import Player from '@/components/TorrentPlayer.vue'
+import playerSource from '@/components/TorrentPlayer.vue?raw'
 const options={global:{stubs:{RouterLink:{template:'<a><slot /></a>'}}}}
 beforeEach(()=>{api.playbackTicket.mockReset()})
 describe('actual torrent player viewport',()=>{
@@ -135,5 +136,83 @@ describe('browser codec incompatibility notice in the player window',()=>{
   await w.find('[data-testid="codec-notice-desktop"]').trigger('click')
   expect(w.emitted('desktop')).toHaveLength(1)
   w.unmount()
+ })
+})
+
+describe('player proportions, launch screen and closing the codec notice',()=>{
+ const ticket=(url:string)=>({stream_url:url,expires_at:'2026-11-09T12:00:00Z'})
+ const css=playerSource.slice(playerSource.indexOf('<style'))
+ const rule=(selector:string)=>{const at=css.indexOf(`${selector}{`);return at<0?'':css.slice(at+selector.length+1,css.indexOf('}',at))}
+ it('keeps the browser player in a 16:9 box with a 360px floor and fits the picture inside',()=>{
+  for(const box of ['.torrent-player-state','.torrent-video-wrap']){expect(rule(box)).toContain('aspect-ratio:16/9');expect(rule(box)).toContain('min-height:360px')}
+  expect(rule('.torrent-video-wrap')).toContain('width:100%')
+  const video=rule('.torrent-video')
+  for(const part of ['width:100%','height:100%','object-fit:contain'])expect(video).toContain(part)
+  expect(video).not.toContain('max-height')
+  expect(rule('.launch-overlay')).toContain('transition:opacity .4s ease')
+  expect(rule('.launch-overlay.is-hidden')).toContain('opacity:0')
+ })
+ it('shows «Запуск воспроизведения…» in the same box until the stream plays, then fades it out',async()=>{
+  let issue!:(value:unknown)=>void
+  api.playbackTicket.mockReturnValue(new Promise(resolve=>{issue=resolve}))
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:21,ready:true,poster:'/poster.jpg'}})
+  await w.get('.browser-play').trigger('click')
+  const overlay=()=>w.get('[data-testid="launch-overlay"]')
+  expect(w.get('[data-testid="torrent-video-wrap"]').attributes('aria-busy')).toBe('true')
+  expect(w.find('video').exists()).toBe(false)
+  expect(overlay().classes()).not.toContain('is-hidden');expect(overlay().attributes('role')).toBe('status')
+  expect(overlay().text()).toContain('Запуск воспроизведения…');expect(overlay().text()).toContain('Подготовка потока…')
+  expect(overlay().find('.launch-spinner').exists()).toBe(true);expect(overlay().get('img').attributes('src')).toBe('/poster.jpg')
+  issue(ticket('https://media.example/stream/21.mp4'));await flushPromises()
+  expect(w.get('video').attributes('src')).toBe('https://media.example/stream/21.mp4')
+  expect(overlay().classes()).not.toContain('is-hidden');expect(overlay().text()).toContain('Загружаем первые секунды видео…')
+  await w.get('video').trigger('playing')
+  expect(overlay().classes()).toContain('is-hidden');expect(overlay().attributes('aria-hidden')).toBe('true')
+  expect(w.get('[data-testid="torrent-video-wrap"]').attributes('aria-busy')).toBe('false')
+  expect(w.find('.stop-btn').exists()).toBe(true);w.unmount()
+ })
+ it('drops the launch screen on a failed ticket, on «Закрыть плеер» and on a broken stream',async()=>{
+  api.playbackTicket.mockRejectedValueOnce(new Error('409'))
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:22,ready:true}})
+  await w.get('.browser-play').trigger('click');await flushPromises()
+  expect(w.find('[data-testid="launch-overlay"]').exists()).toBe(false)
+  expect(w.get('[role="alert"]').text()).toContain('Не удалось получить ссылку')
+  let issue!:(value:unknown)=>void
+  api.playbackTicket.mockReturnValueOnce(new Promise(resolve=>{issue=resolve}))
+  await w.get('.browser-play').trigger('click')
+  expect(w.find('[data-testid="launch-overlay"]').exists()).toBe(true)
+  await w.get('.stop-btn').trigger('click')
+  issue(ticket('https://media.example/stream/22.mp4'));await flushPromises()
+  // The late ticket of a cancelled start never plays.
+  expect(w.find('video').exists()).toBe(false);expect(w.find('[data-testid="launch-overlay"]').exists()).toBe(false)
+  expect(w.get('.browser-play').attributes('disabled')).toBeUndefined()
+  api.playbackTicket.mockResolvedValueOnce(ticket('https://media.example/stream/23.mp4'))
+  await w.get('.browser-play').trigger('click');await flushPromises()
+  Object.defineProperty(w.get('video').element,'error',{configurable:true,value:{code:2}})
+  await w.get('video').trigger('error')
+  expect(w.find('[data-testid="launch-overlay"]').exists()).toBe(false)
+  expect(w.get('[role="alert"]').text()).toContain('Воспроизведение прервалось');w.unmount()
+ })
+ it('closes the codec notice with ✕ before playing and over a silent paused video',async()=>{
+  api.playbackTicket.mockResolvedValue(ticket('https://media.example/stream/24.mp4'))
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:24,ready:true,choice:{source_id:'s-1'},sourceTitle:'Dune (2021) BDRip 2160p | HEVC | DTS'}})
+  const close=w.get('[data-testid="codec-notice"] [data-testid="codec-notice-close"]')
+  expect(close.attributes('aria-label')).toBe('Закрыть');expect(close.text()).toBe('✕')
+  await close.trigger('click')
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  expect(w.get('.browser-play').text()).toBe('▶ Смотреть в браузере')
+  expect(api.playbackTicket).not.toHaveBeenCalled();expect(w.emitted('desktop')).toBeUndefined()
+  await w.get('.browser-play').trigger('click');await flushPromises()
+  const pause=vi.fn(),play=vi.fn(()=>Promise.resolve());let time=600
+  Object.defineProperties(w.get('video').element,{paused:{configurable:true,get:()=>false},currentTime:{configurable:true,get:()=>time},webkitAudioDecodedByteCount:{configurable:true,value:0},pause:{configurable:true,value:pause},play:{configurable:true,value:play}})
+  await w.get('video').trigger('timeupdate')
+  time=603;await w.get('video').trigger('timeupdate')
+  time=605;await w.get('video').trigger('timeupdate')
+  expect(pause).toHaveBeenCalledTimes(1)
+  await w.get('[data-testid="codec-notice"] [data-testid="codec-notice-close"]').trigger('click')
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  expect(w.find('video').exists()).toBe(true);expect(play).not.toHaveBeenCalled()
+  time=700;await w.get('video').trigger('timeupdate')
+  expect(pause).toHaveBeenCalledTimes(1);w.unmount()
  })
 })

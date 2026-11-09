@@ -89,6 +89,32 @@ const jobText = computed(() => {
   if (j.state === 'rolled_back') return { kind: 'bad', text: `Обновление до ${j.to_version} не прошло (${reason}) и автоматически откачено на ${j.rolled_back_to || j.from_version}. Сервис работает на прежней версии.` }
   return { kind: 'bad', text: `✗ Обновление до ${j.to_version} не выполнено: ${reason} (${when(j.finished_at)}).` }
 })
+// Visual progress of an active update: each phase of the server-side job is a step.
+type Step = { percent: number; label: string }
+const QUEUED: Step = { percent: 10, label: 'Запрос принят' }
+const PREPARING: Step = { percent: 20, label: 'Подготовка' }
+const ROLLBACK: Step = { percent: 90, label: 'Откат на прежнюю версию' }
+const DONE: Step = { percent: 100, label: 'Завершено' }
+const STEPS: Record<string, Step> = {
+  claimed: PREPARING,
+  precheck: { percent: 35, label: 'Проверка состояния' },
+  pull: { percent: 55, label: 'Загрузка образа' },
+  backup: { percent: 70, label: 'Резервная копия' },
+  start: { percent: 85, label: 'Перезапуск' },
+  health: { percent: 95, label: 'Проверка работоспособности' },
+}
+// A job seen running on this page ends on the full bar when it succeeds.
+const watched = ref('')
+const progress = computed<(Step & { kind: 'run' | 'ok' | 'warn' }) | null>(() => {
+  const j = job.value
+  if (!j) return null
+  if (j.state === 'succeeded') return watched.value === j.job_id ? { ...DONE, kind: 'ok' } : null
+  if (j.state === 'queued') return { ...QUEUED, kind: 'run' }
+  if (j.state !== 'running') return null
+  if (j.phase === 'rollback') return { ...ROLLBACK, kind: 'warn' }
+  return { ...(STEPS[j.phase || ''] ?? PREPARING), kind: 'run' }
+})
+watch(job, (j) => { if (j && ACTIVE.includes(j.state)) watched.value = j.job_id })
 
 function stop() { if (timer) clearTimeout(timer); timer = undefined }
 async function load(refresh = false) {
@@ -161,6 +187,10 @@ onBeforeUnmount(() => { alive = false; ++generation; stop() })
     <p :class="['sv-state', indicator.kind]" role="status">{{ indicator.text }}</p>
     <p v-if="latest && latest.checked_at" class="sv-meta">Последняя стабильная версия на GitHub проверена {{ when(latest.checked_at) }}<span v-if="latest.error_code === 'release_check_failed'"> · последняя проверка не удалась, показан прежний результат</span></p>
     <p v-if="jobText" :class="['sv-job', jobText.kind]" role="status">{{ jobText.text }}</p>
+    <div v-if="progress" :class="['sv-progress', progress.kind]" role="progressbar" aria-label="Ход обновления" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progress.percent" :aria-valuetext="`${progress.percent}% · ${progress.label}`" data-testid="sv-progress">
+      <div class="sv-progress-head"><span>{{ progress.label }}</span><span class="sv-progress-value">{{ progress.percent }}%</span></div>
+      <div class="sv-progress-track"><div class="sv-progress-bar" :style="{ width: `${progress.percent}%` }"></div></div>
+    </div>
     <p v-if="error" class="sv-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="sv-notice" role="status">{{ notice }}</p>
     <p v-if="item?.update_available && item?.update_allowed === false" class="sv-meta">Обновление этой ноды сейчас недоступно: нет свежих данных от ноды или приватного адреса управления.</p>
@@ -174,5 +204,5 @@ onBeforeUnmount(() => { alive = false; ++generation; stop() })
 </template>
 
 <style scoped>
-.sv{margin:16px 0;padding:16px;border:1px solid var(--ui-border,#39404b);border-radius:8px;background:var(--ui-surface-2,rgba(255,255,255,.02));color:var(--ui-text,#f5f6f8);font-size:14px;line-height:22px;min-width:0}.sv *{box-sizing:border-box}.sv-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.sv h3{margin:0;font-size:16px}.sv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}.sv-grid dt{color:var(--ui-text-muted,#b9c1cf);font-size:13px}.sv-grid dd{margin:2px 0 0;font-weight:600;overflow-wrap:anywhere}.sv-grid a{font-weight:400;color:#8fc3ff;margin-left:6px}.sv p{margin:8px 0}.sv-meta{color:var(--ui-text-muted,#b9c1cf);font-size:13px}.sv-state{font-weight:600}.sv-state.ok,.sv-job.ok{color:#a8e8bc}.sv-state.update{color:#f6cf4b}.sv-state.unknown{color:var(--ui-text-muted,#b9c1cf)}.sv-job.run{color:#8fc3ff}.sv-job.bad,.sv-error{color:#ffb6af}.sv-error{border-left:3px solid #ff8a80;padding-left:12px}.sv-notice{color:#a8e8bc;border-left:3px solid #71ce90;padding-left:12px}.sv button{font:inherit;border:1px solid var(--ui-border,#4e5869);border-radius:8px;background:var(--ui-surface,#171d27);color:var(--ui-text,#f5f6f8);min-height:44px;padding:8px 12px;cursor:pointer}.sv button:disabled{opacity:.55;cursor:wait}.sv .primary{background:#f6cf4b;border-color:#f6cf4b;color:#171717}.sv :focus-visible{outline:2px solid #f6cf4b;outline-offset:3px}.sv-confirm{margin-top:12px;padding-top:12px;border-top:1px solid var(--ui-border,#39404b)}.sv-actions{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:600px){.sv-grid{grid-template-columns:minmax(0,1fr)}.sv-actions button,.sv>.primary{width:100%}}
+.sv{margin:16px 0;padding:16px;border:1px solid var(--ui-border,#39404b);border-radius:8px;background:var(--ui-surface-2,rgba(255,255,255,.02));color:var(--ui-text,#f5f6f8);font-size:14px;line-height:22px;min-width:0}.sv *{box-sizing:border-box}.sv-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.sv h3{margin:0;font-size:16px}.sv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}.sv-grid dt{color:var(--ui-text-muted,#b9c1cf);font-size:13px}.sv-grid dd{margin:2px 0 0;font-weight:600;overflow-wrap:anywhere}.sv-grid a{font-weight:400;color:#8fc3ff;margin-left:6px}.sv p{margin:8px 0}.sv-meta{color:var(--ui-text-muted,#b9c1cf);font-size:13px}.sv-state{font-weight:600}.sv-state.ok,.sv-job.ok{color:#a8e8bc}.sv-state.update{color:#f6cf4b}.sv-state.unknown{color:var(--ui-text-muted,#b9c1cf)}.sv-job.run{color:#8fc3ff}.sv-job.bad,.sv-error{color:#ffb6af}.sv-error{border-left:3px solid #ff8a80;padding-left:12px}.sv-notice{color:#a8e8bc;border-left:3px solid #71ce90;padding-left:12px}.sv button{font:inherit;border:1px solid var(--ui-border,#4e5869);border-radius:8px;background:var(--ui-surface,#171d27);color:var(--ui-text,#f5f6f8);min-height:44px;padding:8px 12px;cursor:pointer}.sv button:disabled{opacity:.55;cursor:wait}.sv .primary{background:#f6cf4b;border-color:#f6cf4b;color:#171717}.sv :focus-visible{outline:2px solid #f6cf4b;outline-offset:3px}.sv-confirm{margin-top:12px;padding-top:12px;border-top:1px solid var(--ui-border,#39404b)}.sv-actions{display:flex;gap:8px;flex-wrap:wrap}.sv-progress{margin:12px 0}.sv-progress-head{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--ui-text-muted,#b9c1cf)}.sv-progress-value{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ui-text,#f5f6f8)}.sv-progress-track{position:relative;height:10px;margin-top:6px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.sv-progress-bar{position:relative;height:100%;min-width:4px;border-radius:inherit;background:linear-gradient(90deg,#4f8fe8,#8fc3ff);transition:width .6s ease;overflow:hidden}.sv-progress-bar:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);transform:translateX(-100%);animation:sv-shine 1.6s ease-in-out infinite}.sv-progress.ok .sv-progress-bar{background:linear-gradient(90deg,#3fae6a,#a8e8bc)}.sv-progress.ok .sv-progress-bar:after{display:none}.sv-progress.warn .sv-progress-bar{background:linear-gradient(90deg,#d08a2b,#f6cf4b)}@keyframes sv-shine{to{transform:translateX(100%)}}@media (prefers-reduced-motion:reduce){.sv-progress-bar{transition:none}.sv-progress-bar:after{animation:none}}@media(max-width:600px){.sv-grid{grid-template-columns:minmax(0,1fr)}.sv-actions button,.sv>.primary{width:100%}}
 </style>

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { apiClient } from '@/api/client'
 import type { Comment } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { Check, X, Edit2, Trash2 } from 'lucide-vue-next'
+import UserAvatar from '@/components/UserAvatar.vue'
 
 const props = defineProps<{
   targetId: string
@@ -15,8 +16,10 @@ const authStore = useAuthStore()
 const { isAuthenticated, user: currentUser } = authStore
 
 // Telegram-only accounts may intentionally have no public username.
-function avatarInitial(name?: string | null): string {
-  return Array.from(name?.trim() || '?')[0]!.toUpperCase()
+function authorName(user?: { username?: string | null; display_name?: string | null } | null): string {
+  const shown = user?.display_name?.trim()
+  if (shown) return shown
+  return user?.username ? `@${user.username}` : ''
 }
 
 const comments = ref<Comment[]>([])
@@ -25,6 +28,29 @@ const editingCommentId = ref<string | null>(null)
 const editCommentText = ref('')
 const commentError = ref<string | null>(null)
 const isLoading = ref(true)
+
+// Anti-spam: one comment per COMMENT_COOLDOWN_MS from this block. The state is
+// per instance, so the film and series blocks never hold each other up.
+const COMMENT_COOLDOWN_MS = 4000
+const isPosting = ref(false)
+const cooldownLeft = ref(0)
+let cooldownUntil = 0
+let cooldownTimer: ReturnType<typeof setInterval> | undefined
+
+function tickCooldown() {
+  const left = cooldownUntil - Date.now()
+  cooldownLeft.value = left > 0 ? Math.ceil(left / 1000) : 0
+  if (left <= 0 && cooldownTimer !== undefined) {
+    clearInterval(cooldownTimer)
+    cooldownTimer = undefined
+  }
+}
+
+function startCooldown() {
+  cooldownUntil = Date.now() + COMMENT_COOLDOWN_MS
+  if (cooldownTimer === undefined) cooldownTimer = setInterval(tickCooldown, 250)
+  tickCooldown()
+}
 
 async function fetchComments() {
   try {
@@ -38,15 +64,19 @@ async function fetchComments() {
 }
 
 async function postComment() {
-  if (!newComment.value.trim()) return
+  if (!newComment.value.trim() || isPosting.value || cooldownLeft.value > 0) return
+  isPosting.value = true
   commentError.value = null
   try {
     const comment = await apiClient.postComment(props.targetId, props.targetType, newComment.value)
     comments.value.unshift(comment)
     newComment.value = ''
+    startCooldown()
   } catch (err: any) {
     console.error('Failed to post comment:', err)
     commentError.value = err?.message || 'Failed to post comment'
+  } finally {
+    isPosting.value = false
   }
 }
 
@@ -94,6 +124,10 @@ watch(() => props.targetId, () => {
   isLoading.value = true
   fetchComments()
 })
+
+onBeforeUnmount(() => {
+  if (cooldownTimer !== undefined) clearInterval(cooldownTimer)
+})
 </script>
 
 <template>
@@ -102,17 +136,18 @@ watch(() => props.targetId, () => {
 
     <!-- Add Comment Box -->
     <div class="comment-input-area" v-if="isAuthenticated">
-      <div class="comment-avatar me">{{ avatarInitial(currentUser?.display_name || currentUser?.username) }}</div>
+      <UserAvatar class="comment-avatar me" :user="currentUser" :size="36" />
       <div class="comment-form">
         <input
           type="text"
           v-model="newComment"
           :placeholder="t('Add a comment... (emojis supported 😊)')"
           class="comment-input"
+          maxlength="1000"
           @keyup.enter="postComment"
         />
         <div class="comment-actions" v-if="newComment.trim()">
-          <button class="post-btn" @click="postComment">{{ t("Comment") }}</button>
+          <button class="post-btn" :disabled="isPosting || cooldownLeft > 0" :aria-busy="isPosting" @click="postComment">{{ t("Comment") }}<span v-if="cooldownLeft > 0" class="post-cooldown" aria-hidden="true"> · {{ cooldownLeft }}</span></button>
         </div>
       </div>
     </div>
@@ -136,10 +171,10 @@ watch(() => props.targetId, () => {
       </template>
       <template v-else>
         <div v-for="comment in comments" :key="comment.id" class="comment-item">
-          <div class="comment-avatar">{{ avatarInitial(comment.user.username) }}</div>
+          <UserAvatar class="comment-avatar" :user="comment.user" :size="36" />
           <div class="comment-body" v-if="editingCommentId !== comment.id">
             <div class="comment-header">
-              <span class="comment-author">@{{ comment.user.username }}</span>
+              <span v-if="authorName(comment.user)" class="comment-author">{{ authorName(comment.user) }}</span>
               <span class="comment-date">{{ new Date(comment.created_at).toLocaleDateString() }}</span>
             </div>
             <div class="comment-text">{{ comment.text }}</div>
@@ -184,22 +219,12 @@ watch(() => props.targetId, () => {
   margin-bottom: 32px;
 }
 
+/* Layout box only: <UserAvatar> draws the picture or the initial itself. */
 .comment-avatar {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--ui-raised);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  color: var(--ui-text);
   flex-shrink: 0;
-}
-
-.comment-avatar.me {
-  background: var(--ui-primary);
-  color: var(--ui-on-primary);
 }
 
 .comment-form {
@@ -214,15 +239,26 @@ watch(() => props.targetId, () => {
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--ui-control);
+  border-radius: 0;
+  box-shadow: none;
   padding: 8px 0;
   color: var(--ui-text);
   font-size: 1.1rem;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
-.comment-input:focus {
+/* Calm states: no glow on hover, a thin accent underline on focus. */
+.comment-input:hover {
+  border-bottom-color: var(--ui-muted);
+  box-shadow: none;
+}
+
+.comment-input:focus,
+.comment-input:focus-visible {
   outline: none;
-  border-bottom-color: var(--ui-control);
+  border-bottom-color: var(--ui-primary);
+  box-shadow: 0 1px 0 0 var(--ui-primary);
+  box-shadow: 0 1px 0 0 color-mix(in srgb, var(--ui-primary) 45%, transparent);
 }
 
 .comment-actions {
@@ -244,6 +280,15 @@ watch(() => props.targetId, () => {
 .post-btn:hover {
   background: var(--ui-primary);
   color: var(--ui-on-primary);
+}
+
+.post-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.post-cooldown {
+  font-variant-numeric: tabular-nums;
 }
 
 .comments-list {

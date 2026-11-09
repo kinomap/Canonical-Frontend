@@ -25,7 +25,7 @@ const form = { revision: 'revision', unsupported: [], fields: [
 function setup() {
  const requests = [], hooks = {}, response = { error: null, wait: null }
  const axios = {
-  get: async (url) => { requests.push({ method: 'GET', url }); if (url.endsWith('/config')) return { data: structuredClone(form) }; if (url.endsWith('/indexers')) return { data: { indexers: structuredClone(response.indexers || [row]), observed_at: '2026-11-01T00:00:00Z' } }; return { data: { instances: [{ id: 'primary', name: 'Shared' }] } } },
+  get: async (url) => { requests.push({ method: 'GET', url }); if (url.endsWith('/config')) return { data: structuredClone(response.form || form) }; if (url.endsWith('/indexers')) return { data: { indexers: structuredClone(response.indexers || [row]), observed_at: '2026-11-01T00:00:00Z' } }; return { data: { instances: [{ id: 'primary', name: 'Shared' }] } } },
   post: async (url, body) => { requests.push({ method: 'POST', url, body: structuredClone(body) }); if (response.wait) await response.wait; if (response.error) throw response.error; if (url.endsWith('/check')) return { data: { check: structuredClone(response.check || null), throttled: false } }; return { data: structuredClone(response.save || { ok: true }) } },
   delete: async (url, config) => { requests.push({ method: 'DELETE', url, body: config.data }); return { data: { ok: true } } },
  }
@@ -264,4 +264,28 @@ test('a tracker checked meanwhile is not searched again by the background pass',
  const manual = state.check(state.indexers.value[1], 'manual')
  resolve(); await manual; await settle(); await settle()
  assert.deepEqual(checks(requests).map(x => [x.url.split('/').at(-2), x.body.source]), [['a', 'auto'], ['b', 'manual']])
+})
+test('cookie-only tracker (NoNaMe ClubL): Jackett notes stay text, a Cookie hint is shown, no orphaned «Show password»', async () => {
+ const { state, requests, response } = setup()
+ response.form = { revision: 'cookie-revision', unsupported: [], fields: [
+  { id: 'sitelink', label: 'Site Link', type: 'inputstring', secret: false, saved: true, value: 'https://nnmclub.to/' },
+  { id: 'info_cookie', label: 'How to get the Cookie', type: 'displayinfo', value: '• Login to this tracker with your browser\n• Open the DevTools panel by pressing F12' },
+  { id: 'cookie', label: 'Cookie', type: 'inputstring', secret: true, saved: false, value: '' },
+  { id: 'showpassword', label: 'Show password', type: 'inputbool', value: false }] }
+ await state.open(row)
+ assert.equal(state.cookieOnly.value, true); assert.equal(state.hasPassword.value, false)
+ assert.deepEqual(state.form.value.fields.filter(f => !state.hiddenField(f)).map(f => f.id), ['sitelink', 'info_cookie', 'cookie'])
+ assert.equal('info_cookie' in state.draft.value, false)
+ state.draft.value.cookie = 'uid=1; pass=2'; await state.save()
+ assert.deepEqual(requests.find(x => x.method === 'POST').body.changes, { cookie: { mode: 'replace', value: 'uid=1; pass=2' } })
+ assert.match(source, /Этот трекер использует авторизацию через Cookie \(без логина и пароля\)\. Войдите на сайт трекера в браузере, скопируйте Cookie из инструментов разработчика \(F12\) и вставьте в поле Cookie\./)
+ assert.match(descriptor.template.content, /v-if="isNote\(field\)" class="jackett-info" role="note"/)
+ assert.match(descriptor.template.content, /v-else-if="!hiddenField\(field\)" class="jackett-field"/)
+})
+test('login trackers keep «Show password» and get no Cookie hint', async () => {
+ const { state, response } = setup()
+ response.form = { ...structuredClone(form), fields: [...structuredClone(form.fields), { id: 'showpassword', label: 'Show password', type: 'inputbool', value: false }] }
+ await state.open(row)
+ assert.equal(state.cookieOnly.value, false); assert.equal(state.hasPassword.value, true)
+ assert.equal(state.hiddenField(state.form.value.fields.at(-1)), false)
 })

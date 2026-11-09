@@ -2,7 +2,8 @@
 /**
  * The incompatibility notice shown in the player window: the browser cannot
  * play this film's codecs, KINOSOTA Player can. «Продолжить в KINOSOTA Player»
- * hands the film over to the installed app, which opens by itself.
+ * hands the film over to the installed app, which opens by itself; ✕ closes
+ * the notice (the page decides what stays on screen).
  */
 import { computed } from 'vue'
 import type { CompatibilityIssue } from '@/lib/browserCodecs'
@@ -21,7 +22,7 @@ const props = withDefaults(defineProps<{
   /** false: KINOSOTA Player needs PRO for this account; null: unknown. */
   pro?: boolean | null
 }>(), { poster: undefined, codecs: '', issue: null, overlay: false, canBrowse: false, busy: false, status: '', error: '', pro: null })
-const emit = defineEmits<{ desktop: []; browser: [] }>()
+const emit = defineEmits<{ desktop: []; browser: []; close: [] }>()
 
 const lead = computed(() => {
   if (props.codecs) return `Этот фильм записан кодеками, которые ваш браузер не воспроизводит: ${props.codecs}.`
@@ -57,6 +58,7 @@ const browseLabel = computed(() => {
    <p v-if="error" class="compatibility-error" role="alert">{{ error }}</p>
    <p class="compatibility-links"><router-link to="/profile#desktop-player">Скачать KINOSOTA Player</router-link><span aria-hidden="true">·</span><router-link to="/player">Подробнее о KINOSOTA Player</router-link></p>
   </div>
+  <button type="button" class="compatibility-close" aria-label="Закрыть" title="Закрыть" data-testid="codec-notice-close" @click="emit('close')">✕</button>
  </section>
 </template>
 <style scoped>
@@ -82,5 +84,8 @@ const browseLabel = computed(() => {
 .compatibility .compatibility-note{font-size:14px}
 .compatibility-links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;font-size:14px!important}
 .compatibility-links a{color:#ffce40;min-height:32px;display:inline-flex;align-items:center}
+.compatibility-close{position:absolute;top:12px;right:12px;z-index:1;display:grid;place-items:center;width:36px;height:36px;padding:0;box-sizing:border-box;border:1px solid rgba(255,255,255,.28);border-radius:50%;background:rgba(5,7,9,.55);color:#fff;font:inherit;font-size:16px;line-height:1;cursor:pointer;transition:background .2s ease,border-color .2s ease}
+.compatibility-close:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.6)}
+.compatibility-close:focus-visible{outline:2px solid #fff;outline-offset:2px}
 @media(max-width:600px){.compatibility{aspect-ratio:auto;min-height:380px;padding:24px 16px}}
 </style>
