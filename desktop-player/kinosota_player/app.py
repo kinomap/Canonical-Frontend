@@ -20,6 +20,7 @@ from .settings import SettingsDrawer
 from .updater import Updater
 from .torrents import TorrentPage, audio_args, media_title_args
 from .deeplink import parse_launch
+from .direct import DirectPlayer, launch_args, stream_of
 from .suggest import SuggestPopup
 ASSET=Path(__file__).parent/'assets'/'drone.png'
 STYLE=PREMIUM_STYLE
@@ -71,7 +72,7 @@ class Window(QMainWindow):
         self.preferences=preferences or Preferences();self.language=self.preferences.get("interface_language");self.title_language=self.preferences.get("title_language");self.bound=[];self.account={}
         self.pool=QThreadPool(self);self.pool.setMaxThreadCount(3);self.jobs=set();self.session='';self.playing_movie='';self.closed=False;self.epoch=0;self.play_generation=0;self.search_generation=0;self.search_running=False;self.search_queued=False;self.pending_stops=[]
         self.page=1;self.query='';self.total_pages=1;self.pair=None;self.pair_until=0;self.pending_poll=False;self.pending_beat=False;self.busy=False
-        self.torrent_playing=False;self.pending_launch=''
+        self.torrent_playing=False;self.pending_launch='';self.direct_meta=None
         # 0.1.8: a torrent start is watched (slow-start hint) and a dropped cold stream is reopened twice.
         self.torrent_starting=False;self.torrent_choice=None;self.torrent_started=0.0;self.torrent_attempt=0
         # «Главная» catalogue: section, cached totals of one filter signature, genre lists, bookmarks in flight.
@@ -433,7 +434,7 @@ class Window(QMainWindow):
                 self.api.stop(sid)
                 if sid in self.pending_stops:self.pending_stops.remove(sid)
     def stop(self,release=True):
-        self.play_generation+=1;self.busy=False;self.torrent_playing=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.pending_beat=False
+        self.play_generation+=1;self.busy=False;self.torrent_playing=False;self.torrent_starting=False;self.direct_meta=None;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.pending_beat=False
         self.lease_timer.stop();sid=self.session;self.session='';self.playing_movie='';self.engine.stop()
         if sid:self.pending_stops.append(sid)
         if release and self.pending_stops:self.work(self.release_pending,fail=lambda e:None)
@@ -449,9 +450,14 @@ class Window(QMainWindow):
         self.work(lambda:self.api.heartbeat(sid),done,fail)
     def check_process(self):
         if self.torrent_playing and not self.session and not self.engine.alive():
-            code=self.engine.exit_code();choice,attempt,started=self.torrent_choice,self.torrent_attempt,self.torrent_started;self.stop()
-            # 0.1.8: a cold torrent stream can drop mpv's first connection: reopen it twice within two minutes.
-            if code not in (None,0,4) and choice and attempt<2 and time.monotonic()-started<120:self.play_torrent(choice,force=True,attempt=attempt+1);return
+            code=self.engine.exit_code();choice,attempt,started=self.torrent_choice,self.torrent_attempt,self.torrent_started;meta=self.direct_meta;self.stop()
+            # Cold streams may drop mpv's first connection; reuse the same scoped URL at most twice.
+            if code not in (None,0,4) and attempt<2 and time.monotonic()-started<120:
+                if meta:self.play_stream(meta,attempt+1)
+                elif choice:self.play_torrent(choice,force=True,attempt=attempt+1)
+                else:self.message.setText('Не удалось воспроизвести видео. Проверьте соединение и повторите позднее.')
+                return
+            if meta and code not in (None,0):self.surface()
             self.message.setText('Воспроизведение завершено.' if code in (None,0) else 'Не удалось воспроизвести видео. Проверьте соединение и повторите позднее.');return
         if self.session and not self.engine.alive():
             code=self.engine.exit_code();movie=self.playing_movie
@@ -529,13 +535,44 @@ class Window(QMainWindow):
         self.work(start,done,fail)
     def slow_start(self):
         if self.torrent_starting:self.message.setText('Подготавливаем поток… Первый запуск может занять до минуты.')
+    def play_stream(self,meta,attempt=0):
+        """Start the ticket returned by /desktop-launch/{id}/open without signing in or requesting another ticket."""
+        url=stream_of(meta)
+        if not url:
+            self.launch_opened(meta);return
+        self.stop(release=False);self.busy=True;self.play_button.setEnabled(False)
+        title=str(meta.get('title') or 'KINOSOTA')
+        self.message.setText('Переподключаемся…' if attempt else 'Открываем фильм…')
+        self.torrent_starting=True;self.start_timer.start()
+        epoch=self.epoch;generation=self.play_generation
+        def cancelled():return self.closed or epoch!=self.epoch or generation!=self.play_generation
+        def start():
+            if hasattr(self.api,'warm_stream'):self.api.warm_stream(url,cancelled)
+            if cancelled():raise RuntimeError('Cancelled')
+            self.engine.start(url,extra_args=launch_args(meta))
+            if cancelled():self.engine.stop();raise RuntimeError('Cancelled')
+            return True
+        def done(_):
+            if generation!=self.play_generation:return
+            self.busy=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()))
+            self.torrent_playing=True;self.torrent_choice=None;self.direct_meta=dict(meta);self.torrent_started=time.monotonic();self.torrent_attempt=attempt
+            self.message.setText('Воспроизводится: '+title)
+        def fail(error):
+            if generation==self.play_generation:
+                self.busy=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()))
+                self.direct_meta=None;self.surface();self.message.setText(DirectPlayer._explain(error))
+        self.work(start,done,fail)
+    def surface(self):
+        """Bring the full app forward only when an error or legacy fallback needs attention."""
+        if self.isMinimized():self.showNormal()
+        else:self.show()
+        self.raise_();self.activateWindow()
     def open_link(self,link):
         """kinosota://watch?launch=<uuid> from the website «▶ Смотреть» button."""
         if self.closed:return
-        if self.isMinimized():self.showNormal()
-        self.raise_();self.activateWindow()
         launch=parse_launch(link)
-        if not launch:self.message.setText('Ссылка из браузера не распознана. Нажмите «Смотреть» на сайте ещё раз.');return
+        if not launch:
+            self.surface();self.message.setText('Ссылка из браузера не распознана. Нажмите «Смотреть» на сайте ещё раз.');return
         self.pending_launch=launch
         self.redeem_launch()
     def redeem_launch(self):
@@ -543,42 +580,102 @@ class Window(QMainWindow):
         if not launch:return
         self.message.setText('Открываем фильм с сайта…')
         def done(meta):
-            if not isinstance(meta,dict):
-                self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
-            movie_id=meta.get('movie_id')
-            is_catalog_movie=isinstance(movie_id,str) and bool(movie_id.strip()) and meta.get('kind')=='movie'
-            is_torrent=meta.get('kind') in ('movie','tv') and type(meta.get('tmdb_id')) is int
-            if not is_catalog_movie and not is_torrent:
-                self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
-
-            # A valid website launch is the authorization grant. Replace an absent,
-            # expired or stale local session and persist only through the OS vault.
-            token=meta.get('access_token')
-            if isinstance(token,str) and token.strip():
-                self.api.token=token
-                self.remember.setChecked(True)
-                if self.pages.currentIndex()==0:
-                    self.signed_in({})
-                else:
-                    self.vault.save(token)
-
-            if is_catalog_movie:
-                # A KINOSOTA film the browser could not decode: same lease as a catalogue card.
-                self.start_movie({'id':movie_id.strip(),**{key:meta.get(key) for key in ('title','original_title','title_en','year','poster')}},force=True);return
-            prefs={key:meta.get(key) for key in ('source_id','season','episode','audio_lang','audio_track')}
-            section='series' if meta['kind']=='tv' else 'torrents'
-            self.show_torrents(section);self.torrents.back_caption=dict(NAV).get(section);self.torrents.open_title(meta,prefs);self.torrents.return_to=lambda:self.show_section(section)
-            self.play_torrent({'kind':meta['kind'],'tmdb_id':meta['tmdb_id'],**prefs,'title':movie_title(meta,self.title_language)},force=True)
+            self.launch_opened(meta)
         def fail(error):
+            self.surface()
             if isinstance(error,ApiError) and error.status==401:self.pending_launch=launch;self.show_error(error)
             elif isinstance(error,ApiError) and error.status==404 and 'недоступен' in str(error):self.message.setText(str(error))
             elif isinstance(error,ApiError) and error.status==404:self.message.setText('Этот запуск создан другим аккаунтом. Войдите в приложение тем же аккаунтом, что и на сайте.')
             elif isinstance(error,ApiError) and error.status==410:self.message.setText('Ссылка устарела. Нажмите «Смотреть» на сайте ещё раз.')
+            elif isinstance(error,ApiError) and error.status==403:self.message.setText('Для просмотра нужна действующая подписка PRO.')
+            elif isinstance(error,ApiError) and error.status==409:self.message.setText('Источник ещё готовится. Попробуйте открыть фильм чуть позже.')
             else:self.show_error(error)
         self.work(lambda:self.api.open_launch(launch),done,fail)
+    def launch_opened(self,meta):
+        if not isinstance(meta,dict):
+            self.surface();self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
+        # New backends return the stream ticket with the single-use grant: no account/page/ticket round trip.
+        if stream_of(meta):
+            self.play_stream(meta,0);return
+        self.surface()
+        movie_id=meta.get('movie_id')
+        is_catalog_movie=isinstance(movie_id,str) and bool(movie_id.strip()) and meta.get('kind')=='movie'
+        is_torrent=meta.get('kind') in ('movie','tv') and type(meta.get('tmdb_id')) is int
+        if not is_catalog_movie and not is_torrent:
+            self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
+
+        # A valid website launch is the authorization grant. Replace an absent,
+        # expired or stale local session and persist only through the OS vault.
+        token=meta.get('access_token')
+        if isinstance(token,str) and token.strip():
+            self.api.token=token
+            self.remember.setChecked(True)
+            if self.pages.currentIndex()==0:
+                self.signed_in({})
+            else:
+                self.vault.save(token)
+
+        if is_catalog_movie:
+            # A KINOSOTA film the browser could not decode: same lease as a catalogue card.
+            self.start_movie({'id':movie_id.strip(),**{key:meta.get(key) for key in ('title','original_title','title_en','year','poster')}},force=True);return
+        prefs={key:meta.get(key) for key in ('source_id','season','episode','audio_lang','audio_track')}
+        section='series' if meta['kind']=='tv' else 'torrents'
+        self.show_torrents(section);self.torrents.back_caption=dict(NAV).get(section);self.torrents.open_title(meta,prefs);self.torrents.return_to=lambda:self.show_section(section)
+        self.play_torrent({'kind':meta['kind'],'tmdb_id':meta['tmdb_id'],**prefs,'title':movie_title(meta,self.title_language)},force=True)
     def closeEvent(self,event):
         self.updater.shutdown();self.search.removeEventFilter(self);self.suggest.dismiss();self.drawer.dismiss();self.torrents.shutdown();self.filters.genre_timer.stop()
         self.search_timer.stop();self.results.posters.clear();self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close();event.accept()
+
+def run(app,instance,link):
+    """Route cold website launches through DirectPlayer; keep the catalogue lazy for macOS FileOpen."""
+    from .deeplink import LinkEvents, parse_launch
+    window=None;direct=None
+    create_window_timer=QTimer(app);create_window_timer.setSingleShot(True)
+
+    def create_window():
+        nonlocal window
+        if window is not None or direct is not None:return
+        app.setQuitOnLastWindowClosed(True)
+        window=Window(restore=True);window.show()
+
+    def ensure_direct():
+        nonlocal direct
+        if direct is None:
+            app.setQuitOnLastWindowClosed(False)
+            direct=DirectPlayer()
+            direct.fallback.connect(open_fallback)
+            direct.finished.connect(lambda code: app.exit(code) if window is None else None)
+            app.aboutToQuit.connect(direct.shutdown)
+        return direct
+
+    def open_fallback(meta):
+        nonlocal window
+        if window is not None:return
+        if direct is not None:direct.retire()
+        app.setQuitOnLastWindowClosed(True)
+        window=Window(restore=True);window.show();window.launch_opened(meta)
+
+    def receive_link(value):
+        if window is not None:
+            window.open_link(value);return
+        if not parse_launch(value):
+            # Ignore malformed custom-scheme payloads without redeeming them.
+            if window is None and direct is None:
+                create_window()
+            return
+        create_window_timer.stop()
+        ensure_direct().open_link(value)
+
+    instance.linkReceived.connect(receive_link)
+    app.installEventFilter(LinkEvents(receive_link,app))
+    if link:
+        receive_link(link)
+    else:
+        delay=400 if sys.platform=='darwin' else 0
+        create_window_timer.timeout.connect(create_window)
+        create_window_timer.start(delay)
+    return app.exec()
+
 
 def main():
     if '--version' in sys.argv:
@@ -588,38 +685,27 @@ def main():
         from .installation import show_uninstall
         show_uninstall(language=Preferences().get('interface_language'));return 0
     smoke='--smoke-test' in sys.argv or '--playback-smoke-fixture' in sys.argv
-    instance=None;link=None
-    if not smoke:
-        from .deeplink import Instance, LinkEvents, find_link, forward
-        link=find_link(sys.argv)
-        # A second process started by the browser hands the link to the open window.
-        if link and forward(link):return 0
-        instance=Instance(app);instance.listen()
-    window=Window(restore=not smoke);window.show()
-    if instance is not None:
-        instance.linkReceived.connect(window.open_link)
-        app.installEventFilter(LinkEvents(window.open_link,app))
-        if link:QTimer.singleShot(0,lambda:window.open_link(link))
-    if '--playback-smoke-fixture' in sys.argv:
-        from .smoke import run_playback_smoke
-        try:
-            assert not window.windowIcon().isNull()
-            assert window.pages.currentIndex()==0
-            fixture=sys.argv[sys.argv.index('--playback-smoke-fixture')+1]
-            report=sys.argv[sys.argv.index('--playback-smoke-report')+1]
-            run_playback_smoke(window.engine,fixture,report)
-            return 0
-        except Exception as error:
-            import json,traceback
-            failure={'status':'FAIL','error_type':type(error).__name__,'detail':str(error),'traceback':traceback.format_exc()}
-            if '--playback-smoke-report' in sys.argv:
-                destination=Path(sys.argv[sys.argv.index('--playback-smoke-report')+1])
-                destination.parent.mkdir(parents=True,exist_ok=True)
-                destination.write_text(json.dumps(failure,indent=2),encoding='utf-8')
-            if sys.stderr:traceback.print_exc()
-            return 1
-        finally:window.close()
     if smoke:
+        window=Window(restore=False);window.show()
+        if '--playback-smoke-fixture' in sys.argv:
+            from .smoke import run_playback_smoke
+            try:
+                assert not window.windowIcon().isNull()
+                assert window.pages.currentIndex()==0
+                fixture=sys.argv[sys.argv.index('--playback-smoke-fixture')+1]
+                report=sys.argv[sys.argv.index('--playback-smoke-report')+1]
+                run_playback_smoke(window.engine,fixture,report)
+                return 0
+            except Exception as error:
+                import json,traceback
+                failure={'status':'FAIL','error_type':type(error).__name__,'detail':str(error),'traceback':traceback.format_exc()}
+                if '--playback-smoke-report' in sys.argv:
+                    destination=Path(sys.argv[sys.argv.index('--playback-smoke-report')+1])
+                    destination.parent.mkdir(parents=True,exist_ok=True)
+                    destination.write_text(json.dumps(failure,indent=2),encoding='utf-8')
+                if sys.stderr:traceback.print_exc()
+                return 1
+            finally:window.close()
         try:
             assert not window.windowIcon().isNull(), 'Application icon is missing'
             assert window.pages.currentIndex()==0, 'Smoke test must not log in'
@@ -630,5 +716,10 @@ def main():
         except Exception:
             window.close();return 1
         QTimer.singleShot(300,window.close)
-    return app.exec()
+        return app.exec()
+    from .deeplink import Instance, find_link, forward
+    link=find_link(sys.argv)
+    if link and forward(link):return 0
+    instance=Instance(app);instance.listen()
+    return run(app,instance,link)
 if __name__=='__main__':raise SystemExit(main())

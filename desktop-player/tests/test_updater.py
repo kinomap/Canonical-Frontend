@@ -1,4 +1,4 @@
-"""0.1.9: updating the installed player from Settings → «О приложении», over the current copy."""
+"""0.2.0: updating the installed player from Settings → «О приложении», over the current copy."""
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import hashlib, sys
@@ -26,7 +26,7 @@ def releases(version='0.2.0', paid=True, ready=True, sha=SHA, architecture='amd6
 
 
 def test_versions_compare_numerically_and_only_this_computer_build_counts():
-    assert __version__ == '0.1.9' and version_tuple('0.1.10') == (0, 1, 10) and version_tuple('v1.0') is None
+    assert __version__ == '0.2.0' and version_tuple('0.1.10') == (0, 1, 10) and version_tuple('v1.0') is None
     assert is_newer('0.1.10', '0.1.9') and not is_newer('0.1.9', '0.1.9') and not is_newer('0.1.8', '0.1.9')
     assert not is_newer(None) and not is_newer('0.2', 'garbage')
     assert fits_machine('amd64', 'x86_64') and fits_machine('arm64', 'aarch64') and not fits_machine('arm64', 'x86_64')
@@ -73,7 +73,7 @@ def test_download_streams_the_build_checks_its_checksum_and_never_leaves_a_parti
     request = seen[-1]
     assert request.url == 'https://watch.scenrix.com/api/v1/desktop/download/linux'
     assert request.headers['Authorization'] == 'Bearer session-token'
-    assert request.headers['User-Agent'] == 'KINOSOTA-Player/0.1.9'
+    assert request.headers['User-Agent'] == 'KINOSOTA-Player/0.2.0'
     # A different file than the manifest promises is thrown away.
     other = tmp_path / 'other'
     other.mkdir()
@@ -186,7 +186,7 @@ def make(api, monkeypatch, installable=True):
 def test_check_download_install_and_restart(monkeypatch, tmp_path):
     api = ReleaseApi()
     u = make(api, monkeypatch)
-    assert u.text() == 'Текущая версия: 0.1.9' and u.actions()['check'] and not u.actions()['update']
+    assert u.text() == 'Текущая версия: 0.2.0' and u.actions()['check'] and not u.actions()['update']
     u.check()
     assert u.state == 'available' and u.text() == 'Доступна версия 0.2.0' and u.text('en') == 'Version available 0.2.0'
     assert u.actions() == {'check': False, 'update': True, 'cancel': False, 'website': False}
@@ -239,7 +239,7 @@ def test_cancel_quiet_failures_locked_and_manual_states(monkeypatch, tmp_path):
     # The quiet check after sign-in never reports its own failure.
     quiet = make(ReleaseApi(error=ApiError(0)), monkeypatch)
     quiet.check(quiet=True)
-    assert quiet.state == 'idle' and quiet.text() == 'Текущая версия: 0.1.9'
+    assert quiet.state == 'idle' and quiet.text() == 'Текущая версия: 0.2.0'
     quiet.check()
     assert quiet.state == 'failed' and quiet.text() == 'Не удалось проверить обновления' and not quiet.actions()['website']
     # Without paid access the card explains and links to the website.
@@ -257,7 +257,7 @@ def test_cancel_quiet_failures_locked_and_manual_states(monkeypatch, tmp_path):
     manual = make(ReleaseApi(), monkeypatch, installable=False)
     manual.check()
     assert manual.state == 'manual' and manual.actions()['website'] and not manual.actions()['update']
-    latest = make(ReleaseApi(data=releases(version='0.1.9')), monkeypatch)
+    latest = make(ReleaseApi(data=releases(version='0.2.0')), monkeypatch)
     latest.check()
     assert latest.state == 'latest' and latest.text('en') == 'You have the latest version'
 
@@ -270,7 +270,7 @@ def test_settings_card_follows_the_updater(monkeypatch, tmp_path):
     parent.resize(900, 640)
     parent.show()
     drawer = SettingsDrawer(parent, Preferences(QSettings(str(tmp_path / 'prefs'), QSettings.Format.IniFormat)))
-    assert drawer.update_status.text() == 'Текущая версия: 0.1.9'
+    assert drawer.update_status.text() == 'Текущая версия: 0.2.0'
     u = make(ReleaseApi(), monkeypatch)
     drawer.set_updater(u)
     drawer.present()

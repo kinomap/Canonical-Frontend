@@ -9,6 +9,7 @@ from PySide6.QtGui import QKeyEvent, QPixmap
 from PySide6.QtWidgets import QApplication
 from kinosota_player.api import Api, ApiError
 from kinosota_player.app import Window
+from kinosota_player.direct import DirectPlayer, launch_args, stream_of
 from kinosota_player.torrents import (TorrentPage, audio_args, best_source, in_flight, media_title_args,
     progress_state, progress_text, size_text)
 from kinosota_player.preferences import translate
@@ -307,6 +308,75 @@ def test_series_episode_choice_follows_a_release_that_contains_the_episode():
     page.close()
 
 
+def test_direct_launch_helpers_validate_stream_and_build_selected_track_args():
+    url = 'https://torrent-01.scenrix.com/stream/88888888-8888-4888-8888-888888888888'
+    assert stream_of({'stream_url': url}) == url
+    for bad in ('http://torrent-01.scenrix.com/stream/88888888-8888-4888-8888-888888888888',
+                'https://user@torrent-01.scenrix.com/stream/88888888-8888-4888-8888-888888888888',
+                'https://torrent-01.scenrix.com/elsewhere/88888888-8888-4888-8888-888888888888',
+                'https://torrent-01.scenrix.com/stream/not-a-token'):
+        assert stream_of({'stream_url': bad}) == ''
+    assert launch_args({'audio_lang': 'uk', 'audio_track': 11, 'title': 'Фильм'}) == [
+        '--alang=ukr,uk', '--aid=11', '--force-media-title=Фильм']
+
+
+def test_window_direct_stream_does_not_sign_in_open_a_page_or_request_another_ticket():
+    app = QApplication.instance() or QApplication([])
+    meta = {'launch_id': LAUNCH, 'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь',
+            'audio_lang': 'uk', 'audio_track': 11,
+            'stream_url': 'https://torrent-01.scenrix.com/stream/88888888-8888-4888-8888-888888888888',
+            'access_token': 'must-not-be-adopted'}
+    api, engine = FakeApi(launch=meta), FakeEngine()
+    w = window_for(api, engine)
+    w.open_link(f'kinosota://watch?launch={LAUNCH}')
+    assert api.token == '' and w.pages.currentIndex() == 0
+    assert ('ticket', 'movie', 155, None, None, None) not in api.calls
+    assert engine.started == [(meta['stream_url'], launch_args(meta))]
+    assert w.direct_meta == meta and w.torrent_playing
+    w.close()
+    app.processEvents()
+
+
+def test_direct_player_redeems_without_a_saved_token_and_starts_mpv():
+    meta = {'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'audio_lang': 'uk', 'audio_track': 11,
+            'stream_url': 'https://torrent-01.scenrix.com/stream/88888888-8888-4888-8888-888888888888'}
+    api, engine = FakeApi(launch=meta), FakeEngine()
+    api.token = 'stale-saved-token'
+    direct = DirectPlayer(api_factory=lambda: api, engine=engine, worker=sync, show_splash=False)
+    assert direct.open_link(f'kinosota://watch?launch={LAUNCH}')
+    assert ('open', LAUNCH) in api.calls and api.token == ''
+    assert engine.started == [(meta['stream_url'], launch_args(meta))]
+    direct.shutdown()
+
+
+def test_direct_player_explains_expired_launch_without_playing_and_falls_back_for_old_backend():
+    expired_api, engine = FakeApi(launch_error=ApiError(410)), FakeEngine()
+    direct = DirectPlayer(api_factory=lambda: expired_api, engine=engine, worker=sync, show_splash=False)
+    direct.open_link(f'kinosota://watch?launch={LAUNCH}')
+    assert 'устарела' in direct.last_error and engine.started == []
+    direct.shutdown()
+
+    legacy = {'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'access_token': 'site-token'}
+    api = FakeApi(launch=legacy)
+    engine = FakeEngine(); direct = DirectPlayer(api_factory=lambda: api, engine=engine, worker=sync, show_splash=False)
+    received = []; direct.fallback.connect(received.append)
+    direct.open_link(f'kinosota://watch?launch={LAUNCH}')
+    assert received == [legacy] and engine.started == [] and api.token == ''
+    direct.shutdown()
+
+
+def test_direct_player_ignores_forged_deeplink_without_network_or_playback():
+    made, engines = [], []
+    def factory():
+        made.append(True)
+        return FakeApi()
+    engine = FakeEngine(); engines.append(engine)
+    direct = DirectPlayer(api_factory=factory, engine=engine, worker=sync, show_splash=False)
+    assert direct.open_link('kinosota://watch?launch=../../account&token=secret') is False
+    assert made == [] and engines[0].started == []
+    direct.shutdown()
+
+
 def test_website_launch_authenticates_and_autoplays_with_selected_track():
     app = QApplication.instance() or QApplication([])
     meta = {'launch_id': LAUNCH, 'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'original_title': 'The Dark Knight',
@@ -546,6 +616,23 @@ def test_cold_stream_is_warmed_and_reopened_twice_before_giving_up():
     assert len(engine.started) == 4 and w.message.text().startswith('Не удалось воспроизвести видео')
     w.close()
     app.processEvents()
+
+
+def test_direct_window_stream_retries_the_same_stream_without_requesting_a_ticket():
+    app = QApplication.instance() or QApplication([])
+    api, engine = FakeApi(), DroppedEngine()
+    w = window_for(api, engine)
+    meta = {'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'audio_lang': 'uk', 'audio_track': 11,
+            'stream_url': 'https://torrent-01.scenrix.com/stream/88888888-8888-4888-8888-888888888888'}
+    w.launch_opened(meta)
+    assert len(engine.started) == 1 and w.torrent_playing
+    w.check_process();w.check_process()
+    assert len(engine.started) == 3 and w.torrent_attempt == 2 and w.torrent_playing
+    assert all(url == meta['stream_url'] for url, _ in engine.started)
+    assert not any(call[0] == 'ticket' for call in api.calls)
+    w.check_process()
+    assert not w.torrent_playing and w.message.text().startswith('Не удалось воспроизвести видео')
+    w.close();app.processEvents()
 
 
 def test_search_suggestions_under_the_header_search_follow_the_keyboard():

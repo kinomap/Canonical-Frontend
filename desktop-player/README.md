@@ -6,6 +6,11 @@ and paid subscription are rechecked by the backend; this is not an offline playe
 or DRM promise. A subscription ending stops lease renewal; already-issued media
 tokens retain the existing media-node TTL contract.
 
+Website «Смотреть» links for torrent titles can start mpv directly without opening
+the catalogue window. The short-lived single-use launch grant supplies the stream
+URL and selected audio track; older backends and catalogue-film links fall back
+to the full app window.
+
 ## Run / test
 
 Create an isolated virtualenv, `pip install -r requirements.txt`, install mpv using
