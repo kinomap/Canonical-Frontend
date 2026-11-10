@@ -127,7 +127,7 @@ function browser() {
             </button>
             <button v-if="state.voiceOptions.length > 0" type="button" class="watch-pill audio-pill" data-testid="audio-track-button" @click="showAudioModal = true">
               <Volume2 class="audio-icon" :size="15" aria-hidden="true" />
-              <span>{{ state.audioButtonLabel }}</span>
+              <span>Аудио</span>
             </button>
           </div>
         </div>

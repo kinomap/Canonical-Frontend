@@ -276,7 +276,7 @@ describe('torrent watch panel and live preparation',()=>{
   const{w}=await at('/torrents/movie/1')
   const audioBtn=w.find('[data-testid="audio-track-button"]')
   expect(audioBtn.exists()).toBe(true)
-  expect(audioBtn.text()).toBe('Аудио: HDrezka')
+  expect(audioBtn.text()).toBe('Аудио')
   await audioBtn.trigger('click');await flushPromises()
   const modal=document.body.querySelector('.audio-modal')
   expect(modal).not.toBeNull()
@@ -288,13 +288,18 @@ describe('torrent watch panel and live preparation',()=>{
   expect(items[1].querySelector('.audio-modal-badge')?.textContent).toBe('RU')
   items[1].dispatchEvent(new MouseEvent('click', { bubbles: true }))
   await flushPromises()
-  expect(audioBtn.text()).toBe('Аудио: Дубляж')
+  expect(audioBtn.text()).toBe('Аудио')
+  await audioBtn.trigger('click');await flushPromises()
+  const modal2=document.body.querySelector('.audio-modal')
+  const items2=modal2!.querySelectorAll('.audio-modal-item')
+  expect(items2[0].querySelector('.audio-modal-check')?.textContent).toBe('')
+  expect(items2[1].querySelector('.audio-modal-check')?.textContent).toBe('✓')
  })
  it('displays language badges for all audio tracks and synchronizes language with voice selection',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready({sources:[src({voices:['HDrezka','Дубляж'],languages:['ru','uk','en'],rank:0})]}) as any)
   const{w}=await at('/torrents/movie/1')
   const audioBtn=w.find('[data-testid="audio-track-button"]')
-  expect(audioBtn.text()).toBe('Аудио: HDrezka')
+  expect(audioBtn.text()).toBe('Аудио')
   await audioBtn.trigger('click');await flushPromises()
   const modal=document.body.querySelector('.audio-modal')
   expect(modal).not.toBeNull()
@@ -307,12 +312,40 @@ describe('torrent watch panel and live preparation',()=>{
 
   items[2].dispatchEvent(new MouseEvent('click', { bubbles: true }))
   await flushPromises()
-  expect(audioBtn.text()).toBe('Аудио: Украинская озвучка')
+  expect(audioBtn.text()).toBe('Аудио')
   expect(w.findAll('.watch-pill.active').map(p=>p.text())).toContain('UA')
 
   const ruPill=w.findAll('.watch-chips')[1].findAll('.watch-pill')[0]
   await ruPill.trigger('click');await flushPromises()
-  expect(audioBtn.text()).toBe('Аудио: HDrezka')
+  expect(audioBtn.text()).toBe('Аудио')
+ })
+ it('displays container audio tracks from media header when available',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready({sources:[src({
+    languages:['ru','uk','en'],
+    audio_tracks:[
+      {index:2,language:'ru',title:'AVO, Д.Пучков aka Гоблин'},
+      {index:3,language:'ru',title:'MVO, Jaskier'},
+      {index:4,language:'uk',title:'MVO, ICTV'},
+      {index:5,language:'en',title:'Original (U.S.)'},
+    ],
+    rank:0
+  })]}) as any)
+  const{w}=await at('/torrents/movie/1')
+  const audioBtn=w.find('[data-testid="audio-track-button"]')
+  expect(audioBtn.exists()).toBe(true)
+  expect(audioBtn.text()).toBe('Аудио')
+  await audioBtn.trigger('click');await flushPromises()
+  const modal=document.body.querySelector('.audio-modal')
+  expect(modal).not.toBeNull()
+  const items=modal!.querySelectorAll('.audio-modal-item')
+  expect(items).toHaveLength(4)
+  expect(items[0].querySelector('.audio-modal-name')?.textContent).toBe('AVO, Д.Пучков aka Гоблин')
+  expect(items[0].querySelector('.audio-modal-badge')?.textContent).toBe('RU')
+  expect(items[1].querySelector('.audio-modal-name')?.textContent).toBe('MVO, Jaskier')
+  expect(items[2].querySelector('.audio-modal-name')?.textContent).toBe('MVO, ICTV')
+  expect(items[2].querySelector('.audio-modal-badge')?.textContent).toBe('UA')
+  expect(items[3].querySelector('.audio-modal-name')?.textContent).toBe('Original (U.S.)')
+  expect(items[3].querySelector('.audio-modal-badge')?.textContent).toBe('EN')
  })
  it('prefers the server choice and otherwise breaks a tie between ready releases by rank',async()=>{
   const pair=[src({default:false,rank:1}),src({source_id:'s2',title:'Film 1080p BDRip',source_type:'BDRip',default:false,rank:0,seeders:3})]

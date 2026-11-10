@@ -75,11 +75,8 @@ function compareRank(a: number[], b: number[]): number {
   return 0
 }
 
-/** Track list of one release: studios under Russian, then Ukrainian and English container tracks. */
+/** Track list of one release: container tracks when available, otherwise studios and language tracks. */
 export function sourceTracks(s: TorrentSource): { value: string; language: TorrentLanguage | 'und'; languageLabel: string; best: boolean }[] {
-  const voices = s.voices ?? []
-  if (!voices.length) return []
-
   const tracks: { value: string; language: TorrentLanguage | 'und'; languageLabel: string; best: boolean }[] = []
   const seen = new Set<string>()
 
@@ -91,22 +88,28 @@ export function sourceTracks(s: TorrentSource): { value: string; language: Torre
     tracks.push({ value: val, language: lang, languageLabel, best })
   }
 
-  const langs = s.languages ?? []
+  // 1. Container tracks directly parsed from MKV stream header
+  if (s.audio_tracks && s.audio_tracks.length > 0) {
+    s.audio_tracks.forEach((t, idx) => {
+      const name = t.title || (LANGUAGE_NAMES[t.language] ?? `Аудио ${t.index}`)
+      add(name, t.language, idx === 0)
+    })
+    return tracks
+  }
 
-  // Russian tracks from parsed voices
+  // 2. Voice studios parsed from release title
+  const voices = s.voices ?? []
+  if (!voices.length) return []
+
+  const langs = s.languages ?? []
   voices.forEach((v, idx) => add(v, 'ru', idx === 0))
 
-  // Ukrainian track if present in release
   if (langs.includes('uk')) {
     add(LANGUAGE_NAMES.uk, 'uk', false)
   }
-
-  // English track if present in release
   if (langs.includes('en')) {
     add(LANGUAGE_NAMES.en, 'en', false)
   }
-
-  // Other languages if present
   for (const l of langs) {
     if (l !== 'ru' && l !== 'uk' && l !== 'en') {
       add(LANGUAGE_NAMES[l] ?? String(l).toUpperCase(), l, false)
@@ -205,16 +208,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       active: t.value === selectedVoice.value,
     }))
   })
-  const audioButtonLabel = computed<string>(() => {
-    const options = voiceOptions.value
-    if (!options.length) return 'Аудио'
-    if (selectedVoice.value) {
-      const match = options.find((o) => o.value === selectedVoice.value)
-      if (match) return `Аудио: ${match.value}`
-    }
-    if (options.length === 1) return `Аудио: ${options[0].value}`
-    return `Аудио: ${options.length} ${options.length < 5 ? 'дорожки' : 'дорожек'}`
-  })
+  const audioButtonLabel = computed<string>(() => 'Аудио')
 
   function syncVoice(src: TorrentSource) {
     const tracks = sourceTracks(src)
@@ -231,11 +225,9 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       selectedVoice.value = byLang.value
       return
     }
-    const first = tracks[0]
-    selectedVoice.value = first.value
-    if (first.language !== 'und' && !language.value) {
-      language.value = first.language
-    }
+    const defLang = (src.languages ?? []).includes('ru') ? 'ru' : (src.languages?.[0] ?? 'und')
+    const preferred = tracks.find((t) => t.language === defLang) ?? tracks[0]
+    selectedVoice.value = preferred.value
   }
 
 

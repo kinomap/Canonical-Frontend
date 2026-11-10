@@ -43,12 +43,15 @@ export type TorrentEpisode = { season: number; episode: number }
 export type TorrentSeasonEpisode = { episode: number; source_id: string | null; size_bytes: number }
 export type TorrentSeasonFiles = { season: number; episodes: TorrentSeasonEpisode[] }
 export type TorrentLanguage = 'ru' | 'uk' | 'en'
+export type ContainerAudioTrack = { index: number; language: TorrentLanguage | 'und'; title: string }
 export type TorrentSource = {
   source_id: string | null; title: string; quality: string | null; source_type: string | null; languages: TorrentLanguage[];
   seeders: number; size_bytes: number; state: TorrentSourceState; progress: number; start_ms: number | null;
   default: boolean; episodes: TorrentEpisode[]; file_count: number
   /** Voice-over studios parsed from the release title (LostFilm, NewStudio, ...). */
   voices?: string[]
+  /** Container audio tracks extracted from the stream header (index, language, title). */
+  audio_tracks?: ContainerAudioTrack[]
   /** Server viewer rank position (0 = best: 1080p > 2160p > 720p, languages, voices, seeders). */
   rank?: number
 }
