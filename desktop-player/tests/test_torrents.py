@@ -307,24 +307,24 @@ def test_series_episode_choice_follows_a_release_that_contains_the_episode():
     page.close()
 
 
-def test_website_launch_waits_for_login_then_plays_with_selected_voice():
+def test_website_launch_authenticates_and_autoplays_with_selected_track():
     app = QApplication.instance() or QApplication([])
     meta = {'launch_id': LAUNCH, 'kind': 'movie', 'tmdb_id': 155, 'title': 'Тёмный рыцарь', 'original_title': 'The Dark Knight',
             'year': 2008, 'poster': None, 'source_id': B, 'quality': '1080p', 'source_type': 'BDRip',
-            'languages': ['ru', 'uk'], 'season': None, 'episode': None, 'audio_lang': 'uk'}
+            'languages': ['ru', 'uk'], 'season': None, 'episode': None, 'audio_lang': 'uk',
+            'audio_track': 11, 'access_token': 'site-issued-token'}
     ready = movie_view()
     ready['sources'][1].update(state='ready', progress=100, start_ms=800)
     api, engine = FakeApi(view=ready, launch=meta), FakeEngine()
     w = window_for(api, engine)
-    assert not w.nav_torrents.isVisibleTo(w)  # Login page: no sections yet.
+    assert w.pages.currentIndex() == 0 and not w.nav_torrents.isVisibleTo(w)
     w.open_link('kinosota://watch?launch=' + LAUNCH.upper())
-    assert w.pending_launch == LAUNCH and api.calls == [] and 'Войдите в аккаунт' in w.message.text()
-    w.signed_in({'username': 'viewer'})
     assert ('open', LAUNCH) in api.calls and w.pending_launch == ''
+    assert api.token == 'site-issued-token'
     assert w.pages.currentIndex() == 2 and w.nav_torrents.isChecked() and w.nav_torrents.isVisibleTo(w)
     assert ('ticket', 'movie', 155, B, None, None) in api.calls
     assert engine.started == [('https://torrent-01.scenrix.com/stream/opaque-ticket',
-                               ['--alang=ukr,uk', '--force-media-title=Тёмный рыцарь'])]
+                               ['--alang=ukr,uk', '--aid=11', '--force-media-title=Тёмный рыцарь'])]
     assert w.torrent_playing and w.message.text() == 'Воспроизводится: Тёмный рыцарь'
     assert w.torrents.selected()['source_id'] == B and w.torrents.language_buttons['uk'].isChecked()
     w.close()
@@ -354,6 +354,36 @@ def test_forged_link_is_ignored_and_expired_session_keeps_the_launch():
     assert w.pages.currentIndex() == 0 and w.pending_launch == LAUNCH  # Re-login resumes the same launch.
     w.close()
     app.processEvents()
+
+
+def test_open_launch_can_redeem_without_a_local_session():
+    seen=[]
+
+    def serve(request):
+        seen.append(request)
+        return httpx.Response(200, json={'access_token':'site-token','audio_track':11})
+
+    api=Api(transport=httpx.MockTransport(serve))
+    meta=api.open_launch(LAUNCH)
+    assert meta['access_token']=='site-token' and meta['audio_track']==11
+    assert seen[0].url.path==f'/api/v1/torrents/desktop-launch/{LAUNCH}/open'
+    assert 'authorization' not in seen[0].headers
+    api.close()
+
+
+def test_stale_401_does_not_clear_a_new_launch_token():
+    api = None
+
+    def serve(_request):
+        api.token = 'fresh-launch-token'
+        return httpx.Response(401, json={'detail': 'expired'})
+
+    api = Api(transport=httpx.MockTransport(serve))
+    api.token = 'stale-token'
+    with pytest.raises(ApiError):
+        api.request('GET', '/account')
+    assert api.token == 'fresh-launch-token'
+    api.close()
 
 
 def test_torrent_api_contract_and_server_messages():

@@ -549,10 +549,22 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     message.value = ''
     installPrompt.value = false
     try {
+      let chosenTrackIndex: number | null = null
+      let chosenTrackLang: TorrentLanguage | null = audioLanguage.value
+      if (selectedVoice.value && source.audio_tracks) {
+        const matched = source.audio_tracks.find((track) =>
+          (track.title || (LANGUAGE_NAMES[track.language] ?? `Аудио ${track.index}`)) === selectedVoice.value)
+        if (matched) {
+          chosenTrackIndex = matched.index
+          if (matched.language === 'ru' || matched.language === 'uk' || matched.language === 'en') {
+            chosenTrackLang = matched.language
+          }
+        }
+      }
       const res = await torrentPlaybackApi.desktopLaunch({
         kind: target.kind, tmdb_id: target.tmdb_id, source_id: source.source_id,
         season: currentEpisode.value?.season ?? null, episode: currentEpisode.value?.episode ?? null,
-        audio_lang: audioLanguage.value,
+        audio_lang: chosenTrackLang, audio_track: chosenTrackIndex,
       })
       if (ctl.signal.aborted) return
       openDeepLink(res.deep_link)

@@ -104,7 +104,7 @@ describe('torrent watch panel and live preparation',()=>{
   vi.mocked(waitForPlayer).mockResolvedValue(false)
   const{w}=await at('/torrents/movie/1')
   await w.find('[data-testid="watch-button"]').trigger('click');await flushPromises()
-  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'s1080',season:null,episode:null,audio_lang:'ru'})
+  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'s1080',season:null,episode:null,audio_lang:'ru',audio_track:null})
   expect(openDeepLink).toHaveBeenCalledWith('kinosota://watch?launch='+launch);expect(vi.mocked(waitForPlayer).mock.calls[0][0]).toBe(launch)
   const modal=document.body.querySelector('[data-testid="desktop-player-modal"]')!
   expect(modal.querySelector('#desktop-modal-text')!.textContent).toBe(DESKTOP_PLAYER_TEXT)
@@ -113,6 +113,27 @@ describe('torrent watch panel and live preparation',()=>{
   expect(document.body.querySelector('[data-testid="desktop-player-modal"]')).toBeNull()
   expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'s1080',season:null,episode:null})
   expect(w.find('video').attributes('src')).toBe('https://media.example/s.mp4')
+ })
+ it('sends the selected MKV container track index to the desktop launch',async()=>{
+  const tracks=[{index:2,language:'ru',title:'Русский дубляж'},{index:11,language:'ru',title:'Дмитрий Пучков aka Гоблин (2001)'}]
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready({sources:[src({audio_tracks:tracks})]}) as any)
+  vi.mocked(torrentPlaybackApi.desktopLaunch).mockResolvedValue({launch_id:'id-track',deep_link:'kinosota://watch?launch=id-track',expires_at:'x'} as any)
+  vi.mocked(waitForPlayer).mockResolvedValue(true)
+  const{w}=await at('/torrents/movie/1')
+  await w.find('[data-testid="audio-track-button"]').trigger('click');await flushPromises()
+  const modal=document.body.querySelector('.audio-modal')!
+  const target=[...modal.querySelectorAll('.audio-modal-item')].find(el=>el.textContent?.includes('Дмитрий Пучков'))!
+  target.dispatchEvent(new MouseEvent('click',{bubbles:true}));await flushPromises()
+  await w.find('[data-testid="watch-button"]').trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'s1080',season:null,episode:null,audio_lang:'ru',audio_track:11})
+ })
+ it('sends the selected index when an MKV track has no title',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready({sources:[src({audio_tracks:[{index:7,language:'ru',title:''}]})]}) as any)
+  vi.mocked(torrentPlaybackApi.desktopLaunch).mockResolvedValue({launch_id:'id-untitled-track',deep_link:'kinosota://watch?launch=id-untitled-track',expires_at:'x'} as any)
+  vi.mocked(waitForPlayer).mockResolvedValue(true)
+  const{w}=await at('/torrents/movie/1')
+  await w.find('[data-testid="watch-button"]').trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'s1080',season:null,episode:null,audio_lang:'ru',audio_track:7})
  })
  it('confirms the hand-off when the installed player picked the launch up',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready() as any)
@@ -131,7 +152,7 @@ describe('torrent watch panel and live preparation',()=>{
   expect(notice.text()).toContain('Фильм несовместим с вашим браузером');expect(notice.text()).toContain('HEVC (H.265) и DTS')
   expect(w.find('.browser-play').exists()).toBe(false)
   await notice.find('[data-testid="codec-notice-desktop"]').trigger('click');await flushPromises()
-  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'s1080',season:null,episode:null,audio_lang:'ru'})
+  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'s1080',season:null,episode:null,audio_lang:'ru',audio_track:null})
   expect(openDeepLink).toHaveBeenCalledWith('kinosota://watch?launch=id-9')
   expect(w.find('[data-testid="codec-notice"] .compatibility-status').text()).toBe('Открыто в KINOSOTA Player')
   expect(torrentPlaybackApi.playbackTicket).not.toHaveBeenCalled()
@@ -161,7 +182,7 @@ describe('torrent watch panel and live preparation',()=>{
   expect(series.find('[data-testid="episode-select"] [role="listbox"]').exists()).toBe(false);expect(episode.text()).toBe('2 серия')
   expect(w.find('[data-testid="watch-button"]').text()).toBe('Смотреть')
   await w.find('[data-testid="watch-button"]').trigger('click');await flushPromises()
-  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'tv',tmdb_id:7,source_id:'s1080',season:1,episode:2,audio_lang:'ru'})
+  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'tv',tmdb_id:7,source_id:'s1080',season:1,episode:2,audio_lang:'ru',audio_track:null})
   await season.trigger('click');await series.findAll('[data-testid="season-select"] [role="option"]')[1].trigger('click');await flushPromises()
   expect(season.text()).toBe('2 сезон');await episode.trigger('click')
   options=series.findAll('[data-testid="episode-select"] [role="option"]');expect(options).toHaveLength(6);expect(options.every(o=>o.attributes('aria-disabled')==='true')).toBe(true)

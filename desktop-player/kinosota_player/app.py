@@ -537,21 +537,35 @@ class Window(QMainWindow):
         launch=parse_launch(link)
         if not launch:self.message.setText('Ссылка из браузера не распознана. Нажмите «Смотреть» на сайте ещё раз.');return
         self.pending_launch=launch
-        if self.pages.currentIndex()==0:
-            self.message.setText('Войдите в аккаунт — фильм с сайта откроется сразу после входа.');return
         self.redeem_launch()
     def redeem_launch(self):
         launch=self.pending_launch;self.pending_launch=''
         if not launch:return
         self.message.setText('Открываем фильм с сайта…')
         def done(meta):
-            movie_id=meta.get('movie_id') if isinstance(meta,dict) else None
-            if isinstance(movie_id,str) and movie_id.strip() and meta.get('kind')=='movie':
+            if not isinstance(meta,dict):
+                self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
+            movie_id=meta.get('movie_id')
+            is_catalog_movie=isinstance(movie_id,str) and bool(movie_id.strip()) and meta.get('kind')=='movie'
+            is_torrent=meta.get('kind') in ('movie','tv') and type(meta.get('tmdb_id')) is int
+            if not is_catalog_movie and not is_torrent:
+                self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
+
+            # A valid website launch is the authorization grant. Replace an absent,
+            # expired or stale local session and persist only through the OS vault.
+            token=meta.get('access_token')
+            if isinstance(token,str) and token.strip():
+                self.api.token=token
+                self.remember.setChecked(True)
+                if self.pages.currentIndex()==0:
+                    self.signed_in({})
+                else:
+                    self.vault.save(token)
+
+            if is_catalog_movie:
                 # A KINOSOTA film the browser could not decode: same lease as a catalogue card.
                 self.start_movie({'id':movie_id.strip(),**{key:meta.get(key) for key in ('title','original_title','title_en','year','poster')}},force=True);return
-            if not isinstance(meta,dict) or meta.get('kind') not in ('movie','tv') or type(meta.get('tmdb_id')) is not int:
-                self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
-            prefs={key:meta.get(key) for key in ('source_id','season','episode','audio_lang')}
+            prefs={key:meta.get(key) for key in ('source_id','season','episode','audio_lang','audio_track')}
             section='series' if meta['kind']=='tv' else 'torrents'
             self.show_torrents(section);self.torrents.back_caption=dict(NAV).get(section);self.torrents.open_title(meta,prefs);self.torrents.return_to=lambda:self.show_section(section)
             self.play_torrent({'kind':meta['kind'],'tmdb_id':meta['tmdb_id'],**prefs,'title':movie_title(meta,self.title_language)},force=True)
@@ -559,7 +573,7 @@ class Window(QMainWindow):
             if isinstance(error,ApiError) and error.status==401:self.pending_launch=launch;self.show_error(error)
             elif isinstance(error,ApiError) and error.status==404 and 'недоступен' in str(error):self.message.setText(str(error))
             elif isinstance(error,ApiError) and error.status==404:self.message.setText('Этот запуск создан другим аккаунтом. Войдите в приложение тем же аккаунтом, что и на сайте.')
-            elif isinstance(error,ApiError) and error.status==410:self.message.setText('Ссылка устарела. Нажмите «Смотреть�� на сайте ещё раз.')
+            elif isinstance(error,ApiError) and error.status==410:self.message.setText('Ссылка устарела. Нажмите «Смотреть» на сайте ещё раз.')
             else:self.show_error(error)
         self.work(lambda:self.api.open_launch(launch),done,fail)
     def closeEvent(self,event):

@@ -66,7 +66,7 @@ export type TorrentSourcesView = {
 export type StreamChoice = { source_id?: string | null; season?: number | null; episode?: number | null; file_index?: number | null }
 export type PlaybackTicket = { stream_url: string; expires_at: string; title: string; source_id?: string | null; season?: number | null; episode?: number | null }
 export type DesktopLaunch = { launch_id: string; deep_link: string; expires_at: string }
-export type DesktopLaunchRequest = StreamChoice & { kind: TorrentKind; tmdb_id: number; audio_lang?: TorrentLanguage | null }
+export type DesktopLaunchRequest = StreamChoice & { kind: TorrentKind; tmdb_id: number; audio_lang?: TorrentLanguage | null; audio_track?: number | null }
 
 /** Only send explicit choices: null/undefined fields are left to the server default. */
 function choiceBody(choice: StreamChoice = {}) {
@@ -93,8 +93,8 @@ export const torrentPlaybackApi = {
     return apiClient.postTorrentAction(`sources/${kind}/${tmdb_id}/discover`, {})
   },
   desktopLaunch(request: DesktopLaunchRequest): Promise<DesktopLaunch> {
-    const {kind, tmdb_id, audio_lang, ...choice} = request
-    return apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', {kind, tmdb_id, ...choiceBody({...choice, file_index: undefined}), ...(audio_lang ? {audio_lang} : {})})
+    const {kind, tmdb_id, audio_lang, audio_track, ...choice} = request
+    return apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', {kind, tmdb_id, ...choiceBody({...choice, file_index: undefined}), ...(audio_lang ? {audio_lang} : {}), ...(audio_track != null ? {audio_track} : {})})
   },
   /** A KINOSOTA catalogue film the browser cannot play: the app plays it with its own session. */
   catalogLaunch(movie_id: string): Promise<DesktopLaunch> {

@@ -72,7 +72,8 @@ class Api:
         if not path.startswith('/') or path.startswith('//') or '://' in path:raise ValueError('Relative API path required')
         with self.lock:
             headers=dict(extra_headers or {})
-            if self.token:headers['Authorization']='Bearer '+self.token
+            request_token=self.token
+            if request_token:headers['Authorization']='Bearer '+request_token
             try:r=self.client.request(method,path.lstrip('/'),json=body,headers=headers)
             except httpx.HTTPError:raise ApiError(0,message='Нет соединения. Проверьте интернет и повторите.') from None
             try:data=r.json()
@@ -80,7 +81,7 @@ class Api:
             if not r.is_success:
                 detail=data.get('detail',{}) if isinstance(data,dict) else {}
                 code=detail.get('code','') if isinstance(detail,dict) else str(detail)
-                if r.status_code==401:self.token=''
+                if r.status_code==401 and self.token==request_token:self.token=''
                 if r.status_code==503 and path.startswith('/desktop/playback/'):
                     raise ApiError(503,code,'Медиасервер временно недоступен. Приложение продолжает работать — попробуйте открыть фильм чуть позже.')
                 if code=='MEDIA_UNAVAILABLE':raise ApiError(r.status_code,code,'Фильм больше недоступен на сайте. Попробуйте позднее — возможно, он появится снова.')

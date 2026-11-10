@@ -18,8 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
     f'kinosota://watch?launch={LAUNCH}',
     f'kinosota://watch/?launch={LAUNCH}',
     f'KINOSOTA://WATCH?launch={LAUNCH.upper()}',
+    f'kinosota://watch?launch={LAUNCH}&audio_track=11&source_id=release-1',
 ])
-def test_only_the_website_launch_shape_is_accepted(link):
+def test_launch_uuid_is_extracted_with_optional_non_secret_queries(link):
     assert parse_launch(link) == LAUNCH
 
 

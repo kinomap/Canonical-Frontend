@@ -1,9 +1,9 @@
 """kinosota:// deep links from the website and single-instance hand-off.
 
 The site's «▶ Смотреть» button opens ``kinosota://watch?launch=<uuid>``. The link is
-untrusted input: only that exact shape is accepted and it carries no token. The
-launch id is short-lived and bound to the website account; the app redeems it with
-its own signed-in session, so a leaked or forged link grants nothing.
+untrusted input: only the watch route and a single launch UUID are used; it carries no token. The
+launch id is a short-lived, single-use grant bound to the website account; the server
+checks entitlement and returns the player session during redemption.
 
 Windows/Linux pass the link in argv (a second process), macOS delivers a FileOpen
 event to the running app. A per-user local socket forwards links from a second
@@ -35,7 +35,11 @@ def parse_launch(link):
     if parts.netloc.lower() != 'watch' or parts.path not in ('', '/') or parts.fragment:
         return None
     query = parse_qs(parts.query, keep_blank_values=True)
-    if set(query) != {'launch'} or len(query['launch']) != 1:
+    if len(query.get('launch', [])) != 1:
+        return None
+    # Optional launch parameters may be added later, but authentication material
+    # never belongs in a custom-scheme URL. The player redeems the UUID only.
+    if any(key.lower() in {'token', 'access_token', 'password'} for key in query):
         return None
     value = query['launch'][0].lower()
     if not _UUID.fullmatch(value):
