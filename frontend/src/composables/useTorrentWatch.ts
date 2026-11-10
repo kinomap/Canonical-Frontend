@@ -36,7 +36,13 @@ export type QualityOption = { value: string; label: string; available: boolean; 
 export type SeasonOption = { value: number; label: string; episodes: number; available: boolean }
 export type EpisodeOption = { value: number; available: boolean; sizeMb: number | null; sourceId: string | null }
 /** Voice-over pill: «active» when the chosen source carries it, «best» for the top-ranked release's voice. */
-export type VoiceOption = { value: string; active: boolean; best: boolean }
+export type VoiceOption = {
+  value: string
+  language: TorrentLanguage | 'und'
+  languageLabel: string
+  active: boolean
+  best: boolean
+}
 export type WatchAction =
   | 'checking' | 'subscribe' | 'loading' | 'retry' | 'library' | 'discover'
   | 'prepare' | 'wait' | 'missing' | 'launch'
@@ -67,6 +73,47 @@ function rank(s: TorrentSource, p: Prefs): number[] {
 function compareRank(a: number[], b: number[]): number {
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]
   return 0
+}
+
+/** Track list of one release: studios under Russian, then Ukrainian and English container tracks. */
+export function sourceTracks(s: TorrentSource): { value: string; language: TorrentLanguage | 'und'; languageLabel: string; best: boolean }[] {
+  const voices = s.voices ?? []
+  if (!voices.length) return []
+
+  const tracks: { value: string; language: TorrentLanguage | 'und'; languageLabel: string; best: boolean }[] = []
+  const seen = new Set<string>()
+
+  const add = (val: string, lang: TorrentLanguage | 'und', best = false) => {
+    const key = `${lang}:${val.toLowerCase()}`
+    if (seen.has(key)) return
+    seen.add(key)
+    const languageLabel = LANGUAGE_LABELS[lang] ?? (lang === 'und' ? 'UND' : String(lang).toUpperCase())
+    tracks.push({ value: val, language: lang, languageLabel, best })
+  }
+
+  const langs = s.languages ?? []
+
+  // Russian tracks from parsed voices
+  voices.forEach((v, idx) => add(v, 'ru', idx === 0))
+
+  // Ukrainian track if present in release
+  if (langs.includes('uk')) {
+    add(LANGUAGE_NAMES.uk, 'uk', false)
+  }
+
+  // English track if present in release
+  if (langs.includes('en')) {
+    add(LANGUAGE_NAMES.en, 'en', false)
+  }
+
+  // Other languages if present
+  for (const l of langs) {
+    if (l !== 'ru' && l !== 'uk' && l !== 'en') {
+      add(LANGUAGE_NAMES[l] ?? String(l).toUpperCase(), l, false)
+    }
+  }
+
+  return tracks
 }
 
 /** Prefer working, matching, already prepared, then best-seeded sources. */
@@ -149,19 +196,47 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     }
     return LANGUAGE_ORDER.filter((l) => present.has(l))
   })
-  /** Voice-over studios of the offered releases, best-ranked first (at most 12). */
+  /** Voice-over tracks of the chosen release, with language attribution. */
   const voiceOptions = computed<VoiceOption[]>(() => {
-    const voices = selected.value?.voices ?? []
-    return voices.map((value) => ({ value, active: value === selectedVoice.value, best: value === voices[0] }))
+    const s = selected.value
+    if (!s) return []
+    return sourceTracks(s).map((t) => ({
+      ...t,
+      active: t.value === selectedVoice.value,
+    }))
   })
   const audioButtonLabel = computed<string>(() => {
-    const voices = selected.value?.voices ?? []
-    if (selectedVoice.value && voices.includes(selectedVoice.value)) return `Аудио: ${selectedVoice.value}`
-    if (voices.length === 1) return `Аудио: ${voices[0]}`
-    if (voices.length > 1) return `Аудио: ${voices.length} ${voices.length < 5 ? 'дорожки' : 'дорожек'}`
-    if (audioLanguage.value) return `Аудио: ${LANGUAGE_NAMES[audioLanguage.value]}`
-    return 'Аудио'
+    const options = voiceOptions.value
+    if (!options.length) return 'Аудио'
+    if (selectedVoice.value) {
+      const match = options.find((o) => o.value === selectedVoice.value)
+      if (match) return `Аудио: ${match.value}`
+    }
+    if (options.length === 1) return `Аудио: ${options[0].value}`
+    return `Аудио: ${options.length} ${options.length < 5 ? 'дорожки' : 'дорожек'}`
   })
+
+  function syncVoice(src: TorrentSource) {
+    const tracks = sourceTracks(src)
+    if (!tracks.length) {
+      selectedVoice.value = null
+      return
+    }
+    const current = tracks.find((t) => t.value === selectedVoice.value)
+    if (current && (!language.value || language.value === current.language || language.value === 'und')) {
+      return
+    }
+    const byLang = language.value ? tracks.find((t) => t.language === language.value) : undefined
+    if (byLang) {
+      selectedVoice.value = byLang.value
+      return
+    }
+    const first = tracks[0]
+    selectedVoice.value = first.value
+    if (first.language !== 'und' && !language.value) {
+      language.value = first.language
+    }
+  }
 
 
   const seasonFiles = computed(() => view.value?.seasons ?? [])
@@ -218,10 +293,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   // Initialize selectedVoice when selected source changes (page load or quality switch).
   watch(selected, (src) => {
     if (!src) return
-    const voices = src.voices ?? []
-    if (!selectedVoice.value || !voices.includes(selectedVoice.value)) {
-      selectedVoice.value = voices[0] ?? null
-    }
+    syncVoice(src)
   }, { immediate: true })
   watch(knownEpisodes, (list) => {
     if (!isTv.value || !list.length || (season.value !== null && episode.value !== null)) return
@@ -338,10 +410,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (!source) return
     selectedId.value = source.source_id
     error.value = ''
-    const voices = source.voices ?? []
-    if (!selectedVoice.value || !voices.includes(selectedVoice.value)) {
-      selectedVoice.value = voices[0] ?? null
-    }
+    syncVoice(source)
     if (source.source_id && (source.state === 'candidate' || source.state === 'failed')) void prepare(source)
   }
   function pickQuality(q: string) {
@@ -361,19 +430,43 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   }
   function pickLanguage(lang: LanguagePill) {
     language.value = lang
-    if (selected.value && speaks(selected.value, lang)) return
-    const options = offered.value.filter((s) => speaks(s, lang))
-    choose(bestSource(options, { quality: selected.value?.quality, episode: currentEpisode.value }))
-  }
-  function pickVoice(voice: string) {
-    if (selected.value?.voices?.includes(voice)) {
-      selectedVoice.value = voice
+    if (selected.value && speaks(selected.value, lang)) {
+      const match = sourceTracks(selected.value).find((o) => o.language === lang)
+      if (match) selectedVoice.value = match.value
       return
     }
-    const options = offered.value.filter((s) => s.voices?.includes(voice))
+    const options = offered.value.filter((s) => speaks(s, lang))
+    const chosen = bestSource(options, { quality: selected.value?.quality, episode: currentEpisode.value })
+    if (chosen) {
+      choose(chosen)
+      const match = sourceTracks(chosen).find((o) => o.language === lang)
+      if (match) selectedVoice.value = match.value
+    }
+  }
+  function pickVoice(voice: string) {
+    const currentOptions = voiceOptions.value
+    const found = currentOptions.find((o) => o.value === voice)
+    if (found) {
+      selectedVoice.value = found.value
+      if (found.language && found.language !== 'und') {
+        language.value = found.language
+      }
+      return
+    }
+    const options = offered.value.filter((s) => sourceTracks(s).some((t) => t.value === voice))
     const alt = bestSource(options, { quality: selected.value?.quality, language: language.value, episode: currentEpisode.value })
-    if (alt) choose(alt)
-    else selectedVoice.value = voice
+    if (alt) {
+      choose(alt)
+      const newOption = sourceTracks(alt).find((o) => o.value === voice)
+      if (newOption) {
+        selectedVoice.value = newOption.value
+        if (newOption.language && newOption.language !== 'und') {
+          language.value = newOption.language
+        }
+      }
+    } else {
+      selectedVoice.value = voice
+    }
   }
   function followEpisode() {
     const e = currentEpisode.value

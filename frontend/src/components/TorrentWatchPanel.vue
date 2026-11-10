@@ -158,7 +158,13 @@ function browser() {
               class="audio-modal-item" :class="{ active: v.active }"
               @click="state.pickVoice(v.value); showAudioModal = false">
             <span class="audio-modal-check" aria-hidden="true">{{ v.active ? "✓" : "" }}</span>
-            <span>{{ v.value }}</span>
+            <span class="audio-modal-flag" aria-hidden="true">
+              <svg v-if="v.language === 'ru'" class="watch-flag flag-ru" viewBox="0 0 9 6"><rect width="9" height="2" fill="#fff" /><rect y="2" width="9" height="2" fill="#0039a6" /><rect y="4" width="9" height="2" fill="#d52b1e" /></svg>
+              <svg v-else-if="v.language === 'uk'" class="watch-flag flag-uk" viewBox="0 0 9 6"><rect width="9" height="3" fill="#0057b7" /><rect y="3" width="9" height="3" fill="#ffd700" /></svg>
+              <svg v-else-if="v.language === 'en'" class="watch-flag flag-en" viewBox="0 0 60 30" preserveAspectRatio="xMidYMid slice"><rect width="60" height="30" fill="#012169" /><path d="M0 0L60 30M60 0L0 30" stroke="#fff" stroke-width="6" /><path d="M0 0L60 30M60 0L0 30" stroke="#c8102e" stroke-width="2" /><path d="M30 0V30M0 15H60" stroke="#fff" stroke-width="10" /><path d="M30 0V30M0 15H60" stroke="#c8102e" stroke-width="6" /></svg>
+            </span>
+            <span class="audio-modal-name">{{ v.value }}</span>
+            <span class="audio-modal-badge" :class="`badge-${v.language}`" :title="LANGUAGE_NAMES[v.language]">{{ v.languageLabel }}</span>
           </li>
         </ul>
         <p class="audio-modal-tip">💡 Аудиодорожку также можно мгновенно сменить прямо в плеере во время просмотра</p>
@@ -216,10 +222,14 @@ function browser() {
 .audio-modal-close{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);font:inherit;cursor:pointer;transition:background .18s}
 .audio-modal-close:hover{background:rgba(255,255,255,.14);color:#fff}
 .audio-modal-list{list-style:none;margin:12px 0 0;padding:0 12px;overflow-y:auto;flex:1}
-.audio-modal-item{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;cursor:pointer;transition:background .15s}
+.audio-modal-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s}
 .audio-modal-item:hover{background:rgba(255,255,255,.07)}
-.audio-modal-item.active{background:rgba(245,245,245,.1)}
-.audio-modal-check{flex:none;width:20px;text-align:center;color:#ffd24d;font-weight:700}
+.audio-modal-item.active{background:rgba(255,194,26,.1);border-color:rgba(255,194,26,.3)}
+.audio-modal-check{flex:none;width:20px;text-align:center;color:#ffd24d;font-weight:700;font-size:15px}
+.audio-modal-flag{display:inline-flex;align-items:center;flex:none}
+.audio-modal-name{flex:1;min-width:0;font-size:14px;line-height:20px;font-weight:500;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.audio-modal-badge{flex:none;margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;line-height:16px;font-weight:700;letter-spacing:.05em;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.85);transition:background .15s,border-color .15s,color .15s}
+.audio-modal-item.active .audio-modal-badge{background:rgba(255,210,77,.18);border-color:rgba(255,210,77,.45);color:#ffd24d}
 .audio-modal-tip{margin:0;padding:16px 24px 20px;font-size:13px;line-height:18px;color:rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.07)}
 
 @media(max-width:640px){.watch-actions{flex-wrap:wrap}.watch-button{flex:1 1 0;min-width:0;padding:0 16px;font-size:14px;white-space:normal}.watch-pill{max-width:none;padding:4px 9px;font-size:11px}.watch-season,.watch-episode{flex:1 1 140px;width:auto}}
