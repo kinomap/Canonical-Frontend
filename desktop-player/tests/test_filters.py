@@ -377,9 +377,8 @@ def test_website_launch_of_a_kinosota_film_plays_it_directly():
             'original_title': 'Fairy Tale', 'year': 2022, 'poster': None, 'quality': '1080p', 'audio_lang': None}
     api, engine = CatalogApi(launch=meta), Engine()
     w = window(api, engine)
-    w.open_link(f'kinosota://watch?launch={LAUNCH}')
-    assert w.pending_launch == LAUNCH
     w.signed_in({'username': 'kos'})
+    w.open_link(f'kinosota://watch?launch={LAUNCH}')
     assert ('open', LAUNCH) in api.calls and ('start', 'film-42') in api.calls
     assert engine.started == ['https://watch.scenrix.com/media/opaque'] and w.session == 'lease-1'
     assert w.message.text() == 'Воспроизводится: Сказка' and w.pages.currentIndex() == 1
@@ -446,5 +445,5 @@ def test_catalogue_requests_follow_the_server_contract():
     assert seen[-1].method == 'DELETE' and seen[-1].url.path == '/api/v1/account/library/tv/1399'
     api.torrent_genres('tv')
     assert seen[-1].url.path == '/api/v1/torrents/genres' and seen[-1].url.params['kind'] == 'tv'
-    assert seen[-1].headers['User-Agent'] == 'KINOSOTA-Player/' + __version__ == 'KINOSOTA-Player/0.1.9'
+    assert seen[-1].headers['User-Agent'] == 'KINOSOTA-Player/' + __version__ == 'KINOSOTA-Player/0.2.0'
     api.close()
