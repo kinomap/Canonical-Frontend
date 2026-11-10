@@ -15,7 +15,7 @@ from kinosota_player.updater import Updater, evaluate, fits_machine, is_newer, v
 SHA = 'ab' * 32
 
 
-def releases(version='0.2.0', paid=True, ready=True, sha=SHA, architecture='amd64', os_name='linux'):
+def releases(version='0.2.1', paid=True, ready=True, sha=SHA, architecture='amd64', os_name='linux'):
     item = {'os': os_name, 'ready': ready, 'version': version if ready else None, 'sha256': sha if ready else None,
             'channel': 'stable', 'architecture': architecture, 'signing': 'not-verified',
             'download_url': f'/api/v1/desktop/download/{os_name}' if ready and paid else None}
@@ -32,7 +32,7 @@ def test_versions_compare_numerically_and_only_this_computer_build_counts():
     assert fits_machine('amd64', 'x86_64') and fits_machine('arm64', 'aarch64') and not fits_machine('arm64', 'x86_64')
     assert fits_machine(None, 'x86_64') and fits_machine('universal2', 'arm64')  # Unknown labels: the installer decides.
     state, item = evaluate(releases(), 'Linux', 'x86_64')
-    assert state == 'available' and item['version'] == '0.2.0'
+    assert state == 'available' and item['version'] == '0.2.1'
     assert evaluate(releases(version=__version__), 'Linux', 'x86_64')[0] == 'latest'
     assert evaluate(releases(version='0.1.7'), 'Linux', 'x86_64')[0] == 'latest'
     assert evaluate(releases(paid=False), 'Linux', 'x86_64')[0] == 'locked'
@@ -188,7 +188,7 @@ def test_check_download_install_and_restart(monkeypatch, tmp_path):
     u = make(api, monkeypatch)
     assert u.text() == 'Текущая версия: 0.2.0' and u.actions()['check'] and not u.actions()['update']
     u.check()
-    assert u.state == 'available' and u.text() == 'Доступна версия 0.2.0' and u.text('en') == 'Version available 0.2.0'
+    assert u.state == 'available' and u.text() == 'Доступна версия 0.2.1' and u.text('en') == 'Version available 0.2.1'
     assert u.actions() == {'check': False, 'update': True, 'cancel': False, 'website': False}
     installed = []
     monkeypatch.setattr(updates.tempfile, 'mkdtemp', lambda prefix: str(tmp_path))
@@ -278,7 +278,7 @@ def test_settings_card_follows_the_updater(monkeypatch, tmp_path):
     app.processEvents()
     assert drawer.update_check.isVisibleTo(drawer) and not drawer.update_now.isVisibleTo(drawer)
     drawer.update_check.click()
-    assert drawer.update_status.text() == 'Доступна версия 0.2.0' and drawer.update_now.text() == 'Обновить до 0.2.0'
+    assert drawer.update_status.text() == 'Доступна версия 0.2.1' and drawer.update_now.text() == 'Обновить до 0.2.1'
     assert drawer.update_now.isVisibleTo(drawer) and not drawer.update_check.isVisibleTo(drawer)
     u.work = lambda fn, done, fail: None  # The download keeps running.
     monkeypatch.setattr(updates.tempfile, 'mkdtemp', lambda prefix: str(tmp_path))
@@ -287,7 +287,7 @@ def test_settings_card_follows_the_updater(monkeypatch, tmp_path):
     drawer.retranslate('en')
     assert drawer.update_cancel.text() == 'Cancel' and drawer.update_status.text() == 'Downloading the update…'
     drawer.update_cancel.click()
-    assert drawer.update_status.text() == 'Update cancelled' and drawer.update_now.text() == 'Update to 0.2.0'
+    assert drawer.update_status.text() == 'Update cancelled' and drawer.update_now.text() == 'Update to 0.2.1'
     assert not drawer.update_bar.isVisibleTo(drawer)
     drawer.dismiss()
     parent.close()
@@ -299,7 +299,7 @@ def test_the_window_announces_a_newer_build_once(monkeypatch):
     w = window_for(FakeApi(), FakeEngine())
     w.signed_in({'username': 'viewer'})
     assert w.updater.signed_in and w.drawer.updater is w.updater
-    w.updater.item = {'version': '0.2.0'}
+    w.updater.item = {'version': '0.2.1'}
     w.updater._set('available')
     assert w.message.text() == 'Доступно обновление KINOSOTA Player — откройте настройки, раздел «О приложении».'
     w.message.setText('')
