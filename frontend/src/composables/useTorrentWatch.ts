@@ -158,6 +158,14 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     const top = bestSource(offered.value)?.voices?.[0] ?? null
     return names.slice(0, 12).map((value) => ({ value, active: current.includes(value), best: value === top }))
   })
+  const audioButtonLabel = computed<string>(() => {
+    const voices = selected.value?.voices ?? []
+    if (voices.length === 1) return `Аудио: ${voices[0]}`
+    if (voices.length > 1) return `Аудио: ${voices.length} ${voices.length < 5 ? 'дорожки' : 'дорожек'}`
+    if (audioLanguage.value) return `Аудио: ${LANGUAGE_NAMES[audioLanguage.value]}`
+    return 'Аудио'
+  })
+
 
   const seasonFiles = computed(() => view.value?.seasons ?? [])
   const knownEpisodes = computed<TorrentEpisode[]>(() => {
@@ -327,10 +335,20 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     error.value = ''
     if (source.source_id && (source.state === 'candidate' || source.state === 'failed')) void prepare(source)
   }
-  function pickQuality(quality: string) {
-    if (selected.value?.quality === quality) return
-    const options = offered.value.filter((s) => s.quality === quality)
-    choose(bestSource(options, { language: language.value, episode: currentEpisode.value }))
+  function pickQuality(q: string) {
+    if (selected.value?.quality === q) return
+    const options = offered.value.filter((s) => s.quality === q)
+    let chosen = bestSource(options, { language: language.value, episode: currentEpisode.value })
+    if (!chosen) chosen = bestSource(options, { language: language.value })
+    if (!chosen) chosen = bestSource(options)
+    if (chosen) {
+      if (currentEpisode.value && !hasEpisode(chosen, currentEpisode.value) && chosen.episodes.length > 0) {
+        const ep = chosen.episodes[0]
+        season.value = ep.season
+        episode.value = ep.episode
+      }
+      choose(chosen)
+    }
   }
   function pickLanguage(lang: LanguagePill) {
     language.value = lang
@@ -346,9 +364,11 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   function followEpisode() {
     const e = currentEpisode.value
     if (!e || !selected.value || hasEpisode(selected.value, e)) return
-    const options = sources.value.filter((s) => s.state === 'ready' && hasEpisode(s, e))
-    const alt = bestSource(options, { quality: selected.value.quality, language: audioLanguage.value })
-    if (alt) selectedId.value = alt.source_id
+    const matching = offered.value.filter((s) => hasEpisode(s, e))
+    if (matching.length) {
+      const alt = bestSource(matching, { quality: selected.value?.quality, language: language.value, episode: e })
+      if (alt) choose(alt)
+    }
   }
   function pickSeason(value: number) {
     if (!Number.isInteger(value)) return
@@ -492,7 +512,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   return reactive({
     view, loadError, selected, sources, stage, audioLanguage, activeLanguage, language, season, episode,
     qualityOptions, languageOptions, voiceOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice,
-    busy, message, error, installPrompt,
+    busy, message, error, installPrompt, audioButtonLabel,
     refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, addToLibrary, launch, closeInstall,
   })
 }

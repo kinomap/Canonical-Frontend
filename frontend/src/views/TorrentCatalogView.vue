@@ -226,7 +226,7 @@ onBeforeUnmount(()=>{++generation;controller?.abort();clearTimeout(heroTimer)})
 .detail-poster{aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:#1a2236;box-shadow:0 24px 64px rgba(0,0,0,.85),0 4px 12px rgba(0,0,0,.6)}
 .detail-poster>img{display:block;width:100%;height:100%;object-fit:cover}
 .poster-empty{display:grid;place-items:center;height:100%;font-size:48px;font-weight:800;color:rgba(255,210,77,.55)}
-.detail-info{display:flex;flex-direction:column;min-width:0;padding:28px 32px}
+.detail-info{display:flex;flex-direction:column;justify-content:space-between;min-width:0;padding:28px 32px}
 .title-meta{margin:0 0 10px;font-size:13px;line-height:18px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.55);text-shadow:0 1px 6px rgba(0,0,0,.8)}
 .detail-info h1{margin:0;font-size:clamp(2.2rem,4vw,3.4rem);line-height:1.06;font-weight:800;letter-spacing:-.02em;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.9),0 1px 4px rgba(0,0,0,.7);text-wrap:balance;overflow-wrap:anywhere}
 .title-tagline{margin:12px 0 0;font-size:1.05rem;line-height:1.4;font-style:italic;color:rgba(255,255,255,.65);text-shadow:0 1px 8px rgba(0,0,0,.8)}
@@ -257,7 +257,7 @@ onBeforeUnmount(()=>{++generation;controller?.abort();clearTimeout(heroTimer)})
 .person:hover .person-text b{color:#000;text-shadow:none}
 .person:hover .person-text span{color:#333;text-shadow:none}
 .torrent-title .tmdb-credit{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:24px 48px 0;box-sizing:border-box}
-@media(max-width:900px){.torrent-detail{grid-template-columns:180px minmax(0,1fr);gap:28px;padding:16px 24px 40px}.detail-info{padding:20px 0}.detail-info h1{font-size:clamp(1.6rem,5vw,2.4rem)}.title-details{padding:0 24px 48px}.title-topbar{padding:10px 24px 0}.torrent-title .tmdb-credit{padding:24px 24px 0}}
+@media(min-width:900px){.detail-info{min-height:510px}}@media(max-width:900px){.torrent-detail{grid-template-columns:180px minmax(0,1fr);gap:28px;padding:16px 24px 40px}.detail-info{padding:20px 0}.detail-info h1{font-size:clamp(1.6rem,5vw,2.4rem)}.title-details{padding:0 24px 48px}.title-topbar{padding:10px 24px 0}.torrent-title .tmdb-credit{padding:24px 24px 0}}
 @media(max-width:640px){.poster-col{position:static;padding-top:0}.torrent-detail{grid-template-columns:minmax(0,1fr);gap:20px;padding:12px 16px 32px}.detail-poster{width:100%;max-width:160px;margin:0 auto}.detail-info{padding:0}.title-details{padding:0 16px 40px}.title-topbar{padding:8px 16px 0}.person{padding-right:16px}.person img,.person-ph{width:72px;height:72px}.person-text b{font-size:17px}.person-text span{font-size:13px}.torrent-title .tmdb-credit{padding:24px 16px 0}}
 @media(prefers-reduced-motion:reduce){.title-people{scroll-behavior:auto}}
 </style>

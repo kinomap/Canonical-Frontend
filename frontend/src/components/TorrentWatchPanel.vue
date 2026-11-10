@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * Title page action block of the reference layout in KINOSOTA honey: «Смотреть · 1 сезон, 1 серия» + bookmark,
- * «✓ Выбрано: 1080p WEB-DL · ▲ 173 сида · 71,4 ГБ», then the Quality / Language pickers and season + episode selects.
- * Voice-overs are chosen in the player (mpv); the preparation status lives under the poster (TorrentPosterStatus).
+ * Title page action block of the reference layout in KINOSOTA honey: «Смотреть» + bookmark,
+ * «✓ Выбрано: 1080p WEB-DL · ▲ 173 сида · 71,4 ГБ», then the Quality / Language pickers, Audio modal and season + episode selects.
+ * Voice-overs can also be chosen in the player (mpv); the preparation status lives under the poster (TorrentPosterStatus).
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Play, RefreshCw, RotateCw } from 'lucide-vue-next'
+import { Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
 import LibraryButton from './LibraryButton.vue'
 import DesktopPlayerModal from './DesktopPlayerModal.vue'
 import KSelect from './KSelect.vue'
@@ -14,9 +14,11 @@ import type { TorrentItem } from '@/api/torrents'
 import { LANGUAGE_NAMES, type LanguagePill, type TorrentWatch } from '@/composables/useTorrentWatch'
 import { useAuthStore } from '@/stores/auth'
 import { formatSize, plural } from '@/utils/ruFormat'
+
 const props = defineProps<{ item: TorrentItem; state: TorrentWatch }>()
 const emit = defineEmits<{ browser: [] }>()
 const auth = useAuthStore(), route = useRoute(), router = useRouter()
+const showAudioModal = ref(false)
 
 /** Flag + code like the reference («RU», «UA», «EN»); the tooltip says what kind of track it is. */
 const LANGUAGE_TEXT: Record<LanguagePill, string> = { ru: 'RU', uk: 'UA', en: 'EN', und: 'Не указан' }
@@ -34,7 +36,7 @@ const label = computed(() => {
     case 'retry': return 'Повторить'
     case 'discover': return 'Искать раздачи'
     case 'prepare': return 'Подготовить раздачу'
-    default: return episodeText.value ? `Смотреть · ${episodeText.value}` : 'Смотреть'
+    default: return 'Смотреть'
   }
 })
 const again = computed(() => props.state.busy !== 'launch' && (props.state.action === 'retry' || props.state.action === 'discover'))
@@ -94,41 +96,48 @@ function browser() {
   emit('browser')
 }
 </script>
+
 <template>
   <div class="watch-panel" data-testid="watch-panel">
-    <div class="watch-actions">
-      <button type="button" class="watch-button" data-testid="watch-button" :disabled="disabled" :aria-busy="waiting || !!state.busy" @click="primary">
-        <RotateCw v-if="again" class="watch-icon" :size="20" aria-hidden="true" />
-        <Play v-else class="watch-icon" :size="20" fill="currentColor" :stroke-width="0" aria-hidden="true" />
-        <span>{{ label }}</span>
-      </button>
-      <LibraryButton :item="item" />
-    </div>
-    <p v-if="statusShown" class="watch-status" data-testid="watch-status"><span class="watch-check" aria-hidden="true">✓</span> Выбрано: <span class="watch-facts">{{ statusFacts.join(' · ') }}</span></p>
-    <p v-if="hint" class="watch-hint" data-testid="watch-hint">{{ hint }}</p>
-    <div v-if="state.view?.allowed && state.sources.length" class="watch-options" data-testid="watch-options">
-      <div class="watch-section">
-        <span id="watch-quality-label" class="watch-label">Качество</span>
-        <div class="watch-chips" role="group" aria-labelledby="watch-quality-label">
-          <button v-for="q in state.qualityOptions" :key="q.value" type="button" class="watch-pill" :class="{ active: q.active, missing: !q.available }" :disabled="!q.available" :aria-pressed="q.active" :title="q.available ? `Качество ${q.label}` : 'Нет раздачи в этом качестве'" @click="state.pickQuality(q.value)"><s v-if="!q.available">{{ q.value }}</s><template v-else>{{ q.label }}</template></button>
-        </div>
+    <div class="watch-card" data-testid="watch-card">
+      <div class="watch-actions">
+        <button type="button" class="watch-button" data-testid="watch-button" :disabled="disabled" :aria-busy="waiting || !!state.busy" @click="primary">
+          <RotateCw v-if="again" class="watch-icon" :size="20" aria-hidden="true" />
+          <Play v-else class="watch-icon" :size="20" fill="currentColor" :stroke-width="0" aria-hidden="true" />
+          <span>{{ label }}</span>
+        </button>
+        <LibraryButton :item="item" />
       </div>
-      <div v-if="state.languageOptions.length" class="watch-section">
-        <span id="watch-language-label" class="watch-label">Язык</span>
-        <div class="watch-chips" role="group" aria-labelledby="watch-language-label">
-          <button v-for="l in state.languageOptions" :key="l" type="button" class="watch-pill" :class="{ active: state.activeLanguage === l }" :aria-pressed="state.activeLanguage === l" :title="LANGUAGE_NAMES[l]" @click="state.pickLanguage(l)">
-            <svg v-if="l === 'ru'" class="watch-flag flag-ru" viewBox="0 0 9 6" aria-hidden="true"><rect width="9" height="2" fill="#fff" /><rect y="2" width="9" height="2" fill="#0039a6" /><rect y="4" width="9" height="2" fill="#d52b1e" /></svg>
-            <svg v-else-if="l === 'uk'" class="watch-flag flag-uk" viewBox="0 0 9 6" aria-hidden="true"><rect width="9" height="3" fill="#0057b7" /><rect y="3" width="9" height="3" fill="#ffd700" /></svg>
-            <svg v-else-if="l === 'en'" class="watch-flag flag-en" viewBox="0 0 60 30" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="60" height="30" fill="#012169" /><path d="M0 0L60 30M60 0L0 30" stroke="#fff" stroke-width="6" /><path d="M0 0L60 30M60 0L0 30" stroke="#c8102e" stroke-width="2" /><path d="M30 0V30M0 15H60" stroke="#fff" stroke-width="10" /><path d="M30 0V30M0 15H60" stroke="#c8102e" stroke-width="6" /></svg>{{ LANGUAGE_TEXT[l] }}
-          </button>
+      <p v-if="statusShown" class="watch-status" data-testid="watch-status"><span class="watch-check" aria-hidden="true">✓</span> Выбрано: <span class="watch-facts">{{ statusFacts.join(' · ') }}</span></p>
+      <p v-if="hint" class="watch-hint" data-testid="watch-hint">{{ hint }}</p>
+      <div v-if="state.view?.allowed && state.sources.length" class="watch-options" data-testid="watch-options">
+        <div class="watch-section">
+          <span id="watch-quality-label" class="watch-label">Качество</span>
+          <div class="watch-chips" role="group" aria-labelledby="watch-quality-label">
+            <button v-for="q in state.qualityOptions" :key="q.value" type="button" class="watch-pill" :class="{ active: q.active, missing: !q.available }" :disabled="!q.available" :aria-pressed="q.active" :title="q.available ? `Качество ${q.label}` : 'Нет раздачи в этом качестве'" @click="state.pickQuality(q.value)"><s v-if="!q.available">{{ q.value }}</s><template v-else>{{ q.label }}</template></button>
+          </div>
         </div>
-      </div>
-      <div v-if="state.showEpisodes" class="watch-section">
-        <span id="watch-series-label" class="watch-label">Серия</span>
-        <div class="watch-series" data-testid="watch-series" role="group" aria-labelledby="watch-series-label">
-          <KSelect class="watch-season" data-testid="season-select" :model-value="state.season" :options="seasonItems" label="Сезон" placeholder="Сезон" @update:model-value="(value) => state.pickSeason(Number(value))" />
-          <KSelect class="watch-episode" data-testid="episode-select" :model-value="state.episode" :options="episodeItems" label="Серия" placeholder="Серия" @update:model-value="(value) => state.pickEpisode(Number(value))" />
-          <button type="button" class="watch-refresh" data-testid="episodes-refresh" title="Проверить новые серии" aria-label="Проверить новые серии" :disabled="!!state.busy" :aria-busy="state.busy === 'discover'" @click="state.discover('episodes')"><RefreshCw :size="18" :class="{ spinning: state.busy === 'discover' }" aria-hidden="true" /></button>
+        <div v-if="state.languageOptions.length" class="watch-section">
+          <span id="watch-language-label" class="watch-label">Язык</span>
+          <div class="watch-chips" role="group" aria-labelledby="watch-language-label">
+            <button v-for="l in state.languageOptions" :key="l" type="button" class="watch-pill" :class="{ active: state.activeLanguage === l }" :aria-pressed="state.activeLanguage === l" :title="LANGUAGE_NAMES[l]" @click="state.pickLanguage(l)">
+              <svg v-if="l === 'ru'" class="watch-flag flag-ru" viewBox="0 0 9 6" aria-hidden="true"><rect width="9" height="2" fill="#fff" /><rect y="2" width="9" height="2" fill="#0039a6" /><rect y="4" width="9" height="2" fill="#d52b1e" /></svg>
+              <svg v-else-if="l === 'uk'" class="watch-flag flag-uk" viewBox="0 0 9 6" aria-hidden="true"><rect width="9" height="3" fill="#0057b7" /><rect y="3" width="9" height="3" fill="#ffd700" /></svg>
+              <svg v-else-if="l === 'en'" class="watch-flag flag-en" viewBox="0 0 60 30" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="60" height="30" fill="#012169" /><path d="M0 0L60 30M60 0L0 30" stroke="#fff" stroke-width="6" /><path d="M0 0L60 30M60 0L0 30" stroke="#c8102e" stroke-width="2" /><path d="M30 0V30M0 15H60" stroke="#fff" stroke-width="10" /><path d="M30 0V30M0 15H60" stroke="#c8102e" stroke-width="6" /></svg>{{ LANGUAGE_TEXT[l] }}
+            </button>
+            <button v-if="state.voiceOptions.length > 0" type="button" class="watch-pill audio-pill" data-testid="audio-track-button" @click="showAudioModal = true">
+              <Volume2 class="audio-icon" :size="15" aria-hidden="true" />
+              <span>{{ state.audioButtonLabel }}</span>
+            </button>
+          </div>
+        </div>
+        <div v-if="state.showEpisodes" class="watch-section">
+          <span id="watch-series-label" class="watch-label">Серия</span>
+          <div class="watch-series" data-testid="watch-series" role="group" aria-labelledby="watch-series-label">
+            <KSelect class="watch-season" data-testid="season-select" :model-value="state.season" :options="seasonItems" label="Сезон" placeholder="Сезон" @update:model-value="(value) => state.pickSeason(Number(value))" />
+            <KSelect class="watch-episode" data-testid="episode-select" :model-value="state.episode" :options="episodeItems" label="Серия" placeholder="Серия" @update:model-value="(value) => state.pickEpisode(Number(value))" />
+            <button type="button" class="watch-refresh" data-testid="episodes-refresh" title="Проверить новые серии" aria-label="Проверить новые серии" :disabled="!!state.busy" :aria-busy="state.busy === 'discover'" @click="state.discover('episodes')"><RefreshCw :size="18" :class="{ spinning: state.busy === 'discover' }" aria-hidden="true" /></button>
+          </div>
         </div>
       </div>
     </div>
@@ -136,9 +145,31 @@ function browser() {
     <p v-else-if="state.message" class="watch-message" role="status">{{ state.message }}</p>
     <DesktopPlayerModal :show="state.installPrompt" :can-browse="state.action === 'launch'" @close="state.closeInstall()" @browser="browser" />
   </div>
+
+  <Teleport to="body">
+    <div v-if="showAudioModal" class="audio-modal-backdrop" @click.self="showAudioModal = false">
+      <div class="audio-modal" role="dialog" aria-modal="true" aria-labelledby="audio-modal-title">
+        <div class="audio-modal-header">
+          <h3 id="audio-modal-title">Выбор аудиодорожки</h3>
+          <button type="button" class="audio-modal-close" aria-label="Закрыть" @click="showAudioModal = false">✕</button>
+        </div>
+        <ul class="audio-modal-list" role="listbox">
+          <li v-for="v in state.voiceOptions" :key="v.value" role="option" :aria-selected="v.active"
+              class="audio-modal-item" :class="{ active: v.active }"
+              @click="state.pickVoice(v.value); showAudioModal = false">
+            <span class="audio-modal-check" aria-hidden="true">{{ v.active ? "✓" : "" }}</span>
+            <span>{{ v.value }}</span>
+          </li>
+        </ul>
+        <p class="audio-modal-tip">💡 Аудиодорожку также можно мгновенно сменить прямо в плеере во время просмотра</p>
+      </div>
+    </div>
+  </Teleport>
 </template>
+
 <style scoped>
 .watch-panel{--ease:cubic-bezier(.22,1,.36,1);--honey-grad:linear-gradient(135deg,#ffe36e 0%,#ffc21a 46%,#ff9e1b 100%);display:flex;flex-direction:column;margin:20px 0 0;min-width:0}
+.watch-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px 24px;display:flex;flex-direction:column;gap:0}
 .watch-actions{display:flex;align-items:center;gap:12px;min-height:56px;flex-wrap:nowrap}
 .watch-actions :deep(.library-tooltip){left:auto;right:0;transform:none}
 .watch-actions :deep(.library-button){width:56px;height:56px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);transition:background-color .2s,border-color .2s,color .2s}
@@ -165,6 +196,8 @@ function browser() {
 .watch-pill.missing s{text-decoration-thickness:1px}
 .watch-pill:focus-visible,.watch-refresh:focus-visible{outline:2px solid #ffd24d;outline-offset:2px}
 .watch-flag{flex:none;width:18px;height:12px;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
+.audio-pill{gap:6px}
+.audio-icon{flex:none}
 .watch-series{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 .watch-season{width:160px}
 .watch-episode{width:220px}
@@ -175,6 +208,20 @@ function browser() {
 .watch-error{margin:12px 0 0;color:#ff8a7a;font-size:14px;line-height:20px}
 .watch-message{margin:12px 0 0;color:rgba(255,255,255,.7);font-size:14px;line-height:20px}
 @keyframes watch-spin{to{transform:rotate(360deg)}}
+
+.audio-modal-backdrop{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+.audio-modal{background:#1a1e2e;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:0;min-width:320px;max-width:480px;width:90%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.8)}
+.audio-modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px 0}
+.audio-modal-header h3{margin:0;font-size:17px;line-height:24px;font-weight:700;color:#fff}
+.audio-modal-close{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);font:inherit;cursor:pointer;transition:background .18s}
+.audio-modal-close:hover{background:rgba(255,255,255,.14);color:#fff}
+.audio-modal-list{list-style:none;margin:12px 0 0;padding:0 12px;overflow-y:auto;flex:1}
+.audio-modal-item{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;cursor:pointer;transition:background .15s}
+.audio-modal-item:hover{background:rgba(255,255,255,.07)}
+.audio-modal-item.active{background:rgba(245,245,245,.1)}
+.audio-modal-check{flex:none;width:20px;text-align:center;color:#ffd24d;font-weight:700}
+.audio-modal-tip{margin:0;padding:16px 24px 20px;font-size:13px;line-height:18px;color:rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.07)}
+
 @media(max-width:640px){.watch-actions{flex-wrap:wrap}.watch-button{flex:1 1 0;min-width:0;padding:0 16px;font-size:14px;white-space:normal}.watch-pill{max-width:none;padding:4px 9px;font-size:11px}.watch-season,.watch-episode{flex:1 1 140px;width:auto}}
 @media(prefers-reduced-motion:reduce){.watch-button,.watch-pill,.watch-refresh{transition:none}.spinning{animation:none}}
 </style>
