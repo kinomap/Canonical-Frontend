@@ -271,6 +271,23 @@ describe('torrent watch panel and live preparation',()=>{
   expect(w.find('.watch-voice').exists()).toBe(false);expect(w.text()).not.toContain('Озвучка');expect(w.findAll('.watch-label').map(l=>l.text())).toEqual(['Качество','Язык'])
   expect(w.find('[data-testid="watch-status"]').text()).toBe('✓ Выбрано: 1080p WEB-DL · ▲ 25 сидов · 7,5 ГБ')
  })
+ it('renders audio button with single radio checkmark in modal and updates upon voice selection',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready({sources:[src({voices:['HDrezka','Дубляж'],rank:0})]}) as any)
+  const{w}=await at('/torrents/movie/1')
+  const audioBtn=w.find('[data-testid="audio-track-button"]')
+  expect(audioBtn.exists()).toBe(true)
+  expect(audioBtn.text()).toBe('Аудио: HDrezka')
+  await audioBtn.trigger('click');await flushPromises()
+  const modal=document.body.querySelector('.audio-modal')
+  expect(modal).not.toBeNull()
+  const items=modal!.querySelectorAll('.audio-modal-item')
+  expect(items).toHaveLength(2)
+  expect(items[0].querySelector('.audio-modal-check')?.textContent).toBe('✓')
+  expect(items[1].querySelector('.audio-modal-check')?.textContent).toBe('')
+  items[1].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await flushPromises()
+  expect(audioBtn.text()).toBe('Аудио: Дубляж')
+ })
  it('prefers the server choice and otherwise breaks a tie between ready releases by rank',async()=>{
   const pair=[src({default:false,rank:1}),src({source_id:'s2',title:'Film 1080p BDRip',source_type:'BDRip',default:false,rank:0,seeders:3})]
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(ready({selected_source_id:null,sources:pair}) as any)
