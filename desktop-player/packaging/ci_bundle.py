@@ -26,20 +26,41 @@ def main():
     elif system=='Darwin':
         shutil.copy2(shutil.which('mpv'),out/'mpv');(out/'mpv').chmod(0o755)
         subprocess.run(['dylibbundler','-od','-b','-x',str(out/'mpv'),'-d',str(out/'lib'),'-p','@executable_path/lib/'],check=True)
+        # Flatten versioned symlinks created by dylibbundler before the repair pass so
+        # install_name_tool operates on real files, not symlinks.
+        for link in list((out/'lib').glob('*')):
+            if link.is_symlink():
+                content=link.read_bytes();link.unlink();link.write_bytes(content);link.chmod(0o755)
+        # Repair pass: dylibbundler on some macOS/ARM64 runners misses transitive deps
+        # or leaves a library's own install-name pointing at /opt/homebrew/.  Iterate
+        # until every binary in the bundle is clean (up to 15 passes for deep trees).
+        for _pass in range(15):
+            changed=False
+            for binary in [out/'mpv',*(out/'lib').glob('*')]:
+                binary=Path(binary)
+                if not binary.is_file():continue
+                for raw in run('otool','-L',str(binary)).splitlines()[1:]:
+                    dep=raw.strip().split()[0] if raw.strip() else ''
+                    if not (dep.startswith('/opt/homebrew/') or dep.startswith('/usr/local/')):continue
+                    dep_path=Path(dep);dest=out/'lib'/dep_path.name
+                    if not dest.exists():
+                        shutil.copy2(dep_path,dest);dest.chmod(0o755)
+                        subprocess.run(['install_name_tool','-id','@executable_path/lib/'+dep_path.name,str(dest)],check=True)
+                    subprocess.run(['install_name_tool','-change',dep,'@executable_path/lib/'+dep_path.name,str(binary)],check=True)
+                    changed=True
+            if not changed:break
         inventory=json.loads(run('brew','info','--json=v2','--installed'))
         sources=['https://github.com/Homebrew/homebrew-core']
         for formula in inventory['formulae']:
             for entry in formula['installed']:
-                cellar=Path(run('brew','--cellar',formula['name']).strip())/entry['version']
+                try:cellar=Path(run('brew','--cellar',formula['name']).strip())/entry['version']
+                except subprocess.CalledProcessError:continue
                 for candidate in cellar.rglob('*'):
                     if candidate.is_file() and any(term in candidate.name.lower() for term in ('license','copying','copyright','notice')):
                         target=licenses/formula['name']/candidate.relative_to(cellar);target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(candidate,target)
             url=formula.get('urls',{}).get('stable',{}).get('url')
             if url and url.startswith('https://'):sources.append(url)
         (licenses/'homebrew-inventory.json').write_text(json.dumps(inventory,indent=2),encoding='utf-8')
-        for link in list((out/'lib').glob('*')):
-            if link.is_symlink():
-                content=link.read_bytes();link.unlink();link.write_bytes(content);link.chmod(0o755)
         for binary in [out/'mpv',*(out/'lib').glob('*')]:
             dependencies=run('otool','-L',binary)
             if '/opt/homebrew/' in dependencies or '/usr/local/' in dependencies:raise RuntimeError('Unbundled Homebrew dependency')

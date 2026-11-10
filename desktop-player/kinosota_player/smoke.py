@@ -18,8 +18,11 @@ def run_playback_smoke(engine,fixture,report):
             engine.start(f'https://127.0.0.1:{server.server_port}/{filename}',extra_args=['--vo=null','--ao=null','--pause=yes','--tls-ca-file='+str(fixture/'cert.pem'),'--log-file='+str(report.parent/('mpv-'+filename+'.log'))])
             deadline=time.monotonic()+25
             def prop(name):
+                # Catch all IPC errors (OSError, TimeoutError on Windows named pipes
+                # as well as RuntimeError from mpv command rejection) so the outer
+                # loop can retry until the 25-second deadline rather than aborting.
                 try:return engine.command(['get_property',name])
-                except RuntimeError:return None
+                except Exception:return None
             while time.monotonic()<deadline and engine.alive():
                 codec=prop('video-codec');acodec=prop('audio-codec-name');fmt=prop('video-params/pixelformat')
                 if codec and acodec and fmt:break
