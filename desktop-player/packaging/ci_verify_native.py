@@ -20,11 +20,21 @@ def main():
             installer=out/'KINOSOTA-Player-Setup.exe';install=temp/'installed'
             run(installer,'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/DIR='+str(install))
             executable=install/'kinosota-player.exe'
+            # The installer's [Run] entry (Flags: nowait skipifnotsilent) launches the app
+            # automatically in silent mode for in-app-update resume.  Kill that background
+            # instance now so it does not lock the EXE during the smoke test or uninstall.
+            subprocess.run(['taskkill','/F','/IM','kinosota-player.exe'],
+                           capture_output=True)  # intentionally ignores exit code
             env['PATH']=os.pathsep.join([str(Path(os.environ['SystemRoot'])/'System32'),os.environ['SystemRoot']])
             try:
                 run(executable,'--playback-smoke-fixture',fixture,'--playback-smoke-report',receipt,env=env)
                 assert json.loads(receipt.read_text())['status']=='PASS'
-            finally:run(install/'unins000.exe','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
+            finally:
+                # Kill the smoke-test instance as well before uninstalling; the process
+                # should already be gone but guard against a crash-restart or slow exit.
+                subprocess.run(['taskkill','/F','/IM','kinosota-player.exe'],
+                               capture_output=True)
+                run(install/'unins000.exe','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
             assert not executable.exists(), 'Uninstall left the app installed'
         elif system=='Darwin':
             installer=out/'KINOSOTA-Player.dmg';mount=temp/'mounted';installed=temp/'Applications/kinosota-player.app';installed.parent.mkdir()
