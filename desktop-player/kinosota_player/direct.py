@@ -18,9 +18,7 @@ from .deeplink import parse\_launch
 from .engine import FIRST\_FRAME\_TIMEOUT, Mpv
 from .torrents import audio\_args, media\_title\_args
 
-# Cinema palette of the launch splash (same tokens as the website player).
-
-BACKGROUND, BACKGROUND\_DEEP = '#0d0f14', '#0a0b0e'
+BACKGROUND, BACKGROUND\_DEEP = '#0d0f14', '#0a0b0e'  # Cinema palette: the website player tokens.
 ACCENT, ACCENT\_DEEP = '#f5a623', '#e5a00d'
 TEXT, TEXT\_MUTED = '#f0f2f5', '#7a8194'
 FRAME\_MS = 16  # \~60 FPS for the reel animation.
@@ -704,5 +702,85 @@ def _watch(self):
     if self.engine.alive():
         return
     self.timer.stop()
-    self
+    self.frame_token += 1  # A pending first-frame wait belongs to the dead process.
+    code = self.engine.exit_code()
+    if code in (None, 0):
+        self._hide_splash()
+        self._close_api()
+        self.finished.emit(0)
+        return
+    if code != 4 and self.attempt < 2 and time.monotonic() - self.started_at < 120:
+        self._start_attempt(self.generation, self.attempt + 1)
+        return
+    self._error('Не удалось воспроизвести видео. Проверьте соединение и нажмите ✕.')
+
+@staticmethod
+def _explain(error):
+    if isinstance(error, ApiError):
+        return {
+            403: 'Для просмотра нужна действующая подписка PRO.',
+            404: 'Ссылка не найдена или раздача больше недоступна. Нажмите «Смотреть» ещё раз.',
+            409: 'Источник ещё готовится. Попробуйте открыть фильм чуть позже.',
+            410: 'Ссылка устарела или уже использована. Нажмите «Смотреть» на сайте ещё раз.',
+        }.get(error.status, str(error))
+    return 'Не удалось открыть фильм. Проверьте соединение и попробуйте ещё раз.'
+
+def _error(self, message):
+    self.timer.stop()
+    self._status(message, error=True)
+
+def _close_by_user(self):
+    """✕ / Esc: abort open_launch and warm_stream, stop mpv, fade the splash out, quit."""
+    if self.cancelling:
+        return
+    self.cancelling = True
+    self._stop_everything()
+    if self.splash is None or not self.splash.isVisible():
+        self._cancelled()
+        return
+    self.splash.fade_out(close=True)
+
+def _splash_faded(self):
+    if self.cancelling:
+        self._cancelled()
+
+def _cancelled(self):
+    if self.splash is not None:
+        self.splash.dismiss()
+    if not self.cancel_reported:  # finished(1) exactly once, even if ✕ and Esc race.
+        self.cancel_reported = True
+        self.finished.emit(1)
+
+def _stop_everything(self):
+    self.retired = True
+    self.generation += 1  # warm_stream polls this and stops; late open_launch results are dropped.
+    self.frame_token += 1
+    self.timer.stop()
+    self.engine.stop()
+    self._close_api()  # Closing the httpx clients aborts a request that is still in flight.
+
+def _hide_splash(self, *, fade=False):
+    if self.splash is None:
+        return
+    if fade and self.splash.isVisible():
+        self.splash.fade_out()
+    else:
+        self.splash.hide_now()
+
+def _close_api(self):
+    api, self.api = self.api, None
+    close = getattr(api, 'close', None)
+    if callable(close):
+        close()
+
+def retire(self):
+    """Dismiss the no-login surface when the caller hands a legacy launch to Window."""
+    self._stop_everything()
+    self._hide_splash()
+
+def shutdown(self):
+    self._stop_everything()
+    self._hide_splash()
+    if self.splash is not None:
+        self.splash.dismiss()
 ```
