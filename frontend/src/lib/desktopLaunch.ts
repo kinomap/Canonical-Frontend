@@ -32,8 +32,17 @@ export function openDeepLink(url: string): void {
 export type WaitOptions = { signal?: AbortSignal; quietMs?: number; focusLostMs?: number; intervalMs?: number }
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) => {
-  const timer = setTimeout(resolve, ms)
-  signal?.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
+  let settled = false
+  const finish = () => {
+    if (settled) return
+    settled = true
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', finish)
+    resolve()
+  }
+  const timer = setTimeout(finish, ms)
+  if (signal?.aborted) finish()
+  else signal?.addEventListener('abort', finish, { once: true })
 })
 
 /**

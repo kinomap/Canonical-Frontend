@@ -8,7 +8,7 @@ from PySide6.QtCore import QAbstractAnimation, QEvent, QRect, Qt, QUrl
 from PySide6.QtGui import QCloseEvent, QFileOpenEvent, QKeyEvent
 from PySide6.QtWidgets import QApplication
 from kinosota_player import deeplink
-from kinosota_player.deeplink import LinkEvents, find_link, parse_launch
+from kinosota_player.deeplink import LinkEvents, find_link, parse_launch, parse_mode
 from kinosota_player.direct import (BUFFERING, CONNECTING, FADE_MS, STARTING, DirectLaunchSplash, DirectPlayer,
                                     geometry_args, geometry_text, launch_args)
 from kinosota_player.engine import Mpv
@@ -25,6 +25,13 @@ ROOT = Path(__file__).resolve().parents[1]
 ])
 def test_launch_uuid_is_extracted_with_optional_non_secret_queries(link):
     assert parse_launch(link) == LAUNCH
+
+
+def test_mode_parameter_parsed_from_deeplink():
+    assert parse_mode(f'kinosota://watch?launch={LAUNCH}&mode=compact') == 'compact'
+    assert parse_mode(f'kinosota://watch?launch={LAUNCH}&mode=fullscreen') == 'full'
+    assert parse_mode(f'kinosota://watch?launch={LAUNCH}') == 'full'
+    assert parse_mode(None) == 'full'
 
 
 @pytest.mark.parametrize('link', [

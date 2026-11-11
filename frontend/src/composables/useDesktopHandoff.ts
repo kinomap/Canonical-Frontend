@@ -9,11 +9,12 @@ import { onBeforeUnmount, reactive, ref } from 'vue'
 import { apiClient } from '@/api/client'
 import type { DesktopLaunch } from '@/api/torrents'
 import { openDeepLink, waitForPlayer } from '@/lib/desktopLaunch'
+import { hideCinemaPrestart, isCinemaPrestartCompact, showCinemaPrestart } from '@/composables/useCinemaPrestart'
 
 export const HANDOFF_OPENED = 'Фильм открыт в KINOSOTA Player'
 export const HANDOFF_OPENING = 'Открываем KINOSOTA Player…'
 
-export function useDesktopHandoff(create: () => Promise<DesktopLaunch>, onOpened?: () => void) {
+export function useDesktopHandoff(create: (signal?: AbortSignal) => Promise<DesktopLaunch>, onOpened?: () => void) {
   const busy = ref(false)
   const status = ref('')
   const error = ref('')
@@ -39,13 +40,20 @@ export function useDesktopHandoff(create: () => Promise<DesktopLaunch>, onOpened
     error.value = ''
     status.value = ''
     installPrompt.value = false
+    // Publish the overlay state synchronously before the first network request.
+    showCinemaPrestart(reset, ctl.signal)
     try {
-      const res = await create()
+      const res = await create(ctl.signal)
       if (ctl.signal.aborted) return false
-      openDeepLink(res.deep_link)
+      let link = res.deep_link
+      if (isCinemaPrestartCompact()) {
+        link += (link.includes('?') ? '&' : '?') + 'mode=compact'
+      }
+      openDeepLink(link)
       status.value = HANDOFF_OPENING
       const opened = await waitForPlayer(res.launch_id, { signal: ctl.signal })
       if (ctl.signal.aborted) return false
+      hideCinemaPrestart()
       if (opened) {
         status.value = HANDOFF_OPENED
         onOpened?.()
@@ -63,6 +71,7 @@ export function useDesktopHandoff(create: () => Promise<DesktopLaunch>, onOpened
         })
       return false
     } catch (e) {
+      hideCinemaPrestart()
       if (ctl.signal.aborted) return false
       const code = (e as { status?: number } | null)?.status
       if (code === 403) {
@@ -89,10 +98,11 @@ export function useDesktopHandoff(create: () => Promise<DesktopLaunch>, onOpened
     status.value = ''
     error.value = ''
     installPrompt.value = false
+    hideCinemaPrestart()
   }
 
-  onBeforeUnmount(() => controller?.abort())
-  return reactive({ busy, status, error, installPrompt, pro, checkAccess, launch, closeInstall, reset })
+  onBeforeUnmount(reset)
+  return reactive({ busy, status, error, installPrompt, pro, checkAccess, launch, closeInstall, reset, cancelLaunch: reset })
 }
 
 export type DesktopHandoff = ReturnType<typeof useDesktopHandoff>

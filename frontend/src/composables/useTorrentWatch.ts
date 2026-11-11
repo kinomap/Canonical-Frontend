@@ -17,6 +17,7 @@ import {
 import { ACTIVE_STAGES, PREP_POLL_MS, PREP_PROGRESS, stageLabel, stageOf, type PrepStage, type PrepStatus } from '@/api/preparation'
 import { useLibrary } from '@/stores/library'
 import { openDeepLink, waitForPlayer } from '@/lib/desktopLaunch'
+import { hideCinemaPrestart, isCinemaPrestartCompact, showCinemaPrestart } from '@/composables/useCinemaPrestart'
 
 /** Live refresh while something moves (the reference re-reads every 2–3 s). */
 export const POLL_MS = PREP_POLL_MS
@@ -548,6 +549,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     error.value = ''
     message.value = ''
     installPrompt.value = false
+    showCinemaPrestart(cancelLaunch, ctl.signal)
     try {
       let chosenTrackIndex: number | null = null
       let chosenTrackLang: TorrentLanguage | null = audioLanguage.value
@@ -567,10 +569,15 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
         audio_lang: chosenTrackLang, audio_track: chosenTrackIndex,
       })
       if (ctl.signal.aborted) return
-      openDeepLink(res.deep_link)
+      let link = res.deep_link
+      if (isCinemaPrestartCompact()) {
+        link += (link.includes('?') ? '&' : '?') + 'mode=compact'
+      }
+      openDeepLink(link)
       message.value = 'Открываем KINOSOTA Player…'
       const opened = await waitForPlayer(res.launch_id, { signal: ctl.signal, quietMs: 3500 })
       if (ctl.signal.aborted) return
+      hideCinemaPrestart()
       if (opened) {
         message.value = 'Открыто в KINOSOTA Player'
       } else {
@@ -580,6 +587,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
           .then((late) => { if (late && !ctl.signal.aborted) { installPrompt.value = false; message.value = 'Открыто в KINOSOTA Player' } })
       }
     } catch (e) {
+      hideCinemaPrestart()
       if (!ctl.signal.aborted) error.value = e instanceof ApiError && e.status < 500 ? e.message : 'Не удалось открыть KINOSOTA Player. Повторите попытку.'
     } finally {
       if (launchController === ctl) busy.value = ''
@@ -587,6 +595,16 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   }
   function closeInstall() {
     installPrompt.value = false
+  }
+  function cancelLaunch() {
+    const ctl = launchController
+    launchController = undefined
+    ctl?.abort()
+    busy.value = ''
+    installPrompt.value = false
+    error.value = ''
+    message.value = ''
+    hideCinemaPrestart()
   }
 
   function onVisible() {
@@ -599,6 +617,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     clearTimeout(timer)
     controller?.abort()
     launchController?.abort()
+    hideCinemaPrestart()
     view.value = null
     loadError.value = false
     selectedId.value = undefined
@@ -618,6 +637,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     clearTimeout(timer)
     controller?.abort()
     launchController?.abort()
+    hideCinemaPrestart()
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible)
   })
 
@@ -625,7 +645,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     view, loadError, selected, sources, stage, audioLanguage, activeLanguage, language, season, episode,
     qualityOptions, languageOptions, voiceOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice,
     busy, message, error, installPrompt, selectedVoice, audioButtonLabel,
-    refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, addToLibrary, launch, closeInstall,
+    refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, addToLibrary, launch, closeInstall, cancelLaunch,
   })
 }
 

@@ -7,11 +7,14 @@ import {toastMessage} from '@/lib/toast'
 import {warmCatalogLink} from '@/router/catalogViews'
 import DesktopAuthorizeModal from '@/components/DesktopAuthorizeModal.vue'
 import SessionExpiredModal from '@/components/SessionExpiredModal.vue'
+import CinemaPrestartOverlay from '@/components/CinemaPrestartOverlay.vue'
+import { cancelCinemaPrestart, useCinemaPrestart } from '@/composables/useCinemaPrestart'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const cinemaPrestart = useCinemaPrestart()
 
 // Modal state — shown when auth:expired fires
 const sessionExpiredVisible = ref(false)
@@ -55,6 +58,7 @@ onUnmounted(() => {
     <CinemaFooter v-if="!['/profile','/login','/register'].includes(route.path) && !route.path.startsWith('/torrents')" />
 
     <DesktopAuthorizeModal />
+    <CinemaPrestartOverlay :show="cinemaPrestart.visible" @cancel="cancelCinemaPrestart" />
     <!-- Global session-expired modal — rendered above everything -->
     <SessionExpiredModal
       :visible="sessionExpiredVisible"

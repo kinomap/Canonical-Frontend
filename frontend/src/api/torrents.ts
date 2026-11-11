@@ -48,11 +48,8 @@ export type TorrentSource = {
   source_id: string | null; title: string; quality: string | null; source_type: string | null; languages: TorrentLanguage[];
   seeders: number; size_bytes: number; state: TorrentSourceState; progress: number; start_ms: number | null;
   default: boolean; episodes: TorrentEpisode[]; file_count: number
-  /** Voice-over studios parsed from the release title (LostFilm, NewStudio, ...). */
   voices?: string[]
-  /** Container audio tracks extracted from the stream header (index, language, title). */
   audio_tracks?: ContainerAudioTrack[]
-  /** Server viewer rank position (0 = best: 1080p > 2160p > 720p, languages, voices, seeders). */
   rank?: number
 }
 export type TorrentSourcesView = {
@@ -60,7 +57,6 @@ export type TorrentSourcesView = {
   sources: TorrentSource[]; qualities: { value: string; available: boolean }[]; languages: { value: TorrentLanguage; available: boolean }[];
   episodes: TorrentEpisode[]
   voices?: { value: string; available: boolean }[]
-  /** TV only: season tabs and the episode grid of the ready sources. */
   seasons?: TorrentSeasonFiles[]
 }
 export type StreamChoice = { source_id?: string | null; season?: number | null; episode?: number | null; file_index?: number | null }
@@ -68,7 +64,6 @@ export type PlaybackTicket = { stream_url: string; expires_at: string; title: st
 export type DesktopLaunch = { launch_id: string; deep_link: string; expires_at: string }
 export type DesktopLaunchRequest = StreamChoice & { kind: TorrentKind; tmdb_id: number; audio_lang?: TorrentLanguage | null; audio_track?: number | null }
 
-/** Only send explicit choices: null/undefined fields are left to the server default. */
 function choiceBody(choice: StreamChoice = {}) {
   const body: Record<string, string | number> = {}
   for (const [key, value] of Object.entries(choice)) if (value !== null && value !== undefined && value !== '') body[key] = value
@@ -76,7 +71,6 @@ function choiceBody(choice: StreamChoice = {}) {
 }
 
 export const torrentPlaybackApi = {
-  /** Live, never cached: the progress bar polls this. */
   preparationStatus(keys: string[], signal?: AbortSignal): Promise<{statuses: Record<string, TorrentStatusPayload>}> {
     return adRequest('/torrents/preparation-status?keys=' + encodeURIComponent(keys.slice(0, 100).join(',')), {signal, cache: 'no-store'})
   },
@@ -92,13 +86,15 @@ export const torrentPlaybackApi = {
   discover(kind: TorrentKind, tmdb_id: number): Promise<{result: 'queued' | 'active' | 'cooldown' | 'no_demand'}> {
     return apiClient.postTorrentAction(`sources/${kind}/${tmdb_id}/discover`, {})
   },
-  desktopLaunch(request: DesktopLaunchRequest): Promise<DesktopLaunch> {
+  desktopLaunch(request: DesktopLaunchRequest, signal?: AbortSignal): Promise<DesktopLaunch> {
     const {kind, tmdb_id, audio_lang, audio_track, ...choice} = request
-    return apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', {kind, tmdb_id, ...choiceBody({...choice, file_index: undefined}), ...(audio_lang ? {audio_lang} : {}), ...(audio_track != null ? {audio_track} : {})})
+    const body = {kind, tmdb_id, ...choiceBody({...choice, file_index: undefined}), ...(audio_lang ? {audio_lang} : {}), ...(audio_track != null ? {audio_track} : {})}
+    return signal ? apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', body, signal) : apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', body)
   },
   /** A KINOSOTA catalogue film the browser cannot play: the app plays it with its own session. */
-  catalogLaunch(movie_id: string): Promise<DesktopLaunch> {
-    return apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', {kind: 'movie', movie_id})
+  catalogLaunch(movie_id: string, signal?: AbortSignal): Promise<DesktopLaunch> {
+    const body = {kind: 'movie' as const, movie_id}
+    return signal ? apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', body, signal) : apiClient.postTorrentAction<DesktopLaunch>('desktop-launch', body)
   },
   launchStatus(launch_id: string, signal?: AbortSignal): Promise<{opened: boolean; expired: boolean}> {
     return adRequest(`/torrents/desktop-launch/${encodeURIComponent(launch_id)}`, {signal, cache: 'no-store'})

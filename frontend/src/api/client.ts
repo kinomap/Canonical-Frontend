@@ -1,4 +1,5 @@
 function trafficReferrer(): string { try { return typeof document !== 'undefined' && /^https?:/.test(document.referrer) ? new URL(document.referrer).origin : '' } catch { return '' } }
+import { currentCinemaPrestartSignal } from '@/composables/useCinemaPrestart'
 import type {
   AudioTrack,
   AuthTokenResponse,
@@ -93,6 +94,10 @@ export function clearClientCache(): void {
 
 const inFlight = new Map<string, Promise<unknown>>()
 async function request<T>(endpoint: string, options?: RequestInit, cacheTtlMs = 0): Promise<T> {
+  if (endpoint === '/torrents/desktop-launch' && options?.method?.toUpperCase() === 'POST' && !options.signal) {
+    const signal = currentCinemaPrestartSignal()
+    if (signal) options = { ...options, signal }
+  }
   const share = (!options?.method || options.method === 'GET') && !options?.signal && cacheTtlMs > 0
   if (!share) return performRequest<T>(endpoint, options, cacheTtlMs)
   const key = endpoint + ':' + (localStorage.getItem('tg_stream_access_token') || '')

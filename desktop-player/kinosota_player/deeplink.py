@@ -47,6 +47,18 @@ def parse_launch(link):
     return str(uuid.UUID(value))
 
 
+def parse_mode(link):
+    """'compact' if the deep link requested compact geometry, 'full' otherwise."""
+    if not isinstance(link, str) or not link or len(link) > MAX_LINK:
+        return 'full'
+    try:
+        parts = urlsplit(link.strip())
+        query = parse_qs(parts.query, keep_blank_values=True)
+        return 'compact' if query.get('mode', [''])[0].lower() == 'compact' else 'full'
+    except Exception:
+        return 'full'
+
+
 def find_link(argv):
     """The first kinosota: argument (raw, validated later), if the OS passed one."""
     for arg in list(argv or [])[1:]:

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QGraphicsOpacityEffect, QHBoxLayout, QLabel, QPus
                                QVBoxLayout, QWidget)
 
 from .api import Api, ApiError
-from .deeplink import parse_launch
+from .deeplink import parse_launch, parse_mode
 from .engine import FIRST_FRAME_TIMEOUT, Mpv
 from .torrents import audio_args, media_title_args
 
@@ -576,6 +576,9 @@ class DirectPlayer(QObject):
         launch_id = parse_launch(link)
         if not launch_id or self.retired:
             return False
+        mode = parse_mode(link)
+        if self.splash is not None:
+            self.splash.set_mode(mode, animate=False)
         self.generation += 1
         generation = self.generation
         self.timer.stop()
