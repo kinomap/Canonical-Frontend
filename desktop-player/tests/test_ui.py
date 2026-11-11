@@ -272,3 +272,19 @@ def test_expired_session_closes_settings_and_clears_private_data(tmp_path):
     assert w.pages.currentIndex()==0 and not w.drawer.isVisible() and not w.account and not w.drawer.account
     assert w.results.count()==0
     w.close();app.processEvents()
+
+
+def test_dialog_and_message_box_have_opaque_background():
+    from PySide6.QtWidgets import QMessageBox, QDialog
+    from kinosota_player.theme import PREMIUM_STYLE
+    app = QApplication.instance() or QApplication([])
+    assert "QDialog, QMessageBox{background-color:#0c1319;" in PREMIUM_STYLE
+    assert "QDialog#audioDialog{background:transparent;}" in PREMIUM_STYLE
+    box = QMessageBox()
+    box.setStyleSheet(PREMIUM_STYLE)
+    dialog = QDialog()
+    dialog.setStyleSheet(PREMIUM_STYLE)
+    audio = QDialog()
+    audio.setObjectName("audioDialog")
+    audio.setStyleSheet(PREMIUM_STYLE)
+    assert box.styleSheet() is not None

@@ -73,6 +73,10 @@ def show_uninstall(parent=None,language='ru'):
     def finished(code,status):
         bar.hide();close.setEnabled(True)
         if code==0:
+            for p in (Path.home()/'.local/share/applications/kinosota-player.desktop',Path.home()/'.local/bin/kinosota-player'):
+                try:
+                    if p.is_file():p.unlink()
+                except Exception:pass
             dialog.accept()
             if parent:parent.window().close()
             else:QApplication.instance().quit()
