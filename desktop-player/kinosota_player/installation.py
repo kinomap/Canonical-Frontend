@@ -1,5 +1,5 @@
 """Explicit graphical uninstall and update; never execute root UI or untrusted shell strings."""
-import platform,sys,subprocess
+import os,platform,sys,subprocess
 from pathlib import Path
 from PySide6.QtCore import QProcess,QProcessEnvironment
 from PySide6.QtWidgets import QApplication,QMessageBox,QDialog,QVBoxLayout,QLabel,QPushButton,QProgressBar
@@ -29,7 +29,11 @@ def install_command(path,system=None):
     silent mode, which closes and restarts the player. macOS: the disk image in Finder.
     Source and portable previews get None: they only link to the website."""
     system=system or platform.system();path=Path(path)
-    if not getattr(sys,'frozen',False) or not path.is_absolute():return None
+    if not getattr(sys,'frozen',False):return None
+    # Use os.path.isabs rather than Path.is_absolute so that Unix-style paths like
+    # /tmp/kinosota-update-x/kinosota-player.deb are correctly recognised as absolute
+    # even when the tests run on a Windows host (PureWindowsPath requires a drive letter).
+    if not os.path.isabs(str(path)):return None
     if system=='Linux':
         if Path(sys.executable).resolve()!=Path(INSTALLED_LINUX) or path.suffix!='.deb' or not Path('/usr/bin/pkexec').is_file():return None
         if Path('/usr/bin/apt-get').is_file():return ['/usr/bin/pkexec','/usr/bin/apt-get','install','-y','-o','DPkg::Lock::Timeout=120',str(path)]
