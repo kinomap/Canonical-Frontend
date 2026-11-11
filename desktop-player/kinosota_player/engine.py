@@ -14,6 +14,8 @@ def child_environment():
     return env
 
 _spawn_lock=threading.RLock()
+# The launch splash waits this long for the first video frame before it hands the screen to mpv anyway.
+FIRST_FRAME_TIMEOUT=30
 @contextmanager
 def native_loader():
     """Do not pass PyInstaller's DLL search directory to the mpv child."""
@@ -113,3 +115,34 @@ class Mpv:
     def alive(self):return bool(self.process and self.process.poll() is None)
 
     def exit_code(self):return self.process.poll() if self.process else None
+
+    def property(self,name):
+        """One mpv property over JSON IPC; None while mpv has no value yet ("property unavailable")."""
+        try:return self.command(['get_property',name])
+        except RuntimeError:return None
+
+    @staticmethod
+    def frame_ready(playback_time,video_params):
+        """True once mpv has rendered a frame: the clock runs or the video output has real dimensions."""
+        if type(playback_time) in (int,float) and playback_time>0:return True
+        if not isinstance(video_params,dict):return False
+        width=video_params.get('dw',video_params.get('w'));height=video_params.get('dh',video_params.get('h'))
+        return type(width) is int and type(height) is int and width>0 and height>0
+
+    def wait_playback_started(self,timeout=FIRST_FRAME_TIMEOUT,*,cancelled=lambda:False,interval=.1,sleep=time.sleep,clock=time.monotonic):
+        """Block (off the UI thread) until the first frame is on screen.
+
+        Returns 'playing', 'eof' (the file ended before a frame), 'exited' (mpv quit or crashed),
+        'cancelled' or 'timeout'. A broken IPC connection is retried while the process is alive."""
+        deadline=clock()+max(float(timeout),0.0)
+        while True:
+            if cancelled():return 'cancelled'
+            if not self.alive():return 'exited'
+            try:
+                if self.frame_ready(self.property('playback-time'),self.property('video-out-params')):return 'playing'
+                if self.property('eof-reached') is True:return 'eof'
+            except (OSError,TimeoutError,ValueError):
+                if not self.alive():return 'exited'
+            if cancelled():return 'cancelled'
+            if clock()>=deadline:return 'timeout'
+            sleep(interval)
