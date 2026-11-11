@@ -28,22 +28,25 @@ def install_command(path,system=None):
     waits for a busy package lock), dpkg as the fallback. Windows: the Inno Setup wizard in
     silent mode, which closes and restarts the player. macOS: the disk image in Finder.
     Source and portable previews get None: they only link to the website."""
-    system=system or platform.system();path=Path(path)
+    system=system or platform.system()
+    # Preserve the caller's path string verbatim for shell commands; Path() would
+    # convert forward-slash Unix paths to backslashes on Windows in cross-platform tests.
+    path_str=str(path);p=Path(path)
     if not getattr(sys,'frozen',False):return None
-    # Use os.path.isabs rather than Path.is_absolute so that Unix-style paths like
-    # /tmp/kinosota-update-x/kinosota-player.deb are correctly recognised as absolute
-    # even when the tests run on a Windows host (PureWindowsPath requires a drive letter).
-    if not os.path.isabs(str(path)):return None
+    # os.path.isabs treats /unix/paths as absolute on every host OS (ntpath checks
+    # for a leading separator, not a drive letter), unlike Path.is_absolute() which
+    # returns False for drive-less paths on Windows.
+    if not os.path.isabs(path_str):return None
     if system=='Linux':
-        if Path(sys.executable).resolve()!=Path(INSTALLED_LINUX) or path.suffix!='.deb' or not Path('/usr/bin/pkexec').is_file():return None
-        if Path('/usr/bin/apt-get').is_file():return ['/usr/bin/pkexec','/usr/bin/apt-get','install','-y','-o','DPkg::Lock::Timeout=120',str(path)]
-        if Path('/usr/bin/dpkg').is_file():return ['/usr/bin/pkexec','/usr/bin/dpkg','-i',str(path)]
+        if Path(sys.executable).resolve()!=Path(INSTALLED_LINUX) or p.suffix!='.deb' or not Path('/usr/bin/pkexec').is_file():return None
+        if Path('/usr/bin/apt-get').is_file():return ['/usr/bin/pkexec','/usr/bin/apt-get','install','-y','-o','DPkg::Lock::Timeout=120',path_str]
+        if Path('/usr/bin/dpkg').is_file():return ['/usr/bin/pkexec','/usr/bin/dpkg','-i',path_str]
         return None
     if system=='Windows':
-        if path.suffix.lower()!='.exe' or not (Path(sys.executable).parent/'unins000.exe').is_file():return None
-        return [str(path),'/SILENT','/SP-','/NORESTART','/CLOSEAPPLICATIONS']
+        if p.suffix.lower()!='.exe' or not (Path(sys.executable).parent/'unins000.exe').is_file():return None
+        return [path_str,'/SILENT','/SP-','/NORESTART','/CLOSEAPPLICATIONS']
     if system=='Darwin':
-        return ['/usr/bin/open',str(path)] if path.suffix=='.dmg' and Path('/usr/bin/open').is_file() else None
+        return ['/usr/bin/open',path_str] if p.suffix=='.dmg' and Path('/usr/bin/open').is_file() else None
     return None
 
 def restart_command(system=None):
