@@ -149,6 +149,11 @@ TEXT.update({
  'Авторский':'Author voice-over',
  'Быстро переключить звуковую дорожку во время просмотра можно прямо в плеере (кнопка 💬 на нижней панели управления)':
   'You can switch the audio track while watching right in the player (the 💬 button on the bottom control bar)',
+ 'Срок действия сессии истек. Пожалуйста, войдите снова.':'Your session has expired. Please sign in again.',
+ 'Запоминать вход на этом компьютере':'Remember sign-in on this computer',
+ 'Авторизован':'Authorized',
+ 'Вы вошли как':'Signed in as',
+ 'Запуск отменён.':'Launch cancelled.',
 })
 
 def translate(text, language):
@@ -168,6 +173,12 @@ class Preferences:
         if key not in ('interface_language','title_language') or value not in ('ru','en'):
             raise ValueError('Unsupported preference')
         self.settings.setValue(key,value);self.settings.sync()
+    def get_remember_session(self):
+        val=self.settings.value('remember_session','true')
+        return str(val).lower() not in ('false','0','no')
+    def set_remember_session(self,remember):
+        self.settings.setValue('remember_session','true' if remember else 'false')
+        self.settings.sync()
 
 _CYRILLIC = re.compile('[а-яёіїєґ]', re.IGNORECASE)
 

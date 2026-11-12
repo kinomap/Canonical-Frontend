@@ -381,11 +381,12 @@ QPushButton#audioButton{padding:6px 14px;min-height:20px;border-radius:16px;font
 QPushButton#audioButton:hover{background:rgba(255,194,26,36);border-color:rgba(255,194,26,170);}
 QPushButton#audioButton:disabled{color:#5f6870;background:transparent;border-color:rgba(255,255,255,13);}
 QDialog#audioDialog{background:transparent;}
-QDialog, QMessageBox{background-color:#0c1319;color:#f5f6f7;}
+QDialog, QMessageBox{background-color:#0c1319;border:1px solid rgba(255,255,255,36);border-radius:12px;color:#f5f6f7;}
 QDialog QLabel, QMessageBox QLabel{color:#f5f6f7;background:transparent;font-size:14px;}
 QDialog QProgressBar{background:rgba(255,255,255,15);border:0;border-radius:3px;min-height:8px;}
 QDialog QProgressBar::chunk{background:#ffd400;border-radius:3px;}
-QMessageBox QPushButton{min-width:80px;}
+QMessageBox QPushButton{background:#17212b;border:1px solid rgba(255,255,255,41);border-radius:8px;padding:8px 18px;min-width:90px;color:#ffffff;font-weight:600;}
+QMessageBox QPushButton:hover{background:#233140;border-color:#ffd400;color:#ffd400;}
 QFrame#audioCard{background:rgba(14,18,26,246);border:1px solid rgba(255,255,255,28);border-radius:18px;}
 QLabel#audioDialogTitle{font-size:20px;font-weight:700;color:#ffffff;}
 QLabel#audioDialogMeta{font-size:13px;color:rgba(255,255,255,140);margin-top:4px;}

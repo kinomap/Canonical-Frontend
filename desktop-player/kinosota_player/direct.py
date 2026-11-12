@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from PySide6.QtCore import (QAbstractAnimation, QEasingCurve, QElapsedTimer, QObject, QPointF, QPropertyAnimation,
                             QRect, QRectF, QRunnable, QSize, QThreadPool, QTimer, Qt, Signal, Slot)
-from PySide6.QtGui import QBrush, QColor, QCursor, QGuiApplication, QLinearGradient, QPainter, QPen, QRadialGradient
+from PySide6.QtGui import QBrush, QColor, QCursor, QGuiApplication, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
 from PySide6.QtWidgets import (QGraphicsOpacityEffect, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
                                QVBoxLayout, QWidget)
 
@@ -18,11 +18,11 @@ from .deeplink import parse_launch, parse_mode
 from .engine import FIRST_FRAME_TIMEOUT, Mpv
 from .torrents import audio_args, media_title_args
 
-BACKGROUND, BACKGROUND_DEEP = '#0d0f14', '#0a0b0e'  # Cinema palette: the website player tokens.
-ACCENT, ACCENT_DEEP = '#f5a623', '#e5a00d'
-TEXT, TEXT_MUTED = '#f0f2f5', '#7a8194'
+BACKGROUND, BACKGROUND_DEEP = '#070b0e', '#070b0e'  # Unified CinemaPrestartOverlay.vue palette.
+ACCENT, ACCENT_DEEP = '#ffd400', '#ffb800'
+TEXT, TEXT_MUTED = '#ffffff', 'rgba(255, 255, 255, 0.58)'
 FRAME_MS = 16  # ~60 FPS for the reel animation.
-FADE_MS = 350  # Splash fade-out once the first frame is on screen.
+FADE_MS = 400  # 400ms Cross-Dissolve once playback-time >= 0.2s.
 RESIZE_MS = 260
 TEXT_FADE_MS = 280
 
@@ -158,10 +158,10 @@ class FilmReelWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         radius, left, right = self.geometry_of_reels()
-        glow = QColor(ACCENT)
+        glow = QColor(ACCENT_DEEP)
         for center in (left, right):
             halo = QRadialGradient(center, radius * 1.9)
-            glow.setAlpha(70 if not self.paused else 25)
+            glow.setAlpha(46 if not self.paused else 20)  # alpha 0.18 -> 0.0
             halo.setColorAt(0.0, glow)
             glow.setAlpha(0)
             halo.setColorAt(1.0, glow)
@@ -169,50 +169,57 @@ class FilmReelWidget(QWidget):
             painter.setBrush(QBrush(halo))
             painter.drawEllipse(center, radius * 1.9, radius * 1.9)
         self._paint_film(painter, radius, left, right)
-        for center, direction in ((left, 1), (right, 1)):
+        for center, direction in ((left, 1), (right, -1)):
             self._paint_reel(painter, center, radius, self.angle * direction)
         painter.end()
 
     def _paint_film(self, painter, radius, left, right):
-        band = max(14.0, radius * 0.36)
-        top = left.y() - radius - band * 0.5
-        bottom = left.y() + radius + band * 0.9
-        for y, x0, x1, sign in ((top, left.x(), right.x(), 1), (bottom, 0.0, float(self.width()), -1)):
-            strip = QRectF(x0, y - band / 2, x1 - x0, band)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor('#14171e'))
-            painter.drawRect(strip)
-            painter.setPen(QPen(QColor(ACCENT_DEEP), 1.2))
-            painter.drawLine(QPointF(strip.left(), strip.top()), QPointF(strip.right(), strip.top()))
-            painter.drawLine(QPointF(strip.left(), strip.bottom()), QPointF(strip.right(), strip.bottom()))
-            hole = QColor(TEXT)
-            hole.setAlpha(150)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(hole)
-            step, size = self.PERFORATION_STEP, max(3.0, band * 0.2)
-            x = strip.left() - step + (self.film_offset * sign) % step
-            while x < strip.right():
-                if x >= strip.left():
-                    painter.drawRoundedRect(QRectF(x, strip.top() + 2, size * 1.3, size), 1.2, 1.2)
-                    painter.drawRoundedRect(QRectF(x, strip.bottom() - 2 - size, size * 1.3, size), 1.2, 1.2)
-                x += step
-        # The film leaves each reel downwards to the lower strip.
-        painter.setPen(QPen(QColor('#1b1f28'), band * 0.7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
-        painter.drawLine(QPointF(left.x() - radius * 0.98, left.y()), QPointF(left.x() - radius * 0.98, bottom))
-        painter.drawLine(QPointF(right.x() + radius * 0.98, right.y()), QPointF(right.x() + radius * 0.98, bottom))
+        """Curved upper and lower film strips with running perforations matching CinemaPrestartOverlay.vue."""
+        band = max(14.0, radius * 0.30)
+        mid_x = (left.x() + right.x()) * 0.5
+        upper_y = left.y() - radius * 0.85
+        upper_ctrl = QPointF(mid_x, upper_y - radius * 0.32)
+        lower_y = left.y() + radius * 0.58
+        lower_ctrl = QPointF(mid_x, lower_y + radius * 0.78)
+        for p0, ctrl, p1, sign in (
+            (QPointF(left.x(), upper_y), upper_ctrl, QPointF(right.x(), upper_y), 1.0),
+            (QPointF(left.x() - radius * 1.04, lower_y), lower_ctrl, QPointF(right.x() + radius * 1.04, lower_y), -1.0),
+        ):
+            curve = QPainterPath(p0)
+            curve.quadTo(ctrl, p1)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(QColor('#171d21'), band, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+            painter.drawPath(curve)
+            edge_pen = QPen(QColor(ACCENT), 1.5)
+            painter.setPen(edge_pen)
+            painter.drawPath(curve)
+            perf_pen = QPen(QColor(TEXT), max(4.0, band * 0.48), Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.FlatCap)
+            perf_pen.setDashPattern([1.6, 2.2])
+            perf_pen.setDashOffset((-self.film_offset * sign) / max(4.0, band * 0.48))
+            painter.setPen(perf_pen)
+            painter.drawPath(curve)
 
     def _paint_reel(self, painter, center, radius, angle):
-        painter.setPen(QPen(QColor(ACCENT if not self.paused else TEXT_MUTED), max(2.0, radius * 0.06)))
-        painter.setBrush(QColor('#161a22'))
+        """8-spoke reel with rounded ends, outer ring #ffd400, hub #ffb800, dark core #070b0e."""
+        ring_color = QColor(ACCENT if not self.paused else '#7a8194')
+        painter.setPen(QPen(ring_color, max(2.5, radius * 0.07)))
+        painter.setBrush(QColor('#11181d'))
         painter.drawEllipse(center, radius, radius)
+        inner = QColor(ACCENT_DEEP)
+        inner.setAlphaF(0.72)
+        painter.setPen(QPen(inner, 1.5))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(center, radius * 0.785, radius * 0.785)
+        spoke_pen = QPen(ring_color, max(3.0, radius * 0.10), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        painter.setPen(spoke_pen)
+        for i in range(8):
+            theta = math.radians(angle + i * 45.0)
+            p1 = QPointF(center.x() + math.cos(theta) * radius * 0.20, center.y() + math.sin(theta) * radius * 0.20)
+            p2 = QPointF(center.x() + math.cos(theta) * radius * 0.71, center.y() + math.sin(theta) * radius * 0.71)
+            painter.drawLine(p1, p2)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(BACKGROUND_DEEP))
-        for i in range(5):
-            theta = math.radians(angle + i * 72.0)
-            spot = QPointF(center.x() + math.cos(theta) * radius * 0.56, center.y() + math.sin(theta) * radius * 0.56)
-            painter.drawEllipse(spot, radius * 0.24, radius * 0.24)
-        painter.setBrush(QColor(ACCENT_DEEP if not self.paused else TEXT_MUTED))
-        painter.drawEllipse(center, radius * 0.16, radius * 0.16)
+        painter.setBrush(QColor(ACCENT_DEEP if not self.paused else '#7a8194'))
+        painter.drawEllipse(center, radius * 0.185, radius * 0.185)
         painter.setBrush(QColor(BACKGROUND_DEEP))
         painter.drawEllipse(center, radius * 0.06, radius * 0.06)
 
@@ -223,12 +230,12 @@ QLabel#directLaunchStatus {{ color: {TEXT}; font-weight: 600; }}
 QLabel#directLaunchStatus[tone="error"] {{ color: {ACCENT}; }}
 QLabel#directLaunchHint {{ color: {TEXT_MUTED}; }}
 QPushButton#directLaunchResize, QPushButton#directLaunchClose {{
-    background: rgba(255, 255, 255, 0.06); color: {TEXT}; border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 8px; font-size: 17px; min-width: 40px; min-height: 40px; max-width: 40px; max-height: 40px; }}
+    background: rgba(255, 255, 255, 0.06); color: {TEXT}; border: 1px solid rgba(255, 255, 255, 0.17);
+    border-radius: 9px; font-size: 19px; min-width: 42px; min-height: 42px; max-width: 42px; max-height: 42px; }}
 QPushButton#directLaunchResize:hover, QPushButton#directLaunchResize:focus {{
-    background: rgba(245, 166, 35, 0.18); border-color: {ACCENT}; color: {ACCENT}; }}
+    background: rgba(255, 212, 0, 0.18); border-color: {ACCENT}; color: {ACCENT}; }}
 QPushButton#directLaunchClose:hover, QPushButton#directLaunchClose:focus {{
-    background: rgba(229, 72, 77, 0.24); border-color: #e5484d; color: #ffffff; }}
+    background: rgba(229, 72, 77, 0.24); border-color: #ff776e; color: #ffffff; }}
 QPushButton#directLaunchResize:pressed, QPushButton#directLaunchClose:pressed {{ background: rgba(255, 255, 255, 0.16); }}
 """
 
@@ -258,7 +265,8 @@ class DirectLaunchSplash(QWidget):
         layout.setSpacing(12)
         top = QHBoxLayout()
         top.setSpacing(8)
-        self.brand_label = QLabel('KINOSOTA', self)
+        self.brand_label = QLabel('KINOSOTA <span style="color:rgba(255,255,255,0.58);font-style:italic;font-weight:600">PLAYER</span>', self)
+        self.brand_label.setTextFormat(Qt.TextFormat.RichText)
         self.brand_label.setObjectName('directLaunchBrand')
         top.addWidget(self.brand_label, 0, Qt.AlignmentFlag.AlignVCenter)
         top.addStretch(1)
@@ -300,7 +308,7 @@ class DirectLaunchSplash(QWidget):
         self.geometry_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.fade_animation = QPropertyAnimation(self, b'windowOpacity', self)
         self.fade_animation.setDuration(FADE_MS)
-        self.fade_animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self.fade_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self.fade_animation.finished.connect(self._fade_finished)
         self._update_texts()
 
@@ -590,6 +598,9 @@ class DirectPlayer(QObject):
         if hasattr(api, 'token'):
             api.token = ''
         self.api = api
+        if self._worker is None and callable(getattr(self.engine, 'prewarm', None)):
+            win_args = self._window_args()
+            QThreadPool.globalInstance().start(_Work(lambda: self.engine.prewarm(extra_args=win_args)))
 
         def done(meta):
             if generation != self.generation:

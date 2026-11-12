@@ -55,9 +55,12 @@ def main():
     (license_out/'inventory.json').write_text(json.dumps(inventory,indent=2))
     shutil.copy2(ROOT/'packaging/THIRD_PARTY.md',license_out/'NOTICE.md')
     if system=='Linux':
-        assert shutil.which('mpv'),'Linux package depends on reviewed distro mpv'
+        mpv_bin=shutil.which('mpv')
+        assert mpv_bin,'Linux build requires mpv to bundle'
         stage=ROOT/'build/deb';shutil.rmtree(stage,ignore_errors=True)
         app=stage/'opt/kinosota-player';app.parent.mkdir(parents=True,exist_ok=True);shutil.copytree(out/name,app)
+        bundled_mpv=app/'mpv/mpv';bundled_mpv.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(mpv_bin,bundled_mpv);bundled_mpv.chmod(0o755)
         for path in ['DEBIAN','usr/bin','usr/share/applications','usr/share/icons/hicolor/512x512/apps']:(stage/path).mkdir(parents=True,exist_ok=True)
         arch=subprocess.check_output(['dpkg','--print-architecture'],text=True).strip()
         libc=platform.libc_ver()[1]

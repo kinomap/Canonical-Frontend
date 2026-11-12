@@ -4,7 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt,QRect,QPropertyAnimation,QEasingCurve,QEvent,Signal,QSize
 from PySide6.QtGui import QPixmap,QIcon,QPainter
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QWidget,QFrame,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QApplication,QScrollArea,QStackedWidget,QSizePolicy,QStyledItemDelegate,QProgressBar
+from PySide6.QtWidgets import QWidget,QFrame,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QCheckBox,QApplication,QScrollArea,QStackedWidget,QSizePolicy,QStyledItemDelegate,QProgressBar
 from .preferences import translate
 from .filters import FilterCombo
 from . import __version__
@@ -17,7 +17,7 @@ def line_icon(name):
     return lucide(LINE_ICONS[name],'#ffda68',24)
 
 class SettingsDrawer(QWidget):
-    languageChanged=Signal(str);titlesChanged=Signal(str);refreshRequested=Signal();signOutRequested=Signal()
+    languageChanged=Signal(str);titlesChanged=Signal(str);rememberChanged=Signal(bool);refreshRequested=Signal();signOutRequested=Signal()
     def __init__(self,parent,prefs):
         super().__init__(parent);self.prefs=prefs;self.language=prefs.get('interface_language');self.account={};self.state='';self.bound=[]
         self.setObjectName('scrim');self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground);self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -37,6 +37,8 @@ class SettingsDrawer(QWidget):
         card=self.card(pref,'Интерфейс','Язык управления приложением.');self.ui_language=self.selector(card,'Язык интерфейса',prefs.get('interface_language'))
         card=self.card(pref,'Названия фильмов','На каком языке показывать названия.');self.title_language=self.selector(card,'Язык названий',prefs.get('title_language'));card.addWidget(self.text('EN: английское название, если доступно; иначе — оригинальное или название каталога.','hint',True));pref.addStretch()
         account=self.page();card=self.card(account,'Аккаунт','Информация о текущем аккаунте.');self.fields={};self.copy_buttons={}
+        self.auth_banner=QLabel();self.auth_banner.setObjectName('progress');self.auth_banner.setProperty('tone','ready');self.auth_banner.setWordWrap(True);card.addWidget(self.auth_banner)
+        self.remember_box=QCheckBox();self.remember_box.setChecked(prefs.get_remember_session());self.bound.append((self.remember_box,'Запоминать вход на этом компьютере'));self.remember_box.toggled.connect(self.rememberChanged.emit);card.addWidget(self.remember_box)
         for key,title in [('username','Логин'),('email','Почта'),('subscription_status','Подписка')]:
             card.addWidget(self.text(title,'fieldLabel'));row=QHBoxLayout();x=QLabel('—');x.setTextFormat(Qt.TextFormat.PlainText);x.setObjectName('accountValue');x.setWordWrap(True);x.setMinimumWidth(0);x.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse|Qt.TextInteractionFlag.TextSelectableByKeyboard);x.setFocusPolicy(Qt.FocusPolicy.StrongFocus);row.addWidget(x,1);self.fields[key]=x
             if key!='subscription_status':
@@ -90,6 +92,10 @@ class SettingsDrawer(QWidget):
             value=translate(statuses.get(value,'Нет данных'),self.language) if key=='subscription_status' else str(value or translate('Не указана',self.language))
             widget.setText(value[:160]);widget.setToolTip(value[:320]);widget.setAccessibleName(value[:320])
         user=str(self.account.get('username') or translate('Гость',self.language));self.summary.setText(self.summary.fontMetrics().elidedText(user[:160],Qt.TextElideMode.ElideRight,max(100,self.rail.width()-38)));self.summary.setToolTip(user[:160]);self.account_state.setText(translate(self.state,self.language));self.refresh.setEnabled(self.state!='Загружаем аккаунт…')
+        if self.account.get('username'):
+            self.auth_banner.setText(f"● {translate('Авторизован',self.language)} — {translate('Вы вошли как',self.language)} {user[:80]}")
+            self.auth_banner.show()
+        else:self.auth_banner.hide()
         for key,b in self.copy_buttons.items():b.setEnabled(bool(self.account.get(key)))
     def set_updater(self,updater):
         """Connect the «Обновления» card to the window's updater (check, update, cancel)."""

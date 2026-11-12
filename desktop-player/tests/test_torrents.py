@@ -394,7 +394,7 @@ def test_website_launch_authenticates_and_autoplays_with_selected_track():
     assert w.pages.currentIndex() == 2 and w.nav_torrents.isChecked() and w.nav_torrents.isVisibleTo(w)
     assert ('ticket', 'movie', 155, B, None, None) in api.calls
     assert engine.started == [('https://torrent-01.scenrix.com/stream/opaque-ticket',
-                               ['--alang=ukr,uk', '--aid=11', '--force-media-title=Тёмный рыцарь'])]
+                               ['--alang=ukr,uk', '--aid=11', '--force-media-title=Тёмный рыцарь', *w.splash.mpv_args()])]
     assert w.torrent_playing and w.message.text() == 'Воспроизводится: Тёмный рыцарь'
     assert w.torrents.selected()['source_id'] == B and w.torrents.language_buttons['uk'].isChecked()
     w.close()

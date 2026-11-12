@@ -411,13 +411,13 @@ def fake_mpv(values, alive=lambda: True):
 
 def test_wait_playback_started_reads_playback_time_video_params_and_eof():
     nap = lambda seconds: None
-    assert fake_mpv({'playback-time': 0.04}).wait_playback_started(5, sleep=nap) == 'playing'
+    assert fake_mpv({'playback-time': 0.25}).wait_playback_started(5, sleep=nap) == 'playing'
     params = {'w': 1920, 'h': 1080, 'dw': 1920, 'dh': 800}
-    assert fake_mpv({'playback-time': 0.0, 'video-out-params': params}).wait_playback_started(5, sleep=nap) == 'playing'
+    assert not Mpv.frame_ready(0.0, params) and not Mpv.frame_ready(0.15, params) and Mpv.frame_ready(0.2, params)
     assert fake_mpv({'video-out-params': {'dw': 0, 'dh': 0}, 'eof-reached': True}).wait_playback_started(
         5, sleep=nap) == 'eof'
     assert not Mpv.frame_ready(True, None) and not Mpv.frame_ready(-1, {'w': 1.5, 'h': 2})
-    assert not Mpv.frame_ready(None, 'x') and Mpv.frame_ready(None, {'w': 640, 'h': 360})
+    assert not Mpv.frame_ready(None, 'x') and not Mpv.frame_ready(None, {'w': 640, 'h': 360})
 
 
 def test_wait_playback_started_times_out_cancels_and_detects_a_dead_mpv():

@@ -23,6 +23,11 @@ function toggleCompact() {
   compact.value = !compact.value
   setCinemaPrestartCompact(compact.value)
 }
+function onWindowBlur() {
+  if (props.show) {
+    setTimeout(() => emit('cancel'), 250)
+  }
+}
 watch(() => props.show, (visible) => {
   stopTicker()
   if (!visible) return
@@ -30,8 +35,12 @@ watch(() => props.show, (visible) => {
   elapsed.value = 0
   startedAt = Date.now()
   ticker = setInterval(() => { elapsed.value = Date.now() - startedAt }, 200)
+  if (typeof window !== 'undefined') window.addEventListener('blur', onWindowBlur, { once: true })
 }, { immediate: true })
-onBeforeUnmount(stopTicker)
+onBeforeUnmount(() => {
+  stopTicker()
+  if (typeof window !== 'undefined') window.removeEventListener('blur', onWindowBlur)
+})
 </script>
 
 <template>
