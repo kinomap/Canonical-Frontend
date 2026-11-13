@@ -154,4 +154,4 @@ def test_mpv_validation_rejects_broken_opt_binary_and_falls_back_to_system_mpv(t
     monkeypatch.setattr(engine.shutil, 'which', lambda name: str(working_sys) if name == 'mpv' else None)
     mpv = engine.Mpv()
     assert mpv.executable == str(working_sys)
-    assert '--background-color=#070b0e' in mpv._base_args()
+    assert '--osd-level=0' in mpv._base_args()

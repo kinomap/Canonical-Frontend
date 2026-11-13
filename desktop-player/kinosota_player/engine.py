@@ -75,7 +75,7 @@ class Mpv:
         self.process=None;self.directory=None;self.endpoint='';self._prewarmed_args=None
     def _base_args(self,extra_args=(),idle='once'):
         return [self.executable,'--no-config',f'--idle={idle}','--force-window=yes','--keep-open=no',
-                '--background-color=#070b0e','--osd-level=0','--no-osc',
+                '--osd-level=0','--no-osc',
                 # Instant first frame + adaptive stream cache and fast reconnect.
                 '--cache=yes','--demuxer-max-bytes=150MiB','--demuxer-readahead-secs=10',
                 '--cache-pause-wait=1','--cache-pause-initial=yes','--network-timeout=60',
