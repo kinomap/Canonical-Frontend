@@ -416,6 +416,10 @@ def test_wait_playback_started_reads_playback_time_video_params_and_eof():
     assert fake_mpv({'playback-time': 0.25}).wait_playback_started(5, sleep=nap) == 'playing'
     params = {'w': 1920, 'h': 1080, 'dw': 1920, 'dh': 800}
     assert not Mpv.frame_ready(0.0, params) and not Mpv.frame_ready(0.15, params) and Mpv.frame_ready(0.2, params)
+    assert not Mpv.frame_ready(0.5, params, paused_for_cache=True)
+    assert not Mpv.frame_ready(0.5, params, estimated_frame=0)
+    assert Mpv.frame_ready(0.5, params, estimated_frame=1)
+    assert fake_mpv({'playback-time': 0.5, 'paused-for-cache': True}).wait_playback_started(0.2, sleep=nap) == 'timeout'
     assert fake_mpv({'video-out-params': {'dw': 0, 'dh': 0}, 'eof-reached': True}).wait_playback_started(
         5, sleep=nap) == 'eof'
     assert not Mpv.frame_ready(True, None) and not Mpv.frame_ready(-1, {'w': 1.5, 'h': 2})

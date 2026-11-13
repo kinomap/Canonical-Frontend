@@ -192,27 +192,45 @@ class Mpv:
             except Exception:pass
 
     @staticmethod
-    def frame_ready(playback_time,video_params=None):
-        """Strict first-frame detector: playback-time must advance to >= 0.2s (never pop-in on demuxer dw/dh)."""
-        return type(playback_time) in (int,float) and playback_time>=0.2
+    def frame_ready(playback_time, video_params=None, *, paused_for_cache=False, estimated_frame=None):
+        """Strict first-frame detector: never pop-in while paused for cache or before a video frame rendered."""
+        if paused_for_cache is True:
+            return False
+        if not (type(playback_time) in (int, float) and playback_time >= 0.2):
+            return False
+        if video_params and isinstance(video_params, dict) and video_params.get('dw', 0) > 0:
+            if estimated_frame is not None and estimated_frame < 1:
+                return False
+        return True
 
-    def wait_playback_started(self,timeout=FIRST_FRAME_TIMEOUT,*,cancelled=lambda:False,interval=.1,sleep=time.sleep,clock=time.monotonic):
+    def wait_playback_started(self, timeout=FIRST_FRAME_TIMEOUT, *, cancelled=lambda: False, interval=0.1, sleep=time.sleep, clock=time.monotonic):
         """Block (off the UI thread) until the first frame is on screen.
 
         Returns 'playing', 'eof' (the file ended before a frame), 'exited' (mpv quit or crashed),
         'cancelled' or 'timeout'. A broken IPC connection is retried while the process is alive."""
-        deadline=clock()+max(float(timeout),0.0)
+        deadline = clock() + max(float(timeout), 0.0)
         while True:
-            if cancelled():return 'cancelled'
-            if not self.alive():return 'exited'
+            if cancelled():
+                return 'cancelled'
+            if not self.alive():
+                return 'exited'
             try:
-                eof=self.property('eof-reached') is True
-                if not eof and self.frame_ready(self.property('playback-time')):
-                    self.enable_osc()
-                    return 'playing'
-                if eof:return 'eof'
-            except (OSError,TimeoutError,ValueError):
-                if not self.alive():return 'exited'
-            if cancelled():return 'cancelled'
-            if clock()>=deadline:return 'timeout'
+                eof = self.property('eof-reached') is True
+                paused_for_cache = self.property('paused-for-cache') is True
+                if not eof and not paused_for_cache:
+                    pt = self.property('playback-time')
+                    vp = self.property('video-params')
+                    efn = self.property('estimated-frame-number')
+                    if self.frame_ready(pt, vp, paused_for_cache=paused_for_cache, estimated_frame=efn):
+                        self.enable_osc()
+                        return 'playing'
+                if eof:
+                    return 'eof'
+            except (OSError, TimeoutError, ValueError):
+                if not self.alive():
+                    return 'exited'
+            if cancelled():
+                return 'cancelled'
+            if clock() >= deadline:
+                return 'timeout'
             sleep(interval)

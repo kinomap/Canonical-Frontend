@@ -547,9 +547,8 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     launchController = ctl
     busy.value = 'launch'
     error.value = ''
-    message.value = ''
+    message.value = 'Открываем KINOSOTA Player…'
     installPrompt.value = false
-    showCinemaPrestart(cancelLaunch, ctl.signal)
     try {
       let chosenTrackIndex: number | null = null
       let chosenTrackLang: TorrentLanguage | null = audioLanguage.value

@@ -420,9 +420,11 @@ class Window(QMainWindow):
         self.splash.set_status(BUFFERING)
         def current():return not self.closed and generation==self.play_generation
         def done(result):
-            if current() and result in ('playing','eof','timeout'):self.splash.fade_out()
+            if current() and result in ('playing','eof','timeout'):
+                QTimer.singleShot(0, lambda: self.splash.fade_out() if current() else None)
         def fail(_error):
-            if current() and self.engine.alive():self.splash.fade_out()
+            if current() and self.engine.alive():
+                QTimer.singleShot(0, lambda: self.splash.fade_out() if current() else None)
         self.work(lambda:wait(cancelled=lambda:not current()),done,fail)
     def cancel_splash_playback(self):
         self.pending_launch=''

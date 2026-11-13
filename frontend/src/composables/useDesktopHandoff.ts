@@ -38,10 +38,8 @@ export function useDesktopHandoff(create: (signal?: AbortSignal) => Promise<Desk
     controller = ctl
     busy.value = true
     error.value = ''
-    status.value = ''
+    status.value = HANDOFF_OPENING
     installPrompt.value = false
-    // Publish the overlay state synchronously before the first network request.
-    showCinemaPrestart(reset, ctl.signal)
     try {
       const res = await create(ctl.signal)
       if (ctl.signal.aborted) return false
