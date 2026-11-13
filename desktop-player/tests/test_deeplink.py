@@ -4,13 +4,13 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import json, socket, subprocess, sys, tempfile, threading, time, uuid
 from pathlib import Path
 import pytest
-from PySide6.QtCore import QAbstractAnimation, QEvent, QRect, Qt, QUrl
+from PySide6.QtCore import QAbstractAnimation, QEvent, QPointF, QRect, QSize, Qt, QUrl
 from PySide6.QtGui import QCloseEvent, QFileOpenEvent, QKeyEvent
 from PySide6.QtWidgets import QApplication
 from kinosota_player import deeplink
 from kinosota_player.deeplink import LinkEvents, find_link, parse_launch, parse_mode
 from kinosota_player.direct import (BUFFERING, CONNECTING, FADE_MS, STARTING, DirectLaunchSplash, DirectPlayer,
-                                    geometry_args, geometry_text, launch_args)
+                                    FilmReelWidget, geometry_args, geometry_text, launch_args)
 from kinosota_player.engine import Mpv
 
 LAUNCH = '3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e'
@@ -496,8 +496,58 @@ def test_in_app_splash_cancel_resets_busy_state_stops_reels_and_reports_cancelle
               'title': 'Тёмный рыцарь', 'audio_lang': 'ru', 'season': None, 'episode': None}
     w.play_torrent(choice)
     assert w.busy and w.torrent_starting and w.splash.isVisible() and w.splash.reel.running()
-    w.splash.close_button.click()
+    assert w.splash.close_button.click() is None
     assert not w.busy and not w.torrent_starting
     assert not w.splash.isVisible() and not w.splash.reel.running()
     assert w.message.text() == 'Запуск отменён.'
     w.close()
+
+
+def test_direct_player_error_surfaces_runtime_error_and_retry_recovers():
+    class FailingEngine(SplashEngine):
+        fail = True
+        def start(self, url, *, extra_args=()):
+            if self.fail:
+                raise RuntimeError('mpv: libavcodec missing')
+            super().start(url, extra_args=extra_args)
+
+    engine = FailingEngine()
+    direct, worker, api, engine, codes = splash_player(engine)
+    splash = direct.splash
+    assert direct.open_link(f'kinosota://watch?launch={LAUNCH}')
+    worker.run()  # open_launch done
+    worker.run()  # start fails
+    assert splash.status_label.text() == 'mpv: libavcodec missing'
+    assert splash.error and splash.reel.paused and not splash.reel.running()
+
+    # Retry with working engine:
+    engine.fail = False
+    assert direct.open_link(f'kinosota://watch?launch={LAUNCH}')
+    assert not splash.error and not splash.reel.paused
+    assert splash.status_label.text() == STARTING
+    worker.run()  # open_launch done
+    worker.run()  # start succeeds
+    assert engine.running and direct.timer.isActive()
+    direct.shutdown()
+
+
+def test_film_reel_widget_geometry_and_perforations_match_viewbox():
+    qt_app()
+    reel = FilmReelWidget()
+    reel.resize(560, 250)
+    reel.show()
+    assert reel.sizeHint() == QSize(560, 250)
+    radius, left, right = reel.geometry_of_reels()
+    assert radius == 70.0
+    assert left == QPointF(145.0, 111.0)
+    assert right == QPointF(415.0, 111.0)
+    reel.start()
+    assert reel.running()
+    reel.set_paused(True)
+    assert not reel.running() and reel.paused
+    reel.set_paused(False)
+    assert reel.running() and not reel.paused
+    reel.stop()
+    assert not reel.running()
+    reel.close()
+
