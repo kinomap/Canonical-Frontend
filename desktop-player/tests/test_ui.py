@@ -130,7 +130,7 @@ def test_switching_releases_previous_session_before_start_and_can_repeat():
         def start(self,mid):calls.append(('start',mid));return {'session_id':'session-'+mid,'media_url':'https://media.invalid/clip'}
         def stop(self,sid):calls.append(('stop',sid));return {'ok':True}
     class PlayEngine(Engine):
-        def start(self,url):calls.append(('mpv',url))
+        def start(self,url,*,extra_args=()):calls.append(('mpv',url))
     app=QApplication.instance() or QApplication([])
     w=Window(api=FakeApi(),engine=PlayEngine(),vault=Vault(),restore=False)
     w.work=lambda fn,done=None,fail=None:done(fn()) if done else fn()
@@ -150,7 +150,7 @@ def test_stop_failure_does_not_allocate_new_session_and_retry_can_recover():
         def stop(self,sid):
             if self.broken:raise ApiError(503)
     class PlayEngine(Engine):
-        def start(self,url):pass
+        def start(self,url,*,extra_args=()):pass
     app=QApplication.instance() or QApplication([]);api=FakeApi();w=Window(api=api,engine=PlayEngine(),vault=Vault(),restore=False)
     def work(fn,done=None,fail=None):
         try:value=fn()

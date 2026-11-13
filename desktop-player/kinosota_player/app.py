@@ -408,7 +408,6 @@ class Window(QMainWindow):
         self.play_button.setEnabled(bool(item) and not self.busy)
         self.selected_title.setText(movie_title(item.data(Qt.ItemDataRole.UserRole),self.title_language) if item else translate('Выберите фильм',self.language))
     def _present_playback_splash(self,status_text):
-        if not self.isVisible():return []
         self.splash.set_status(status_text)
         if not self.splash.isVisible() or self.splash.fading():
             self.splash.present()
@@ -429,6 +428,10 @@ class Window(QMainWindow):
         self.pending_launch=''
         self.splash.reel.stop()
         self.splash.hide_now()
+        self.busy=False
+        self.torrent_starting=False
+        self.start_timer.stop()
+        self.play_button.setEnabled(bool(self.results.currentItem()))
         self.stop()
         if hasattr(self,'torrents'):self.torrents.render()
         self.message.setText('Запуск отменён.')

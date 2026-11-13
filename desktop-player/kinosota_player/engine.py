@@ -106,13 +106,20 @@ class Mpv:
                 self.endpoint=(r'\\.\pipe\kinosota-'+uuid.uuid4().hex) if os.name=='nt' else str(Path(self.directory.name)/'mpv.sock')
                 args=self._base_args(extra_args=extra_args,idle='once')
                 with native_loader():
-                    self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                    self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
                     creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0)
             self._prewarmed_args=None
             proc=self.process
         try:
             for _ in range(200):
-                if proc is None or proc.poll() is not None:raise RuntimeError('Не удалось запустить окно воспроизведения.')
+                if proc is None or proc.poll() is not None:
+                    detail=''
+                    if proc is not None and proc.stderr:
+                        try:detail=proc.stderr.read(4096).decode('utf-8','replace').strip()
+                        except Exception:pass
+                    msg='Не удалось запустить окно воспроизведения.'
+                    if detail:msg+=f' ({detail[:200]})'
+                    raise RuntimeError(msg)
                 try:
                     self.command(['loadfile',url,'replace']);break
                 except (OSError,TimeoutError):time.sleep(.05)

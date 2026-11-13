@@ -331,7 +331,12 @@ def test_window_direct_stream_does_not_sign_in_open_a_page_or_request_another_ti
     w.open_link(f'kinosota://watch?launch={LAUNCH}')
     assert api.token == '' and w.pages.currentIndex() == 0
     assert ('ticket', 'movie', 155, None, None, None) not in api.calls
-    assert engine.started == [(meta['stream_url'], launch_args(meta))]
+    assert len(engine.started) == 1
+    url, args = engine.started[0]
+    assert url == meta['stream_url']
+    # The splash always opens now; launch_args come first, then splash geometry.
+    expected = launch_args(meta)
+    assert args[:len(expected)] == expected
     assert w.direct_meta == meta and w.torrent_playing
     w.close()
     app.processEvents()
@@ -934,7 +939,7 @@ def test_container_track_pick_starts_mpv_on_that_track():
     page.act()
     assert ('ticket', 'movie', 155, A, None, None) in api.calls
     assert engine.started == [('https://torrent-01.scenrix.com/stream/opaque-ticket',
-                               ['--alang=rus,ru', '--aid=2', '--force-media-title=Тёмный рыцарь'])]
+                               ['--alang=rus,ru', '--aid=2', '--force-media-title=Тёмный рыцарь', *w.splash.mpv_args()])]
     w.close()
     app.processEvents()
 

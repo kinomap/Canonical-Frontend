@@ -87,11 +87,11 @@ def geometry_args(mode, rect, ratio=1.0, platform=sys.platform) -> list[str]:
 
 
 class FilmReelWidget(QWidget):
-    """Two spinning reels and a running perforated film strip with a golden glow (QTimer ~60 FPS + paintEvent)."""
+    """Two spinning reels and a running perforated film strip matching CinemaPrestartOverlay.vue (560x250 viewBox)."""
 
     DEGREES_PER_SECOND = 150.0
-    FILM_SPEED = 70.0  # px per second
-    PERFORATION_STEP = 18.0
+    FILM_SPEED = 53.33  # 24px / 0.45s matching web CSS animation
+    PERFORATION_STEP = 24.0
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -108,7 +108,7 @@ class FilmReelWidget(QWidget):
         self.timer.timeout.connect(self.tick)
 
     def sizeHint(self):
-        return QSize(560, 260)
+        return QSize(560, 250)
 
     def running(self):
         return self.timer.isActive()
@@ -150,78 +150,150 @@ class FilmReelWidget(QWidget):
 
     def geometry_of_reels(self):
         w, h = self.width(), self.height()
-        radius = max(18.0, min(h * 0.36, w * 0.17))
-        cy = h * 0.42
-        return radius, QPointF(w * 0.5 - radius * 1.55, cy), QPointF(w * 0.5 + radius * 1.55, cy)
+        s = min(w / 560.0, h / 250.0)
+        dx = (w - 560.0 * s) * 0.5
+        dy = (h - 250.0 * s) * 0.5
+        return 70.0 * s, QPointF(dx + 145.0 * s, dy + 111.0 * s), QPointF(dx + 415.0 * s, dy + 111.0 * s)
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        radius, left, right = self.geometry_of_reels()
+        w, h = self.width(), self.height()
+        s = min(w / 560.0, h / 250.0)
+        dx = (w - 560.0 * s) * 0.5
+        dy = (h - 250.0 * s) * 0.5
+        painter.translate(dx, dy)
+        painter.scale(s, s)
+
         glow = QColor(ACCENT_DEEP)
-        for center in (left, right):
-            halo = QRadialGradient(center, radius * 1.9)
+        for center in (QPointF(145.0, 110.0), QPointF(415.0, 110.0)):
+            halo = QRadialGradient(center, 120.0)
             glow.setAlpha(46 if not self.paused else 20)  # alpha 0.18 -> 0.0
             halo.setColorAt(0.0, glow)
             glow.setAlpha(0)
             halo.setColorAt(1.0, glow)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(halo))
-            painter.drawEllipse(center, radius * 1.9, radius * 1.9)
-        self._paint_film(painter, radius, left, right)
-        for center, direction in ((left, 1), (right, -1)):
-            self._paint_reel(painter, center, radius, self.angle * direction)
+            painter.drawEllipse(center, 120.0, 120.0)
+
+        self._paint_film(painter)
+        self._paint_reel(painter, QPointF(145.0, 111.0), self.angle)
+        self._paint_reel(painter, QPointF(415.0, 111.0), -self.angle)
         painter.end()
 
-    def _paint_film(self, painter, radius, left, right):
-        """Curved upper and lower film strips with running perforations matching CinemaPrestartOverlay.vue."""
-        band = max(14.0, radius * 0.30)
-        mid_x = (left.x() + right.x()) * 0.5
-        upper_y = left.y() - radius * 0.85
-        upper_ctrl = QPointF(mid_x, upper_y - radius * 0.32)
-        lower_y = left.y() + radius * 0.58
-        lower_ctrl = QPointF(mid_x, lower_y + radius * 0.78)
-        for p0, ctrl, p1, sign in (
-            (QPointF(left.x(), upper_y), upper_ctrl, QPointF(right.x(), upper_y), 1.0),
-            (QPointF(left.x() - radius * 1.04, lower_y), lower_ctrl, QPointF(right.x() + radius * 1.04, lower_y), -1.0),
-        ):
-            curve = QPainterPath(p0)
-            curve.quadTo(ctrl, p1)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(QColor('#171d21'), band, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
-            painter.drawPath(curve)
-            edge_pen = QPen(QColor(ACCENT), 1.5)
-            painter.setPen(edge_pen)
-            painter.drawPath(curve)
-            perf_pen = QPen(QColor(TEXT), max(4.0, band * 0.48), Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.FlatCap)
-            perf_pen.setDashPattern([1.6, 2.2])
-            perf_pen.setDashOffset((-self.film_offset * sign) / max(4.0, band * 0.48))
-            painter.setPen(perf_pen)
-            painter.drawPath(curve)
+    def _paint_film(self, painter):
+        """Upper and lower curved film strips with running double perforations matching CinemaPrestartOverlay.vue."""
+        upper = QPainterPath()
+        upper.moveTo(145, 51)
+        upper.quadTo(280, 28, 415, 51)
+        upper.lineTo(415, 72)
+        upper.quadTo(280, 49, 145, 72)
+        upper.closeSubpath()
+        painter.setPen(QPen(QColor(ACCENT_DEEP), 1.4))
+        painter.setBrush(QBrush(QColor('#171d21')))
+        painter.drawPath(upper)
 
-    def _paint_reel(self, painter, center, radius, angle):
-        """8-spoke reel with rounded ends, outer ring #ffd400, hub #ffb800, dark core #070b0e."""
+        edge_pen = QPen(QColor(ACCENT), 1.5)
+        edge_color = QColor(ACCENT)
+        edge_color.setAlphaF(0.65)
+        edge_pen.setColor(edge_color)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(edge_pen)
+        edge_top = QPainterPath()
+        edge_top.moveTo(145, 51)
+        edge_top.quadTo(280, 28, 415, 51)
+        painter.drawPath(edge_top)
+        edge_bot = QPainterPath()
+        edge_bot.moveTo(145, 72)
+        edge_bot.quadTo(280, 49, 415, 72)
+        painter.drawPath(edge_bot)
+
+        perf_pen = QPen(QColor(255, 255, 255, 204), 4.5, Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.RoundCap)
+        perf_pen.setDashPattern([2.4, 2.8])
+        perf_pen.setDashOffset(-self.film_offset / 4.5)
+        painter.setPen(perf_pen)
+        h_top = QPainterPath()
+        h_top.moveTo(145, 56.5)
+        h_top.quadTo(280, 33.5, 415, 56.5)
+        painter.drawPath(h_top)
+        h_bot = QPainterPath()
+        h_bot.moveTo(145, 66.5)
+        h_bot.quadTo(280, 43.5, 415, 66.5)
+        painter.drawPath(h_bot)
+
+        lower = QPainterPath()
+        lower.moveTo(72, 151)
+        lower.quadTo(280, 206, 488, 151)
+        lower.lineTo(488, 172)
+        lower.quadTo(280, 227, 72, 172)
+        lower.closeSubpath()
+        painter.setPen(QPen(QColor(ACCENT_DEEP), 1.4))
+        painter.setBrush(QBrush(QColor('#141a1e')))
+        painter.drawPath(lower)
+
+        lower_edge = QPen(QColor(ACCENT), 1.5)
+        lower_edge_color = QColor(ACCENT)
+        lower_edge_color.setAlphaF(0.44)
+        lower_edge.setColor(lower_edge_color)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(lower_edge)
+        ledge_top = QPainterPath()
+        ledge_top.moveTo(72, 151)
+        ledge_top.quadTo(280, 206, 488, 151)
+        painter.drawPath(ledge_top)
+        ledge_bot = QPainterPath()
+        ledge_bot.moveTo(72, 172)
+        ledge_bot.quadTo(280, 227, 72, 172)
+        painter.drawPath(ledge_bot)
+
+        perf_pen_rev = QPen(QColor(255, 255, 255, 204), 4.5, Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.RoundCap)
+        perf_pen_rev.setDashPattern([2.4, 2.8])
+        perf_pen_rev.setDashOffset(self.film_offset / 4.5)
+        painter.setPen(perf_pen_rev)
+        lh_top = QPainterPath()
+        lh_top.moveTo(72, 156.5)
+        lh_top.quadTo(280, 211.5, 488, 156.5)
+        painter.drawPath(lh_top)
+        lh_bot = QPainterPath()
+        lh_bot.moveTo(72, 166.5)
+        lh_bot.quadTo(280, 221.5, 488, 166.5)
+        painter.drawPath(lh_bot)
+
+    def _paint_reel(self, painter, center, angle):
+        """8-spoke reel with rounded ends matching CinemaPrestartOverlay.vue."""
+        painter.save()
+        painter.translate(center)
+
         ring_color = QColor(ACCENT if not self.paused else '#7a8194')
-        painter.setPen(QPen(ring_color, max(2.5, radius * 0.07)))
-        painter.setBrush(QColor('#11181d'))
-        painter.drawEllipse(center, radius, radius)
+        painter.setPen(QPen(ring_color, 5.0))
+        painter.setBrush(QBrush(QColor('#11181d')))
+        painter.drawEllipse(QPointF(0, 0), 70.0, 70.0)
+
         inner = QColor(ACCENT_DEEP)
         inner.setAlphaF(0.72)
         painter.setPen(QPen(inner, 1.5))
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(center, radius * 0.785, radius * 0.785)
-        spoke_pen = QPen(ring_color, max(3.0, radius * 0.10), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        painter.drawEllipse(QPointF(0, 0), 55.0, 55.0)
+
+        painter.rotate(angle)
+        spoke_pen = QPen(ring_color, 7.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(spoke_pen)
-        for i in range(8):
-            theta = math.radians(angle + i * 45.0)
-            p1 = QPointF(center.x() + math.cos(theta) * radius * 0.20, center.y() + math.sin(theta) * radius * 0.20)
-            p2 = QPointF(center.x() + math.cos(theta) * radius * 0.71, center.y() + math.sin(theta) * radius * 0.71)
-            painter.drawLine(p1, p2)
+        painter.drawLine(0, -50, 0, -14)
+        painter.drawLine(0, 14, 0, 50)
+        painter.drawLine(-50, 0, -14, 0)
+        painter.drawLine(14, 0, 50, 0)
+        painter.drawLine(-35, -35, -11, -11)
+        painter.drawLine(11, 11, 35, 35)
+        painter.drawLine(35, -35, 11, -11)
+        painter.drawLine(-11, 11, -35, 35)
+
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(ACCENT_DEEP if not self.paused else '#7a8194'))
-        painter.drawEllipse(center, radius * 0.185, radius * 0.185)
-        painter.setBrush(QColor(BACKGROUND_DEEP))
-        painter.drawEllipse(center, radius * 0.06, radius * 0.06)
+        painter.setBrush(QBrush(QColor(ACCENT_DEEP if not self.paused else '#7a8194')))
+        painter.drawEllipse(QPointF(0, 0), 13.0, 13.0)
+        painter.setBrush(QBrush(QColor(BACKGROUND_DEEP)))
+        painter.drawEllipse(QPointF(0, 0), 4.0, 4.0)
+
+        painter.restore()
 
 
 SPLASH_STYLE = f"""
@@ -338,6 +410,8 @@ class DirectLaunchSplash(QWidget):
         self.fade_animation.stop()
         self._fading = False
         self._close_after_fade = False
+        self.error = False
+        self.reel.set_paused(False)
         self.target_screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         if self.target_screen is not None:
             handle = self.windowHandle()
@@ -594,6 +668,9 @@ class DirectPlayer(QObject):
         if not launch_id or self.retired:
             return False
         mode = parse_mode(link)
+        # Reset cancel state so a fresh link is not blocked by a previous abort.
+        self.cancelling = False
+        self.cancel_reported = False
         if self.splash is not None:
             self.splash.set_mode(mode, animate=False)
         self.generation += 1
@@ -754,6 +831,8 @@ class DirectPlayer(QObject):
                 409: 'Источник ещё готовится. Попробуйте открыть фильм чуть позже.',
                 410: 'Ссылка устарела или уже использована. Нажмите «Смотреть» на сайте ещё раз.',
             }.get(error.status, str(error))
+        if isinstance(error, (RuntimeError, ValueError)) and str(error) and str(error) != 'Cancelled':
+            return str(error)
         return 'Не удалось открыть фильм. Проверьте соединение и попробуйте ещё раз.'
 
     def _error(self, message):

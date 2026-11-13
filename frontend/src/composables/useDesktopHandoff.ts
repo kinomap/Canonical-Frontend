@@ -50,8 +50,6 @@ export function useDesktopHandoff(create: (signal?: AbortSignal) => Promise<Desk
         link += (link.includes('?') ? '&' : '?') + 'mode=compact'
       }
       openDeepLink(link)
-      // Immediately hand off the visual transition to the desktop DirectLaunchSplash.
-      hideCinemaPrestart()
       status.value = HANDOFF_OPENING
       const opened = await waitForPlayer(res.launch_id, { signal: ctl.signal })
       if (ctl.signal.aborted) return false
