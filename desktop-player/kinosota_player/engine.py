@@ -111,7 +111,7 @@ class Mpv:
             self._prewarmed_args=None
             proc=self.process
         try:
-            for _ in range(100):
+            for _ in range(200):
                 if proc is None or proc.poll() is not None:raise RuntimeError('Не удалось запустить окно воспроизведения.')
                 try:
                     self.command(['loadfile',url,'replace']);break

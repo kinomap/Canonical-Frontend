@@ -529,6 +529,7 @@ class Window(QMainWindow):
             self.message.setText(str(error))
             if error.status==401:
                 self.epoch+=1;self.search_timer.stop();self.search_generation+=1;self.search_running=False;self.search_queued=False;self.pair_timer.stop();self.pair=None;self.pending_poll=False;self.login_button.setEnabled(True);self.drawer.dismiss();self.account={};self.drawer.update_account({});self.results.posters.clear();self.results.clear();self.password.clear();self.otp.clear();self.vault.clear();self.stop();self.torrents.reset();self.clear_catalog();self.pages.setCurrentIndex(0);self.backdrop.set_catalog(False);self.message.setText('Срок действия сессии истек. Пожалуйста, войдите снова.');self.identity.setFocus()
+        elif isinstance(error,RuntimeError) and str(error) and str(error)!='Cancelled':self.message.setText(str(error))
         else:self.message.setText('Не удалось выполнить действие. Проверьте установку mpv и соединение.')
     def logout(self):
         self.drawer.dismiss();self.account={};self.drawer.update_account({});self.updater.signed_in=False;self.updater.cancel()
