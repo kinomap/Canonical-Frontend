@@ -337,6 +337,7 @@ class DirectLaunchSplash(QWidget):
         """Open on the monitor under the mouse cursor, in the current mode, fully opaque."""
         self.fade_animation.stop()
         self._fading = False
+        self._close_after_fade = False
         self.target_screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         if self.target_screen is not None:
             handle = self.windowHandle()
@@ -446,6 +447,8 @@ class DirectLaunchSplash(QWidget):
 
     def _fade_finished(self):
         self._fading = False
+        self.text_fade.stop()
+        self.geometry_animation.stop()
         self.reel.stop()
         self.hide()
         if self._close_after_fade:
@@ -457,6 +460,9 @@ class DirectLaunchSplash(QWidget):
     def hide_now(self):
         """Hide at once (fallback to the app window, normal mpv exit) and reset the fade state."""
         self.fade_animation.stop()
+        self.text_fade.stop()
+        self.geometry_animation.stop()
+        self.reel.stop()
         self._fading = False
         self._close_after_fade = False
         self.hide()
@@ -465,6 +471,9 @@ class DirectLaunchSplash(QWidget):
     def dismiss(self):
         """Close without asking the user (programmatic close, no cancel signal)."""
         self.fade_animation.stop()
+        self.text_fade.stop()
+        self.geometry_animation.stop()
+        self.reel.stop()
         self._fading = False
         self._closing = True
         try:
@@ -600,7 +609,13 @@ class DirectPlayer(QObject):
         self.api = api
         if self._worker is None and callable(getattr(self.engine, 'prewarm', None)):
             win_args = self._window_args()
-            QThreadPool.globalInstance().start(_Work(lambda: self.engine.prewarm(extra_args=win_args)))
+            def prewarm_task():
+                if generation != self.generation or self.retired or self.cancelling:
+                    return
+                self.engine.prewarm(extra_args=win_args)
+                if generation != self.generation or self.retired or self.cancelling:
+                    self.engine.stop()
+            QThreadPool.globalInstance().start(_Work(prewarm_task))
 
         def done(meta):
             if generation != self.generation:
@@ -754,6 +769,7 @@ class DirectPlayer(QObject):
         if self.splash is None or not self.splash.isVisible():
             self._cancelled()
             return
+        self.splash.reel.stop()
         self.splash.fade_out(close=True)
 
     def _splash_faded(self):

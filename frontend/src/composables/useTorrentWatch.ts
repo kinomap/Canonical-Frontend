@@ -574,6 +574,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
         link += (link.includes('?') ? '&' : '?') + 'mode=compact'
       }
       openDeepLink(link)
+      hideCinemaPrestart()
       message.value = 'Открываем KINOSOTA Player…'
       const opened = await waitForPlayer(res.launch_id, { signal: ctl.signal, quietMs: 3500 })
       if (ctl.signal.aborted) return

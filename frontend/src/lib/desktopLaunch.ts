@@ -11,7 +11,7 @@ import { torrentPlaybackApi } from '@/api/torrents'
 /** Exact wording requested for the "player is not installed" dialog. */
 export const DESKTOP_PLAYER_TEXT = 'Для просмотра фильмов в максимальном качестве и со всеми аудиодорожками скачайте и установите приложение KINOSOTA Player. Плеер уже доступен для скачивания в вашем Профиле'
 
-export const DEEP_LINK_RE = /^kinosota:\/\/watch\?launch=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+export const DEEP_LINK_RE = /^kinosota:\/\/watch\?launch=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:&mode=(?:compact|fullscreen))?$/
 
 /** Chromium keeps the page when no handler exists; Firefox/Safari would show an error page, so use a frame. */
 export function openDeepLink(url: string): void {

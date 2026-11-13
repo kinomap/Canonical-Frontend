@@ -7,9 +7,11 @@ const link='kinosota://watch?launch='+id
 beforeEach(()=>{vi.useFakeTimers();api.launchStatus.mockReset()})
 afterEach(()=>{vi.useRealTimers();document.querySelectorAll('iframe').forEach(f=>f.remove())})
 describe('KINOSOTA Player hand-off',()=>{
- it('accepts only the server launch link and never carries credentials',()=>{
+ it('accepts only the server launch link (with optional mode) and never carries credentials',()=>{
   expect(DEEP_LINK_RE.test(link)).toBe(true)
-  for(const bad of [link+'&token=secret','javascript:alert(1)','https://evil.example/?launch='+id,'kinosota://auth?token=abc','kinosota://watch?launch=../../x'])expect(()=>openDeepLink(bad)).toThrow()
+  expect(DEEP_LINK_RE.test(link+'&mode=compact')).toBe(true)
+  expect(DEEP_LINK_RE.test(link+'&mode=fullscreen')).toBe(true)
+  for(const bad of [link+'&token=secret',link+'&mode=evil','javascript:alert(1)','https://evil.example/?launch='+id,'kinosota://auth?token=abc','kinosota://watch?launch=../../x'])expect(()=>openDeepLink(bad)).toThrow()
   expect(document.querySelector('iframe')).toBeNull()
  })
  it('uses a hidden frame outside Chromium so the page itself never navigates away',()=>{

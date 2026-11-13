@@ -134,3 +134,24 @@ def test_account_uses_existing_authenticated_profile_endpoint():
     assert api.account()['subscription_status']=='free'
     assert seen==[('GET','/api/v1/account','Bearer fixture-token')]
     api.close()
+
+
+def test_mpv_validation_rejects_broken_opt_binary_and_falls_back_to_system_mpv(tmp_path, monkeypatch):
+    from kinosota_player import engine
+    broken_opt = tmp_path / 'opt_mpv'
+    broken_opt.write_text('#!/bin/sh\nexit 127\n')
+    broken_opt.chmod(0o755)
+    working_sys = tmp_path / 'sys_mpv'
+    working_sys.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then exit 0; fi\nexit 0\n')
+    working_sys.chmod(0o755)
+
+    assert not engine._is_executable_mpv(broken_opt)
+    assert engine._is_executable_mpv(working_sys)
+    assert not engine._is_executable_mpv(tmp_path / 'missing_mpv')
+
+    monkeypatch.setattr(engine.sys, 'platform', 'linux')
+    monkeypatch.setattr(engine, 'OPT_LINUX_MPV', broken_opt)
+    monkeypatch.setattr(engine.shutil, 'which', lambda name: str(working_sys) if name == 'mpv' else None)
+    mpv = engine.Mpv()
+    assert mpv.executable == str(working_sys)
+    assert '--background-color=#070b0e' in mpv._base_args()

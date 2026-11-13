@@ -480,3 +480,24 @@ def test_mpv_property_over_json_ipc_treats_unavailable_as_none():
         server.close()
         os.unlink(path)
         os.rmdir(folder)
+
+
+def test_in_app_splash_cancel_resets_busy_state_stops_reels_and_reports_cancelled():
+    from test_torrents import FakeApi, FakeEngine, window_for
+    qt_app()
+    api, engine = FakeApi(), FakeEngine()
+    w = window_for(api, engine)
+    w.resize(1240, 840)
+    w.show()
+    w.signed_in({'username': 'viewer'})
+    jobs = []
+    w.work = lambda fn, done=None, fail=None: jobs.append((fn, done, fail))
+    choice = {'kind': 'movie', 'tmdb_id': 155, 'source_id': '11111111-1111-4111-8111-111111111111',
+              'title': 'Тёмный рыцарь', 'audio_lang': 'ru', 'season': None, 'episode': None}
+    w.play_torrent(choice)
+    assert w.busy and w.torrent_starting and w.splash.isVisible() and w.splash.reel.running()
+    w.splash.close_button.click()
+    assert not w.busy and not w.torrent_starting
+    assert not w.splash.isVisible() and not w.splash.reel.running()
+    assert w.message.text() == 'Запуск отменён.'
+    w.close()

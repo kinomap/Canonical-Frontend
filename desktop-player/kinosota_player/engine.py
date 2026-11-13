@@ -34,16 +34,48 @@ def native_loader():
         finally:
             if not kernel.SetDllDirectoryW(previous or None):raise OSError('Cannot restore DLL search directory')
 
+def _is_executable_mpv(path):
+    """Return True only when ``[path, '--version']`` exits with code 0 within 1s."""
+    if not path:
+        return False
+    candidate=Path(str(path))
+    if not candidate.is_file() or not os.access(candidate,os.X_OK):
+        return False
+    try:
+        with native_loader():
+            res=subprocess.run(
+                [str(candidate),'--version'],
+                env=child_environment(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=1,
+                check=False,
+                creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0,
+            )
+        return res.returncode==0
+    except (OSError,subprocess.SubprocessError,ValueError):
+        return False
+
+def _resolve_mpv_executable(executable=None):
+    """Resolve a working mpv binary: explicit -> bundled (_MEIPASS) -> /opt/kinosota-player -> system PATH."""
+    if executable:
+        return str(executable)
+    root=Path(getattr(sys,'_MEIPASS',Path(__file__).parent))
+    bundled=root/'mpv'/('mpv.exe' if os.name=='nt' else 'mpv')
+    if bundled.is_file() and _is_executable_mpv(bundled):
+        return str(bundled)
+    if sys.platform.startswith('linux') and OPT_LINUX_MPV.is_file() and _is_executable_mpv(OPT_LINUX_MPV):
+        return str(OPT_LINUX_MPV)
+    return shutil.which('mpv')
+
 class Mpv:
     def __init__(self,executable=None):
-        root=Path(getattr(sys,'_MEIPASS',Path(__file__).parent))
-        bundled=root/'mpv'/('mpv.exe' if os.name=='nt' else 'mpv')
-        opt_mpv=OPT_LINUX_MPV if sys.platform.startswith('linux') and OPT_LINUX_MPV.is_file() else None
-        self.executable=executable or (str(opt_mpv) if opt_mpv else (str(bundled) if bundled.is_file() else shutil.which('mpv')))
+        self.executable=_resolve_mpv_executable(executable)
         self.process=None;self.directory=None;self.endpoint='';self._prewarmed_args=None
     def _base_args(self,extra_args=(),idle='once'):
         return [self.executable,'--no-config',f'--idle={idle}','--force-window=yes','--keep-open=no',
-                '--osd-level=0','--no-osc',
+                '--background-color=#070b0e','--osd-level=0','--no-osc',
                 # Instant first frame + adaptive stream cache and fast reconnect.
                 '--cache=yes','--demuxer-max-bytes=150MiB','--demuxer-readahead-secs=10',
                 '--cache-pause-wait=1','--cache-pause-initial=yes','--network-timeout=60',
@@ -52,32 +84,35 @@ class Mpv:
                 '--input-ipc-server='+self.endpoint,*extra_args]
     def prewarm(self,*,extra_args=()):
         """Spawn mpv in --idle=yes mode under the splash while the launch ticket is being fetched."""
-        if not self.executable or self.alive():return
-        self.stop()
-        self.directory=tempfile.TemporaryDirectory(prefix='kinosota-player-')
-        self.endpoint=(r'\\.\pipe\kinosota-'+uuid.uuid4().hex) if os.name=='nt' else str(Path(self.directory.name)/'mpv.sock')
-        self._prewarmed_args=tuple(extra_args)
-        args=self._base_args(extra_args=extra_args,idle='yes')
-        with native_loader():
-            self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
-            creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0)
+        with _spawn_lock:
+            if not self.executable or self.alive():return
+            self.stop()
+            self.directory=tempfile.TemporaryDirectory(prefix='kinosota-player-')
+            self.endpoint=(r'\\.\pipe\kinosota-'+uuid.uuid4().hex) if os.name=='nt' else str(Path(self.directory.name)/'mpv.sock')
+            self._prewarmed_args=tuple(extra_args)
+            args=self._base_args(extra_args=extra_args,idle='yes')
+            with native_loader():
+                self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0)
     def start(self,url,*,extra_args=()):
         parts=urlsplit(url)
         if parts.scheme!='https' or not parts.netloc or parts.username or parts.password:
             raise ValueError('Only HTTPS media URLs are supported')
         if not self.executable:raise RuntimeError('mpv не установлен. Переустановите KINOSOTA Player.')
-        if not (self.alive() and self._prewarmed_args==tuple(extra_args)):
-            self.stop()
-            self.directory=tempfile.TemporaryDirectory(prefix='kinosota-player-')
-            self.endpoint=(r'\\.\pipe\kinosota-'+uuid.uuid4().hex) if os.name=='nt' else str(Path(self.directory.name)/'mpv.sock')
-            args=self._base_args(extra_args=extra_args,idle='once')
-            with native_loader():
-                self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
-                creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0)
-        self._prewarmed_args=None
+        with _spawn_lock:
+            if not (self.alive() and self._prewarmed_args==tuple(extra_args)):
+                self.stop()
+                self.directory=tempfile.TemporaryDirectory(prefix='kinosota-player-')
+                self.endpoint=(r'\\.\pipe\kinosota-'+uuid.uuid4().hex) if os.name=='nt' else str(Path(self.directory.name)/'mpv.sock')
+                args=self._base_args(extra_args=extra_args,idle='once')
+                with native_loader():
+                    self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                    creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0)
+            self._prewarmed_args=None
+            proc=self.process
         try:
             for _ in range(100):
-                if self.process.poll() is not None:raise RuntimeError('Не удалось запустить окно воспроизведения.')
+                if proc is None or proc.poll() is not None:raise RuntimeError('Не удалось запустить окно воспроизведения.')
                 try:
                     self.command(['loadfile',url,'replace']);break
                 except (OSError,TimeoutError):time.sleep(.05)
@@ -125,14 +160,15 @@ class Mpv:
         raise TimeoutError('mpv IPC response timed out')
 
     def stop(self):
-        if self.process:
-            if self.process.poll() is None:
-                self.process.terminate()
-                try:self.process.wait(timeout=3)
-                except subprocess.TimeoutExpired:self.process.kill();self.process.wait(timeout=3)
-            self.process=None
-        self._prewarmed_args=None
-        if self.directory:self.directory.cleanup();self.directory=None
+        with _spawn_lock:
+            if self.process:
+                if self.process.poll() is None:
+                    self.process.terminate()
+                    try:self.process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:self.process.kill();self.process.wait(timeout=3)
+                self.process=None
+            self._prewarmed_args=None
+            if self.directory:self.directory.cleanup();self.directory=None
     def alive(self):return bool(self.process and self.process.poll() is None)
 
     def exit_code(self):return self.process.poll() if self.process else None
@@ -149,7 +185,7 @@ class Mpv:
             except Exception:pass
 
     @staticmethod
-    def frame_ready(playback_time,video_params):
+    def frame_ready(playback_time,video_params=None):
         """Strict first-frame detector: playback-time must advance to >= 0.2s (never pop-in on demuxer dw/dh)."""
         return type(playback_time) in (int,float) and playback_time>=0.2
 
@@ -164,7 +200,7 @@ class Mpv:
             if not self.alive():return 'exited'
             try:
                 eof=self.property('eof-reached') is True
-                if not eof and self.frame_ready(self.property('playback-time'),self.property('video-out-params')):
+                if not eof and self.frame_ready(self.property('playback-time')):
                     self.enable_osc()
                     return 'playing'
                 if eof:return 'eof'

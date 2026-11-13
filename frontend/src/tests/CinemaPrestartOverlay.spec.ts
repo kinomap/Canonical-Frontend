@@ -1,6 +1,7 @@
 import { DOMWrapper, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import CinemaPrestartOverlay from '@/components/CinemaPrestartOverlay.vue'
+import { showCinemaPrestart, useCinemaPrestart } from '@/composables/useCinemaPrestart'
 
 describe('CinemaPrestartOverlay', () => {
   afterEach(() => {
@@ -31,6 +32,22 @@ describe('CinemaPrestartOverlay', () => {
     const cancelBtn = new DOMWrapper(document.body.querySelector('[aria-label="Отменить запуск"]')!)
     await cancelBtn.trigger('click')
     expect(wrapper.emitted('cancel')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('softly hides the overlay on window blur without aborting the launch signal', async () => {
+    vi.useFakeTimers()
+    const cancelSpy = vi.fn()
+    showCinemaPrestart(cancelSpy)
+    const state = useCinemaPrestart()
+    const wrapper = mount(CinemaPrestartOverlay, { props: { show: state.visible }, attachTo: document.body })
+    expect(state.visible).toBe(true)
+
+    window.dispatchEvent(new Event('blur'))
+    await vi.advanceTimersByTimeAsync(200)
+    expect(state.visible).toBe(false)
+    expect(cancelSpy).not.toHaveBeenCalled()
+    expect(wrapper.emitted('cancel')).toBeUndefined()
     wrapper.unmount()
   })
 })

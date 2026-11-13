@@ -19,7 +19,7 @@ from .preferences import Preferences,translate,movie_title
 from .settings import SettingsDrawer
 from .updater import Updater
 from .torrents import TorrentPage, audio_args, media_title_args
-from .deeplink import parse_launch
+from .deeplink import parse_launch, parse_mode
 from .direct import BUFFERING, DirectLaunchSplash, DirectPlayer, geometry_text, launch_args, stream_of
 from .suggest import SuggestPopup
 ASSET=Path(__file__).parent/'assets'/'drone.png'
@@ -426,8 +426,11 @@ class Window(QMainWindow):
             if current() and self.engine.alive():self.splash.fade_out()
         self.work(lambda:wait(cancelled=lambda:not current()),done,fail)
     def cancel_splash_playback(self):
+        self.pending_launch=''
+        self.splash.reel.stop()
+        self.splash.hide_now()
         self.stop()
-        if self.splash.isVisible():self.splash.fade_out()
+        if hasattr(self,'torrents'):self.torrents.render()
         self.message.setText('Запуск отменён.')
     def sync_splash_window(self,mode):
         command=getattr(self.engine,'command',None)
@@ -448,7 +451,7 @@ class Window(QMainWindow):
     def start_movie(self,movie,force=False):
         """KINOSOTA film (catalogue card or website launch): lease → mpv → heartbeat."""
         if self.busy and not force:return
-        self.stop(release=False);self.busy=True;self.play_button.setEnabled(False);self.message.setText('Открываем фильм…')
+        self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False);self.message.setText('Открываем фильм…')
         win_args=self._present_playback_splash('Подготовка фильма…')
         epoch=self.epoch;generation=self.play_generation
         def start():
@@ -482,10 +485,10 @@ class Window(QMainWindow):
             for sid in list(self.pending_stops):
                 self.api.stop(sid)
                 if sid in self.pending_stops:self.pending_stops.remove(sid)
-    def stop(self,release=True):
+    def stop(self,release=True,keep_splash=False):
         self.play_generation+=1;self.busy=False;self.torrent_playing=False;self.torrent_starting=False;self.direct_meta=None;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.pending_beat=False
         self.lease_timer.stop();sid=self.session;self.session='';self.playing_movie='';self.engine.stop()
-        if hasattr(self,'splash') and self.splash.isVisible() and not self.splash.fading():self.splash.hide_now()
+        if not keep_splash and hasattr(self,'splash') and self.splash.isVisible() and not self.splash.fading():self.splash.hide_now()
         if sid:self.pending_stops.append(sid)
         if release and self.pending_stops:self.work(self.release_pending,fail=lambda e:None)
     def beat(self):
@@ -558,7 +561,7 @@ class Window(QMainWindow):
     def play_torrent(self,choice,force=False,attempt=0):
         """Torrent title from the «Торренты» page or a website launch: ticket → mpv (--alang)."""
         if self.busy and not force:return
-        self.stop(release=False);self.busy=True;self.play_button.setEnabled(False)
+        self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False)
         title=str(choice.get('title') or 'KINOSOTA');self.message.setText('Переподключаемся…' if attempt else 'Открываем фильм…')
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка фильма…')
         self.torrent_starting=True;self.start_timer.start()
@@ -592,7 +595,7 @@ class Window(QMainWindow):
         url=stream_of(meta)
         if not url:
             self.launch_opened(meta);return
-        self.stop(release=False);self.busy=True;self.play_button.setEnabled(False)
+        self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False)
         title=str(meta.get('title') or 'KINOSOTA')
         self.message.setText('Переподключаемся…' if attempt else 'Открываем фильм…')
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка фильма…')
@@ -628,15 +631,22 @@ class Window(QMainWindow):
         launch=parse_launch(link)
         if not launch:
             self.surface();self.message.setText('Ссылка из браузера не распознана. Нажмите «Смотреть» на сайте ещё раз.');return
+        self.splash.set_mode(parse_mode(link),animate=False)
         self.pending_launch=launch
         self.redeem_launch()
     def redeem_launch(self):
         launch=self.pending_launch;self.pending_launch=''
         if not launch:return
+        self.stop(release=False,keep_splash=True)
+        self._present_playback_splash('Открываем фильм с сайта…')
         self.message.setText('Открываем фильм с сайта…')
+        generation=self.play_generation
         def done(meta):
+            if generation!=self.play_generation:return
             self.launch_opened(meta)
         def fail(error):
+            if generation!=self.play_generation:return
+            self.splash.hide_now()
             self.surface()
             if isinstance(error,ApiError) and error.status==401:self.pending_launch=launch;self.show_error(error)
             elif isinstance(error,ApiError) and error.status==404 and 'недоступен' in str(error):self.message.setText(str(error))
@@ -648,7 +658,7 @@ class Window(QMainWindow):
         self.work(lambda:self.api.open_launch(launch),done,fail)
     def launch_opened(self,meta):
         if not isinstance(meta,dict):
-            self.surface();self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
+            self.splash.hide_now();self.surface();self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
         # New backends return the stream ticket with the single-use grant: no account/page/ticket round trip.
         if stream_of(meta):
             self.play_stream(meta,0);return
@@ -657,7 +667,7 @@ class Window(QMainWindow):
         is_catalog_movie=isinstance(movie_id,str) and bool(movie_id.strip()) and meta.get('kind')=='movie'
         is_torrent=meta.get('kind') in ('movie','tv') and type(meta.get('tmdb_id')) is int
         if not is_catalog_movie and not is_torrent:
-            self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
+            self.splash.hide_now();self.message.setText('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.');return
 
         # A valid website launch is the authorization grant. Replace an absent,
         # expired or stale local session and persist only through the OS vault.
