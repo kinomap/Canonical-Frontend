@@ -35,7 +35,7 @@ describe('CinemaPrestartOverlay', () => {
     wrapper.unmount()
   })
 
-  it('softly hides the overlay on window blur without aborting the launch signal', async () => {
+  it('hides the overlay when the tab becomes hidden (navigated away), without aborting the launch', async () => {
     vi.useFakeTimers()
     const cancelSpy = vi.fn()
     showCinemaPrestart(cancelSpy)
@@ -43,11 +43,32 @@ describe('CinemaPrestartOverlay', () => {
     const wrapper = mount(CinemaPrestartOverlay, { props: { show: state.visible }, attachTo: document.body })
     expect(state.visible).toBe(true)
 
-    window.dispatchEvent(new Event('blur'))
-    await vi.advanceTimersByTimeAsync(200)
+    // Simulate the tab being hidden (user navigated away or minimised the browser).
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(10)
     expect(state.visible).toBe(false)
+    // The launch signal must NOT be aborted — only the overlay is dismissed.
     expect(cancelSpy).not.toHaveBeenCalled()
     expect(wrapper.emitted('cancel')).toBeUndefined()
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    wrapper.unmount()
+  })
+
+  it('does NOT hide the overlay on window blur (desktop player opening takes focus)', async () => {
+    vi.useFakeTimers()
+    const cancelSpy = vi.fn()
+    showCinemaPrestart(cancelSpy)
+    const state = useCinemaPrestart()
+    const wrapper = mount(CinemaPrestartOverlay, { props: { show: state.visible }, attachTo: document.body })
+    expect(state.visible).toBe(true)
+
+    // Blur happens when the kinosota:// link opens the desktop player — overlay must stay.
+    window.dispatchEvent(new Event('blur'))
+    await vi.advanceTimersByTimeAsync(500)
+    expect(state.visible).toBe(true)
+    expect(cancelSpy).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

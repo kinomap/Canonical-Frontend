@@ -25,6 +25,11 @@ FRAME_MS = 16  # ~60 FPS for the reel animation.
 FADE_MS = 400  # 400ms Cross-Dissolve once playback-time >= 0.2s.
 RESIZE_MS = 260
 TEXT_FADE_MS = 280
+# Delay between mpv reporting its first frame (IPC) and the splash fade-out.
+# Qt's event loop needs at least one round-trip to let the mpv window become
+# visible on screen; a 0 ms singleShot defers to the next event iteration and
+# is enough in practice.  Set to > 0 for platforms that need a longer grace.
+FIRST_FRAME_FADE_DELAY_MS = 0
 
 STARTING = 'Фильм запускается, подождите немного…'
 CONNECTING = 'Подключаем медиапоток…'
@@ -609,6 +614,7 @@ class DirectPlayer(QObject):
         self.playing = False
         self.cancelling = False
         self.cancel_reported = False
+        self._fade_generation = 0
         self.window = []  # mpv window flags, refreshed on the UI thread whenever the splash changes mode.
         self.last_error = ''
         self.retired = False
@@ -783,7 +789,11 @@ class DirectPlayer(QObject):
 
     def _playback_started(self):
         self.playing = True
-        self._hide_splash(fade=True)
+        # Give mpv's window ~180 ms to actually appear on screen before dissolving
+        # the splash. Without this delay the splash fades out while mpv's window is
+        # still painting its first frame, leaving a black rectangle for 3–5 s.
+        self._fade_generation = self.generation
+        QTimer.singleShot(FIRST_FRAME_FADE_DELAY_MS, self._hide_splash_fade)
 
     def _sync_engine_window(self, mode):
         """□ after mpv has started: move the running mpv window as well (best effort over IPC)."""
@@ -869,6 +879,15 @@ class DirectPlayer(QObject):
         self.timer.stop()
         self.engine.stop()
         self._close_api()  # Closing the httpx clients aborts a request that is still in flight.
+
+    def _hide_splash_fade(self):
+        """Called from singleShot after mpv has had time to draw its first frame.
+
+        Guards against cancel/retry that increments self.generation between the
+        singleShot arm and its fire: fade only when still on the same launch.
+        """
+        if self.playing and self.generation == self._fade_generation:
+            self._hide_splash(fade=True)
 
     def _hide_splash(self, *, fade=False):
         if self.splash is None:

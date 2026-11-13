@@ -8,7 +8,6 @@ const compact = ref(false)
 const elapsed = ref(0)
 let startedAt = 0
 let ticker: ReturnType<typeof setInterval> | undefined
-let blurTimeout: ReturnType<typeof setTimeout> | undefined
 
 const status = computed(() => elapsed.value >= 4000
   ? 'Подключение плеера…'
@@ -21,16 +20,9 @@ function stopTicker() {
     clearInterval(ticker)
     ticker = undefined
   }
-  if (blurTimeout !== undefined) {
-    clearTimeout(blurTimeout)
-    blurTimeout = undefined
-  }
 }
 
 function removeListeners() {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('blur', onWindowBlur)
-  }
   if (typeof document !== 'undefined') {
     document.removeEventListener('visibilitychange', onVisibilityChange)
   }
@@ -48,13 +40,9 @@ function handoffHide() {
   hideCinemaPrestart()
 }
 
-function onWindowBlur() {
-  if (props.show) {
-    blurTimeout = setTimeout(() => handoffHide(), 120)
-  }
-}
-
 function onVisibilityChange() {
+  // Hide only when the tab itself is hidden (navigated away / minimised), not when
+  // the browser loses focus to the desktop player window that just opened.
   if (props.show && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
     handoffHide()
   }
@@ -68,7 +56,6 @@ watch(() => props.show, (visible) => {
   elapsed.value = 0
   startedAt = Date.now()
   ticker = setInterval(() => { elapsed.value = Date.now() - startedAt }, 200)
-  if (typeof window !== 'undefined') window.addEventListener('blur', onWindowBlur, { once: true })
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibilityChange)
 }, { immediate: true })
 

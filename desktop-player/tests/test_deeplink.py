@@ -316,6 +316,7 @@ def test_splash_stays_until_the_first_frame_and_mpv_gets_its_geometry():
     assert splash.isVisible() and not splash.fading() and splash.status_label.text() == BUFFERING
     assert direct.timer.isActive()
     worker.run()  # Mpv.wait_playback_started
+    QApplication.instance().processEvents()  # flush singleShot(0) that arms the fade
     assert engine.waits == [(30, False)] and splash.fading()
     splash.finish_animations()
     assert not splash.isVisible() and direct.playing and codes == []
@@ -328,6 +329,7 @@ def test_first_frame_wait_results(result, revealed):
     direct, worker, api, engine, codes = splash_player(SplashEngine(result))
     direct.open_link(f'kinosota://watch?launch={LAUNCH}')
     worker.run(); worker.run(); worker.run()
+    QApplication.instance().processEvents()  # flush singleShot(0) that arms the fade
     # On timeout mpv takes over with its own buffering OSD; a dead mpv is left to _watch (retry or error).
     assert direct.splash.fading() is revealed and direct.splash.isVisible()
     direct.shutdown()
