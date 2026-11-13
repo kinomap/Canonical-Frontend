@@ -5,7 +5,7 @@ export LANG=C.UTF-8 LC_ALL=C.UTF-8
 [ "${KINOSOTA_DISPOSABLE_QA:-}" = 1 ] || { echo 'Disposable QA environment required' >&2; exit 2; }
 pkg=${1:?Path to candidate deb required}
 apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$pkg" xvfb xauth desktop-file-utils fonts-dejavu-core python3 ffmpeg openssl
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$pkg" mpv xvfb xauth desktop-file-utils fonts-dejavu-core python3 ffmpeg openssl
 [ "$(dpkg-query -W -f='${Status}' kinosota-player)" = 'install ok installed' ]
 [ -f /usr/share/icons/hicolor/512x512/apps/kinosota-player.png ]
 desktop-file-validate /usr/share/applications/kinosota-player.desktop
