@@ -20,6 +20,22 @@ describe('CinemaPrestartOverlay', () => {
     wrapper.unmount()
   })
 
+  it('plays the prepared KINOSOTA intro instead of the old SVG reels', () => {
+    const wrapper = mount(CinemaPrestartOverlay, { props: { show: true }, attachTo: document.body })
+    const dialog = document.body.querySelector('[role="dialog"]')!
+    expect(dialog.querySelector('svg')).toBeNull()
+    expect(dialog.querySelector('.reel, .spokes, .holes')).toBeNull()
+    const intro = dialog.querySelector('[data-testid="cinema-intro"] video') as HTMLVideoElement
+    expect(intro).not.toBeNull()
+    expect(intro.getAttribute('poster')).toBe('/cinema/intro/kinosota-intro-v1.jpg') // First frame on the first paint.
+    expect(intro.hasAttribute('playsinline')).toBe(true)
+    expect([...intro.querySelectorAll('source')].map((s) => s.getAttribute('src'))).toEqual([
+      '/cinema/intro/kinosota-intro-v1.webm', '/cinema/intro/kinosota-intro-v1.mp4'])
+    expect(dialog.textContent).not.toContain('KINOSOTA PLAYER') // No intermediate emblem over the intro.
+    expect((dialog as HTMLElement).style.getPropertyValue('--cinema-dissolve')).toBe('900ms')
+    wrapper.unmount()
+  })
+
   it('toggles compact mode and emits cancellation', async () => {
     const wrapper = mount(CinemaPrestartOverlay, { props: { show: true }, attachTo: document.body })
     const dialog = document.body.querySelector('[role="dialog"]')

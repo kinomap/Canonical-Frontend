@@ -21,6 +21,7 @@ from .updater import Updater
 from .torrents import TorrentPage, audio_args, media_title_args
 from .deeplink import parse_launch, parse_mode
 from .direct import BUFFERING, DirectLaunchSplash, DirectPlayer, geometry_text, launch_args, stream_of
+from .cinema import CinemaEngine, create_surface
 from .suggest import SuggestPopup
 ASSET=Path(__file__).parent/'assets'/'drone.png'
 STYLE=PREMIUM_STYLE
@@ -100,7 +101,11 @@ class Window(QMainWindow):
         self.make_torrents();root.glass=[self.header,self.filters]
         self.setCentralWidget(root);self.setStyleSheet(PREMIUM_STYLE)
         self.drawer=SettingsDrawer(root,self.preferences);self.drawer.languageChanged.connect(self.set_language);self.drawer.titlesChanged.connect(self.set_title_language);self.drawer.rememberChanged.connect(self.set_remember_session);self.drawer.refreshRequested.connect(self.refresh_account);self.drawer.signOutRequested.connect(self.logout)
-        self.splash=DirectLaunchSplash()
+        # The launch window plays the KINOSOTA intro and dissolves into the film (libmpv); without libmpv
+        # it shows the logo still over the external mpv window. Injected engines (tests) keep the latter.
+        self.cinema=create_surface() if engine is None else None
+        self.splash=DirectLaunchSplash(cinema=self.cinema)
+        if self.cinema is not None:self.engine=CinemaEngine(self.cinema);self.cinema.failed.connect(self.cinema_failed)
         self.splash.cancelRequested.connect(self.cancel_splash_playback)
         self.splash.modeChanged.connect(self.sync_splash_window)
         # 0.1.9: Settings → «О приложении» installs a newer published build over this one.
@@ -428,7 +433,6 @@ class Window(QMainWindow):
         self.work(lambda:wait(cancelled=lambda:not current()),done,fail)
     def cancel_splash_playback(self):
         self.pending_launch=''
-        self.splash.reel.stop()
         self.splash.hide_now()
         self.busy=False
         self.torrent_starting=False
@@ -437,6 +441,9 @@ class Window(QMainWindow):
         self.stop()
         if hasattr(self,'torrents'):self.torrents.render()
         self.message.setText('Запуск отменён.')
+    def cinema_failed(self,_reason=''):
+        """libmpv / OpenGL broke: later starts use the external mpv window."""
+        self.cinema=None;self.engine=Mpv()
     def sync_splash_window(self,mode):
         command=getattr(self.engine,'command',None)
         if not self.splash.isVisible() or not callable(command) or not self.engine.alive():return
@@ -697,7 +704,9 @@ class Window(QMainWindow):
         if not self.remember.isChecked():self.vault.clear()
         if hasattr(self,'splash'):self.splash.dismiss()
         self.updater.shutdown();self.search.removeEventFilter(self);self.suggest.dismiss();self.drawer.dismiss();self.torrents.shutdown();self.filters.genre_timer.stop()
-        self.search_timer.stop();self.results.posters.clear();self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close();event.accept()
+        self.search_timer.stop();self.results.posters.clear();self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close()
+        if self.cinema is not None:self.splash.dismiss();self.cinema.shutdown()
+        event.accept()
 
 def run(app,instance,link):
     """Route cold website launches through DirectPlayer; keep the catalogue lazy for macOS FileOpen."""
@@ -759,7 +768,8 @@ def main():
         show_uninstall(language=Preferences().get('interface_language'));return 0
     smoke='--smoke-test' in sys.argv or '--playback-smoke-fixture' in sys.argv
     if smoke:
-        window=Window(restore=False);window.show()
+        # Packaged-app QA drives the external mpv binary; the in-window libmpv is probed separately below.
+        window=Window(restore=False,engine=Mpv());window.show()
         if '--playback-smoke-fixture' in sys.argv:
             from .smoke import run_playback_smoke
             try:
@@ -784,9 +794,15 @@ def main():
             assert window.pages.currentIndex()==0, 'Smoke test must not log in'
             assert window.password.echoMode()==QLineEdit.EchoMode.Password
             assert window.engine.executable, 'mpv is missing'
+            if sys.platform.startswith('linux'):
+                # The .deb depends on libmpv2 for the intro / seamless prestart; Windows/macOS fall back to the logo still.
+                from .libmpv import probe
+                assert probe(), 'libmpv is missing'
             with native_loader():
                 subprocess.run([window.engine.executable,'--no-config','--version'],env=child_environment(),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
         except Exception:
+            import traceback
+            if sys.stderr:traceback.print_exc()
             window.close();return 1
         QTimer.singleShot(300,window.close)
         return app.exec()

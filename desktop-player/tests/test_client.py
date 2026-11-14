@@ -1,4 +1,5 @@
 import json
+import sys
 import httpx
 import pytest
 from kinosota_player.api import Api,ApiError
@@ -136,6 +137,7 @@ def test_account_uses_existing_authenticated_profile_endpoint():
     api.close()
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='Exercises POSIX #!/bin/sh mpv stand-ins')
 def test_mpv_validation_rejects_broken_opt_binary_and_falls_back_to_system_mpv(tmp_path, monkeypatch):
     from kinosota_player import engine
     broken_opt = tmp_path / 'opt_mpv'

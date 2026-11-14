@@ -1,19 +1,19 @@
-"""Minimal, no-login redemption and mpv launch for website watch links."""
+"""Minimal, no-login redemption and playback for website watch links."""
 from __future__ import annotations
 
-import math
 import sys
 import time
 import uuid
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import (QAbstractAnimation, QEasingCurve, QElapsedTimer, QObject, QPointF, QPropertyAnimation,
-                            QRect, QRectF, QRunnable, QSize, QThreadPool, QTimer, Qt, Signal, Slot)
-from PySide6.QtGui import QBrush, QColor, QCursor, QGuiApplication, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
-from PySide6.QtWidgets import (QGraphicsOpacityEffect, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
-                               QVBoxLayout, QWidget)
+from PySide6.QtCore import (QAbstractAnimation, QEasingCurve, QObject, QPointF, QPropertyAnimation, QRect, QRectF,
+                            QRunnable, QThreadPool, QTimer, Qt, Signal, Slot)
+from PySide6.QtGui import QBrush, QColor, QCursor, QGuiApplication, QImage, QLinearGradient, QPainter, QRadialGradient
+from PySide6.QtWidgets import (QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLayout, QPushButton, QVBoxLayout,
+                               QWidget)
 
 from .api import Api, ApiError
+from .cinema import INTRO_STILL, CinemaEngine, create_surface, mpv_key_name
 from .deeplink import parse_launch, parse_mode
 from .engine import FIRST_FRAME_TIMEOUT, Mpv
 from .torrents import audio_args, media_title_args
@@ -21,14 +21,12 @@ from .torrents import audio_args, media_title_args
 BACKGROUND, BACKGROUND_DEEP = '#070b0e', '#070b0e'  # Unified CinemaPrestartOverlay.vue palette.
 ACCENT, ACCENT_DEEP = '#ffd400', '#ffb800'
 TEXT, TEXT_MUTED = '#ffffff', 'rgba(255, 255, 255, 0.58)'
-FRAME_MS = 16  # ~60 FPS for the reel animation.
-FADE_MS = 400  # 400ms Cross-Dissolve once playback-time >= 0.2s.
+FADE_MS = 400  # Window fade when the launch is cancelled or handed to the external mpv window.
 RESIZE_MS = 260
 TEXT_FADE_MS = 280
-# Delay between mpv reporting its first frame (IPC) and the splash fade-out.
-# Qt's event loop needs at least one round-trip to let the mpv window become
-# visible on screen; a 0 ms singleShot defers to the next event iteration and
-# is enough in practice.  Set to > 0 for platforms that need a longer grace.
+CHROME_HIDE_MS = 2500  # While the film plays, □ / ✕ appear on pointer movement and hide again.
+LONG_WAIT_MS = 15000   # The intro has ended and the film is still buffering: say so.
+# Delay between mpv reporting its first frame (IPC) and the splash fade-out (external mpv window only).
 FIRST_FRAME_FADE_DELAY_MS = 0
 
 STARTING = 'Фильм запускается, подождите немного…'
@@ -91,223 +89,38 @@ def geometry_args(mode, rect, ratio=1.0, platform=sys.platform) -> list[str]:
     return [f'--geometry={w}x{h}+{x}+{y}']
 
 
-class FilmReelWidget(QWidget):
-    """Two spinning reels and a running perforated film strip matching CinemaPrestartOverlay.vue (560x250 viewBox)."""
+class StillBackdrop(QWidget):
+    """The intro's logo still, cropped to fill: the launch backdrop when libmpv / OpenGL is unavailable."""
 
-    DEGREES_PER_SECOND = 150.0
-    FILM_SPEED = 53.33  # 24px / 0.45s matching web CSS animation
-    PERFORATION_STEP = 24.0
-
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, image=None):
         super().__init__(parent)
-        self.setObjectName('filmReel')
-        self.setMinimumSize(260, 130)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.angle = 0.0
-        self.film_offset = 0.0
-        self.paused = False
-        self.clock = QElapsedTimer()
-        self.timer = QTimer(self)
-        self.timer.setTimerType(Qt.TimerType.PreciseTimer)
-        self.timer.setInterval(FRAME_MS)
-        self.timer.timeout.connect(self.tick)
-
-    def sizeHint(self):
-        return QSize(560, 250)
-
-    def running(self):
-        return self.timer.isActive()
-
-    def start(self):
-        if not self.paused and not self.timer.isActive():
-            self.clock.start()
-            self.timer.start()
-
-    def stop(self):
-        self.timer.stop()
-
-    def set_paused(self, paused):
-        """The error state freezes the reels; the animation resumes with the next normal status."""
-        self.paused = bool(paused)
-        if self.paused:
-            self.stop()
-        elif self.isVisible():
-            self.start()
-        self.update()
-
-    def advance(self, seconds):
-        seconds = min(max(float(seconds), 0.0), 0.1)  # A stalled event loop must not make the reels jump.
-        self.angle = (self.angle + self.DEGREES_PER_SECOND * seconds) % 360.0
-        self.film_offset = (self.film_offset + self.FILM_SPEED * seconds) % self.PERFORATION_STEP
-
-    def tick(self):
-        elapsed = self.clock.restart() / 1000.0 if self.clock.isValid() else FRAME_MS / 1000.0
-        self.advance(elapsed)
-        self.update()
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        self.start()
-
-    def hideEvent(self, event):
-        self.stop()  # No CPU spent on a hidden splash.
-        super().hideEvent(event)
-
-    def geometry_of_reels(self):
-        w, h = self.width(), self.height()
-        s = min(w / 560.0, h / 250.0)
-        dx = (w - 560.0 * s) * 0.5
-        dy = (h - 250.0 * s) * 0.5
-        return 70.0 * s, QPointF(dx + 145.0 * s, dy + 111.0 * s), QPointF(dx + 415.0 * s, dy + 111.0 * s)
+        self.setObjectName('cinemaStill')
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.image = image if image is not None else QImage(str(INTRO_STILL))
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, h = self.width(), self.height()
-        s = min(w / 560.0, h / 250.0)
-        dx = (w - 560.0 * s) * 0.5
-        dy = (h - 250.0 * s) * 0.5
-        painter.translate(dx, dy)
-        painter.scale(s, s)
-
-        glow = QColor(ACCENT_DEEP)
-        for center in (QPointF(145.0, 110.0), QPointF(415.0, 110.0)):
-            halo = QRadialGradient(center, 120.0)
-            glow.setAlpha(46 if not self.paused else 20)  # alpha 0.18 -> 0.0
-            halo.setColorAt(0.0, glow)
-            glow.setAlpha(0)
-            halo.setColorAt(1.0, glow)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(halo))
-            painter.drawEllipse(center, 120.0, 120.0)
-
-        self._paint_film(painter)
-        self._paint_reel(painter, QPointF(145.0, 111.0), self.angle)
-        self._paint_reel(painter, QPointF(415.0, 111.0), -self.angle)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.fillRect(self.rect(), QColor(BACKGROUND))
+        if not self.image.isNull():
+            scale = max(self.width() / self.image.width(), self.height() / self.image.height())
+            w, h = self.image.width() * scale, self.image.height() * scale
+            painter.drawImage(QRectF((self.width() - w) / 2.0, (self.height() - h) / 2.0, w, h), self.image)
+        shade = QLinearGradient(0, 0, 0, self.height())  # Keeps the status line readable at the bottom.
+        shade.setColorAt(0.55, QColor(7, 11, 14, 0))
+        shade.setColorAt(1.0, QColor(7, 11, 14, 200))
+        painter.fillRect(self.rect(), QBrush(shade))
         painter.end()
-
-    def _paint_film(self, painter):
-        """Upper and lower curved film strips with running double perforations matching CinemaPrestartOverlay.vue."""
-        upper = QPainterPath()
-        upper.moveTo(145, 51)
-        upper.quadTo(280, 28, 415, 51)
-        upper.lineTo(415, 72)
-        upper.quadTo(280, 49, 145, 72)
-        upper.closeSubpath()
-        painter.setPen(QPen(QColor(ACCENT_DEEP), 1.4))
-        painter.setBrush(QBrush(QColor('#171d21')))
-        painter.drawPath(upper)
-
-        edge_pen = QPen(QColor(ACCENT), 1.5)
-        edge_color = QColor(ACCENT)
-        edge_color.setAlphaF(0.65)
-        edge_pen.setColor(edge_color)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(edge_pen)
-        edge_top = QPainterPath()
-        edge_top.moveTo(145, 51)
-        edge_top.quadTo(280, 28, 415, 51)
-        painter.drawPath(edge_top)
-        edge_bot = QPainterPath()
-        edge_bot.moveTo(145, 72)
-        edge_bot.quadTo(280, 49, 415, 72)
-        painter.drawPath(edge_bot)
-
-        perf_pen = QPen(QColor(255, 255, 255, 204), 4.5, Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.RoundCap)
-        perf_pen.setDashPattern([2.4, 2.8])
-        perf_pen.setDashOffset(-self.film_offset / 4.5)
-        painter.setPen(perf_pen)
-        h_top = QPainterPath()
-        h_top.moveTo(145, 56.5)
-        h_top.quadTo(280, 33.5, 415, 56.5)
-        painter.drawPath(h_top)
-        h_bot = QPainterPath()
-        h_bot.moveTo(145, 66.5)
-        h_bot.quadTo(280, 43.5, 415, 66.5)
-        painter.drawPath(h_bot)
-
-        lower = QPainterPath()
-        lower.moveTo(72, 151)
-        lower.quadTo(280, 206, 488, 151)
-        lower.lineTo(488, 172)
-        lower.quadTo(280, 227, 72, 172)
-        lower.closeSubpath()
-        painter.setPen(QPen(QColor(ACCENT_DEEP), 1.4))
-        painter.setBrush(QBrush(QColor('#141a1e')))
-        painter.drawPath(lower)
-
-        lower_edge = QPen(QColor(ACCENT), 1.5)
-        lower_edge_color = QColor(ACCENT)
-        lower_edge_color.setAlphaF(0.44)
-        lower_edge.setColor(lower_edge_color)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(lower_edge)
-        ledge_top = QPainterPath()
-        ledge_top.moveTo(72, 151)
-        ledge_top.quadTo(280, 206, 488, 151)
-        painter.drawPath(ledge_top)
-        ledge_bot = QPainterPath()
-        ledge_bot.moveTo(72, 172)
-        ledge_bot.quadTo(280, 227, 72, 172)
-        painter.drawPath(ledge_bot)
-
-        perf_pen_rev = QPen(QColor(255, 255, 255, 204), 4.5, Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.RoundCap)
-        perf_pen_rev.setDashPattern([2.4, 2.8])
-        perf_pen_rev.setDashOffset(self.film_offset / 4.5)
-        painter.setPen(perf_pen_rev)
-        lh_top = QPainterPath()
-        lh_top.moveTo(72, 156.5)
-        lh_top.quadTo(280, 211.5, 488, 156.5)
-        painter.drawPath(lh_top)
-        lh_bot = QPainterPath()
-        lh_bot.moveTo(72, 166.5)
-        lh_bot.quadTo(280, 221.5, 488, 166.5)
-        painter.drawPath(lh_bot)
-
-    def _paint_reel(self, painter, center, angle):
-        """8-spoke reel with rounded ends matching CinemaPrestartOverlay.vue."""
-        painter.save()
-        painter.translate(center)
-
-        ring_color = QColor(ACCENT if not self.paused else '#7a8194')
-        painter.setPen(QPen(ring_color, 5.0))
-        painter.setBrush(QBrush(QColor('#11181d')))
-        painter.drawEllipse(QPointF(0, 0), 70.0, 70.0)
-
-        inner = QColor(ACCENT_DEEP)
-        inner.setAlphaF(0.72)
-        painter.setPen(QPen(inner, 1.5))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(QPointF(0, 0), 55.0, 55.0)
-
-        painter.rotate(angle)
-        spoke_pen = QPen(ring_color, 7.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-        painter.setPen(spoke_pen)
-        painter.drawLine(0, -50, 0, -14)
-        painter.drawLine(0, 14, 0, 50)
-        painter.drawLine(-50, 0, -14, 0)
-        painter.drawLine(14, 0, 50, 0)
-        painter.drawLine(-35, -35, -11, -11)
-        painter.drawLine(11, 11, 35, 35)
-        painter.drawLine(35, -35, 11, -11)
-        painter.drawLine(-11, 11, -35, 35)
-
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor(ACCENT_DEEP if not self.paused else '#7a8194')))
-        painter.drawEllipse(QPointF(0, 0), 13.0, 13.0)
-        painter.setBrush(QBrush(QColor(BACKGROUND_DEEP)))
-        painter.drawEllipse(QPointF(0, 0), 4.0, 4.0)
-
-        painter.restore()
 
 
 SPLASH_STYLE = f"""
 QLabel#directLaunchBrand {{ color: {ACCENT}; font-weight: 800; letter-spacing: 4px; }}
 QLabel#directLaunchStatus {{ color: {TEXT}; font-weight: 600; }}
 QLabel#directLaunchStatus[tone="error"] {{ color: {ACCENT}; }}
+QLabel#directLaunchStatus[cinema="true"] {{ background: rgba(7, 11, 14, 0.62); border-radius: 12px; padding: 10px 18px; }}
 QLabel#directLaunchHint {{ color: {TEXT_MUTED}; }}
 QPushButton#directLaunchResize, QPushButton#directLaunchClose {{
-    background: rgba(255, 255, 255, 0.06); color: {TEXT}; border: 1px solid rgba(255, 255, 255, 0.17);
+    background: rgba(7, 11, 14, 0.46); color: {TEXT}; border: 1px solid rgba(255, 255, 255, 0.17);
     border-radius: 9px; font-size: 19px; min-width: 42px; min-height: 42px; max-width: 42px; max-height: 42px; }}
 QPushButton#directLaunchResize:hover, QPushButton#directLaunchResize:focus {{
     background: rgba(255, 212, 0, 0.18); border-color: {ACCENT}; color: {ACCENT}; }}
@@ -318,13 +131,16 @@ QPushButton#directLaunchResize:pressed, QPushButton#directLaunchClose:pressed {{
 
 
 class DirectLaunchSplash(QWidget):
-    """Full-screen cinema splash shown from the deeplink until mpv has its first frame."""
+    """The launch window: the KINOSOTA intro until the film dissolves in (cinema), or the logo still.
+
+    With a CinemaSurface the window stays on screen as the film window once the film starts;
+    without one it fades out over the external mpv window when mpv shows its first frame."""
 
     cancelRequested = Signal()
     modeChanged = Signal(str)
     faded = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, cinema=None):
         flags = Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
         super().__init__(parent, flags)
         self.setObjectName('directLaunchSplash')
@@ -333,11 +149,18 @@ class DirectLaunchSplash(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.mode = 'full'
         self.error = False
+        self.film_mode = False
+        self.long_wait = False
         self.target_screen = None
+        self.cinema = None
+        self.backdrop = None
         self._fading = False
         self._close_after_fade = False
         self._closing = False
         layout = QVBoxLayout(self)
+        # The window must keep exactly target_geometry(): mpv gets the same rectangle (mpv_args), so wide system
+        # fonts (Segoe UI on Windows) or a small monitor must not let the layout's minimum size grow the window.
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         layout.setContentsMargins(24, 18, 18, 24)
         layout.setSpacing(12)
         top = QHBoxLayout()
@@ -360,9 +183,7 @@ class DirectLaunchSplash(QWidget):
         self.close_button.clicked.connect(self.cancelRequested)  # Signal to signal: the checked flag is dropped.
         top.addWidget(self.close_button)
         layout.addLayout(top)
-        layout.addStretch(1)
-        self.reel = FilmReelWidget(self)
-        layout.addWidget(self.reel, 3, Qt.AlignmentFlag.AlignHCenter)
+        layout.addStretch(5)
         self.status_label = QLabel(STARTING, self)
         self.status_label.setObjectName('directLaunchStatus')
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -373,13 +194,13 @@ class DirectLaunchSplash(QWidget):
         self.text_fade = QPropertyAnimation(self.status_effect, b'opacity', self)
         self.text_fade.setDuration(TEXT_FADE_MS)
         self.text_fade.setEasingCurve(QEasingCurve.Type.OutCubic)
-        layout.addWidget(self.status_label)
+        layout.addWidget(self.status_label, 0, Qt.AlignmentFlag.AlignHCenter)
         self.hint_label = QLabel('', self)
         self.hint_label.setObjectName('directLaunchHint')
         self.hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.hint_label.setWordWrap(True)
         layout.addWidget(self.hint_label)
-        layout.addStretch(2)
+        layout.addStretch(1)
         self.geometry_animation = QPropertyAnimation(self, b'geometry', self)
         self.geometry_animation.setDuration(RESIZE_MS)
         self.geometry_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -387,7 +208,50 @@ class DirectLaunchSplash(QWidget):
         self.fade_animation.setDuration(FADE_MS)
         self.fade_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self.fade_animation.finished.connect(self._fade_finished)
+        self.chrome_timer = QTimer(self)
+        self.chrome_timer.setSingleShot(True)
+        self.chrome_timer.setInterval(CHROME_HIDE_MS)
+        self.chrome_timer.timeout.connect(self._hide_chrome)
+        self.long_wait_timer = QTimer(self)
+        self.long_wait_timer.setSingleShot(True)
+        self.long_wait_timer.setInterval(LONG_WAIT_MS)
+        self.long_wait_timer.timeout.connect(self._long_wait)
+        self._install_backdrop(cinema)
         self._update_texts()
+
+    # Backdrop -----------------------------------------------------------------------------------------------
+    def _install_backdrop(self, cinema):
+        old = self.backdrop
+        if old is not None:
+            old.hide()  # A failed cinema view stays parked: its surface may still reference it.
+            if isinstance(old, StillBackdrop):
+                old.setParent(None)
+                old.deleteLater()
+        self.cinema = cinema
+        if cinema is not None:
+            self.backdrop = cinema.view
+            self.backdrop.setParent(self)
+            cinema.filmStarted.connect(self.enter_film)
+            cinema.fullscreenRequested.connect(lambda full: self.set_mode('full' if full else 'compact'))
+            cinema.failed.connect(self.use_still_backdrop)
+            cinema.view.activity.connect(self._reveal_chrome)
+            cinema.set_fullscreen(self.mode == 'full')
+        else:
+            self.backdrop = StillBackdrop(self)
+        self.backdrop.setGeometry(self.rect())
+        self.backdrop.lower()
+        self.backdrop.show()
+        self._refresh_chrome()
+
+    def use_still_backdrop(self, _reason=''):
+        """libmpv / OpenGL failed: the launch continues over the logo still and the external mpv window."""
+        if self.cinema is None:
+            return
+        self.film_mode = False
+        self._install_backdrop(None)
+
+    def cinema_mode(self):
+        return self.cinema is not None
 
     # Geometry -----------------------------------------------------------------------------------------------
     def screen_area(self):
@@ -410,13 +274,25 @@ class DirectLaunchSplash(QWidget):
         """mpv window flags matching the splash, computed on the UI thread before mpv starts."""
         return geometry_args(self.mode, self.target_geometry(), self.device_ratio())
 
+    def _set_on_top(self, on_top):
+        """Stay above the browser while launching; a playing film is an ordinary window (no re-creation)."""
+        flags = self.windowFlags()
+        wanted = flags | Qt.WindowType.WindowStaysOnTopHint if on_top else flags & ~Qt.WindowType.WindowStaysOnTopHint
+        if wanted == flags:
+            return
+        self.overrideWindowFlags(wanted)
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.setFlags(wanted)
+
     def present(self):
-        """Open on the monitor under the mouse cursor, in the current mode, fully opaque."""
+        """Open on the monitor under the mouse cursor, in the current mode, fully opaque; start the intro."""
         self.fade_animation.stop()
         self._fading = False
         self._close_after_fade = False
         self.error = False
-        self.reel.set_paused(False)
+        if not self.film_mode:
+            self._set_on_top(True)
         self.target_screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         if self.target_screen is not None:
             handle = self.windowHandle()
@@ -431,13 +307,20 @@ class DirectLaunchSplash(QWidget):
         self.raise_()
         self.activateWindow()
         self.setFocus()  # Esc reaches the splash; the buttons stay unhighlighted until Tab.
-        self.reel.start()
+        if self.cinema is not None:
+            self.cinema.present()
+            if not self.film_mode and not self.long_wait_timer.isActive():
+                self.long_wait = False
+                self.long_wait_timer.start()
+        self._refresh_chrome()
 
     def set_mode(self, mode, *, animate=True):
         if mode not in ('full', 'compact') or mode == self.mode:
             return
         self.mode = mode
         self._update_texts()
+        if self.cinema is not None:
+            self.cinema.set_fullscreen(mode == 'full')
         target = self.target_geometry()
         self.geometry_animation.stop()
         if animate and self.isVisible():
@@ -457,6 +340,49 @@ class DirectLaunchSplash(QWidget):
             if animation.state() == QAbstractAnimation.State.Running:
                 animation.setCurrentTime(animation.duration())
 
+    # Film hand-over -----------------------------------------------------------------------------------------
+    def enter_film(self):
+        """The film's first frame is dissolving in: the window becomes the film window."""
+        self.film_mode = True
+        self.long_wait_timer.stop()
+        self._set_on_top(False)
+        self.close_button.setToolTip('Закрыть фильм')
+        self.close_button.setAccessibleName('Закрыть фильм')
+        self._refresh_chrome()
+        self._hide_chrome()
+
+    def _reveal_chrome(self):
+        if self.film_mode:
+            self.resize_button.show()
+            self.close_button.show()
+            self.chrome_timer.start()
+
+    def _hide_chrome(self):
+        if self.film_mode and not (self.resize_button.underMouse() or self.close_button.underMouse()):
+            self.resize_button.hide()
+            self.close_button.hide()
+
+    def _long_wait(self):
+        self.long_wait = True
+        self._refresh_chrome()
+
+    def _refresh_chrome(self):
+        """Over the intro only □ / ✕ stay; the status shows on errors or a long wait. The still shows all."""
+        cinema = self.cinema is not None
+        self.brand_label.setVisible(not cinema)
+        show_status = not self.film_mode and (not cinema or self.error or self.long_wait)
+        self.status_label.setVisible(show_status)
+        self.hint_label.setVisible(show_status)
+        self.status_label.setProperty('cinema', 'true' if cinema else 'false')
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+        if not self.film_mode:
+            self.resize_button.show()
+            self.close_button.show()
+            self.chrome_timer.stop()
+            self.close_button.setToolTip('Отменить запуск')
+            self.close_button.setAccessibleName('Отменить запуск')
+
     # Text ---------------------------------------------------------------------------------------------------
     def _update_texts(self):
         full = self.mode == 'full'
@@ -473,8 +399,8 @@ class DirectLaunchSplash(QWidget):
         self.status_label.setProperty('tone', 'error' if error else 'normal')
         self.status_label.style().unpolish(self.status_label)
         self.status_label.style().polish(self.status_label)
-        self.reel.set_paused(error)
         self._update_texts()
+        self._refresh_chrome()
         if changed:  # The new line fades in instead of jumping.
             self.text_fade.stop()
             self.text_fade.setStartValue(0.0)
@@ -483,13 +409,16 @@ class DirectLaunchSplash(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if self.backdrop is not None:
+            self.backdrop.setGeometry(self.rect())
+            self.backdrop.lower()
         height = max(1, self.height())
         for label, size in ((self.status_label, height / 30), (self.hint_label, height / 60),
                             (self.brand_label, height / 55)):
             font = label.font()
             font.setPixelSize(int(min(max(size, 12), 30 if label is self.status_label else 18)))
             label.setFont(font)
-        self.reel.setMaximumSize(min(720, int(self.width() * 0.6)), max(130, int(height * 0.36)))
+        self.status_label.setMaximumWidth(max(240, int(self.width() * 0.8)))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -511,7 +440,15 @@ class DirectLaunchSplash(QWidget):
         return self._fading
 
     def fade_out(self, *, close=False):
-        """windowOpacity 1 -> 0 in FADE_MS, then hide (and close when cancelling) and emit faded."""
+        """The launch screen is done.
+
+        Cinema: the window already shows the dissolving film and stays. Otherwise (and on cancel):
+        windowOpacity 1 -> 0 in FADE_MS, then hide (and close when cancelling) and emit faded."""
+        if not close and self.cinema is not None:
+            if self.film_mode:
+                return
+            if self.cinema.film_state() in ('warmup', 'intro', 'failed'):
+                return  # The film is still warming up under the intro: it dissolves in by itself.
         self._close_after_fade = bool(close) or (self._fading and self._close_after_fade)
         if self._fading:
             return
@@ -519,17 +456,29 @@ class DirectLaunchSplash(QWidget):
             self._fade_finished()
             return
         self._fading = True
+        if self.cinema is not None:
+            self.cinema.fade_audio(FADE_MS)
         self.fade_animation.stop()
         self.fade_animation.setStartValue(self.windowOpacity())
         self.fade_animation.setEndValue(0.0)
         self.fade_animation.start()
 
+    def _stop_media(self):
+        """A hidden window never keeps the intro or the film playing."""
+        self.chrome_timer.stop()
+        self.long_wait_timer.stop()
+        self.long_wait = False
+        self.film_mode = False
+        if self.cinema is not None:
+            self.cinema.reset()
+        self._refresh_chrome()
+
     def _fade_finished(self):
         self._fading = False
         self.text_fade.stop()
         self.geometry_animation.stop()
-        self.reel.stop()
         self.hide()
+        self._stop_media()
         if self._close_after_fade:
             self._close_after_fade = False
             self.dismiss()
@@ -537,14 +486,14 @@ class DirectLaunchSplash(QWidget):
         self.faded.emit()
 
     def hide_now(self):
-        """Hide at once (fallback to the app window, normal mpv exit) and reset the fade state."""
+        """Hide at once (fallback to the app window, film end) and reset the fade state."""
         self.fade_animation.stop()
         self.text_fade.stop()
         self.geometry_animation.stop()
-        self.reel.stop()
         self._fading = False
         self._close_after_fade = False
         self.hide()
+        self._stop_media()
         self.setWindowOpacity(1.0)
 
     def dismiss(self):
@@ -552,8 +501,8 @@ class DirectLaunchSplash(QWidget):
         self.fade_animation.stop()
         self.text_fade.stop()
         self.geometry_animation.stop()
-        self.reel.stop()
         self._fading = False
+        self._stop_media()
         self._closing = True
         try:
             self.close()
@@ -561,6 +510,11 @@ class DirectLaunchSplash(QWidget):
             self._closing = False
 
     def keyPressEvent(self, event):
+        if self.film_mode and self.cinema is not None and self.cinema.accepts_input():
+            name = mpv_key_name(event.key(), event.text(), event.modifiers())
+            if name:
+                self.cinema.send_key(name)  # mpv's own bindings: space, arrows, f, m, q, Esc…
+                return
         if event.key() == Qt.Key.Key_Escape:
             self.cancelRequested.emit()
             return
@@ -598,10 +552,14 @@ class DirectPlayer(QObject):
     finished = Signal(int)
     fallback = Signal(dict)
 
-    def __init__(self, *, api_factory=Api, engine=None, worker=None, show_splash=True, parent=None):
+    def __init__(self, *, api_factory=Api, engine=None, worker=None, show_splash=True, cinema=None, parent=None):
         super().__init__(parent)
         self.api_factory = api_factory
-        self.engine = engine or Mpv()
+        if cinema is None and engine is None and show_splash:
+            cinema = create_surface()  # None without libmpv / OpenGL: the external mpv window is used.
+        self.cinema = cinema
+        self.engine = engine or (CinemaEngine(cinema) if cinema is not None else Mpv())
+        self.cancel_code = 1
         self._worker = worker
         self._jobs = set()
         self.api = None
@@ -622,9 +580,11 @@ class DirectPlayer(QObject):
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self._watch)
         self.splash = self._make_splash() if show_splash else None
+        if cinema is not None:
+            cinema.failed.connect(self._cinema_failed)
 
     def _make_splash(self):
-        splash = DirectLaunchSplash()
+        splash = DirectLaunchSplash(cinema=self.cinema)
         splash.cancelRequested.connect(self._close_by_user)
         splash.modeChanged.connect(self._sync_engine_window)
         splash.faded.connect(self._splash_faded)
@@ -690,7 +650,7 @@ class DirectPlayer(QObject):
         if hasattr(api, 'token'):
             api.token = ''
         self.api = api
-        if self._worker is None and callable(getattr(self.engine, 'prewarm', None)):
+        if self._worker is None and self.cinema is None and callable(getattr(self.engine, 'prewarm', None)):
             win_args = self._window_args()
             def prewarm_task():
                 if generation != self.generation or self.retired or self.cancelling:
@@ -854,11 +814,11 @@ class DirectPlayer(QObject):
         if self.cancelling:
             return
         self.cancelling = True
+        self.cancel_code = 0 if self.playing else 1  # ✕ over a playing film is a normal close.
         self._stop_everything()
         if self.splash is None or not self.splash.isVisible():
             self._cancelled()
             return
-        self.splash.reel.stop()
         self.splash.fade_out(close=True)
 
     def _splash_faded(self):
@@ -868,9 +828,9 @@ class DirectPlayer(QObject):
     def _cancelled(self):
         if self.splash is not None:
             self.splash.dismiss()
-        if not self.cancel_reported:  # finished(1) exactly once, even if ✕ and Esc race.
+        if not self.cancel_reported:  # finished exactly once, even if ✕ and Esc race.
             self.cancel_reported = True
-            self.finished.emit(1)
+            self.finished.emit(self.cancel_code)
 
     def _stop_everything(self):
         self.retired = True
@@ -908,8 +868,17 @@ class DirectPlayer(QObject):
         self._stop_everything()
         self._hide_splash()
 
+    def _cinema_failed(self, reason):
+        """libmpv / OpenGL broke: continue this launch in the external mpv window over the logo still."""
+        self.cinema = None
+        self.engine = Mpv()
+        if self.meta and self.url and self.api is not None and not self.retired and not self.cancelling:
+            self._start_attempt(self.generation, self.attempt)
+
     def shutdown(self):
         self._stop_everything()
         self._hide_splash()
         if self.splash is not None:
             self.splash.dismiss()
+        if self.cinema is not None:
+            self.cinema.shutdown()

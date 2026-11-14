@@ -7,8 +7,9 @@ external and replaceable. Do not impose reverse-engineering restrictions that
 conflict with LGPL rights. Corresponding source and build/relink instructions
 for the exact distributed Qt/PySide6 versions must be provided with a release.
 
-mpv is provided by the distribution package manager on Linux, not copied into
-the Linux installer. Windows/macOS bundling requires a reviewed native mpv and
+mpv and libmpv (libmpv2, loaded in-process for the intro / seamless prestart) are
+provided by the distribution package manager on Linux, not copied into the Linux
+installer. Windows/macOS bundling requires a reviewed native mpv and
 FFmpeg dependency bundle, its notices and the corresponding source/source offer.
 mpv/FFmpeg licensing depends on the build options; do not assume every binary is
 LGPL. Unreviewed binary downloads and the unrelated MSX_Player.exe are not inputs.

@@ -12,6 +12,6 @@ kinosota-player = "kinosota_player.app:main"
 version = {attr = "kinosota_player.__version__"}
 dependencies = {file = ["requirements.txt"]}
 [tool.setuptools.package-data]
-kinosota_player = ["assets/*","assets/fonts/*"]
+kinosota_player = ["assets/*","assets/fonts/*","assets/intro/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]

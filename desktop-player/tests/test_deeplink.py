@@ -4,13 +4,13 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import json, socket, subprocess, sys, tempfile, threading, time, uuid
 from pathlib import Path
 import pytest
-from PySide6.QtCore import QAbstractAnimation, QEvent, QPointF, QRect, QSize, Qt, QUrl
+from PySide6.QtCore import QAbstractAnimation, QEvent, QRect, Qt, QUrl
 from PySide6.QtGui import QCloseEvent, QFileOpenEvent, QKeyEvent
 from PySide6.QtWidgets import QApplication
 from kinosota_player import deeplink
 from kinosota_player.deeplink import LinkEvents, find_link, parse_launch, parse_mode
 from kinosota_player.direct import (BUFFERING, CONNECTING, FADE_MS, STARTING, DirectLaunchSplash, DirectPlayer,
-                                    FilmReelWidget, geometry_args, geometry_text, launch_args)
+                                    StillBackdrop, geometry_args, geometry_text, launch_args)
 from kinosota_player.engine import Mpv
 
 LAUNCH = '3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e'
@@ -239,30 +239,37 @@ def test_splash_opens_full_screen_and_toggles_to_a_centred_quarter_and_back():
     splash.resize_button.click()
     splash.finish_animations()
     assert splash.geometry() == area and modes == ['compact', 'full'] and splash.mpv_args()[0] == '--fullscreen'
-    assert not splash.reel.grab().isNull() and not splash.grab().isNull()  # paintEvent works offscreen.
+    assert not splash.backdrop.grab().isNull() and not splash.grab().isNull()  # paintEvent works offscreen.
     splash.dismiss()
 
 
-def test_reels_animate_at_60_fps_and_freeze_on_errors_while_the_text_fades_in():
+def test_wide_chrome_never_grows_the_compact_window_past_the_mpv_geometry():
+    """Wide system fonts (Segoe UI on Windows) once made the compact splash 416 px instead of 400."""
     qt_app()
     splash = DirectLaunchSplash()
+    splash.brand_label.setMinimumWidth(4000)
     splash.present()
-    reel = splash.reel
-    assert reel.running() and reel.timer.interval() == 16
-    angle, offset = reel.angle, reel.film_offset
-    reel.advance(0.05)
-    assert reel.angle != angle and reel.film_offset != offset
-    reel.advance(10)  # A stalled loop moves the reels by at most 0.1 s.
+    splash.set_mode('compact', animate=False)
+    rect, target = splash.geometry(), splash.target_geometry()
+    assert rect == target and splash.mpv_args() == geometry_args('compact', rect, splash.device_ratio())
+    splash.dismiss()
+
+
+def test_no_film_reels_remain_and_the_status_text_fades_in_with_error_tone():
+    qt_app()
+    import kinosota_player.direct as direct_module
+    assert not hasattr(direct_module, 'FilmReelWidget') and not hasattr(direct_module, 'FRAME_MS')
+    splash = DirectLaunchSplash()
+    assert not hasattr(splash, 'reel')
+    splash.present()
     splash.set_status(CONNECTING)
-    assert splash.status_label.text() == CONNECTING
+    assert splash.status_label.text() == CONNECTING and splash.status_label.isVisible()
     assert splash.text_fade.state() == QAbstractAnimation.State.Running and splash.text_fade.startValue() == 0.0
     splash.set_status('Ссылка устарела', error=True)
-    assert not reel.running() and splash.status_label.property('tone') == 'error'
+    assert splash.status_label.property('tone') == 'error'
     assert splash.hint_label.text() == 'Нажмите ✕, чтобы закрыть'
     splash.set_status(BUFFERING)
-    assert reel.running() and splash.status_label.property('tone') == 'normal'
-    splash.hide()
-    assert not reel.running()  # No timer while hidden.
+    assert splash.status_label.property('tone') == 'normal'
     splash.dismiss()
 
 
@@ -488,7 +495,7 @@ def test_mpv_property_over_json_ipc_treats_unavailable_as_none():
         os.rmdir(folder)
 
 
-def test_in_app_splash_cancel_resets_busy_state_stops_reels_and_reports_cancelled():
+def test_in_app_splash_cancel_resets_busy_state_and_reports_cancelled():
     from test_torrents import FakeApi, FakeEngine, window_for
     qt_app()
     api, engine = FakeApi(), FakeEngine()
@@ -501,10 +508,10 @@ def test_in_app_splash_cancel_resets_busy_state_stops_reels_and_reports_cancelle
     choice = {'kind': 'movie', 'tmdb_id': 155, 'source_id': '11111111-1111-4111-8111-111111111111',
               'title': 'Тёмный рыцарь', 'audio_lang': 'ru', 'season': None, 'episode': None}
     w.play_torrent(choice)
-    assert w.busy and w.torrent_starting and w.splash.isVisible() and w.splash.reel.running()
+    assert w.busy and w.torrent_starting and w.splash.isVisible()
     assert w.splash.close_button.click() is None
     assert not w.busy and not w.torrent_starting
-    assert not w.splash.isVisible() and not w.splash.reel.running()
+    assert not w.splash.isVisible()
     assert w.message.text() == 'Запуск отменён.'
     w.close()
 
@@ -524,12 +531,12 @@ def test_direct_player_error_surfaces_runtime_error_and_retry_recovers():
     worker.run()  # open_launch done
     worker.run()  # start fails
     assert splash.status_label.text() == 'mpv: libavcodec missing'
-    assert splash.error and splash.reel.paused and not splash.reel.running()
+    assert splash.error and splash.status_label.property('tone') == 'error'
 
     # Retry with working engine:
     engine.fail = False
     assert direct.open_link(f'kinosota://watch?launch={LAUNCH}')
-    assert not splash.error and not splash.reel.paused
+    assert not splash.error
     assert splash.status_label.text() == STARTING
     worker.run()  # open_launch done
     worker.run()  # start succeeds
@@ -537,23 +544,15 @@ def test_direct_player_error_surfaces_runtime_error_and_retry_recovers():
     direct.shutdown()
 
 
-def test_film_reel_widget_geometry_and_perforations_match_viewbox():
+def test_without_libmpv_the_splash_shows_the_intro_logo_still_filling_the_window():
     qt_app()
-    reel = FilmReelWidget()
-    reel.resize(560, 250)
-    reel.show()
-    assert reel.sizeHint() == QSize(560, 250)
-    radius, left, right = reel.geometry_of_reels()
-    assert radius == 70.0
-    assert left == QPointF(145.0, 111.0)
-    assert right == QPointF(415.0, 111.0)
-    reel.start()
-    assert reel.running()
-    reel.set_paused(True)
-    assert not reel.running() and reel.paused
-    reel.set_paused(False)
-    assert reel.running() and not reel.paused
-    reel.stop()
-    assert not reel.running()
-    reel.close()
+    splash = DirectLaunchSplash()
+    assert isinstance(splash.backdrop, StillBackdrop) and not splash.cinema_mode()
+    assert not splash.backdrop.image.isNull() and splash.brand_label.isVisibleTo(splash)
+    splash.present()
+    assert splash.backdrop.geometry() == splash.rect()
+    image = splash.backdrop.grab().toImage()
+    centre = image.pixelColor(image.width() // 2, image.height() // 3)
+    assert centre.lightness() > 10  # The logo still, not a black rectangle.
+    splash.dismiss()
 

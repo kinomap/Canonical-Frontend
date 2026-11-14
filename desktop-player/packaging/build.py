@@ -35,6 +35,18 @@ def main():
     if system=='Darwin':
         cmd+=['--osx-bundle-identifier','com.kinosota.player']
     run(*cmd,'launcher.py')
+    if system=='Linux':
+        # The in-window cinema loads the distro libmpv2, whose FFmpeg/libplacebo need the distro's (never older)
+        # C++ runtime. A bundled Debian 12 libstdc++ shadows it and makes libmpv unloadable on newer systems.
+        for runtime in ('libstdc++.so.6','libgcc_s.so.1'):
+            for found in (out/name).rglob(runtime):found.unlink()
+        # The cinema actually loads the bundled Debian 12 libmpv + FFmpeg/libva (_internal precedes the system
+        # paths, like for every other bundled library). A distro libmpv cannot work in-process here: ~60 bundled
+        # Debian 12 libraries (glib, cairo, X11, tinfo, ssl...) would shadow its dependencies on newer systems.
+        # The bundled libva-wayland needs libwayland-server0, which the Debian control file declares.
+        internal=out/name/'_internal'
+        missing=[lib for lib in ('libmpv.so.2','libva-wayland.so.2') if not (internal/lib).is_file()]
+        if missing:raise SystemExit('Linux bundle lacks the cinema libmpv stack: '+', '.join(missing))
     # Keep dynamic Qt libraries external for LGPL replacement. Include license texts.
     qt=Path(__import__('PySide6').__file__).parent
     license_out=(out/(name+'.app')/'Contents/Resources' if system=='Darwin' else out/name)/'THIRD_PARTY_LICENSES';license_out.mkdir(parents=True,exist_ok=True)

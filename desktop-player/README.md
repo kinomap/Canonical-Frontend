@@ -11,6 +11,22 @@ the catalogue window. The short-lived single-use launch grant supplies the strea
 URL and selected audio track; older backends and catalogue-film links fall back
 to the full app window.
 
+## Seamless motion prestart
+
+«Смотреть» opens the launch window at once with the KINOSOTA intro
+(`kinosota_player/assets/intro/`; first-frame poster on the very first paint,
+< 100 ms). `cinema.py` renders the intro and the film through two libmpv cores
+into one OpenGL surface: the film loads paused and silent under the intro, and
+as soon as its first frame is decoded (plus ~2.5 s of buffer, at most 4 s hold)
+it cross-dissolves in (1.2 s, light fade-shadow) while an equal-power curve
+fades the intro sound out and the film sound in. The launch window then is the
+film window (mpv key bindings and OSC; □ / ✕ appear on pointer movement).
+`CinemaEngine` keeps the `engine.Mpv` interface, so retries, leases and the
+first-frame wait are unchanged. Without libmpv2 or OpenGL the app falls back to
+the external mpv window under the intro's logo still (`KINOSOTA_CINEMA=0`
+forces this). Real GPU test: `QT_QPA_PLATFORM=xcb xvfb-run -a python -m pytest
+tests/test_real_cinema.py` (needs libmpv2, ffmpeg and Mesa).
+
 ## Run / test
 
 Create an isolated virtualenv, `pip install -r requirements.txt`, install mpv using

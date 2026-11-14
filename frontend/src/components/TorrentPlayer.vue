@@ -11,14 +11,17 @@
  * its ✕ closes the notice and leaves the viewer on the page.
  *
  * The video box keeps the 16:9 proportions of the ready card before, during and
- * after the stream starts; a launch overlay («Запуск воспроизведения…») covers it
- * until the first frame plays and then fades out.
+ * after the stream starts. «Смотреть в браузере» starts the KINOSOTA intro at once;
+ * the film loads silently underneath and, on its first decoded frame, the intro
+ * cross-dissolves into it while the intro sound fades out and the film sound in.
  */
 import { computed, ref, watch } from 'vue'
+import CinemaIntro from './CinemaIntro.vue'
 import TorrentPlaybackSubscription from './TorrentPlaybackSubscription.vue'
 import PlaybackCompatibility from './PlaybackCompatibility.vue'
 import { torrentPlaybackApi, type StreamChoice, type TorrentPlaybackStatus } from '@/api/torrents'
 import { codecList, missingPicture, soundWatcher, unsupportedCodecs, type CompatibilityIssue } from '@/lib/browserCodecs'
+import { DISSOLVE_MS, fadeInFilm } from '@/lib/cinemaIntro'
 const props = withDefaults(defineProps<{
   access: boolean | null
   accessError: boolean
@@ -43,6 +46,8 @@ const streamError = ref('')
 const streamLoading = ref(false)
 /** From «Смотреть в браузере» until the video really plays; cleared on an error or stop. */
 const launching = ref(false)
+/** A fresh intro for every start: it restarts from its first frame with full sound. */
+const introKey = ref(0)
 const root = ref<HTMLElement | null>(null)
 const video = ref<HTMLVideoElement | null>(null)
 const isPlayable = computed(() => props.ready !== undefined ? props.ready : props.torrentStatus === 'playable' || props.torrentStatus === 'partial')
@@ -70,6 +75,7 @@ async function startPlayback(force = false) {
   streamError.value = ''
   streamLoading.value = true
   launching.value = true
+  introKey.value++
   try {
     const ticket = await torrentPlaybackApi.playbackTicket(props.kind, props.tmdbId, props.choice ?? {})
     // Closed, or another quality / voice / episode was picked meanwhile.
@@ -119,10 +125,15 @@ function silent(kind: 'video' | 'audio') {
   issue.value = { kind, stopped: false }
 }
 function onMetadata() {
+  // The film stays silent under the intro until the dissolve brings its sound in.
+  if (video.value && launching.value) {
+    try { video.value.volume = 0 } catch { /* read-only volume (iOS) */ }
+  }
   if (video.value && !ignoreSilent && missingPicture(video.value)) silent('video')
 }
-/** canplay / playing / the first timeupdate: the stream is on screen, fade the launch overlay out. */
+/** canplay / playing / the first timeupdate: the film's first frame is decoded, dissolve the intro into it. */
 function onStarted() {
+  if (launching.value && video.value) fadeInFilm(video.value, DISSOLVE_MS)
   launching.value = false
 }
 function onTime() {
@@ -180,10 +191,11 @@ defineExpose({ startPlayback, playInBrowser })
           @timeupdate="onTime"
         />
         <div class="launch-overlay" :class="{ 'is-hidden': !launching }" role="status" aria-live="polite" :aria-hidden="launching ? undefined : 'true'" data-testid="launch-overlay">
-          <img v-if="poster" :src="poster" alt="" class="launch-backdrop" />
-          <span class="launch-spinner" aria-hidden="true"></span>
-          <p class="launch-title">Запуск воспроизведения…</p>
-          <p class="launch-hint">{{ streamUrl ? 'Загружаем первые секунды видео…' : 'Подготовка потока…' }}</p>
+          <CinemaIntro :key="introKey" :active="launching" :fade-ms="DISSOLVE_MS" class="launch-intro" />
+          <div class="launch-caption">
+            <p class="launch-title">Запуск воспроизведения…</p>
+            <p class="launch-hint">{{ streamUrl ? 'Загружаем первые секунды видео…' : 'Подготовка потока…' }}</p>
+          </div>
         </div>
         <button v-if="!issue" type="button" class="stop-btn" @click="stopPlayback">✕ Закрыть плеер</button>
         <PlaybackCompatibility v-else overlay can-browse :issue="issue.kind" :busy="launchBusy" :status="launchMessage" :error="launchError" @desktop="emit('desktop')" @browser="browseAnyway" @close="closeNotice" />
@@ -215,15 +227,13 @@ defineExpose({ startPlayback, playInBrowser })
 .torrent-video-wrap.has-notice{min-height:420px}
 .torrent-player :deep(.compatibility:not(.is-overlay)){border:0;border-radius:0}
 .torrent-video{width:100%;height:100%;object-fit:contain;display:block}
-.launch-overlay{position:absolute;inset:0;z-index:2;isolation:isolate;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;box-sizing:border-box;background:#090b0e;color:#fff;text-align:center;opacity:1;visibility:visible;transition:opacity .4s ease,visibility 0s linear 0s}
-.launch-overlay.is-hidden{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .4s ease,visibility 0s linear .4s}
-.launch-backdrop{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:.35}
-.launch-overlay:before{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse at center,rgba(9,11,14,.45),rgba(9,11,14,.92))}
-.launch-spinner{width:48px;height:48px;box-sizing:border-box;border-radius:50%;border:3px solid rgba(255,255,255,.18);border-top-color:#f4cc4c;animation:launch-spin .9s linear infinite}
-.launch-title{margin:0;font-size:18px;line-height:26px;font-weight:600}
-.launch-hint{margin:0;font-size:14px;line-height:20px;color:#cfd8dc}
-@keyframes launch-spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.launch-spinner{animation-duration:2.4s}.launch-overlay,.launch-overlay.is-hidden{transition:none}}
+/* The intro over the film: an opacity cross-dissolve (with a slight fade-shadow) once the film's first frame is decoded. */
+.launch-overlay{position:absolute;inset:0;z-index:2;isolation:isolate;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;box-sizing:border-box;background:#1d2e39;color:#fff;text-align:center;opacity:1;visibility:visible;filter:none;transition:opacity .9s cubic-bezier(.45,0,.55,1),filter .9s ease,visibility 0s linear 0s}
+.launch-overlay.is-hidden{opacity:0;visibility:hidden;pointer-events:none;filter:brightness(.82);transition:opacity .9s cubic-bezier(.45,0,.55,1),filter .9s ease,visibility 0s linear .9s}
+.launch-caption{position:relative;z-index:1;width:100%;box-sizing:border-box;padding:56px 24px 20px;background:linear-gradient(to bottom,rgba(7,11,14,0),rgba(7,11,14,.82))}
+.launch-title{margin:0;font-size:16px;line-height:24px;font-weight:600;text-shadow:0 1px 8px rgba(0,0,0,.6)}
+.launch-hint{margin:2px 0 0;font-size:13px;line-height:18px;color:#cfd8dc}
+@media (prefers-reduced-motion:reduce){.launch-overlay,.launch-overlay.is-hidden{transition:none}}
 .stop-btn{z-index:3;position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;min-height:36px;cursor:pointer;font-size:13px}
 .status-hint{font-size:14px;color:#9ce8d7;margin:0 0 8px}
 .stream-error{color:#ff6b6b;font-size:14px;margin:0 0 8px}
