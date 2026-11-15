@@ -3,6 +3,7 @@ import {ref,computed,watch,onMounted,onBeforeUnmount,nextTick} from 'vue'
 import axios from 'axios'
 import AdMediaPreview from '../components/AdMediaPreview.vue'
 import TrafficAnalytics from '../components/TrafficAnalytics.vue'
+import CinemaIntroCard from '../components/CinemaIntroCard.vue'
 import {sha256} from '@noble/hashes/sha2.js'
 import {nodeMediaUrl} from '../utils/adPlacement'
 const base='/api/v1/admin/ads',headers=()=>({Authorization:'Bearer '+(localStorage.getItem('admin_token')||'cookie-session')})
@@ -103,6 +104,7 @@ onBeforeUnmount(()=>{if(sourcePoll)clearInterval(sourcePoll);document.removeEven
  <main class="studio">
   <header class="studio-heading"><div><p class="eyebrow">Реклама · Media Node</p><h1>Ad Studio</h1><p>Один ролик — все настройки, расписание и размещения.</p></div><button class="primary" @click="openUpload" :disabled="busy">+ Загрузить рекламный ролик</button></header>
   <div v-if="error" class="alert error" role="alert">{{error}}</div><div v-if="notice" class="alert success" role="status">{{notice}}</div>
+  <CinemaIntroCard v-if="!cid&&!analyticsMode" />
   <section v-if="!cid&&!analyticsMode" class="panel tg-sources" aria-label="Библиотека рекламных роликов">
    <header class="section-heading"><div><h2>Все рекламные ролики</h2><p class="muted">Каждый ролик — отдельная карточка. Откройте её для предпросмотра, загрузки и настройки показов.</p></div><button type="button" @click="syncSources" :disabled="sourceBusy||!sources.some(x=>x.status==='ACTIVE')">{{sourceBusy?'Проверяем…':'Обновить ролики из каналов'}}</button></header>
    <p v-if="!sources.length" class="muted">Для импорта из Telegram подключите канал в Telegram Sources с отметкой Ad Source. Ролики с ПК можно загружать независимо.</p>

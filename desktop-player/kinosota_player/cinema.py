@@ -9,6 +9,10 @@ sound in. There is never a black frame, an emblem or a pause in between.
 
 ``CinemaEngine`` exposes the surface through the ``engine.Mpv`` interface so the
 existing launch logic (retries, leases, first-frame waits) drives it unchanged.
+
+Which intro plays is decided per launch by an ``intro_source.IntroSource`` (admin CMS): the
+cached custom clip, the bundled one, or none at all. The decision is local and instant; the
+server is asked in the background, so the film is never delayed by the network.
 """
 from __future__ import annotations
 
@@ -28,17 +32,20 @@ from PySide6.QtOpenGL import QOpenGLFramebufferObject, QOpenGLTexture, QOpenGLTe
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from . import libmpv
+from . import intro_source
+from .intro_source import BUNDLED, BUNDLED_FIRST_FRAME, BUNDLED_STILL, BUNDLED_VIDEO, IntroChoice
 
 log = logging.getLogger('kinosota.cinema')
 
-ASSETS = Path(__file__).resolve().parent / 'assets' / 'intro'
-INTRO_VIDEO = ASSETS / 'kinosota-intro.mp4'
-INTRO_FIRST_FRAME = ASSETS / 'kinosota-intro-first.jpg'
-INTRO_STILL = ASSETS / 'kinosota-intro-still.jpg'
+ASSETS = intro_source.BUNDLED_DIR
+INTRO_VIDEO = BUNDLED_VIDEO          # Always shipped: the graceful fallback for every custom-intro problem.
+INTRO_FIRST_FRAME = BUNDLED_FIRST_FRAME
+INTRO_STILL = BUNDLED_STILL
 
 DISSOLVE_MS = 1200          # Cross-dissolve length once the film's first frame is ready.
 SHADOW_DEPTH = 0.18         # Fade-shadow: the intro dims by up to 18 % mid-dissolve.
 MIN_INTRO_MS = 800          # Never flash the intro for a split second on a very fast source.
+NO_INTRO_MAX_HOLD_MS = 0      # Intro switched off in the admin: the film starts on its first decoded frame.
 PRESTART_CACHE_SECONDS = 2.5  # Buffered film seconds wanted before it is shown...
 PRESTART_MAX_HOLD_MS = 4000   # ...but a decoded first frame never waits longer than this.
 READY_POLL_MS = 100
@@ -89,13 +96,13 @@ def unavailable_reason():
     return libmpv.load_error()
 
 
-def create_surface(parent=None):
+def create_surface(parent=None, intro=None):
     """A CinemaSurface, or None (logged) when libmpv / OpenGL cannot be used."""
     reason = unavailable_reason()
     if reason:
         log.info('Cinema prestart unavailable, using the external mpv window: %s', reason)
         return None
-    return CinemaSurface(parent)
+    return CinemaSurface(parent, intro=intro if intro is not None else intro_source.shared())
 
 
 # Timeline -------------------------------------------------------------------------------------------------------
@@ -486,11 +493,13 @@ class CinemaSurface(QObject):
 
     PLAYING = ('dissolve', 'film')
 
-    def __init__(self, parent=None, *, view=None, player_factory=None, timeout=FIRST_FRAME_TIMEOUT):
+    def __init__(self, parent=None, *, view=None, player_factory=None, timeout=FIRST_FRAME_TIMEOUT, intro=None):
         super().__init__(parent)
         self.view = view if view is not None else CinemaView()
         self.player_factory = player_factory or libmpv.Mpv
         self.timeout = timeout
+        self.intro = intro              # IntroSource-like (current / refresh_async / quarantine); None: bundled only.
+        self.intro_choice = BUNDLED     # What the launch on screen plays; fixed until the next present().
         self.handles = {}
         self.phase = 'idle'
         self.timeline = None
@@ -548,22 +557,67 @@ class CinemaSurface(QObject):
 
     def _open_players(self):
         """The intro starts at once; the film core is created now so loading it later costs nothing."""
-        if 'intro' not in self.handles:
+        if self.intro_choice.enabled and 'intro' not in self.handles:
             intro = self._open('intro', INTRO_OPTIONS)
-            intro.command('loadfile', str(INTRO_VIDEO))
+            intro.command('loadfile', str(self.intro_choice.video))
         if 'film' not in self.handles:
             self._open('film', FILM_OPTIONS)
+
+    def _resolve_intro(self) -> IntroChoice:
+        """Local and instant. Any problem means the bundled intro; the server is asked in the background."""
+        if self.intro is None:
+            return BUNDLED
+        try:
+            choice = self.intro.current()
+        except Exception as error:
+            log.warning('Intro source failed, using the bundled intro: %s', error)
+            choice = BUNDLED
+        try:
+            self.intro.refresh_async()  # Picks up admin changes for the next launch; never blocks this one.
+        except Exception as error:
+            log.info('Intro refresh could not start: %s', error)
+        if not isinstance(choice, IntroChoice):
+            return BUNDLED
+        if choice.enabled and not Path(choice.video).is_file():
+            return BUNDLED
+        return choice
+
+    def _prestart_on_screen(self):
+        if 'intro' in self.handles:
+            return True
+        return not self.intro_choice.enabled and self.phase in ('intro', 'warmup', 'failed')
+
+    def _intro_unplayable(self, player):
+        """A cached custom clip mpv cannot open: switch to the bundled intro in place, drop the bad file."""
+        failed = self.intro_choice
+        if not failed.custom:
+            return  # The bundled intro itself: keep-open holds the poster, the film still dissolves in.
+        log.warning('Custom intro %s failed to play, falling back to the bundled intro', failed.version)
+        self.intro_choice = BUNDLED
+        if self.intro is not None:
+            try:
+                self.intro.quarantine(failed.version)
+            except Exception as error:
+                log.info('Intro quarantine failed: %s', error)
+        if self.phase not in self.PLAYING:
+            self.view.set_poster(BUNDLED.first_frame)
+        try:
+            player.command('loadfile', str(BUNDLED.video))
+        except libmpv.MpvError as error:
+            log.info('Bundled intro could not be loaded: %s', error)
 
     # Public API ---------------------------------------------------------------------------------------------
     def present(self):
         """Start (or keep) the intro; idempotent while a launch is on screen."""
         if self.phase == 'unavailable':
             return False
-        if self.phase in self.PLAYING or (self.phase != 'idle' and 'intro' in self.handles):
+        if self.phase in self.PLAYING or (self.phase != 'idle' and self._prestart_on_screen()):
             return True
+        self.intro_choice = self._resolve_intro()
         self.presented_at = time.monotonic()
         self.intro_frame_at = None
-        self.view.set_poster(INTRO_FIRST_FRAME if INTRO_FIRST_FRAME.is_file() else INTRO_STILL)
+        choice = self.intro_choice
+        self.view.set_poster(choice.first_frame if choice.enabled else choice.still)
         try:
             self._open_players()
         except libmpv.MpvError as error:
@@ -588,7 +642,7 @@ class CinemaSurface(QObject):
         if 'intro' in self.handles:
             self.view.set_alpha('intro', 1.0)
         else:
-            self.view.set_poster(INTRO_STILL)  # A reconnect after the intro: the logo still, never black.
+            self.view.set_poster(self.intro_choice.still)  # A reconnect after the intro: the logo still, never black.
         for name, value in options:
             if not film.try_set(name, value):
                 log.debug('mpv option %s was not accepted', name)
@@ -706,6 +760,8 @@ class CinemaSurface(QObject):
                 self._film_finished(0)
         elif name == 'intro' and event.id == libmpv.EVENT_SHUTDOWN:
             self._close('intro')
+        elif name == 'intro' and event.id == libmpv.EVENT_END_FILE and event.reason == libmpv.END_ERROR:
+            self._intro_unplayable(player)
 
     def _film_finished(self, code):
         if not self._film_alive:
@@ -748,12 +804,14 @@ class CinemaSurface(QObject):
         if film is None:
             return
         now = time.monotonic()
-        if self.presented_at is not None and (now - self.presented_at) * 1000 < MIN_INTRO_MS:
+        with_intro = self.intro_choice.enabled
+        if with_intro and self.presented_at is not None and (now - self.presented_at) * 1000 < MIN_INTRO_MS:
             return
         cached = film.get('demuxer-cache-duration')
         idle = film.get('demuxer-cache-idle')
         held = (now - self.film_frame_at) * 1000
-        if (isinstance(cached, (int, float)) and cached >= PRESTART_CACHE_SECONDS) or idle is True or held >= PRESTART_MAX_HOLD_MS:
+        hold_limit = PRESTART_MAX_HOLD_MS if with_intro else NO_INTRO_MAX_HOLD_MS
+        if (isinstance(cached, (int, float)) and cached >= PRESTART_CACHE_SECONDS) or idle is True or held >= hold_limit:
             self._begin_dissolve()
 
     def _begin_dissolve(self):
@@ -792,7 +850,7 @@ class CinemaSurface(QObject):
             return
         self._dissolve_step(1.0)
         self._close('intro')
-        self.view.set_poster(INTRO_STILL)
+        self.view.set_poster(self.intro_choice.still)
         film = self.handles.get('film')
         if film is not None:
             film.try_set('volume', FILM_VOLUME)

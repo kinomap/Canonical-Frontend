@@ -6,6 +6,7 @@
  * where media volume is read-only) and an HTML5 volume ramp otherwise. Both use
  * equal-power curves, so the intro and the film never dip or clip together.
  */
+import { ref } from 'vue'
 
 export const INTRO_POSTER = '/cinema/intro/kinosota-intro-v1.jpg'
 export const INTRO_SOURCES = [
@@ -14,6 +15,137 @@ export const INTRO_SOURCES = [
 ] as const
 /** Cross-dissolve from the intro to the film (or to the opened desktop player). */
 export const DISSOLVE_MS = 900
+
+/**
+ * Dynamic intro (admin «Видео и Реклама» → «Интро престарта»): GET /api/v1/cinema/intro says
+ * whether the intro is on and which clip is active. Fail-safe: any error keeps the bundled
+ * default clip; the answer is cached in sessionStorage so «Смотреть» never waits for the network.
+ */
+export interface IntroConfig {
+  enabled: boolean
+  version: string
+  video_url: string
+  webm_url: string | null
+  still_url: string
+  poster_url: string
+  duration_ms: number
+  is_custom: boolean
+}
+export type IntroSource = { src: string; type: string }
+export const INTRO_ENDPOINT = '/api/v1/cinema/intro'
+export const INTRO_CACHE_KEY = 'kinosota.cinema-intro.v1'
+export const INTRO_CACHE_TTL_MS = 60_000
+export const DEFAULT_INTRO: IntroConfig = Object.freeze({
+  enabled: true,
+  version: 'default-v1',
+  video_url: INTRO_SOURCES[1].src,
+  webm_url: INTRO_SOURCES[0].src,
+  still_url: INTRO_POSTER,
+  poster_url: INTRO_POSTER,
+  duration_ms: 14933,
+  is_custom: false,
+})
+const SAFE_PREFIXES = ['/cinema/intro/', '/media/cinema-intro/']
+
+/** Only our own intro paths are accepted; absolute URLs are reduced to their path on this site. */
+export function safeIntroPath(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null
+  let path = value
+  if (!value.startsWith('/')) {
+    try {
+      const url = new URL(value)
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+      path = url.pathname
+    } catch { return null }
+  }
+  if (path.startsWith('//') || path.includes('..') || !SAFE_PREFIXES.some((prefix) => path.startsWith(prefix))) return null
+  return /^[A-Za-z0-9/._-]+$/.test(path) ? path : null
+}
+
+export function sanitizeIntroConfig(raw: unknown): IntroConfig | null {
+  if (!raw || typeof raw !== 'object') return null
+  const data = raw as Record<string, unknown>
+  if (typeof data.enabled !== 'boolean') return null
+  const video = safeIntroPath(data.video_url)
+  const still = safeIntroPath(data.still_url)
+  if (data.enabled && (!video || !still)) return null
+  return {
+    enabled: data.enabled,
+    version: typeof data.version === 'string' ? data.version.slice(0, 64) : 'unknown',
+    video_url: video ?? DEFAULT_INTRO.video_url,
+    webm_url: safeIntroPath(data.webm_url),
+    still_url: still ?? DEFAULT_INTRO.still_url,
+    poster_url: safeIntroPath(data.poster_url) ?? still ?? DEFAULT_INTRO.poster_url,
+    duration_ms: typeof data.duration_ms === 'number' && data.duration_ms > 0 ? data.duration_ms : DEFAULT_INTRO.duration_ms,
+    is_custom: data.is_custom === true,
+  }
+}
+
+function storage(): Storage | null {
+  try { return typeof sessionStorage === 'undefined' ? null : sessionStorage } catch { return null }
+}
+
+function readCached(now = Date.now()): { config: IntroConfig; fresh: boolean } | null {
+  try {
+    const raw = storage()?.getItem(INTRO_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { at?: number; config?: unknown }
+    const config = sanitizeIntroConfig(parsed.config)
+    if (!config) return null
+    return { config, fresh: typeof parsed.at === 'number' && now - parsed.at < INTRO_CACHE_TTL_MS }
+  } catch { return null }
+}
+
+/** The active intro, available synchronously (cached answer, or the bundled default). */
+export const introConfig = ref<IntroConfig>(readCached()?.config ?? { ...DEFAULT_INTRO })
+let inflight: Promise<IntroConfig> | null = null
+
+export function loadIntroConfig(options: { force?: boolean; fetcher?: typeof fetch; timeoutMs?: number } = {}): Promise<IntroConfig> {
+  const cached = readCached()
+  if (cached?.fresh && !options.force) {
+    introConfig.value = cached.config
+    return Promise.resolve(cached.config)
+  }
+  if (inflight && !options.force) return inflight
+  const fetcher = options.fetcher ?? (typeof fetch === 'function' ? fetch.bind(globalThis) : null)
+  if (!fetcher) return Promise.resolve(introConfig.value)
+  const controller = typeof AbortController === 'function' ? new AbortController() : null
+  const timer = controller ? setTimeout(() => controller.abort(), options.timeoutMs ?? 3000) : undefined
+  inflight = (async () => {
+    try {
+      const response = await fetcher(INTRO_ENDPOINT, { credentials: 'omit', headers: { Accept: 'application/json' }, signal: controller?.signal })
+      if (!response.ok) throw new Error(`intro ${response.status}`)
+      const config = sanitizeIntroConfig(await response.json())
+      if (!config) throw new Error('intro config rejected')
+      introConfig.value = config
+      try { storage()?.setItem(INTRO_CACHE_KEY, JSON.stringify({ at: Date.now(), config })) } catch { /* private mode */ }
+      return config
+    } catch {
+      // Network/server problem: keep the last known answer, else the bundled default. Never block the film.
+      introConfig.value = cached?.config ?? introConfig.value ?? { ...DEFAULT_INTRO }
+      return introConfig.value
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+      inflight = null
+    }
+  })()
+  return inflight
+}
+
+export function introSources(config: IntroConfig): IntroSource[] {
+  if (!config.is_custom) return INTRO_SOURCES.map((source) => ({ ...source }))
+  const sources: IntroSource[] = []
+  if (config.webm_url) sources.push({ src: config.webm_url, type: 'video/webm' })
+  sources.push({ src: config.video_url, type: 'video/mp4' })
+  return sources
+}
+
+/** Test helper: forget the cached answer. */
+export function resetIntroConfigForTests() {
+  inflight = null
+  try { storage()?.removeItem(INTRO_CACHE_KEY) } catch { /* ignore */ }
+  introConfig.value = { ...DEFAULT_INTRO }
+}
 
 export type IntroStart = 'sound' | 'muted' | 'blocked'
 

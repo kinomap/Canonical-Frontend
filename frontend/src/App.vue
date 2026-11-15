@@ -8,6 +8,7 @@ import {warmCatalogLink} from '@/router/catalogViews'
 import DesktopAuthorizeModal from '@/components/DesktopAuthorizeModal.vue'
 import SessionExpiredModal from '@/components/SessionExpiredModal.vue'
 import CinemaPrestartOverlay from '@/components/CinemaPrestartOverlay.vue'
+import { loadIntroConfig } from '@/lib/cinemaIntro'
 import { cancelCinemaPrestart, useCinemaPrestart } from '@/composables/useCinemaPrestart'
 import { useAuthStore } from '@/stores/auth'
 
