@@ -21,7 +21,7 @@ import TorrentPlaybackSubscription from './TorrentPlaybackSubscription.vue'
 import PlaybackCompatibility from './PlaybackCompatibility.vue'
 import { torrentPlaybackApi, type StreamChoice, type TorrentPlaybackStatus } from '@/api/torrents'
 import { codecList, missingPicture, soundWatcher, unsupportedCodecs, type CompatibilityIssue } from '@/lib/browserCodecs'
-import { DISSOLVE_MS, fadeInFilm } from '@/lib/cinemaIntro'
+import { DISSOLVE_MS, fadeInFilm, introConfig } from '@/lib/cinemaIntro'
 const props = withDefaults(defineProps<{
   access: boolean | null
   accessError: boolean
@@ -63,6 +63,8 @@ const warnBefore = computed(() => risks.value.length > 0 && !riskAccepted.value)
 let ignoreSilent = false
 /** Bumped by every start and stop: a ticket that arrives late never starts a stale stream. */
 let launchId = 0
+/** Intro switched off in the admin: no intro layer, no muted warm-up, the film's sound starts at once. */
+let introOn = true
 const sound = soundWatcher(4)
 
 async function startPlayback(force = false) {
@@ -74,6 +76,7 @@ async function startPlayback(force = false) {
   issue.value = null
   streamError.value = ''
   streamLoading.value = true
+  introOn = introConfig.value.enabled
   launching.value = true
   introKey.value++
   try {
@@ -126,14 +129,14 @@ function silent(kind: 'video' | 'audio') {
 }
 function onMetadata() {
   // The film stays silent under the intro until the dissolve brings its sound in.
-  if (video.value && launching.value) {
+  if (video.value && launching.value && introOn) {
     try { video.value.volume = 0 } catch { /* read-only volume (iOS) */ }
   }
   if (video.value && !ignoreSilent && missingPicture(video.value)) silent('video')
 }
 /** canplay / playing / the first timeupdate: the film's first frame is decoded, dissolve the intro into it. */
 function onStarted() {
-  if (launching.value && video.value) fadeInFilm(video.value, DISSOLVE_MS)
+  if (launching.value && video.value && introOn) fadeInFilm(video.value, DISSOLVE_MS)
   launching.value = false
 }
 function onTime() {

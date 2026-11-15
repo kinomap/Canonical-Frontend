@@ -19,7 +19,7 @@
   "admin-frontend/src/views/Dashboard.vue": "5e183c34b107c47c2b24aec6d911c15a879e302266bf38804ad2bf032dd76e51",
   "admin-frontend/src/views/MediaNodes.vue": "5c8805a35154404a9b70f5d9719d2f44f82bda60934b9321faa90e4fdbf7a38b",
   "admin-frontend/src/views/MediaInfrastructure.vue": "9db95eaf14feef3cc8ca23bc3880e9afaa3534b9d95fffe25841ac7f9ac0001c",
-  "admin-frontend/src/views/AdStudio.vue": "a2aff887aca042f8391d8b6b0b5fea9eba3e6753e4c8d03e56c8b272532e15b2",
+  "admin-frontend/src/views/AdStudio.vue": "ff457352099ad4e05d2f044f6bfad859e08f8e349615c6965930fcf2bbcb48aa",
   "admin-frontend/src/views/AccountSecurity.vue": "cff964e76821a9df66b7e5e23f15fa5367fca4587e9704434529559582b279d4",
   "admin-frontend/src/views/Audience.vue": "3a54640c18d60b4a9c2614f70307dc44e9d59b2793a484672aedd6925d87247b",
   "admin-frontend/src/views/WithoutPoster.vue": "d54f628bbf481968229d4addb4b9760554a48e34ad436591d6126a63c3762c5f",
@@ -36,5 +36,6 @@
   "admin-frontend/src/views/Movies.vue": "556e73c525c7aae25aac739ed3d2386687b85852701fd0cb5dd4edf214e3a49e",
   "admin-frontend/src/views/MovieDetail.vue": "97ccdeff6865d21dc699464604d4f9988ab2256b907982afaadf567e5b99200f",
   "admin-frontend/src/views/SeriesDetail.vue": "096f2e35e273de3cdb942edab43688634b4e63f30524f160009f479be4b4f28c",
-  "admin-frontend/src/views/MediaSessionDetail.vue": "79f0c09720e092d6afa3caf5c333ecb1c39be48bedef682db3022dd889a24ca2"
+  "admin-frontend/src/views/MediaSessionDetail.vue": "79f0c09720e092d6afa3caf5c333ecb1c39be48bedef682db3022dd889a24ca2",
+  "admin-frontend/src/components/CinemaIntroCard.vue": "d3ade7d85c12f8f0c9bd93230e0ed47871714de8f0bf852ec833f9c5feda31e3"
 }
