@@ -102,11 +102,20 @@ function compareRank(a: number[], b: number[]): number {
 /** The track a browser plays: the first container audio track (null: the file's tracks are unknown). */
 export const browserTrack = (source: Pick<TorrentSource, 'audio_tracks'>) => source.audio_tracks?.[0] ?? null
 /**
- * Picture and sound in the browser are proven: the release names no video codec this browser
- * lacks, and its first audio track is AAC/MP3 as read from the file. Unknown codec: not proven.
+ * The browser plays the release with picture and sound, by the same rule TorrentPlayer warns by:
+ * - the release names no video codec this browser lacks (HEVC, AV1…);
+ * - the codec of the first audio track, when the file told it: AAC/MP3 plays, AC-3/DTS… does not;
+ * - when it is not known yet (rows cached before the codec parser, MP4 releases), the title
+ *   decides: a release naming no audio codec this browser lacks (a plain WEB-DL / HDTV) plays,
+ *   exactly as «Смотреть в браузере» starts it without a warning.
  */
-export const releaseBrowserCompatible = (source: Pick<TorrentSource, 'title' | 'audio_tracks'>) =>
-  !unsupportedCodecs(source.title).some((r) => r.kind === 'video') && audioCodecPlayable(browserTrack(source)?.codec) === true
+export function releaseBrowserCompatible(source: Pick<TorrentSource, 'title' | 'audio_tracks'>): boolean {
+  const named = unsupportedCodecs(source.title)
+  if (named.some((r) => r.kind === 'video')) return false
+  const known = audioCodecPlayable(browserTrack(source)?.codec)
+  if (known !== null) return known
+  return !named.some((r) => r.kind === 'audio')
+}
 /** Sound of the browser track: '' plays, the codec label («Dolby Digital (AC-3)») when dropped, null unknown. */
 export function browserAudioRisk(source: Pick<TorrentSource, 'audio_tracks'>): string | null {
   const codec = browserTrack(source)?.codec
