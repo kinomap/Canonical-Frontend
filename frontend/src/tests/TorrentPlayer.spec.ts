@@ -170,14 +170,56 @@ describe('player proportions, launch screen and closing the codec notice',()=>{
   issue(ticket('https://media.example/stream/21.mp4'));await flushPromises()
   expect(w.get('video.torrent-video').attributes('src')).toBe('https://media.example/stream/21.mp4')
   expect(overlay().classes()).not.toContain('is-hidden');expect(overlay().text()).toContain('Загружаем первые секунды видео…')
-  const film=w.get('video.torrent-video').element as HTMLVideoElement
-  await w.get('video.torrent-video').trigger('loadedmetadata')
+  const el=w.get('video.torrent-video'),film=el.element as HTMLVideoElement
+  let paused=true,time=0,width=0
+  const play=vi.fn(()=>Promise.resolve())
+  Object.defineProperties(film,{play:{configurable:true,value:play},paused:{configurable:true,get:()=>paused},currentTime:{configurable:true,get:()=>time},videoWidth:{configurable:true,get:()=>width},videoHeight:{configurable:true,get:()=>width?1080:0}})
+  // The film warms up muted: muted autoplay is never blocked, so there is no second click.
+  expect(film.muted).toBe(true);expect(el.attributes('playsinline')).toBeDefined()
+  await el.trigger('loadedmetadata')
   expect(film.volume).toBe(0) // Silent under the intro until the dissolve.
-  await w.get('video.torrent-video').trigger('playing')
-  expect(film.volume).toBeLessThan(0.2) // The film sound comes in with the dissolve.
+  expect(play).toHaveBeenCalledTimes(1)
+  // canplay comes with the first container bytes and `playing` can precede the first frame: the intro stays.
+  await el.trigger('canplay');expect(overlay().classes()).not.toContain('is-hidden')
+  paused=false;await el.trigger('playing');expect(overlay().classes()).not.toContain('is-hidden')
+  width=1920;await el.trigger('playing');expect(overlay().classes()).not.toContain('is-hidden')
+  time=0.05;await el.trigger('timeupdate');expect(overlay().classes()).not.toContain('is-hidden')
+  expect(w.get('[data-testid="torrent-video-wrap"]').attributes('aria-busy')).toBe('true')
+  // Moving frames: the intro dissolves into the film and the film sound rises from silence.
+  time=0.2;await el.trigger('timeupdate')
+  expect(film.muted).toBe(false);expect(film.volume).toBeLessThan(0.2)
   expect(overlay().classes()).toContain('is-hidden');expect(overlay().attributes('aria-hidden')).toBe('true')
   expect(w.get('[data-testid="torrent-video-wrap"]').attributes('aria-busy')).toBe('false')
+  expect(play).toHaveBeenCalledTimes(1);expect(w.find('.sound-btn').exists()).toBe(false)
   expect(w.find('.stop-btn').exists()).toBe(true);w.unmount()
+ })
+ it('keeps a film WebKit paused for turning audible running muted and brings the sound in on one tap',async()=>{
+  api.playbackTicket.mockResolvedValue(ticket('https://media.example/stream/22.mp4'))
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:22,ready:true}})
+  await w.get('.browser-play').trigger('click');await flushPromises()
+  const el=w.get('video.torrent-video'),film=el.element as HTMLVideoElement
+  let paused=true,time=0
+  const play=vi.fn(()=>{paused=false;return Promise.resolve()})
+  Object.defineProperties(film,{play:{configurable:true,value:play},paused:{configurable:true,get:()=>paused},currentTime:{configurable:true,get:()=>time},videoWidth:{configurable:true,get:()=>1280},videoHeight:{configurable:true,get:()=>720}})
+  await el.trigger('loadedmetadata');await el.trigger('playing')
+  time=0.3;await el.trigger('timeupdate')
+  expect(w.get('[data-testid="launch-overlay"]').classes()).toContain('is-hidden');expect(film.muted).toBe(false)
+  paused=true // WebKit pauses an autoplayed video that turns audible outside a user gesture.
+  await new Promise(resolve=>setTimeout(resolve,320));await flushPromises()
+  expect(film.muted).toBe(true);expect(play).toHaveBeenCalledTimes(2);expect(paused).toBe(false)
+  const sound=w.get('.sound-btn');expect(sound.text()).toBe('Включить звук')
+  await sound.trigger('click')
+  expect(film.muted).toBe(false);expect(film.volume).toBe(1);expect(w.find('.sound-btn').exists()).toBe(false);w.unmount()
+ })
+ it('hands over the film play control when the browser refuses even muted autoplay',async()=>{
+  api.playbackTicket.mockResolvedValue(ticket('https://media.example/stream/23.mp4'))
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:23,ready:true}})
+  await w.get('.browser-play').trigger('click');await flushPromises()
+  const el=w.get('video.torrent-video'),film=el.element as HTMLVideoElement
+  Object.defineProperty(film,'play',{configurable:true,value:vi.fn(()=>Promise.reject(new DOMException('autoplay refused','NotAllowedError')))})
+  await el.trigger('loadedmetadata');await flushPromises()
+  expect(w.get('[data-testid="launch-overlay"]').classes()).toContain('is-hidden')
+  expect(film.muted).toBe(false);expect(w.find('.stop-btn').exists()).toBe(true);w.unmount()
  })
  it('drops the launch screen on a failed ticket, on «Закрыть плеер» and on a broken stream',async()=>{
   api.playbackTicket.mockRejectedValueOnce(new Error('409'))

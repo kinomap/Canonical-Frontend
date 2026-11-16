@@ -4,11 +4,14 @@
  * paints its first frame at once (poster + CSS background, never black) and, when
  * `active` turns false or the layer unmounts, fades its sound out while the parent
  * cross-fades the picture. Reduced motion shows the first frame only.
+ * Ambient hold: a film slower than the clip never meets black. Just before its end the clip
+ * freezes on its final picture (a custom clip cross-fades to its admin still) and drifts in a
+ * slow zoom until the parent dissolves it into the film.
  * The clip comes from the admin-managed config (GET /api/v1/cinema/intro, cached);
  * when the intro is switched off the layer is a plain backdrop and nothing plays.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { DISSOLVE_MS, attachIntroAudio, introConfig, introSources, loadIntroConfig, prefersReducedMotion, startIntro, type IntroAudio, type IntroStart } from '@/lib/cinemaIntro'
+import { DISSOLVE_MS, HOLD_LEAD_S, attachIntroAudio, introConfig, introSources, loadIntroConfig, prefersReducedMotion, startIntro, type IntroAudio, type IntroStart } from '@/lib/cinemaIntro'
 
 const props = withDefaults(defineProps<{ active?: boolean; fadeMs?: number }>(), { active: true, fadeMs: DISSOLVE_MS })
 const emit = defineEmits<{ started: [result: IntroStart] }>()
@@ -20,6 +23,8 @@ const enabled = config.enabled
 const sources = introSources(config)
 const poster = config.poster_url
 const backdrop = computed(() => (config.is_custom ? { backgroundImage: `url('${poster}')` } : undefined))
+const holdStill = config.is_custom ? config.still_url : null
+const holding = ref(false)
 let audio: IntroAudio | null = null
 let ending: Promise<void> | null = null
 
@@ -40,17 +45,31 @@ function end(): Promise<void> {
   return ending
 }
 
+/** Freeze on the final picture while the film is still loading; the dissolve later takes it from here. */
+function hold() {
+  const media = video.value
+  if (!media || holding.value || ending || !props.active) return
+  holding.value = true
+  if (!media.ended) { try { media.pause() } catch { /* jsdom */ } }
+}
+function onTime() {
+  const media = video.value
+  if (!media || holding.value) return
+  const { duration, currentTime } = media
+  if (Number.isFinite(duration) && duration > HOLD_LEAD_S && currentTime >= duration - HOLD_LEAD_S) hold()
+}
+
 watch(() => props.active, (active) => { if (!active) void end() })
 onMounted(() => {
   void loadIntroConfig()
   if (props.active) void begin()
 })
 onBeforeUnmount(() => { void end() })
-defineExpose({ end, enabled })
+defineExpose({ end, enabled, holding })
 </script>
 
 <template>
-  <div class="cinema-intro" :class="{ 'is-off': !enabled }" :style="enabled ? backdrop : undefined" aria-hidden="true" data-testid="cinema-intro" :data-intro-version="config.version">
+  <div class="cinema-intro" :class="{ 'is-off': !enabled, 'is-holding': holding }" :style="enabled ? backdrop : undefined" aria-hidden="true" data-testid="cinema-intro" :data-intro-version="config.version">
     <template v-if="!enabled" />
     <img v-else-if="still" :src="poster" alt="" class="cinema-intro__media" />
     <video
@@ -63,9 +82,12 @@ defineExpose({ end, enabled })
       disablepictureinpicture
       disableremoteplayback
       tabindex="-1"
+      @timeupdate="onTime"
+      @ended="hold"
     >
       <source v-for="source in sources" :key="source.src" :src="source.src" :type="source.type" />
     </video>
+    <img v-if="enabled && !still && holdStill" :src="holdStill" alt="" class="cinema-intro__media cinema-intro__hold" data-testid="cinema-intro-hold" />
   </div>
 </template>
 
@@ -73,4 +95,9 @@ defineExpose({ end, enabled })
 .cinema-intro{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#1d2e39 url('/cinema/intro/kinosota-intro-v1.jpg') center/cover no-repeat}
 .cinema-intro.is-off{background:#070b0e}
 .cinema-intro__media{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.cinema-intro__hold{opacity:0;transition:opacity 600ms ease}
+.cinema-intro.is-holding .cinema-intro__hold{opacity:1}
+.cinema-intro.is-holding .cinema-intro__media{animation:cinema-intro-ambient 24s cubic-bezier(.22,.61,.36,1) forwards;transform-origin:50% 50%}
+@keyframes cinema-intro-ambient{from{transform:scale(1)}to{transform:scale(1.05)}}
+@media (prefers-reduced-motion: reduce){.cinema-intro.is-holding .cinema-intro__media{animation:none}}
 </style>
