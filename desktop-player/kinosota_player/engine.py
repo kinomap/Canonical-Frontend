@@ -17,6 +17,11 @@ _spawn_lock=threading.RLock()
 # The launch splash waits this long for the first video frame before it hands the screen to mpv anyway.
 FIRST_FRAME_TIMEOUT=30
 OPT_LINUX_MPV=Path('/opt/kinosota-player/mpv/mpv')
+# The mouse wheel is a volume control and never seeks: mpv 0.35's built-in WHEEL_UP / WHEEL_DOWN bindings
+# seek ±10 s and a tilt wheel or a sideways touchpad swipe (WHEEL_LEFT / WHEEL_RIGHT) seeks too.
+WHEEL_VOLUME_STEP=5
+WHEEL_INPUT_CONF=(f'WHEEL_UP add volume {WHEEL_VOLUME_STEP}\nWHEEL_DOWN add volume -{WHEEL_VOLUME_STEP}\n'
+                  'WHEEL_LEFT ignore\nWHEEL_RIGHT ignore\n')
 @contextmanager
 def native_loader():
     """Do not pass PyInstaller's DLL search directory to the mpv child."""
@@ -81,7 +86,13 @@ class Mpv:
                 '--cache-pause-wait=1','--cache-pause-initial=yes','--network-timeout=60',
                 '--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=3',
                 '--terminal=no','--autofit=88%x88%','--autofit-larger=88%x88%','--title=KINOSOTA Player',
-                '--input-ipc-server='+self.endpoint,*extra_args]
+                '--input-ipc-server='+self.endpoint,*self._input_args(),*extra_args]
+    def _input_args(self):
+        """The external fallback window gets the same wheel = volume bindings as the in-window cinema."""
+        if not self.directory:return []
+        path=Path(self.directory.name)/'input.conf'
+        path.write_text(WHEEL_INPUT_CONF,encoding='utf-8')
+        return ['--input-conf='+str(path)]
     def prewarm(self,*,extra_args=()):
         """Spawn mpv in --idle=yes mode under the splash while the launch ticket is being fetched."""
         with _spawn_lock:
