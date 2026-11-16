@@ -36,8 +36,14 @@ describe('actual torrent player viewport',()=>{
   await play.trigger('click');await flushPromises()
   expect(api.playbackTicket).toHaveBeenCalledWith('tv',42,choice)
   expect(w.find('video.torrent-video').attributes('src')).toBe('https://media.example/stream/1.mp4')
+  // Another quality / voice while watching: the old stream stops at once and the new release goes on in the browser.
+  let release!:(value:unknown)=>void
+  api.playbackTicket.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve}))
   await w.setProps({choice:{source_id:'s-720',season:1,episode:2}})
   expect(w.find('video.torrent-video').exists()).toBe(false)
+  expect(api.playbackTicket).toHaveBeenLastCalledWith('tv',42,{source_id:'s-720',season:1,episode:2})
+  release({stream_url:'https://media.example/stream/720.mp4',expires_at:'2026-11-03T12:00:00Z'});await flushPromises()
+  expect(w.find('video.torrent-video').attributes('src')).toBe('https://media.example/stream/720.mp4')
   await w.setProps({ready:false})
   expect(w.find('[data-testid="torrent-player"]').exists()).toBe(false);w.unmount()
  })
@@ -78,6 +84,21 @@ describe('browser codec incompatibility notice in the player window',()=>{
   await w.setProps({choice:{source_id:'s-2'},sourceTitle:'Dune (2021) WEB-DL 1080p x265 AC3'})
   expect(w.find('video.torrent-video').exists()).toBe(false)
   expect(w.find('[data-testid="codec-notice"]').text()).toContain('HEVC (H.265) и Dolby Digital (AC-3)')
+  w.unmount()
+ })
+ it('keeps the notice in front when the install dialog picks the browser for a release it cannot decode',async()=>{
+  api.playbackTicket.mockResolvedValue(ticket('https://media.example/stream/5.mkv'))
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:9,ready:true,choice:{source_id:'s-hevc'},sourceTitle:'Film 2021 1080p WEB-DL HEVC'}})
+  await (w.vm as unknown as {playInBrowser:()=>Promise<void>}).playInBrowser();await flushPromises()
+  expect(api.playbackTicket).not.toHaveBeenCalled()
+  expect(w.find('[data-testid="codec-notice"]').text()).toContain('HEVC (H.265)')
+  await w.find('[data-testid="codec-notice-browser"]').trigger('click');await flushPromises()
+  expect(api.playbackTicket).toHaveBeenCalledWith('movie',9,{source_id:'s-hevc'})
+  expect(w.find('video.torrent-video').attributes('src')).toBe('https://media.example/stream/5.mkv')
+  // Still watching, a compatible release is picked: it goes on in the browser without a notice.
+  await w.setProps({choice:{source_id:'s-avc'},sourceTitle:'Film 2021 1080p WEB-DL'})
+  await flushPromises()
+  expect(api.playbackTicket).toHaveBeenLastCalledWith('movie',9,{source_id:'s-avc'})
   w.unmount()
  })
  it('replaces a stream the browser cannot decode with the notice and tells a network break apart',async()=>{
