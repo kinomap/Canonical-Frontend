@@ -18,6 +18,7 @@ import { ACTIVE_STAGES, PREP_POLL_MS, PREP_PROGRESS, stageLabel, stageOf, type P
 import { useLibrary } from '@/stores/library'
 import { openDeepLink, waitForPlayer } from '@/lib/desktopLaunch'
 import { hideCinemaPrestart, isCinemaPrestartCompact, showCinemaPrestart } from '@/composables/useCinemaPrestart'
+import { unsupportedCodecs } from '@/lib/browserCodecs'
 
 /** Live refresh while something moves (the reference re-reads every 2–3 s). */
 export const POLL_MS = PREP_POLL_MS
@@ -36,14 +37,21 @@ export type ProgressView = { status: PrepStatus; stage: PrepStage; progress: num
 export type QualityOption = { value: string; label: string; available: boolean; active: boolean }
 export type SeasonOption = { value: number; label: string; episodes: number; available: boolean }
 export type EpisodeOption = { value: number; available: boolean; sizeMb: number | null; sourceId: string | null }
-/** Voice-over pill: «active» when the chosen source carries it, «best» for the top-ranked release's voice. */
+/**
+ * Voice-over pick: «active» when the chosen release plays it, «best» when it leads its release,
+ * «sourceId» the release a pick switches to, «browserCompatible» when the browser plays the voice
+ * there (no codec it lacks, and the voice is the release's first track — the browser plays only that one).
+ */
 export type VoiceOption = {
   value: string
   language: TorrentLanguage | 'und'
   languageLabel: string
   active: boolean
   best: boolean
+  sourceId: string | null
+  browserCompatible: boolean
 }
+export type SourceTrack = { value: string; language: TorrentLanguage | 'und'; languageLabel: string; best: boolean }
 export type WatchAction =
   | 'checking' | 'subscribe' | 'loading' | 'retry' | 'library' | 'discover'
   | 'prepare' | 'wait' | 'missing' | 'launch'
@@ -76,9 +84,14 @@ function compareRank(a: number[], b: number[]): number {
   return 0
 }
 
+/** The release names no codec this browser lacks (HEVC, AC-3, DTS, TrueHD…). */
+export const releaseBrowserCompatible = (source: Pick<TorrentSource, 'title'>) => unsupportedCodecs(source.title).length === 0
+/** One voice across releases: its language plus the case-insensitive name. */
+const trackKey = (t: Pick<SourceTrack, 'value' | 'language'>) => `${t.language}:${t.value.toLowerCase()}`
+
 /** Track list of one release: container tracks when available, otherwise studios and language tracks. */
-export function sourceTracks(s: TorrentSource): { value: string; language: TorrentLanguage | 'und'; languageLabel: string; best: boolean }[] {
-  const tracks: { value: string; language: TorrentLanguage | 'und'; languageLabel: string; best: boolean }[] = []
+export function sourceTracks(s: TorrentSource): SourceTrack[] {
+  const tracks: SourceTrack[] = []
   const seen = new Set<string>()
 
   const add = (val: string, lang: TorrentLanguage | 'und', best = false) => {
@@ -200,15 +213,6 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     }
     return LANGUAGE_ORDER.filter((l) => present.has(l))
   })
-  /** Voice-over tracks of the chosen release, with language attribution. */
-  const voiceOptions = computed<VoiceOption[]>(() => {
-    const s = selected.value
-    if (!s) return []
-    return sourceTracks(s).map((t) => ({
-      ...t,
-      active: t.value === selectedVoice.value,
-    }))
-  })
   const audioButtonLabel = computed<string>(() => 'Аудио')
 
   function syncVoice(src: TorrentSource) {
@@ -218,7 +222,8 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       return
     }
     const current = tracks.find((t) => t.value === selectedVoice.value)
-    if (current && (!language.value || language.value === current.language || language.value === 'und')) {
+    // A track of unnamed language never contradicts the language preference: keep the viewer's pick.
+    if (current && (!language.value || language.value === 'und' || current.language === 'und' || language.value === current.language)) {
       return
     }
     const byLang = language.value ? tracks.find((t) => t.language === language.value) : undefined
@@ -283,6 +288,60 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   const currentEpisode = computed<TorrentEpisode | null>(() =>
     showEpisodes.value && season.value !== null && episode.value !== null ? { season: season.value, episode: episode.value } : null)
   const episodeReady = computed(() => !currentEpisode.value || (!!selected.value && hasEpisode(selected.value, currentEpisode.value)))
+  /** Releases a voice can come from: every offered one, plus the chosen one even when it failed. */
+  const voiceSources = computed<TorrentSource[]>(() => {
+    const s = selected.value
+    return s && !offered.value.includes(s) ? [s, ...offered.value] : offered.value
+  })
+  /**
+   * Which release a voice pick plays. The browser stream carries no track choice, so among the
+   * releases carrying the voice it prefers one the browser plays it from, without leaving the
+   * chosen episode / quality; then the chosen release, a prepared one and the server rank.
+   */
+  function voiceRank(s: TorrentSource, track: SourceTrack, inBrowser: boolean): number[] {
+    const e = currentEpisode.value
+    const q = selected.value?.quality
+    return [
+      e && !hasEpisode(s, e) ? 1 : 0,
+      q && s.quality !== q ? 1 : 0,
+      track.best && inBrowser ? 0 : 1,
+      s === selected.value ? 0 : 1,
+      s.state === 'ready' ? 0 : 1,
+      s.rank ?? Number.MAX_SAFE_INTEGER,
+      -s.seeders,
+      -s.size_bytes,
+    ]
+  }
+  /** Every voice of the offered releases (the chosen release's own first), bound to the release a pick plays. */
+  const voiceOptions = computed<VoiceOption[]>(() => {
+    const current = selected.value
+    if (!current) return []
+    const compatible = new Map<TorrentSource, boolean>()
+    const fits = (s: TorrentSource) => {
+      if (!compatible.has(s)) compatible.set(s, releaseBrowserCompatible(s))
+      return compatible.get(s) === true
+    }
+    const prefs: Prefs = { quality: current.quality, episode: currentEpisode.value }
+    const others = voiceSources.value.filter((s) => s !== current).sort((a, b) => compareRank(rank(a, prefs), rank(b, prefs)))
+    const ownTracks = sourceTracks(current)
+    const playing = ownTracks.find((t) => t.value === selectedVoice.value)
+    const activeKey = playing ? trackKey(playing) : null
+    const picks = new Map<string, { track: SourceTrack; source: TorrentSource; order: number[] }>()
+    for (const source of [current, ...others]) {
+      for (const track of source === current ? ownTracks : sourceTracks(source)) {
+        const key = trackKey(track)
+        const order = voiceRank(source, track, fits(source))
+        const known = picks.get(key)
+        if (!known || compareRank(order, known.order) < 0) picks.set(key, { track, source, order })
+      }
+    }
+    return [...picks.entries()].map(([key, { track, source }]) => ({
+      ...track,
+      sourceId: source.source_id,
+      browserCompatible: track.best && fits(source),
+      active: key === activeKey,
+    }))
+  })
   // Initialize selectedVoice when selected source changes (page load or quality switch).
   watch(selected, (src) => {
     if (!src) return
@@ -436,30 +495,24 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       if (match) selectedVoice.value = match.value
     }
   }
+  /** A voice from the audio list: switch to the release it is bound to, so the browser stream plays it too. */
   function pickVoice(voice: string) {
-    const currentOptions = voiceOptions.value
-    const found = currentOptions.find((o) => o.value === voice)
-    if (found) {
-      selectedVoice.value = found.value
-      if (found.language && found.language !== 'und') {
-        language.value = found.language
-      }
+    const found = voiceOptions.value.find((o) => o.value === voice)
+    if (!found) {
+      selectedVoice.value = voice
       return
     }
-    const options = offered.value.filter((s) => sourceTracks(s).some((t) => t.value === voice))
-    const alt = bestSource(options, { quality: selected.value?.quality, language: language.value, episode: currentEpisode.value })
-    if (alt) {
-      choose(alt)
-      const newOption = sourceTracks(alt).find((o) => o.value === voice)
-      if (newOption) {
-        selectedVoice.value = newOption.value
-        if (newOption.language && newOption.language !== 'und') {
-          language.value = newOption.language
-        }
+    const source = voiceSources.value.find((s) => s.source_id === found.sourceId)
+    if (source && source !== selected.value) {
+      const e = currentEpisode.value
+      if (e && !hasEpisode(source, e) && source.episodes.length > 0) {
+        season.value = source.episodes[0].season
+        episode.value = source.episodes[0].episode
       }
-    } else {
-      selectedVoice.value = voice
+      choose(source)
     }
+    selectedVoice.value = found.value
+    if (found.language !== 'und') language.value = found.language
   }
   function followEpisode() {
     const e = currentEpisode.value

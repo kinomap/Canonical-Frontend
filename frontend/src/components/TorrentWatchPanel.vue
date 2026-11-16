@@ -6,7 +6,7 @@
  */
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
+import { Globe, Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
 import LibraryButton from './LibraryButton.vue'
 import DesktopPlayerModal from './DesktopPlayerModal.vue'
 import KSelect from './KSelect.vue'
@@ -19,6 +19,8 @@ const props = defineProps<{ item: TorrentItem; state: TorrentWatch }>()
 const emit = defineEmits<{ browser: [] }>()
 const auth = useAuthStore(), route = useRoute(), router = useRouter()
 const showAudioModal = ref(false)
+/** The Globe legend under the voice list, only when some voice plays in the browser. */
+const browserVoices = computed(() => props.state.voiceOptions.some((v) => v.browserCompatible))
 
 /** Flag + code like the reference («RU», «UA», «EN»); the tooltip says what kind of track it is. */
 const LANGUAGE_TEXT: Record<LanguagePill, string> = { ru: 'RU', uk: 'UA', en: 'EN', und: 'Не указан' }
@@ -154,7 +156,7 @@ function browser() {
           <button type="button" class="audio-modal-close" aria-label="Закрыть" @click="showAudioModal = false">✕</button>
         </div>
         <ul class="audio-modal-list" role="listbox">
-          <li v-for="v in state.voiceOptions" :key="v.value" role="option" :aria-selected="v.active"
+          <li v-for="v in state.voiceOptions" :key="`${v.language}:${v.value}`" role="option" :aria-selected="v.active"
               class="audio-modal-item" :class="{ active: v.active }"
               @click="state.pickVoice(v.value); showAudioModal = false">
             <span class="audio-modal-check" aria-hidden="true">{{ v.active ? "✓" : "" }}</span>
@@ -164,9 +166,11 @@ function browser() {
               <svg v-else-if="v.language === 'en'" class="watch-flag flag-en" viewBox="0 0 60 30" preserveAspectRatio="xMidYMid slice"><rect width="60" height="30" fill="#012169" /><path d="M0 0L60 30M60 0L0 30" stroke="#fff" stroke-width="6" /><path d="M0 0L60 30M60 0L0 30" stroke="#c8102e" stroke-width="2" /><path d="M30 0V30M0 15H60" stroke="#fff" stroke-width="10" /><path d="M30 0V30M0 15H60" stroke="#c8102e" stroke-width="6" /></svg>
             </span>
             <span class="audio-modal-name">{{ v.value }}</span>
+            <span v-if="v.browserCompatible" class="audio-modal-browser-badge" data-testid="audio-browser-badge" title="Доступно для просмотра в браузере"><Globe :size="14" aria-hidden="true" /><span class="audio-modal-sr">Доступно для просмотра в браузере</span></span>
             <span class="audio-modal-badge" :class="`badge-${v.language}`" :title="LANGUAGE_NAMES[v.language]">{{ v.languageLabel }}</span>
           </li>
         </ul>
+        <p v-if="browserVoices" class="audio-modal-legend" data-testid="audio-browser-legend"><span class="audio-modal-browser-badge" aria-hidden="true"><Globe :size="14" /></span>Можно смотреть в браузере, остальные озвучки — в KINOSOTA Player</p>
         <p class="audio-modal-tip">💡 Аудиодорожку также можно мгновенно сменить прямо в плеере во время просмотра</p>
       </div>
     </div>
@@ -230,6 +234,9 @@ function browser() {
 .audio-modal-name{flex:1;min-width:0;font-size:14px;line-height:20px;font-weight:500;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .audio-modal-badge{flex:none;margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;line-height:16px;font-weight:700;letter-spacing:.05em;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.85);transition:background .15s,border-color .15s,color .15s}
 .audio-modal-item.active .audio-modal-badge{background:rgba(255,210,77,.18);border-color:rgba(255,210,77,.45);color:#ffd24d}
+.audio-modal-browser-badge{display:inline-grid;place-items:center;flex:none;width:26px;height:20px;box-sizing:border-box;border-radius:6px;background:rgba(127,216,168,.1);border:1px solid rgba(127,216,168,.32);color:#8fdcb4}
+.audio-modal-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.audio-modal-legend{display:flex;align-items:center;gap:8px;margin:12px 0 0;padding:0 24px 12px;font-size:12px;line-height:16px;color:rgba(255,255,255,.55)}
 .audio-modal-tip{margin:0;padding:16px 24px 20px;font-size:13px;line-height:18px;color:rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.07)}
 
 @media(max-width:640px){.watch-actions{flex-wrap:wrap}.watch-button{flex:1 1 0;min-width:0;padding:0 16px;font-size:14px;white-space:normal}.watch-pill{max-width:none;padding:4px 9px;font-size:11px}.watch-season,.watch-episode{flex:1 1 140px;width:auto}}

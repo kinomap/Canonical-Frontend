@@ -125,9 +125,13 @@ function reset() {
   riskAccepted.value = false
 }
 
-/** Called from the «player is not installed» dialog: the viewer explicitly picked the browser. */
+/**
+ * Called from the «player is not installed» dialog: the viewer explicitly picked the browser.
+ * A release with codecs this browser lacks shows its notice (KINOSOTA Player / browse anyway) first.
+ */
 async function playInBrowser() {
   root.value?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+  if (warnBefore.value) return
   await startPlayback(true)
 }
 
@@ -229,8 +233,13 @@ function closeNotice() {
     if (video.value) unmuteFilm(video.value)
   }
 }
-// Another quality / voice / episode: never keep playing the previous stream.
-watch(() => JSON.stringify(props.choice ?? {}), reset)
+// Another quality / voice / episode: never keep playing the previous stream. A viewer watching in
+// the browser goes on with the new pick (a release the browser cannot decode shows its notice instead).
+watch(() => JSON.stringify(props.choice ?? {}), () => {
+  const watching = !!streamUrl.value || launching.value
+  reset()
+  if (watching) void startPlayback()
+})
 watch(() => props.sourceTitle, () => { riskAccepted.value = false })
 watch(isPlayable, (ready) => { if (!ready) reset() })
 onBeforeUnmount(() => clearTimeout(soundGuard))

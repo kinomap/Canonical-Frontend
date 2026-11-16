@@ -1,0 +1,121 @@
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest'
+import {flushPromises,mount} from '@vue/test-utils'
+import {createMemoryHistory,createRouter} from 'vue-router'
+import View from '@/views/TorrentCatalogView.vue'
+import {torrentsApi,torrentPlaybackApi} from '@/api/torrents'
+import {waitForPlayer} from '@/lib/desktopLaunch'
+vi.mock('@/api/torrents',async original=>({...await original<any>(),torrentsApi:{access:vi.fn(),list:vi.fn(),genres:vi.fn(),detail:vi.fn()},torrentPlaybackApi:{sources:vi.fn(),prepareSource:vi.fn(),discover:vi.fn(),desktopLaunch:vi.fn(),launchStatus:vi.fn(),playbackTicket:vi.fn(),preparationStatus:vi.fn()}}))
+vi.mock('@/lib/desktopLaunch',async original=>({...await original<any>(),openDeepLink:vi.fn(),waitForPlayer:vi.fn()}))
+
+const entry={tmdb_id:1,kind:'movie',title:'Дюна',year:2021,original_title:'Dune',rating:8,overview:'Описание',poster:null,backdrop:null,playback_available:false} as const
+const view=(over:any={})=>({allowed:true,in_library:true,discovering:false,selected_source_id:null,status:{status:'playable',playable:true,progress:100,start_ms:850},sources:[],qualities:[{value:'1080p',available:true}],languages:[{value:'ru',available:true},{value:'en',available:true}],episodes:[],...over})
+const src=(over:any={})=>({source_id:'s1',title:'Dune 2021 1080p WEB-DL',quality:'1080p',source_type:'WEB-DL',languages:['ru'],seeders:20,size_bytes:8e9,state:'ready',progress:100,start_ms:850,default:false,episodes:[],file_count:1,...over})
+/** The HEVC release carries the dub too, but only the H.264 one lets the browser play it. */
+const releases=[
+ src({source_id:'s-hevc',title:'Dune 2021 1080p WEB-DL HEVC',voices:['Дубляж','Original'],languages:['ru','en'],rank:0,seeders:90}),
+ src({source_id:'s-avc',title:'Dune 2021 1080p WEB-DL',voices:['Дубляж'],rank:1,seeders:40}),
+ src({source_id:'s-dts',title:'Dune 2021 1080p BDRip DTS',source_type:'BDRip',voices:['MVO, Jaskier'],rank:2,seeders:12}),
+]
+
+const mounted:any[]=[]
+afterEach(()=>mounted.splice(0).forEach(w=>w.unmount()))
+beforeEach(()=>{
+ vi.resetAllMocks()
+ vi.mocked(torrentsApi.access).mockResolvedValue({allowed:true,requirement:'pro',playback_available:false} as any)
+ vi.mocked(torrentsApi.list).mockResolvedValue({provider:'tmdb',mode:'metadata_only',items:[entry],total:1,total_pages:1,page:1} as any)
+ vi.mocked(torrentsApi.genres).mockResolvedValue({items:[]})
+ vi.mocked(torrentsApi.detail).mockResolvedValue(entry as any)
+ vi.mocked(torrentPlaybackApi.discover).mockResolvedValue({result:'active'} as any)
+})
+async function at(){
+ const router=createRouter({history:createMemoryHistory(),routes:[{path:'/torrents/:kind/:id',component:View},{path:'/:any(.*)',component:{template:'<p />'}}]})
+ await router.push('/torrents/movie/1');await router.isReady()
+ const w=mount(View,{global:{plugins:[router]}});mounted.push(w);await flushPromises();return w
+}
+async function openAudio(w:any){
+ await w.find('[data-testid="audio-track-button"]').trigger('click');await flushPromises()
+ return [...document.body.querySelectorAll('.audio-modal-item')] as HTMLElement[]
+}
+const name=(el:Element)=>el.querySelector('.audio-modal-name')!.textContent
+const badge=(el:Element)=>!!el.querySelector('[data-testid="audio-browser-badge"]')
+const checked=(el:Element)=>el.querySelector('.audio-modal-check')!.textContent
+async function pick(el:Element){el.dispatchEvent(new MouseEvent('click',{bubbles:true}));await flushPromises()}
+
+describe('audio modal: voices of every release with a browser badge',()=>{
+ it('lists the voices of all offered releases and marks the ones the browser can play',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-hevc',sources:releases}) as any)
+  const w=await at()
+  const items=await openAudio(w)
+  expect(items.map(name)).toEqual(['Дубляж','Original','Английская дорожка','MVO, Jaskier'])
+  expect(items.map(checked)).toEqual(['✓','','',''])
+  // HEVC / DTS releases and a second track (the browser plays only the first one) get no badge.
+  expect(items.map(badge)).toEqual([true,false,false,false])
+  const mark=items[0].querySelector('[data-testid="audio-browser-badge"]')!
+  expect(mark.getAttribute('title')).toBe('Доступно для просмотра в браузере')
+  expect(mark.querySelector('svg')!.getAttribute('aria-hidden')).toBe('true')
+  expect(mark.textContent).toBe('Доступно для просмотра в браузере')
+  expect(document.body.querySelector('[data-testid="audio-browser-legend"]')!.textContent).toContain('Можно смотреть в браузере')
+ })
+
+ it('switches the browser stream to the release of the picked voice',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-hevc',sources:releases}) as any)
+  vi.mocked(torrentPlaybackApi.playbackTicket).mockResolvedValue({stream_url:'https://media.example/avc.mp4',expires_at:'x'} as any)
+  const w=await at()
+  expect(w.find('[data-testid="codec-notice"]').text()).toContain('HEVC (H.265)')
+  expect(w.find('.browser-play').exists()).toBe(false)
+  await pick((await openAudio(w))[0])
+  expect(document.body.querySelector('.audio-modal')).toBeNull()
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  await w.find('.browser-play').trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'s-avc',season:null,episode:null})
+  expect(w.find('video').attributes('src')).toBe('https://media.example/avc.mp4')
+  const again=await openAudio(w)
+  expect(again.map(checked)).toEqual(['✓','','',''])
+  expect(badge(again[0])).toBe(true)
+ })
+
+ it('keeps the chosen release when it already plays the voice in the browser',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-avc',sources:releases}) as any)
+  vi.mocked(torrentPlaybackApi.playbackTicket).mockResolvedValue({stream_url:'https://media.example/avc.mp4',expires_at:'x'} as any)
+  const w=await at()
+  await pick((await openAudio(w))[0])
+  await w.find('.browser-play').trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'s-avc',season:null,episode:null})
+  expect(torrentPlaybackApi.prepareSource).not.toHaveBeenCalled()
+ })
+
+ it('warns in the player for a voice the browser cannot decode and hands the release to KINOSOTA Player',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-avc',sources:releases}) as any)
+  vi.mocked(torrentPlaybackApi.desktopLaunch).mockResolvedValue({launch_id:'id-dts',deep_link:'kinosota://watch?launch=id-dts',expires_at:'x'} as any)
+  vi.mocked(waitForPlayer).mockResolvedValue(true)
+  const w=await at()
+  expect(w.find('.browser-play').exists()).toBe(true)
+  const items=await openAudio(w)
+  expect(name(items[3])).toBe('MVO, Jaskier')
+  await pick(items[3])
+  const notice=w.find('[data-testid="codec-notice"]')
+  expect(notice.text()).toContain('DTS')
+  expect(w.find('.browser-play').exists()).toBe(false)
+  expect(torrentPlaybackApi.playbackTicket).not.toHaveBeenCalled()
+  await notice.find('[data-testid="codec-notice-desktop"]').trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'s-dts',season:null,episode:null,audio_lang:'ru',audio_track:null})
+ })
+
+ it('marks only the first container track of a browser-friendly release',async()=>{
+  const tracks=[{index:1,language:'ru',title:'Дубляж'},{index:2,language:'en',title:'Original'}]
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[src({source_id:'s-mkv',languages:['ru','en'],audio_tracks:tracks,default:true})]}) as any)
+  const w=await at()
+  const items=await openAudio(w)
+  expect(items.map(name)).toEqual(['Дубляж','Original'])
+  expect(items.map(badge)).toEqual([true,false])
+ })
+
+ it('shows no badge or legend when no release plays in the browser',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[src({source_id:'s-uhd',title:'Dune 2021 2160p HEVC TrueHD',quality:'2160p',voices:['Дубляж','MVO'],default:true})]}) as any)
+  const w=await at()
+  const items=await openAudio(w)
+  expect(items.map(name)).toEqual(['Дубляж','MVO'])
+  expect(items.map(badge)).toEqual([false,false])
+  expect(document.body.querySelector('[data-testid="audio-browser-legend"]')).toBeNull()
+ })
+})
