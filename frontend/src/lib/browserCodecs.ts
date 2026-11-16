@@ -96,6 +96,28 @@ export function soundWatcher(seconds = 4) {
   }
 }
 
+/**
+ * Audio codecs a browser plays from the stream with sound, whatever the OS: AAC and MP3
+ * (Opus / Vorbis too). AC-3, E-AC-3, DTS, TrueHD… are never trusted: Chrome and Firefox
+ * drop such a track and play the picture silently.
+ */
+const BROWSER_AUDIO: ReadonlySet<string> = new Set(['aac', 'mp3', 'opus', 'vorbis'])
+const AUDIO_LABELS: Readonly<Record<string, string>> = {
+  ac3: 'Dolby Digital (AC-3)', eac3: 'Dolby Digital Plus (E-AC-3)', dts: 'DTS', truehd: 'Dolby TrueHD',
+  flac: 'FLAC', pcm: 'PCM', mp2: 'MPEG Audio Layer II',
+}
+/** true: the browser plays this container audio codec with sound; false: it does not; null: codec unknown. */
+export function audioCodecPlayable(codec: string | null | undefined): boolean | null {
+  const c = String(codec ?? '').trim().toLowerCase()
+  if (!c) return null
+  return BROWSER_AUDIO.has(c)
+}
+/** «Dolby Digital (AC-3)» for ac3; the codec itself in upper case otherwise. */
+export function audioCodecLabel(codec: string | null | undefined): string {
+  const c = String(codec ?? '').trim().toLowerCase()
+  return AUDIO_LABELS[c] ?? c.toUpperCase()
+}
+
 /** Human list: «HEVC (H.265) и DTS». */
 export function codecList(risks: readonly CodecRisk[]): string {
   const labels = risks.map((r) => r.label)

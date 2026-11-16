@@ -11,6 +11,10 @@ const props = withDefaults(defineProps<{
   poster?: string
   /** Codecs named by the release, e.g. «HEVC (H.265) и DTS». */
   codecs?: string
+  /** The chosen voice the browser cannot play (no ready release has it as the first track)… */
+  voice?: string
+  /** …and the first track the browser would play instead. */
+  playing?: string
   issue?: CompatibilityIssue
   /** Drawn over a paused video instead of replacing the player. */
   overlay?: boolean
@@ -21,7 +25,7 @@ const props = withDefaults(defineProps<{
   error?: string
   /** false: KINOSOTA Player needs PRO for this account; null: unknown. */
   pro?: boolean | null
-}>(), { poster: undefined, codecs: '', issue: null, overlay: false, canBrowse: false, busy: false, status: '', error: '', pro: null })
+}>(), { poster: undefined, codecs: '', voice: '', playing: '', issue: null, overlay: false, canBrowse: false, busy: false, status: '', error: '', pro: null })
 const emit = defineEmits<{ desktop: []; browser: []; close: [] }>()
 
 const lead = computed(() => {
@@ -34,7 +38,17 @@ const lead = computed(() => {
     default: return 'Видео или звук этого фильма записаны кодеками, которые ваш браузер не поддерживает.'
   }
 })
+/** Only the voice is the problem: the browser plays the file, but another track. */
+const voiceOnly = computed(() => !!props.voice && !props.codecs && !props.issue)
+const heading = computed(() => voiceOnly.value ? 'Выбранная озвучка недоступна в браузере' : 'Фильм несовместим с вашим браузером')
+const voiceText = computed(() => {
+  if (!props.voice) return ''
+  const instead = props.playing ? ` — «${props.playing}»` : ''
+  return `Браузер воспроизводит только первую аудиодорожку раздачи${instead}. Выбранная озвучка «${props.voice}» звучит только в KINOSOTA Player.`
+})
 const browseLabel = computed(() => {
+  if (voiceOnly.value) return props.playing ? `Смотреть в браузере с «${props.playing}»` : 'Смотреть в браузере с другой озвучкой'
+  if (props.codecs && /AC-3|DTS|TrueHD|PCM|FLAC|Layer II/.test(props.codecs) && !/HEVC|AV1|VC-1|MPEG-2|XviD/.test(props.codecs)) return 'Смотреть в браузере без звука'
   if (props.issue === 'audio') return 'Смотреть в браузере без звука'
   if (props.issue === 'codec' || props.issue === 'container') return 'Попробовать ещё раз в браузере'
   return 'Всё равно смотреть в браузере'
@@ -45,8 +59,9 @@ const browseLabel = computed(() => {
   <img v-if="poster && !overlay" :src="poster" alt="" class="compatibility-backdrop" loading="lazy" />
   <div class="compatibility-card">
    <div class="compatibility-badge" aria-hidden="true">!</div>
-   <h2 id="compatibility-title">Фильм несовместим с вашим браузером</h2>
-   <p class="compatibility-lead">{{ lead }}</p>
+   <h2 id="compatibility-title">{{ heading }}</h2>
+   <p v-if="!voiceOnly" class="compatibility-lead">{{ lead }}</p>
+   <p v-if="voiceText" class="compatibility-lead" data-testid="codec-notice-voice">{{ voiceText }}</p>
    <p>В KINOSOTA Player таких ограничений нет: продолжите просмотр в нём — плеер откроется автоматически, запускать его отдельно на компьютере не нужно.</p>
    <div class="compatibility-actions">
     <router-link v-if="pro === false" class="primary" to="/profile?tab=billing">Оформить PRO</router-link>

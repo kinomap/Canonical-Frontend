@@ -22,7 +22,7 @@ import CinemaIntro from './CinemaIntro.vue'
 import TorrentPlaybackSubscription from './TorrentPlaybackSubscription.vue'
 import PlaybackCompatibility from './PlaybackCompatibility.vue'
 import { torrentPlaybackApi, type StreamChoice, type TorrentPlaybackStatus } from '@/api/torrents'
-import { codecList, missingPicture, soundWatcher, unsupportedCodecs, type CompatibilityIssue } from '@/lib/browserCodecs'
+import { codecList, missingPicture, soundWatcher, unsupportedCodecs, type CodecRisk, type CompatibilityIssue } from '@/lib/browserCodecs'
 import { DISSOLVE_MS, fadeInFilm, firstFrameWatcher, introConfig } from '@/lib/cinemaIntro'
 const props = withDefaults(defineProps<{
   access: boolean | null
@@ -36,11 +36,20 @@ const props = withDefaults(defineProps<{
   choice?: StreamChoice
   /** Release name of the selected source: the codecs it names are checked against this browser. */
   sourceTitle?: string
+  /**
+   * Sound of the track the browser plays, read from the file: '' plays (AAC/MP3), a codec label
+   * («Dolby Digital (AC-3)») when the browser drops it, null/undefined unknown (the title decides).
+   */
+  audioRisk?: string | null
+  /** The chosen voice is not the first track of any ready release: the browser would play «playing». */
+  voiceNotice?: { wanted: string; playing: string } | null
+  /** Which release the browser opens for the chosen voice, shown under «Смотреть в браузере». */
+  browserNote?: string
   /** KINOSOTA Player hand-off state, owned by the detail page. */
   launchBusy?: boolean
   launchMessage?: string
   launchError?: string
-}>(), { poster: undefined, tmdbId: undefined, torrentStatus: undefined, ready: undefined, choice: undefined, sourceTitle: undefined, launchBusy: false, launchMessage: '', launchError: '' })
+}>(), { poster: undefined, tmdbId: undefined, torrentStatus: undefined, ready: undefined, choice: undefined, sourceTitle: undefined, audioRisk: undefined, voiceNotice: null, browserNote: '', launchBusy: false, launchMessage: '', launchError: '' })
 const emit = defineEmits<{retry: []; desktop: []}>()
 
 const streamUrl = ref<string | null>(null)
@@ -54,14 +63,24 @@ const root = ref<HTMLElement | null>(null)
 const video = ref<HTMLVideoElement | null>(null)
 const isPlayable = computed(() => props.ready !== undefined ? props.ready : props.torrentStatus === 'playable' || props.torrentStatus === 'partial')
 const visible = computed(() => props.access !== true || props.accessError || isPlayable.value)
-/** Codecs named by the selected release that this browser cannot decode. */
-const risks = computed(() => unsupportedCodecs(props.sourceTitle))
+/**
+ * Codecs this browser cannot decode: the video ones named by the release, and for the sound the
+ * codec of the track the browser plays when it is known from the file (the title otherwise).
+ */
+const risks = computed<CodecRisk[]>(() => {
+  const named = unsupportedCodecs(props.sourceTitle)
+  if (props.audioRisk === null || props.audioRisk === undefined) return named
+  const video = named.filter((r) => r.kind === 'video')
+  return props.audioRisk ? [...video, { label: props.audioRisk, kind: 'audio' }] : video
+})
 const riskText = computed(() => codecList(risks.value))
 /** The viewer chose the browser despite the warning for this source. */
 const riskAccepted = ref(false)
 /** The browser failed to decode (stream stopped) or silently lost picture / sound (video paused). */
 const issue = ref<null | { kind: CompatibilityIssue; stopped: boolean }>(null)
-const warnBefore = computed(() => risks.value.length > 0 && !riskAccepted.value)
+const warnBefore = computed(() => (risks.value.length > 0 || !!props.voiceNotice) && !riskAccepted.value)
+/** The notice names the voice problem (the codecs, when any, come first). */
+const noticeVoice = computed(() => props.voiceNotice ?? null)
 let ignoreSilent = false
 /** Bumped by every start and stop: a ticket that arrives late never starts a stale stream. */
 let launchId = 0
@@ -241,6 +260,12 @@ watch(() => JSON.stringify(props.choice ?? {}), () => {
   if (watching) void startPlayback()
 })
 watch(() => props.sourceTitle, () => { riskAccepted.value = false })
+// Another voice on the same release: never go on with a voice the viewer did not choose.
+watch(() => `${props.voiceNotice?.wanted ?? ''}|${props.audioRisk ?? ''}`, () => {
+  const watching = !!streamUrl.value || launching.value
+  reset()
+  if (watching) void startPlayback()
+})
 watch(isPlayable, (ready) => { if (!ready) reset() })
 onBeforeUnmount(() => clearTimeout(soundGuard))
 defineExpose({ startPlayback, playInBrowser })
@@ -280,7 +305,7 @@ defineExpose({ startPlayback, playInBrowser })
         <button v-if="!issue" type="button" class="stop-btn" @click="stopPlayback">✕ Закрыть плеер</button>
         <PlaybackCompatibility v-else overlay can-browse :issue="issue.kind" :busy="launchBusy" :status="launchMessage" :error="launchError" @desktop="emit('desktop')" @browser="browseAnyway" @close="closeNotice" />
       </div>
-      <PlaybackCompatibility v-else-if="issue || warnBefore" :poster="poster" :codecs="issue ? '' : riskText" :issue="issue ? issue.kind : null" can-browse :busy="launchBusy" :status="launchMessage" :error="launchError" @desktop="emit('desktop')" @browser="browseAnyway" @close="closeNotice" />
+      <PlaybackCompatibility v-else-if="issue || warnBefore" :poster="poster" :codecs="issue ? '' : riskText" :voice="issue ? '' : noticeVoice?.wanted" :playing="issue ? '' : noticeVoice?.playing" :issue="issue ? issue.kind : null" can-browse :busy="launchBusy" :status="launchMessage" :error="launchError" @desktop="emit('desktop')" @browser="browseAnyway" @close="closeNotice" />
       <div v-else class="torrent-player-state torrent-player-ready">
         <img v-if="poster" :src="poster" alt="" class="player-backdrop" loading="lazy" />
         <div class="player-ready-copy">
@@ -289,6 +314,7 @@ defineExpose({ startPlayback, playInBrowser })
           <button type="button" class="browser-play" :disabled="streamLoading" @click="startPlayback(true)">
             {{ streamLoading ? 'Подготовка…' : '▶ Смотреть в браузере' }}
           </button>
+          <p v-if="browserNote" class="player-note" data-testid="browser-note">{{ browserNote }}</p>
           <p class="player-note">Максимальное качество и все аудиодорожки — в приложении KINOSOTA Player.</p>
         </div>
       </div>

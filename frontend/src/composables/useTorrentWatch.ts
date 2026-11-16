@@ -18,7 +18,7 @@ import { ACTIVE_STAGES, PREP_POLL_MS, PREP_PROGRESS, stageLabel, stageOf, type P
 import { useLibrary } from '@/stores/library'
 import { openDeepLink, waitForPlayer } from '@/lib/desktopLaunch'
 import { hideCinemaPrestart, isCinemaPrestartCompact, showCinemaPrestart } from '@/composables/useCinemaPrestart'
-import { unsupportedCodecs } from '@/lib/browserCodecs'
+import { audioCodecLabel, audioCodecPlayable, unsupportedCodecs } from '@/lib/browserCodecs'
 
 /** Live refresh while something moves (the reference re-reads every 2–3 s). */
 export const POLL_MS = PREP_POLL_MS
@@ -52,6 +52,21 @@ export type VoiceOption = {
   browserCompatible: boolean
 }
 export type SourceTrack = { value: string; language: TorrentLanguage | 'und'; languageLabel: string; best: boolean }
+/**
+ * What «Смотреть в браузере» plays. A browser plays only the first audio track of a file, so the
+ * stream goes to a ready release where the chosen voice leads (one it plays with sound first);
+ * «voiceMatches» false: no release leads with it, the browser would play «playing» instead.
+ * «audioRisk»: '' sound proven, codec label (AC-3, DTS…) when the browser drops the track, null unknown.
+ */
+export type BrowserPlan = {
+  source: TorrentSource | null
+  wanted: string | null
+  playing: string | null
+  voiceMatches: boolean
+  audioRisk: string | null
+  compatible: boolean
+  note: string
+}
 export type WatchAction =
   | 'checking' | 'subscribe' | 'loading' | 'retry' | 'library' | 'discover'
   | 'prepare' | 'wait' | 'missing' | 'launch'
@@ -84,8 +99,20 @@ function compareRank(a: number[], b: number[]): number {
   return 0
 }
 
-/** The release names no codec this browser lacks (HEVC, AC-3, DTS, TrueHD…). */
-export const releaseBrowserCompatible = (source: Pick<TorrentSource, 'title'>) => unsupportedCodecs(source.title).length === 0
+/** The track a browser plays: the first container audio track (null: the file's tracks are unknown). */
+export const browserTrack = (source: Pick<TorrentSource, 'audio_tracks'>) => source.audio_tracks?.[0] ?? null
+/**
+ * Picture and sound in the browser are proven: the release names no video codec this browser
+ * lacks, and its first audio track is AAC/MP3 as read from the file. Unknown codec: not proven.
+ */
+export const releaseBrowserCompatible = (source: Pick<TorrentSource, 'title' | 'audio_tracks'>) =>
+  !unsupportedCodecs(source.title).some((r) => r.kind === 'video') && audioCodecPlayable(browserTrack(source)?.codec) === true
+/** Sound of the browser track: '' plays, the codec label («Dolby Digital (AC-3)») when dropped, null unknown. */
+export function browserAudioRisk(source: Pick<TorrentSource, 'audio_tracks'>): string | null {
+  const codec = browserTrack(source)?.codec
+  const ok = audioCodecPlayable(codec)
+  return ok === null ? null : ok ? '' : audioCodecLabel(codec)
+}
 /** One voice across releases: its language plus the case-insensitive name. */
 const trackKey = (t: Pick<SourceTrack, 'value' | 'language'>) => `${t.language}:${t.value.toLowerCase()}`
 
@@ -170,6 +197,8 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   const error = ref('')
   const installPrompt = ref(false)
   const selectedVoice = ref<string | null>(null)
+  /** The viewer picked a studio in «Аудио» (not only a language pill): the browser must play exactly it. */
+  const voicePicked = ref(false)
   let generation = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   let controller: AbortController | undefined
@@ -342,6 +371,40 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       active: key === activeKey,
     }))
   })
+  /** The release and voice the browser stream really plays, see BrowserPlan. */
+  const browserPlan = computed<BrowserPlan>(() => {
+    const cur = selected.value
+    const plain: BrowserPlan = {
+      source: cur, wanted: selectedVoice.value, playing: null, voiceMatches: true,
+      audioRisk: cur ? browserAudioRisk(cur) : null, compatible: !!cur && releaseBrowserCompatible(cur), note: '',
+    }
+    if (!cur?.audio_tracks?.length) return plain
+    const wanted = sourceTracks(cur).find((t) => t.value === selectedVoice.value)
+    if (!wanted) return { ...plain, playing: sourceTracks(cur)[0]?.value ?? null }
+    const e = currentEpisode.value
+    const pool = [cur, ...offered.value.filter((s) => s !== cur && s.state === 'ready' && (!e || hasEpisode(s, e)))]
+    const lead = (s: TorrentSource) => (s.audio_tracks?.length ? sourceTracks(s)[0] : undefined)
+    const order = (s: TorrentSource) => [
+      releaseBrowserCompatible(s) ? 0 : 1, s === cur ? 0 : 1, s.quality === cur.quality ? 0 : 1,
+      s.rank ?? Number.MAX_SAFE_INTEGER, -s.seeders, -s.size_bytes,
+    ]
+    const pick = (match: (t: SourceTrack) => boolean) => pool
+      .filter((s) => { const t = lead(s); return !!t && match(t) })
+      .sort((a, b) => compareRank(order(a), order(b)))[0]
+    const key = trackKey(wanted)
+    // A studio picked in «Аудио» must lead as such; a language pill accepts any voice of that language.
+    const hit = pick((t) => trackKey(t) === key)
+      ?? (voicePicked.value || wanted.language === 'und' ? undefined : pick((t) => t.language === wanted.language))
+    const source = hit ?? cur
+    const playing = lead(source)?.value ?? null
+    let note = ''
+    if (hit && hit !== cur) note = `В браузере откроется раздача ${[hit.quality, hit.source_type].filter(Boolean).join(' ') || 'с этой озвучкой'}: в ней «${playing}» — основная дорожка.`
+    else if (hit && playing !== wanted.value) note = `В браузере прозвучит «${playing}» — основная дорожка раздачи.`
+    return {
+      source, wanted: wanted.value, playing, voiceMatches: !!hit,
+      audioRisk: browserAudioRisk(source), compatible: releaseBrowserCompatible(source), note,
+    }
+  })
   // Initialize selectedVoice when selected source changes (page load or quality switch).
   watch(selected, (src) => {
     if (!src) return
@@ -404,6 +467,12 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   })
   const choice = computed<StreamChoice>(() => ({
     source_id: selected.value?.source_id ?? null,
+    season: currentEpisode.value?.season ?? null,
+    episode: currentEpisode.value?.episode ?? null,
+  }))
+  /** The browser stream: the release of browserPlan (where the chosen voice is the first track). */
+  const browserChoice = computed<StreamChoice>(() => ({
+    source_id: browserPlan.value.source?.source_id ?? null,
     season: currentEpisode.value?.season ?? null,
     episode: currentEpisode.value?.episode ?? null,
   }))
@@ -482,6 +551,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   }
   function pickLanguage(lang: LanguagePill) {
     language.value = lang
+    voicePicked.value = false
     if (selected.value && speaks(selected.value, lang)) {
       const match = sourceTracks(selected.value).find((o) => o.language === lang)
       if (match) selectedVoice.value = match.value
@@ -512,6 +582,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       choose(source)
     }
     selectedVoice.value = found.value
+    voicePicked.value = true
     if (found.language !== 'und') language.value = found.language
   }
   function followEpisode() {
@@ -681,6 +752,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     message.value = ''
     installPrompt.value = false
     selectedVoice.value = null
+    voicePicked.value = false
     if (item.value && access.value === true) void refresh()
   }, { immediate: true })
   watch(() => library.revision.value, () => { if (item.value && access.value === true) void refresh() })
@@ -695,7 +767,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
 
   return reactive({
     view, loadError, selected, sources, stage, audioLanguage, activeLanguage, language, season, episode,
-    qualityOptions, languageOptions, voiceOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice,
+    qualityOptions, languageOptions, voiceOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice, browserPlan, browserChoice,
     busy, message, error, installPrompt, selectedVoice, audioButtonLabel,
     refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, addToLibrary, launch, closeInstall, cancelLaunch,
   })

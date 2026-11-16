@@ -43,7 +43,8 @@ export type TorrentEpisode = { season: number; episode: number }
 export type TorrentSeasonEpisode = { episode: number; source_id: string | null; size_bytes: number }
 export type TorrentSeasonFiles = { season: number; episodes: TorrentSeasonEpisode[] }
 export type TorrentLanguage = 'ru' | 'uk' | 'en'
-export type ContainerAudioTrack = { index: number; language: TorrentLanguage | 'und'; title: string }
+/** One audio track of the release file; ``codec`` (aac, ac3, eac3, dts…) and ``channels`` come from the container header. */
+export type ContainerAudioTrack = { index: number; language: TorrentLanguage | 'und'; title: string; codec?: string | null; channels?: number | null }
 export type TorrentSource = {
   source_id: string | null; title: string; quality: string | null; source_type: string | null; languages: TorrentLanguage[];
   seeders: number; size_bytes: number; state: TorrentSourceState; progress: number; start_ms: number | null;
