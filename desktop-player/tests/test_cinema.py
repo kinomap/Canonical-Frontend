@@ -6,13 +6,14 @@ import threading
 import time
 
 import pytest
-from PySide6.QtCore import QAbstractAnimation, QEvent, QPointF, Qt, Signal
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtCore import QAbstractAnimation, QEvent, QPoint, QPointF, Qt, Signal
+from PySide6.QtGui import QKeyEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
 from kinosota_player import cinema, libmpv
 from kinosota_player.cinema import (DISSOLVE_MS, FILM_VOLUME, INTRO_FIRST_FRAME, INTRO_STILL, INTRO_VIDEO, CinemaEngine,
-                                    CinemaSurface, Timeline, mpv_key_name, options_from_args)
+                                    WHEEL_VOLUME_STEP, CinemaSurface, Timeline, mpv_key_name, options_from_args,
+                                    wheel_volume_notches)
 from kinosota_player.direct import DirectLaunchSplash, DirectPlayer, StillBackdrop
 from kinosota_player.engine import Mpv
 
@@ -69,7 +70,7 @@ class FakeView(QWidget):
     mouseMoved = Signal(QPointF)
     mouseButton = Signal(str, bool)
     mouseDouble = Signal(str)
-    wheel = Signal(str)
+    volumeWheel = Signal(float)
 
     def __init__(self):
         super().__init__()
@@ -309,21 +310,84 @@ def test_input_reaches_mpv_only_while_the_film_plays_and_mpv_fullscreen_drives_t
     film = surface.handles['film']
     surface.send_key('SPACE')
     surface.view.mouseButton.emit('MBTN_LEFT', True)
+    surface.view.volumeWheel.emit(1.0)
     assert film.commands == [('loadfile', URL, 'replace')]  # The intro is not interactive.
     first_film_frame(surface, cached=5)
     surface.send_key('SPACE')
     surface.view.mouseMoved.emit(QPointF(12.6, 40.2))
     surface.view.mouseButton.emit('MBTN_LEFT', True)
     surface.view.mouseButton.emit('MBTN_LEFT', False)
-    surface.view.wheel.emit('WHEEL_UP')
+    surface.view.volumeWheel.emit(1.0)
     assert film.commands[1:] == [('keypress', 'SPACE'), ('mouse', 12, 40), ('keydown', 'MBTN_LEFT'),
-                                 ('keyup', 'MBTN_LEFT'), ('keypress', 'WHEEL_UP')]
+                                 ('keyup', 'MBTN_LEFT'), ('osd-auto', 'add', 'volume', '5')]
     surface.set_fullscreen(True)
     assert film.props['fullscreen'] is True
     push(surface, 'film', libmpv.EVENT_PROPERTY_CHANGE, name='fullscreen', value=False)  # mpv's Esc / f.
     assert events[-1] == ('fullscreen', False)
     push(surface, 'film', libmpv.EVENT_PROPERTY_CHANGE, name='fullscreen', value=False)
     assert events.count(('fullscreen', False)) == 1
+    surface.shutdown()
+
+
+def wheel_event(angle, inverted=False):
+    return QWheelEvent(QPointF(10, 10), QPointF(10, 10), QPoint(0, 0), QPoint(*angle), Qt.MouseButton.NoButton,
+                       Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, inverted)
+
+
+@pytest.mark.parametrize('angle, inverted, notches', [
+    ((0, 120), False, 1.0), ((0, -120), False, -1.0), ((0, 240), False, 2.0),
+    ((0, 40), False, 1 / 3),                     # High-resolution wheel / touchpad: a fraction of a notch.
+    ((0, 120), True, -1.0),                      # Natural scrolling is undone for the volume.
+    ((120, 0), False, 0.0), ((-120, 0), False, 0.0),  # A tilt wheel or sideways swipe never seeks.
+])
+def test_wheel_events_are_volume_notches_and_sideways_wheels_do_nothing(angle, inverted, notches):
+    assert wheel_volume_notches(QPoint(*angle), inverted) == pytest.approx(notches)
+    qt_app()
+    view = cinema.CinemaView()
+    emitted = []
+    view.volumeWheel.connect(emitted.append)
+    event = wheel_event(angle, inverted)
+    view.wheelEvent(event)
+    assert event.isAccepted()  # Consumed by the picture: never scrolls or seeks anything behind it.
+    assert emitted == ([pytest.approx(notches)] if notches else [])
+    view.deleteLater()
+
+
+def test_the_mouse_wheel_only_changes_the_film_volume_and_never_seeks():
+    surface, _ = make_surface()
+    surface.present()
+    surface.load_film(URL)
+    film = surface.handles['film']
+    first_film_frame(surface, cached=5)
+    surface.dissolve.setCurrentTime(DISSOLVE_MS)
+    assert surface.phase == 'film' and WHEEL_VOLUME_STEP == 5
+    for notches in (1.0, 1.0, -1.0, 0.25, -3.0, 0.0):
+        surface.view.volumeWheel.emit(notches)
+    assert film.commands[1:] == [('osd-auto', 'add', 'volume', '5'), ('osd-auto', 'add', 'volume', '5'),
+                                 ('osd-auto', 'add', 'volume', '-5'), ('osd-auto', 'add', 'volume', '1.25'),
+                                 ('osd-auto', 'add', 'volume', '-15')]
+    sent = [part for command in film.commands for part in command]
+    assert not any(str(part).startswith(('WHEEL', 'seek')) or part == 'keypress' for part in sent)
+    surface.stop_film()
+    surface.view.volumeWheel.emit(1.0)
+    assert film.commands[-1] == ('stop',)  # A stopped film takes no more wheel input.
+    surface.shutdown()
+
+
+def test_closing_fades_the_film_out_from_the_volume_the_viewer_chose():
+    surface, _ = make_surface()
+    surface.present()
+    surface.load_film(URL)
+    film = surface.handles['film']
+    first_film_frame(surface, cached=5)
+    surface.dissolve.setCurrentTime(DISSOLVE_MS)
+    film.props['volume'] = 30.0  # Turned down with the wheel.
+    surface.fade_audio(400)
+    assert film.props['volume'] == pytest.approx(30.0)  # No jump back to full volume before the fade.
+    surface.audio_fade.setCurrentTime(200)
+    assert film.props['volume'] == pytest.approx(15.0, abs=0.1)
+    surface.audio_fade.setCurrentTime(400)
+    assert film.props['volume'] == pytest.approx(0.0)
     surface.shutdown()
 
 

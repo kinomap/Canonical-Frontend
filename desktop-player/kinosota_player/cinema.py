@@ -33,6 +33,7 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from . import libmpv
 from . import intro_source
+from .engine import WHEEL_VOLUME_STEP
 from .intro_source import BUNDLED, BUNDLED_FIRST_FRAME, BUNDLED_STILL, BUNDLED_VIDEO, IntroChoice
 
 log = logging.getLogger('kinosota.cinema')
@@ -178,6 +179,18 @@ _BUTTONS = {Qt.MouseButton.LeftButton: 'MBTN_LEFT', Qt.MouseButton.RightButton: 
             Qt.MouseButton.ForwardButton: 'MBTN_FORWARD'}
 
 
+def wheel_volume_notches(angle_delta, inverted=False):
+    """Signed volume notches of a wheel event (+1.0: one notch louder), 0.0 when it is not a volume gesture.
+
+    Only the vertical wheel is a volume control. A tilt wheel or a sideways touchpad swipe does nothing,
+    so no wheel movement can seek the film. High-resolution wheels and touchpads give fractions of a
+    notch, which makes the volume glide. Natural (inverted) scrolling is undone: turning the wheel
+    away from the hand always makes the film louder.
+    """
+    notches = angle_delta.y() / 120.0
+    return -notches if inverted else notches
+
+
 # View -----------------------------------------------------------------------------------------------------------
 class _Layer:
     __slots__ = ('name', 'player', 'fbo', 'alpha', 'armed', 'has_frame')
@@ -198,7 +211,7 @@ class CinemaView(QOpenGLWidget):
     mouseMoved = Signal(QPointF)  # Device pixels.
     mouseButton = Signal(str, bool)
     mouseDouble = Signal(str)
-    wheel = Signal(str)
+    volumeWheel = Signal(float)   # Signed wheel notches: the wheel is the volume control and nothing else.
     _wake = Signal()
 
     ORDER = ('intro', 'film')
@@ -472,11 +485,9 @@ class CinemaView(QOpenGLWidget):
         super().mouseDoubleClickEvent(event)
 
     def wheelEvent(self, event):
-        delta = event.angleDelta()
-        if delta.y():
-            self.wheel.emit('WHEEL_UP' if delta.y() > 0 else 'WHEEL_DOWN')
-        elif delta.x():
-            self.wheel.emit('WHEEL_LEFT' if delta.x() < 0 else 'WHEEL_RIGHT')
+        notches = wheel_volume_notches(event.angleDelta(), event.inverted())
+        if notches:
+            self.volumeWheel.emit(notches)
         event.accept()
 
 
@@ -512,6 +523,7 @@ class CinemaSurface(QObject):
         self._film_alive = False
         self._film_exit = None
         self._fullscreen = None
+        self._film_fade_from = FILM_VOLUME
         self.started = threading.Event()  # Set when the film plays or ends (CinemaEngine waits on it).
         self.dissolve = QVariantAnimation(self)
         self.dissolve.setStartValue(0.0)
@@ -537,7 +549,7 @@ class CinemaSurface(QObject):
         self.view.mouseMoved.connect(self._mouse_moved)
         self.view.mouseButton.connect(self._mouse_button)
         self.view.mouseDouble.connect(self.send_key)
-        self.view.wheel.connect(self.send_key)
+        self.view.volumeWheel.connect(self.wheel_volume)
 
     # Players ------------------------------------------------------------------------------------------------
     def _open(self, name, options):
@@ -695,8 +707,9 @@ class CinemaSurface(QObject):
         self.view.release()
 
     def fade_audio(self, duration_ms):
-        """Fade every sound out (cancel while the window fades)."""
+        """Fade every sound out (cancel while the window fades); the film from the level the viewer set."""
         self.audio_fade.stop()
+        self._film_fade_from = self._film_volume_level()
         self.audio_fade.setDuration(max(1, int(duration_ms)))
         self.audio_fade.start()
 
@@ -729,6 +742,28 @@ class CinemaSurface(QObject):
                 film.command('keypress', name)
             except libmpv.MpvError:
                 pass
+
+    def wheel_volume(self, notches):
+        """The mouse wheel changes the film volume and never seeks.
+
+        The wheel is not forwarded to mpv as WHEEL_UP / WHEEL_DOWN: the bundled libmpv binds those to
+        «seek ±10 s» and its OSC seek bar reacts to them too, so the film jumped while the volume moved.
+        """
+        film = self.handles.get('film')
+        step = round(WHEEL_VOLUME_STEP * float(notches), 2)
+        if not step or film is None or not self.accepts_input():
+            return
+        try:
+            film.command('osd-auto', 'add', 'volume', f'{step:g}')  # mpv clamps it and shows its volume bar.
+        except libmpv.MpvError:
+            pass
+
+    def _film_volume_level(self):
+        film = self.handles.get('film')
+        level = film.get('volume') if film is not None and self.phase == 'film' else None
+        if isinstance(level, bool) or not isinstance(level, (int, float)):
+            return FILM_VOLUME
+        return float(level)
 
     # Events -------------------------------------------------------------------------------------------------
     def _drain(self):
@@ -862,7 +897,7 @@ class CinemaSurface(QObject):
 
     def _audio_fade_step(self, value):
         for name, player in self.handles.items():
-            base = INTRO_VOLUME if name == 'intro' else FILM_VOLUME
+            base = INTRO_VOLUME if name == 'intro' else self._film_fade_from
             if name == 'film' and self.phase == 'dissolve' and self.timeline is not None:
                 base *= self.timeline.film_volume
             player.try_set('volume', round(base * float(value), 1))

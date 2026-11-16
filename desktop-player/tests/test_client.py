@@ -157,3 +157,23 @@ def test_mpv_validation_rejects_broken_opt_binary_and_falls_back_to_system_mpv(t
     mpv = engine.Mpv()
     assert mpv.executable == str(working_sys)
     assert '--osd-level=0' in mpv._base_args()
+
+
+def test_the_external_mpv_window_binds_the_wheel_to_volume_and_never_seeks(tmp_path):
+    import tempfile
+    from pathlib import Path
+    from kinosota_player import engine
+    mpv = engine.Mpv(executable=str(tmp_path / 'mpv'))
+    assert not any(a.startswith('--input-conf=') for a in mpv._base_args())  # No private directory yet.
+    mpv.directory = tempfile.TemporaryDirectory(prefix='kinosota-player-test-')
+    try:
+        args = mpv._base_args()
+        conf = [a.split('=', 1)[1] for a in args if a.startswith('--input-conf=')]
+        assert len(conf) == 1 and Path(conf[0]).parent == Path(mpv.directory.name)
+        bindings = dict(line.split(' ', 1) for line in Path(conf[0]).read_text(encoding='utf-8').splitlines())
+        step = engine.WHEEL_VOLUME_STEP
+        assert bindings == {'WHEEL_UP': f'add volume {step}', 'WHEEL_DOWN': f'add volume -{step}',
+                            'WHEEL_LEFT': 'ignore', 'WHEEL_RIGHT': 'ignore'}
+        assert not any('seek' in command for command in bindings.values())
+    finally:
+        mpv.directory.cleanup()
