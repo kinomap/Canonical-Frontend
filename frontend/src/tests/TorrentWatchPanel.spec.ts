@@ -131,10 +131,38 @@ const langPill=(w:any,title:string)=>w.findAll('.watch-pill').find((b:any)=>b.at
 describe('browser plays the chosen voice with sound, or says it cannot',()=>{
  beforeEach(()=>{vi.mocked(torrentPlaybackApi.playbackTicket).mockResolvedValue({stream_url:'https://media.example/ua.mkv',expires_at:'x'} as any)})
 
- it('gives no browser badge when the codec of the first track is unknown',async()=>{
+ it('an unknown codec of a plain WEB-DL keeps the badge: the browser plays it without a warning',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[src({source_id:'s-plain',voices:['Дубляж'],default:true})]}) as any)
   const w=await at()
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  expect(w.find('.browser-play').exists()).toBe(true)
+  expect((await openAudio(w)).map(badge)).toEqual([true])
+ })
+
+ it('«Сердце зверя» cached before the codec parser: the leading Russian track keeps the badge the player honours',async()=>{
+  const legacy=src({source_id:'b-legacy',title:'Heart of the Beast [2026, WEB-DL 1080p] Dub + Dub (Ukr) + Original Eng',languages:['ru','uk','en'],default:true,
+   audio_tracks:[{index:1,language:'ru',title:'Продубляж'},{index:2,language:'uk',title:'LeDoyen',codec:null},{index:3,language:'en',title:'English'}]})
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[legacy]}) as any)
+  const w=await at()
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  expect(w.find('.browser-play').exists()).toBe(true)
+  const items=await openAudio(w)
+  expect(items.map(name)).toEqual(['Продубляж','LeDoyen','English'])
+  expect(items.map(badge)).toEqual([true,false,false])
+ })
+
+ it('an unknown codec of a release naming AC-3 / DTS gets no badge and the player warns',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[src({source_id:'s-dts',title:'Dune 2021 1080p BDRip DTS',voices:['Дубляж'],default:true})]}) as any)
+  const w=await at()
+  expect(w.find('[data-testid="codec-notice"]').text()).toContain('DTS')
   expect((await openAudio(w)).map(badge)).toEqual([false])
+ })
+
+ it('a known AAC first track keeps the badge even when the title also names AC-3',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[src({source_id:'s-mix',title:'Dune 2021 1080p WEB-DL AC3',default:true,audio_tracks:[t(1,'ru','Дубляж','aac'),t(2,'en','Original','ac3',6)]})]}) as any)
+  const w=await at()
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  expect((await openAudio(w)).map(badge)).toEqual([true,false])
  })
 
  it('gives no badge to an AC-3 first track and warns before a silent film plays',async()=>{
