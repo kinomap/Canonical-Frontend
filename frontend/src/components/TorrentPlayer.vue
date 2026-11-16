@@ -12,16 +12,18 @@
  *
  * The video box keeps the 16:9 proportions of the ready card before, during and
  * after the stream starts. «Смотреть в браузере» starts the KINOSOTA intro at once;
- * the film loads silently underneath and, on its first decoded frame, the intro
- * cross-dissolves into it while the intro sound fades out and the film sound in.
+ * the film warms up muted underneath (muted autoplay is never blocked, so there is no
+ * second click) and, only once it really shows moving frames, the intro cross-dissolves
+ * into it while the intro sound fades out and the film sound in. A slow torrent never
+ * shows black: the intro holds its final picture until the film takes over.
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import CinemaIntro from './CinemaIntro.vue'
 import TorrentPlaybackSubscription from './TorrentPlaybackSubscription.vue'
 import PlaybackCompatibility from './PlaybackCompatibility.vue'
 import { torrentPlaybackApi, type StreamChoice, type TorrentPlaybackStatus } from '@/api/torrents'
 import { codecList, missingPicture, soundWatcher, unsupportedCodecs, type CompatibilityIssue } from '@/lib/browserCodecs'
-import { DISSOLVE_MS, fadeInFilm, introConfig } from '@/lib/cinemaIntro'
+import { DISSOLVE_MS, fadeInFilm, firstFrameWatcher, introConfig } from '@/lib/cinemaIntro'
 const props = withDefaults(defineProps<{
   access: boolean | null
   accessError: boolean
@@ -63,9 +65,17 @@ const warnBefore = computed(() => risks.value.length > 0 && !riskAccepted.value)
 let ignoreSilent = false
 /** Bumped by every start and stop: a ticket that arrives late never starts a stale stream. */
 let launchId = 0
-/** Intro switched off in the admin: no intro layer, no muted warm-up, the film's sound starts at once. */
+/** Intro switched off in the admin: no intro layer, the film's sound starts at full volume on its first frames. */
 let introOn = true
 const sound = soundWatcher(4)
+const frames = firstFrameWatcher()
+/** The film warms up muted under the intro; the dissolve brings its sound in. */
+const filmMuted = ref(true)
+/** The browser paused the film for turning audible on its own: it plays on muted, one tap brings the sound. */
+const soundLocked = ref(false)
+/** WebKit pauses an autoplayed video that turns audible without a user gesture within a moment. */
+const SOUND_GUARD_MS = 250
+let soundGuard: ReturnType<typeof setTimeout> | undefined
 
 async function startPlayback(force = false) {
   if (!props.tmdbId || !isPlayable.value || streamLoading.value) return
@@ -79,11 +89,15 @@ async function startPlayback(force = false) {
   introOn = introConfig.value.enabled
   launching.value = true
   introKey.value++
+  filmMuted.value = true
+  soundLocked.value = false
+  clearTimeout(soundGuard)
   try {
     const ticket = await torrentPlaybackApi.playbackTicket(props.kind, props.tmdbId, props.choice ?? {})
     // Closed, or another quality / voice / episode was picked meanwhile.
     if (id !== launchId) return
     sound.reset()
+    frames.reset()
     ignoreSilent = false
     streamUrl.value = ticket.stream_url
   } catch {
@@ -97,6 +111,8 @@ async function startPlayback(force = false) {
 
 function stopPlayback() {
   launchId++
+  clearTimeout(soundGuard)
+  soundLocked.value = false
   streamUrl.value = null
   streamError.value = ''
   streamLoading.value = false
@@ -127,21 +143,66 @@ function silent(kind: 'video' | 'audio') {
   launching.value = false
   issue.value = { kind, stopped: false }
 }
-function onMetadata() {
-  // The film stays silent under the intro until the dissolve brings its sound in.
-  if (video.value && launching.value && introOn) {
-    try { video.value.volume = 0 } catch { /* read-only volume (iOS) */ }
-  }
-  if (video.value && !ignoreSilent && missingPicture(video.value)) silent('video')
+/** A refused play() is caught, never thrown: the intro keeps holding instead of a black, paused film. */
+function playFilm(v: HTMLVideoElement, refused?: () => void) {
+  try {
+    const played = v.play() as Promise<void> | undefined
+    played?.catch?.((error: unknown) => { if ((error as { name?: string } | null)?.name === 'NotAllowedError') refused?.() })
+  } catch { /* jsdom */ }
 }
-/** canplay / playing / the first timeupdate: the film's first frame is decoded, dissolve the intro into it. */
-function onStarted() {
-  if (launching.value && video.value && introOn) fadeInFilm(video.value, DISSOLVE_MS)
+/** Even muted autoplay refused (iOS Low Power Mode, a strict site setting): hand over the film's own play control. */
+function autoplayRefused(v: HTMLVideoElement) {
+  if (video.value !== v || !launching.value) return
   launching.value = false
+  unmuteFilm(v)
+}
+function unmuteFilm(v: HTMLVideoElement) {
+  soundLocked.value = false
+  filmMuted.value = false
+  v.muted = false
+  try { v.volume = 1 } catch { /* read-only volume (iOS) */ }
+}
+function onMetadata() {
+  const v = video.value
+  if (!v) return
+  if (!ignoreSilent && missingPicture(v)) return silent('video')
+  if (!launching.value) return
+  // Silent under the intro until the dissolve brings the sound in; started explicitly next to `autoplay`.
+  try { v.volume = 0 } catch { /* read-only volume (iOS) */ }
+  playFilm(v, () => autoplayRefused(v))
+}
+/**
+ * `playing` / `timeupdate`: dissolve only once the film really shows moving frames. Never on `canplay`:
+ * it fires on the first container bytes, while TorrServer is still buffering and no frame is decoded.
+ */
+function onProgress() {
+  const v = video.value
+  if (v && launching.value && frames.check(v)) revealFilm(v)
+}
+function revealFilm(v: HTMLVideoElement) {
+  launching.value = false
+  filmMuted.value = false
+  fadeInFilm(v, introOn ? DISSOLVE_MS : 0)
+  // WebKit pauses an autoplayed film that turns audible outside a user gesture: keep the picture running muted.
+  clearTimeout(soundGuard)
+  soundGuard = setTimeout(() => {
+    if (video.value !== v || !v.paused || v.ended || issue.value) return
+    filmMuted.value = true
+    v.muted = true
+    soundLocked.value = true
+    playFilm(v)
+  }, SOUND_GUARD_MS)
+}
+/** «Включить звук»: the tap is a user gesture, so the sound may come in now. */
+function enableSound() {
+  const v = video.value
+  if (!v) return
+  unmuteFilm(v)
+  if (v.paused) playFilm(v)
 }
 function onTime() {
   const v = video.value
-  if (v && launching.value && v.currentTime > 0) onStarted()
+  onProgress()
   if (v && !ignoreSilent && !issue.value && sound.check(v)) silent('audio')
 }
 /** «Смотреть в браузере» on the notice: resume the paused video, or try the stream again. */
@@ -150,6 +211,7 @@ function browseAnyway() {
   issue.value = null
   if (current && !current.stopped && video.value) {
     ignoreSilent = true
+    unmuteFilm(video.value)
     const played = video.value.play() as Promise<void> | undefined
     played?.catch?.(() => {})
     return
@@ -162,12 +224,16 @@ function closeNotice() {
   issue.value = null
   riskAccepted.value = true
   if (current?.stopped) stopPlayback()
-  else if (current && !current.stopped) ignoreSilent = true
+  else if (current && !current.stopped) {
+    ignoreSilent = true
+    if (video.value) unmuteFilm(video.value)
+  }
 }
 // Another quality / voice / episode: never keep playing the previous stream.
 watch(() => JSON.stringify(props.choice ?? {}), reset)
 watch(() => props.sourceTitle, () => { riskAccepted.value = false })
 watch(isPlayable, (ready) => { if (!ready) reset() })
+onBeforeUnmount(() => clearTimeout(soundGuard))
 defineExpose({ startPlayback, playInBrowser })
 </script>
 <template>
@@ -180,17 +246,18 @@ defineExpose({ startPlayback, playInBrowser })
         <video
           v-if="streamUrl"
           ref="video"
+          :muted="filmMuted"
           :src="streamUrl"
           controls
           autoplay
-          preload="metadata"
+          playsinline
+          preload="auto"
           class="torrent-video"
           aria-label="Видеоплеер"
           @ended="stopPlayback"
           @error="onVideoError"
           @loadedmetadata="onMetadata"
-          @canplay="onStarted"
-          @playing="onStarted"
+          @playing="onProgress"
           @timeupdate="onTime"
         />
         <div class="launch-overlay" :class="{ 'is-hidden': !launching }" role="status" aria-live="polite" :aria-hidden="launching ? undefined : 'true'" data-testid="launch-overlay">
@@ -200,6 +267,7 @@ defineExpose({ startPlayback, playInBrowser })
             <p class="launch-hint">{{ streamUrl ? 'Загружаем первые секунды видео…' : 'Подготовка потока…' }}</p>
           </div>
         </div>
+        <button v-if="soundLocked && !issue && !launching" type="button" class="sound-btn" @click="enableSound">Включить звук</button>
         <button v-if="!issue" type="button" class="stop-btn" @click="stopPlayback">✕ Закрыть плеер</button>
         <PlaybackCompatibility v-else overlay can-browse :issue="issue.kind" :busy="launchBusy" :status="launchMessage" :error="launchError" @desktop="emit('desktop')" @browser="browseAnyway" @close="closeNotice" />
       </div>
@@ -238,6 +306,8 @@ defineExpose({ startPlayback, playInBrowser })
 .launch-hint{margin:2px 0 0;font-size:13px;line-height:18px;color:#cfd8dc}
 @media (prefers-reduced-motion:reduce){.launch-overlay,.launch-overlay.is-hidden{transition:none}}
 .stop-btn{z-index:3;position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;min-height:36px;cursor:pointer;font-size:13px}
+.sound-btn{z-index:3;position:absolute;top:12px;left:12px;background:rgba(0,0,0,.7);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;min-height:36px;cursor:pointer;font-size:13px}
+.stop-btn:focus-visible,.sound-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .status-hint{font-size:14px;color:#9ce8d7;margin:0 0 8px}
 .stream-error{color:#ff6b6b;font-size:14px;margin:0 0 8px}
 @media(max-width:600px){.torrent-player-state{aspect-ratio:auto;min-height:400px;padding:24px 16px}}

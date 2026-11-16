@@ -15,6 +15,10 @@ export const INTRO_SOURCES = [
 ] as const
 /** Cross-dissolve from the intro to the film (or to the opened desktop player). */
 export const DISSOLVE_MS = 900
+/** Film progress the dissolve waits for: `playing` alone can come before the first presented frame. */
+export const FIRST_FRAME_PROGRESS_S = 0.1
+/** Ambient hold: this close to its end the intro freezes on its final picture while the film still loads. */
+export const HOLD_LEAD_S = 0.25
 
 /**
  * Dynamic intro (admin «Видео и Реклама» → «Интро престарта»): GET /api/v1/cinema/intro says
@@ -268,7 +272,30 @@ export function attachIntroAudio(media: HTMLMediaElement): IntroAudio {
   }
 }
 
-/** The film's sound comes in under the dissolving intro. */
+/**
+ * The film's sound comes in under the dissolving intro. The film warms up muted (muted autoplay
+ * is never blocked, so it starts without a second click); here it turns audible from silence.
+ */
 export function fadeInFilm(media: HTMLMediaElement, ms = DISSOLVE_MS) {
+  try { media.volume = 0 } catch { /* read-only volume (iOS) */ }
+  media.muted = false
   return rampVolume(media, ms, fadeInCurve, 1)
+}
+
+/**
+ * True once the film really shows moving pictures: it plays, has a picture size and its clock
+ * advanced FIRST_FRAME_PROGRESS_S past where it started (a resume position or a seek back resets
+ * the base). `canplay` never qualifies: it fires on the first container bytes, long before a
+ * torrent stream has decoded frames.
+ */
+export function firstFrameWatcher(progress = FIRST_FRAME_PROGRESS_S) {
+  let base: number | null = null
+  return {
+    reset() { base = null },
+    check(video: HTMLVideoElement): boolean {
+      if (video.paused || video.ended || !video.videoWidth || !video.videoHeight) return false
+      if (base === null || video.currentTime < base) { base = video.currentTime; return false }
+      return video.currentTime - base >= progress
+    },
+  }
 }

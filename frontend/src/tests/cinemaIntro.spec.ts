@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import CinemaIntro from '@/components/CinemaIntro.vue'
-import { attachIntroAudio, fadeInCurve, fadeInFilm, fadeOutCurve, INTRO_SOURCES, rampVolume, startIntro } from '@/lib/cinemaIntro'
+import { attachIntroAudio, fadeInCurve, fadeInFilm, fadeOutCurve, firstFrameWatcher, INTRO_SOURCES, rampVolume, startIntro } from '@/lib/cinemaIntro'
 
 function media(play: () => Promise<void> | undefined) {
   const element = document.createElement('video')
@@ -115,5 +115,54 @@ describe('KINOSOTA web intro', () => {
     await vi.waitFor(() => expect(pause).toHaveBeenCalledTimes(1))
     wrapper.unmount()
     expect(pause).toHaveBeenCalledTimes(1) // end() is idempotent.
+  })
+
+  it('holds its final picture while the film still loads instead of meeting black', async () => {
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', { configurable: true, value: vi.fn(() => Promise.resolve()) })
+    const pause = vi.fn()
+    Object.defineProperty(HTMLMediaElement.prototype, 'pause', { configurable: true, value: pause })
+    const wrapper = mount(CinemaIntro, { props: { active: true, fadeMs: 1 } })
+    const clip = wrapper.get('video')
+    let time = 0
+    Object.defineProperties(clip.element, { duration: { configurable: true, get: () => 8 }, currentTime: { configurable: true, get: () => time } })
+    time = 4
+    await clip.trigger('timeupdate')
+    expect(wrapper.classes()).not.toContain('is-holding')
+    expect(pause).not.toHaveBeenCalled()
+    time = 7.8
+    await clip.trigger('timeupdate')
+    expect(wrapper.classes()).toContain('is-holding')
+    expect(pause).toHaveBeenCalledTimes(1)
+    await clip.trigger('ended')
+    expect(pause).toHaveBeenCalledTimes(1) // Holding already: no second freeze.
+    await wrapper.setProps({ active: false })
+    await vi.waitFor(() => expect(pause).toHaveBeenCalledTimes(2))
+    wrapper.unmount()
+  })
+
+  it('never holds once the dissolve has begun', async () => {
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', { configurable: true, value: vi.fn(() => Promise.resolve()) })
+    Object.defineProperty(HTMLMediaElement.prototype, 'pause', { configurable: true, value: vi.fn() })
+    const wrapper = mount(CinemaIntro, { props: { active: true, fadeMs: 1 } })
+    await wrapper.setProps({ active: false })
+    await wrapper.get('video').trigger('ended')
+    expect(wrapper.classes()).not.toContain('is-holding')
+    wrapper.unmount()
+  })
+
+  it('lets the film take over only once it shows moving frames', () => {
+    const frames = firstFrameWatcher()
+    const film = { paused: true, ended: false, videoWidth: 0, videoHeight: 0, currentTime: 0 }
+    const check = (patch: Partial<typeof film>) => frames.check(Object.assign(film, patch) as unknown as HTMLVideoElement)
+    expect(check({})).toBe(false) // Still buffering, paused.
+    expect(check({ paused: false })).toBe(false) // Playing, but no decoded picture yet.
+    expect(check({ videoWidth: 1920, videoHeight: 1080, currentTime: 42 })).toBe(false) // A resume position sets the base.
+    expect(check({ currentTime: 42.05 })).toBe(false)
+    expect(check({ currentTime: 42.15 })).toBe(true)
+    expect(check({ currentTime: 10 })).toBe(false) // A seek back resets the base.
+    expect(check({ currentTime: 10.2 })).toBe(true)
+    expect(check({ ended: true })).toBe(false)
+    frames.reset()
+    expect(check({ ended: false, currentTime: 11 })).toBe(false)
   })
 })
