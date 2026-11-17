@@ -103,20 +103,33 @@ function compareRank(a: number[], b: number[]): number {
 
 /** The track a browser plays: the first container audio track (null: the file's tracks are unknown). */
 export const browserTrack = (source: Pick<TorrentSource, 'audio_tracks'>) => source.audio_tracks?.[0] ?? null
+/** Release title plus the file name: «…WEB-DL [H.264/1080p]» rarely names the sound, «….DDP5.1.H.264.mkv» does. */
+export function releaseName(source: Pick<TorrentSource, 'title' | 'file_name'> | null | undefined): string {
+  return [source?.title, source?.file_name].filter(Boolean).join(' ')
+}
 /**
- * The browser plays the release with picture and sound, by the same rule TorrentPlayer warns by:
- * - the release names no video codec this browser lacks (HEVC, AV1…);
- * - the codec of the first audio track, when the file told it: AAC/MP3 plays, AC-3/DTS… does not;
- * - when it is not known yet (rows cached before the codec parser, MP4 releases), the title
- *   decides: a release naming no audio codec this browser lacks (a plain WEB-DL / HDTV) plays,
- *   exactly as «Смотреть в браузере» starts it without a warning.
+ * Releases this tab already heard play silently (soundWatcher): the browser badge never lights on
+ * them again, whatever the stored codec says.
  */
-export function releaseBrowserCompatible(source: Pick<TorrentSource, 'title' | 'audio_tracks'>): boolean {
-  const named = unsupportedCodecs(source.title)
-  if (named.some((r) => r.kind === 'video')) return false
-  const known = audioCodecPlayable(browserTrack(source)?.codec)
-  if (known !== null) return known
-  return !named.some((r) => r.kind === 'audio')
+const silentSources = reactive(new Set<string>())
+export function markBrowserSilent(sourceId: string | null | undefined): void {
+  if (sourceId) silentSources.add(sourceId)
+}
+export const browserSilent = (sourceId: string | null | undefined) => !!sourceId && silentSources.has(sourceId)
+/**
+ * The browser plays the release with picture and sound — proven, never assumed:
+ * - neither the title nor the file name names a video codec this browser lacks (HEVC, AV1…);
+ * - the codec of the first audio track is known from the file and is one a browser plays (AAC, MP3…).
+ *   It outranks the names (a title listing AC-3 for a second track). An unknown codec (rows cached
+ *   before the codec parser) is no proof: a plain «WEB-DL» is usually DDP 5.1 and plays silently;
+ * - the release did not already play silently in this tab.
+ */
+export function releaseBrowserCompatible(
+  source: Pick<TorrentSource, 'title' | 'audio_tracks'> & Partial<Pick<TorrentSource, 'source_id' | 'file_name'>>,
+): boolean {
+  if (browserSilent(source.source_id)) return false
+  if (unsupportedCodecs(releaseName(source)).some((r) => r.kind === 'video')) return false
+  return audioCodecPlayable(browserTrack(source)?.codec) === true
 }
 /** Sound of the browser track: '' plays, the codec label («Dolby Digital (AC-3)») when dropped, null unknown. */
 export function browserAudioRisk(source: Pick<TorrentSource, 'audio_tracks'>): string | null {

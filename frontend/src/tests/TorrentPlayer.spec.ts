@@ -58,6 +58,17 @@ describe('actual torrent player viewport',()=>{
 
 describe('browser codec incompatibility notice in the player window',()=>{
  const ticket=(url:string)=>({stream_url:url,expires_at:'2026-11-05T12:00:00Z'})
+ it('«Надежда»: the file name names DDP 5.1 the title omits, so the player warns before streaming',async()=>{
+  api.playbackTicket.mockResolvedValue(ticket('https://media.example/stream/hope.mkv'))
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:1058424,ready:true,choice:{source_id:'hope'},
+   sourceTitle:'Надежда / Hopeu / Hope (2026) WEB-DL [H.264/1080p] Hopeu.2026.1080p.AMZN.WEB-DL.DDP5.1.H.264.mkv'}})
+  const notice=w.find('[data-testid="torrent-player"] [data-testid="codec-notice"]')
+  expect(notice.text()).toContain('Dolby Digital Plus (E-AC-3)')
+  expect(w.find('.browser-play').exists()).toBe(false)
+  expect(api.playbackTicket).not.toHaveBeenCalled()
+  w.unmount()
+ })
+
  it('warns before playing a release with codecs this browser lacks and hands it to KINOSOTA Player',async()=>{
   api.playbackTicket.mockResolvedValue(ticket('https://media.example/stream/2.mkv'))
   const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:155,ready:true,choice:{source_id:'s-1'},sourceTitle:'Dune (2021) BDRip 2160p | HEVC | DTS'}})
@@ -132,6 +143,7 @@ describe('browser codec incompatibility notice in the player window',()=>{
   expect(pause).not.toHaveBeenCalled()
   time=605;await w.find('video.torrent-video').trigger('timeupdate')
   expect(pause).toHaveBeenCalledTimes(1)
+  expect(w.emitted('silent')).toEqual([['audio']])
   const notice=w.find('[data-testid="codec-notice"]')
   expect(notice.classes()).toContain('is-overlay')
   expect(notice.text()).toContain('не воспроизводит звук')

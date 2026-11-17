@@ -2,6 +2,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest'
 import {flushPromises,mount} from '@vue/test-utils'
 import {createMemoryHistory,createRouter} from 'vue-router'
 import View from '@/views/TorrentCatalogView.vue'
+import {markBrowserSilent,releaseBrowserCompatible,releaseName} from '@/composables/useTorrentWatch'
 import {torrentsApi,torrentPlaybackApi} from '@/api/torrents'
 import {waitForPlayer} from '@/lib/desktopLaunch'
 vi.mock('@/api/torrents',async original=>({...await original<any>(),torrentsApi:{access:vi.fn(),list:vi.fn(),genres:vi.fn(),detail:vi.fn()},torrentPlaybackApi:{sources:vi.fn(),prepareSource:vi.fn(),discover:vi.fn(),desktopLaunch:vi.fn(),launchStatus:vi.fn(),playbackTicket:vi.fn(),preparationStatus:vi.fn()}}))
@@ -131,15 +132,37 @@ const langPill=(w:any,title:string)=>w.findAll('.watch-pill').find((b:any)=>b.at
 describe('browser plays the chosen voice with sound, or says it cannot',()=>{
  beforeEach(()=>{vi.mocked(torrentPlaybackApi.playbackTicket).mockResolvedValue({stream_url:'https://media.example/ua.mkv',expires_at:'x'} as any)})
 
- it('an unknown codec of a plain WEB-DL keeps the badge: the browser plays it without a warning',async()=>{
+ it('an unknown codec of a plain WEB-DL lights no badge: a codec never read from the file is no proof of sound',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[src({source_id:'s-plain',voices:['Дубляж'],default:true})]}) as any)
   const w=await at()
   expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
   expect(w.find('.browser-play').exists()).toBe(true)
-  expect((await openAudio(w)).map(badge)).toEqual([true])
+  expect((await openAudio(w)).map(badge)).toEqual([false])
  })
 
- it('«Сердце зверя» cached before the codec parser: the leading Russian track keeps the badge the player honours',async()=>{
+ it('«Надежда» (TMDB 1058424): a WEB-DL whose file names DDP 5.1 is never badged, a proven AAC release is',async()=>{
+  const hope=src({source_id:'hope',title:'Надежда / Hopeu / Hope (2026) WEB-DL [H.264/1080p]',file_name:'Hopeu.2026.1080p.AMZN.WEB-DL.DDP5.1.H.264.mkv',default:true,
+   audio_tracks:[{index:1,language:'ru',title:'MVO, LostFilm'},{index:2,language:'ru',title:'HDrezka'}]})
+  expect(releaseName(hope)).toContain('DDP5.1')
+  expect(releaseBrowserCompatible(hope)).toBe(false)
+  expect(releaseBrowserCompatible({...hope,file_name:null,audio_tracks:[{index:1,language:'ru',title:'MVO, LostFilm',codec:'aac',channels:2}]})).toBe(true)
+  expect(releaseBrowserCompatible({...hope,audio_tracks:[{index:1,language:'ru',title:'MVO, LostFilm',codec:'eac3',channels:6}]})).toBe(false)
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[hope]}) as any)
+  const w=await at()
+  const items=await openAudio(w)
+  expect(items.map(name)).toEqual(['MVO, LostFilm','HDrezka'])
+  expect(items.map(badge)).toEqual([false,false])
+ })
+
+ it('a release the browser played silently loses its badge for the rest of the tab',async()=>{
+  const aac=src({source_id:'s-silent',default:true,audio_tracks:[{index:1,language:'ru',title:'Дубляж',codec:'aac',channels:2}]})
+  expect(releaseBrowserCompatible(aac)).toBe(true)
+  markBrowserSilent('s-silent')
+  expect(releaseBrowserCompatible(aac)).toBe(false)
+  expect(releaseBrowserCompatible({...aac,source_id:'s-other'})).toBe(true)
+ })
+
+ it('«Сердце зверя» cached before the codec parser: no track is badged until its codec is read',async()=>{
   const legacy=src({source_id:'b-legacy',title:'Heart of the Beast [2026, WEB-DL 1080p] Dub + Dub (Ukr) + Original Eng',languages:['ru','uk','en'],default:true,
    audio_tracks:[{index:1,language:'ru',title:'Продубляж'},{index:2,language:'uk',title:'LeDoyen',codec:null},{index:3,language:'en',title:'English'}]})
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[legacy]}) as any)
@@ -148,7 +171,7 @@ describe('browser plays the chosen voice with sound, or says it cannot',()=>{
   expect(w.find('.browser-play').exists()).toBe(true)
   const items=await openAudio(w)
   expect(items.map(name)).toEqual(['Продубляж','LeDoyen','English'])
-  expect(items.map(badge)).toEqual([true,false,false])
+  expect(items.map(badge)).toEqual([false,false,false])
  })
 
  it('an unknown codec of a release naming AC-3 / DTS gets no badge and the player warns',async()=>{

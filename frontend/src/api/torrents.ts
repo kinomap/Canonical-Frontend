@@ -51,6 +51,8 @@ export type TorrentSource = {
   default: boolean; episodes: TorrentEpisode[]; file_count: number
   voices?: string[]
   audio_tracks?: ContainerAudioTrack[]
+  /** Name of the release's video file («Hopeu.2026.1080p.AMZN.WEB-DL.DDP5.1.H.264.mkv»): it names codecs the title omits. */
+  file_name?: string | null
   rank?: number
 }
 export type TorrentSourcesView = {

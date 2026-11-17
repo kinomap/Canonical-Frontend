@@ -8,7 +8,7 @@ import TorrentCard from '@/components/TorrentCard.vue'
 import TorrentPlayer from '@/components/TorrentPlayer.vue'
 import TorrentWatchPanel from '@/components/TorrentWatchPanel.vue'
 import TorrentPosterStatus from '@/components/TorrentPosterStatus.vue'
-import { useTorrentWatch } from '@/composables/useTorrentWatch'
+import { markBrowserSilent, releaseName, useTorrentWatch } from '@/composables/useTorrentWatch'
 import { useAuthStore } from '@/stores/auth'
 import { NEW_RELEASE_YEAR } from '@/router/catalogSections'
 import { formatBudget, formatClock, formatDate, plural } from '@/utils/ruFormat'
@@ -28,6 +28,8 @@ const playbackAccess=ref<boolean|null>(null),accessError=ref(false)
 const watchState=useTorrentWatch(detail,playbackAccess)
 const player=ref<InstanceType<typeof TorrentPlayer>|null>(null)
 function playInBrowser(){void player.value?.playInBrowser()}
+/** The browser played this release silently: its badge never lights again in this tab. */
+function browserSilent(){markBrowserSilent(watchState.browserPlan.source?.source_id)}
 /** Title page of the reference layout: «2004–2012, США», «Доктор Хаус», «Уже лучше?», «8.6 TMDB · Завершён», «8 сезонов · 176 серий • Драма | Детектив». */
 const titleMeta=computed(()=>{
  const d=detail.value;if(!d)return ''
@@ -176,7 +178,7 @@ onBeforeUnmount(()=>{++generation;controller?.abort();clearTimeout(heroTimer)})
      </div>
     </div>
     <div class="title-details">
-     <TorrentPlayer ref="player" :access="playbackAccess" :access-error="accessError" :poster="detail.backdrop||detail.poster||undefined" :kind="detail.kind" :tmdb-id="detail.tmdb_id" :torrent-status="watchState.view?.status.status" :ready="watchState.action==='launch'" :choice="watchState.browserChoice" :source-title="watchState.browserPlan.source?.title" :audio-risk="watchState.browserPlan.audioRisk" :voice-notice="watchState.browserPlan.voiceMatches || !watchState.browserPlan.wanted ? null : { wanted: watchState.browserPlan.wanted, playing: watchState.browserPlan.playing || '' }" :browser-note="watchState.browserPlan.note" :launch-busy="watchState.busy==='launch'" :launch-message="watchState.message" :launch-error="watchState.error" @retry="retryAccess" @desktop="watchState.launch()" />
+     <TorrentPlayer ref="player" :access="playbackAccess" :access-error="accessError" :poster="detail.backdrop||detail.poster||undefined" :kind="detail.kind" :tmdb-id="detail.tmdb_id" :torrent-status="watchState.view?.status.status" :ready="watchState.action==='launch'" :choice="watchState.browserChoice" :source-title="releaseName(watchState.browserPlan.source)" :audio-risk="watchState.browserPlan.audioRisk" :voice-notice="watchState.browserPlan.voiceMatches || !watchState.browserPlan.wanted ? null : { wanted: watchState.browserPlan.wanted, playing: watchState.browserPlan.playing || '' }" :browser-note="watchState.browserPlan.note" :launch-busy="watchState.busy==='launch'" :launch-message="watchState.message" :launch-error="watchState.error" @retry="retryAccess" @desktop="watchState.launch()" @silent="browserSilent" />
      <section class="title-block" aria-labelledby="title-about-heading"><h2 id="title-about-heading">{{detail.kind==='tv'?'О сериале':'О фильме'}}</h2><p class="overview">{{detail.overview||'Описание на русском языке пока недоступно.'}}</p><ul v-if="titleChips.length" class="title-chips" data-testid="title-chips"><li v-for="c in titleChips" :key="c" class="title-chip">{{c}}</li></ul></section>
      <section v-if="directorCards.length" class="title-block" aria-labelledby="title-directors-heading"><h2 id="title-directors-heading">{{directorHeading}}</h2><ul class="title-people" data-testid="title-directors" @wheel="stripWheel"><li v-for="p in directorCards" :key="p.name" class="person"><img v-if="p.photo" :src="p.photo" alt="" width="88" height="88" loading="lazy" /><span v-else class="person-ph" aria-hidden="true">{{initials(p.name)}}</span><span class="person-text"><b>{{p.name}}</b><span>{{directorRole}}</span></span></li></ul></section>
      <section v-if="detail.cast?.length" class="title-block" aria-labelledby="title-cast-heading"><h2 id="title-cast-heading">В ролях</h2><ul class="title-people" data-testid="title-cast" @wheel="stripWheel"><li v-for="p in detail.cast" :key="`${p.name}-${p.character}`" class="person"><img v-if="p.photo" :src="p.photo" alt="" width="88" height="88" loading="lazy" /><span v-else class="person-ph" aria-hidden="true">{{initials(p.name)}}</span><span class="person-text"><b>{{p.name}}</b><span v-if="p.character">{{p.character}}</span></span></li></ul></section>

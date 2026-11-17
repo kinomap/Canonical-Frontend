@@ -53,7 +53,8 @@ const props = withDefaults(defineProps<{
   launchMessage?: string
   launchError?: string
 }>(), { poster: undefined, tmdbId: undefined, torrentStatus: undefined, ready: undefined, choice: undefined, sourceTitle: undefined, audioRisk: undefined, voiceNotice: null, browserNote: '', launchBusy: false, launchMessage: '', launchError: '' })
-const emit = defineEmits<{retry: []; desktop: []}>()
+/** «silent»: the browser played the stream without sound — the page drops that release's browser badge. */
+const emit = defineEmits<{retry: []; desktop: []; silent: [kind: 'audio']}>()
 
 const streamUrl = ref<string | null>(null)
 const streamError = ref('')
@@ -171,6 +172,7 @@ function silent(kind: 'video' | 'audio') {
   video.value?.pause()
   launching.value = false
   issue.value = { kind, stopped: false }
+  if (kind === 'audio') emit('silent', 'audio')
 }
 /** A refused play() is caught, never thrown: the intro keeps holding instead of a black, paused film. */
 function playFilm(v: HTMLVideoElement, refused?: () => void) {
