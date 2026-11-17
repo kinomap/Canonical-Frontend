@@ -28,7 +28,9 @@ const browserVoices = computed(() => props.state.voiceOptions.some((v) => v.brow
 const voiceMismatch = computed(() => {
   const plan = props.state.browserPlan
   if (plan.voiceMatches || !plan.wanted || !plan.playing) return null
-  return { wanted: plan.wanted, playing: plan.playing, browser: plan.compatible }
+  // The chosen voice leads a ready build of this quality (its 🌐): picking it in the list switches the browser there.
+  const switchable = props.state.voiceOptions.some((v) => v.value === plan.wanted && v.browserCompatible)
+  return { wanted: plan.wanted, playing: plan.playing, browser: plan.compatible, switchable }
 })
 /** The browser drops the sound of the release's first track: named with its codec, never hidden. */
 const silentTrack = computed(() => {
@@ -199,6 +201,7 @@ function browser() {
           <p v-if="voiceMismatch?.browser">В браузере воспроизводится: <b>«{{ voiceMismatch.playing }}»</b><span class="audio-modal-browser-badge" aria-hidden="true"><Globe :size="14" /></span>. Чтобы слушать в озвучке <b>«{{ voiceMismatch.wanted }}»</b>, продолжите в KINOSOTA Player</p>
           <p v-else-if="silentTrack" data-testid="audio-browser-silent">В браузере эта раздача без звука: браузер играет только первую дорожку <b>«{{ silentTrack.playing }}»</b>, а её звук ({{ silentTrack.codec }}) не декодирует. {{ voiceMismatch ? `Чтобы слушать в озвучке «${voiceMismatch.wanted}», продолжите в KINOSOTA Player` : 'Со звуком — в KINOSOTA Player' }}</p>
           <p v-else-if="voiceMismatch">Браузер играет только первую дорожку <b>«{{ voiceMismatch.playing }}»</b>. Чтобы слушать в озвучке <b>«{{ voiceMismatch.wanted }}»</b>, продолжите в KINOSOTA Player</p>
+          <p v-if="voiceMismatch?.switchable" class="audio-modal-switch" data-testid="audio-browser-switch">Или выберите <b>«{{ voiceMismatch.wanted }}»</b><span class="audio-modal-browser-badge" aria-hidden="true"><Globe :size="14" /></span> в списке — браузер переключится на раздачу этого качества, где она звучит первой</p>
           <button type="button" class="audio-modal-desktop" data-testid="audio-modal-desktop" :disabled="state.busy === 'launch'" @click="continueInPlayer">Продолжить в KINOSOTA Player</button>
         </div>
         <p v-if="browserVoices" class="audio-modal-legend" data-testid="audio-browser-legend"><span class="audio-modal-browser-badge" aria-hidden="true"><Globe :size="14" /></span>Можно смотреть в браузере, остальные озвучки — в KINOSOTA Player</p>
@@ -271,6 +274,7 @@ function browser() {
 .audio-modal-desktop-badge{display:inline-flex;align-items:center;gap:4px;flex:none;height:20px;padding:0 6px;box-sizing:border-box;border-radius:6px;background:rgba(132,170,255,.1);border:1px solid rgba(132,170,255,.32);color:#a9c1ff;font-size:11px;line-height:16px;font-weight:700}
 .audio-modal-mismatch{margin:12px 12px 0;padding:12px 14px;border-radius:10px;background:rgba(132,170,255,.08);border:1px solid rgba(132,170,255,.26);color:rgba(255,255,255,.85);font-size:13px;line-height:19px}
 .audio-modal-mismatch p{margin:0}
+.audio-modal-mismatch p.audio-modal-switch{margin-top:8px}
 .audio-modal-mismatch .audio-modal-browser-badge{display:inline-grid;vertical-align:-4px;margin-left:6px}
 .audio-modal-desktop{margin-top:10px;min-height:36px;padding:6px 14px;border:0;border-radius:8px;background:linear-gradient(135deg,#ffe36e 0%,#ffc21a 46%,#ff9e1b 100%);color:#1a1405;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 .audio-modal-desktop:disabled{opacity:.6;cursor:default}

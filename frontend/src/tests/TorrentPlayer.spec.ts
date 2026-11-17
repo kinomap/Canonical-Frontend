@@ -58,14 +58,24 @@ describe('actual torrent player viewport',()=>{
 
 describe('browser codec incompatibility notice in the player window',()=>{
  const ticket=(url:string)=>({stream_url:url,expires_at:'2026-11-05T12:00:00Z'})
- it('«Надежда»: the file name names DDP 5.1 the title omits, so the player warns before streaming',async()=>{
+ it('a file name naming DTS the title omits makes the player warn before streaming',async()=>{
   api.playbackTicket.mockResolvedValue(ticket('https://media.example/stream/hope.mkv'))
   const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:1058424,ready:true,choice:{source_id:'hope'},
-   sourceTitle:'Надежда / Hopeu / Hope (2026) WEB-DL [H.264/1080p] Hopeu.2026.1080p.AMZN.WEB-DL.DDP5.1.H.264.mkv'}})
+   sourceTitle:'Надежда / Hopeu / Hope (2026) WEB-DL [H.264/1080p] Hopeu.2026.1080p.BDRip.DTS.H.264.mkv'}})
   const notice=w.find('[data-testid="torrent-player"] [data-testid="codec-notice"]')
-  expect(notice.text()).toContain('Dolby Digital Plus (E-AC-3)')
+  expect(notice.text()).toContain('DTS')
   expect(w.find('.browser-play').exists()).toBe(false)
   expect(api.playbackTicket).not.toHaveBeenCalled()
+  w.unmount()
+ })
+ it('«Надежда»: a DDP 5.1 / AC-3 file streams in the desktop browser without a warning',async()=>{
+  api.playbackTicket.mockResolvedValue(ticket('https://media.example/stream/hope.mkv'))
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:1058424,ready:true,choice:{source_id:'hope'},audioRisk:'',
+   sourceTitle:'Надежда / Hopeu / Hope (2026) WEB-DL [H.264/1080p] Hopeu.2026.1080p.AMZN.WEB-DL.DDP5.1.AC3.H.264.mkv'}})
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  await w.find('.browser-play').trigger('click');await flushPromises()
+  expect(api.playbackTicket).toHaveBeenCalledWith('movie',1058424,{source_id:'hope'})
+  expect(w.find('video.torrent-video').attributes('src')).toBe('https://media.example/stream/hope.mkv')
   w.unmount()
  })
 
@@ -92,9 +102,9 @@ describe('browser codec incompatibility notice in the player window',()=>{
   expect(w.find('video.torrent-video').attributes('src')).toBe('https://media.example/stream/2.mkv')
   expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
   // Another release of the film: the warning is back before anything plays.
-  await w.setProps({choice:{source_id:'s-2'},sourceTitle:'Dune (2021) WEB-DL 1080p x265 AC3'})
+  await w.setProps({choice:{source_id:'s-2'},sourceTitle:'Dune (2021) WEB-DL 1080p x265 TrueHD'})
   expect(w.find('video.torrent-video').exists()).toBe(false)
-  expect(w.find('[data-testid="codec-notice"]').text()).toContain('HEVC (H.265) и Dolby Digital (AC-3)')
+  expect(w.find('[data-testid="codec-notice"]').text()).toContain('HEVC (H.265) и Dolby TrueHD')
   w.unmount()
  })
  it('keeps the notice in front when the install dialog picks the browser for a release it cannot decode',async()=>{

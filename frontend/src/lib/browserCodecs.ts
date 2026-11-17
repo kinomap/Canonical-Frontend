@@ -159,13 +159,23 @@ export function soundWatcher(seconds = 4) {
 
 /**
  * Audio codecs every browser that opens the file plays with sound: AAC and MP3 (Opus / Vorbis
- * too). Every other codec (AC-3, E-AC-3, FLAC, DTS, TrueHD…) is asked of this very browser —
- * MediaSource.isTypeSupported, HTMLMediaElement.canPlayType and MediaCapabilities. Never assumed:
- * desktop Chrome opens an MKV with AC-3 / E-AC-3 and shows the picture, but decodes 0 bytes of its
- * sound (checked with webkitAudioDecodedByteCount, Chrome 157), and answers «» for ac-3 / ec-3 —
- * that answer is the truth. Edge and Safari with the system Dolby decoder say so themselves.
+ * too). Every other codec (FLAC, DTS, TrueHD…) is asked of this very browser —
+ * MediaSource.isTypeSupported, HTMLMediaElement.canPlayType and MediaCapabilities.
  */
 const BROWSER_AUDIO: ReadonlySet<string> = new Set(['aac', 'mp3', 'opus', 'vorbis'])
+/**
+ * Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) in the MKV stream: trusted by default on a
+ * desktop browser. The synthetic questions are about MP4 (canPlayType('audio/mp4; codecs="ac-3"')
+ * answers «» in Chrome) while the Matroska stream is decoded with the operating system's Dolby
+ * decoder and plays with sound. Only a proof of silence in this tab — soundWatcher on the real
+ * stream, reported through markCodecSilent — takes the browser badge away from them.
+ * Phones and tablets are asked like every other codec.
+ */
+const BROWSER_DOLBY: ReadonlySet<string> = new Set(['ac3', 'eac3'])
+/** A desktop browser: no phone / tablet engine (Android, iOS, iPadOS, «Mobile» builds). */
+export function desktopBrowser(): boolean {
+  return !/Android|iP(?:hone|ad|od)|Mobile|Tablet/i.test(userAgent())
+}
 /** Codecs MediaCapabilities.decodingInfo confirmed for this browser (filled once per tab). */
 const confirmedAudio = reactive(new Set<string>())
 /** Codecs this tab already heard play silently: never trusted again, whatever the browser claims. */
@@ -211,6 +221,7 @@ export function audioCodecPlayable(codec: string | null | undefined): boolean | 
   if (!c) return null
   if (BROWSER_AUDIO.has(c)) return true
   if (silentAudio.has(c)) return false
+  if (BROWSER_DOLBY.has(c) && desktopBrowser()) return true
   if (confirmedAudio.has(c)) return true
   void probeAudioCodecs()
   return browserDecodes(AUDIO_MIME[c] ?? [])

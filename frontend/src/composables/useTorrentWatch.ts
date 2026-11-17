@@ -40,14 +40,15 @@ export type EpisodeOption = { value: number; available: boolean; sizeMb: number 
 /**
  * One audio track of the chosen release (the quality pill picks the release; its file is the only
  * source of tracks): «best» when it is the file's first track, «sourceId» the chosen release,
- * «browserCompatible» (the 🌐 badge) only when this browser plays it with sound: the file opens here,
- * its video codec decodes, the track is the first one (the browser plays only that one) and its
- * codec, read from the file, decodes here.
+ * «browserCompatible» (the 🌐 badge) only when picking it and pressing play sounds exactly this voice
+ * in this browser: it is the first track of the chosen release (the browser plays only that one) and
+ * that release sounds here (the file opens, its video codec and the track's codec decode), or it is
+ * the first track of a ready release of the same quality that sounds here — the pick switches to it.
  * «active» (the ✓) never lies about the browser: when the release sounds in the browser it is the
  * first track — the one really heard there; when the file is known but the browser drops its sound
  * no track is checked; only a release whose tracks are unknown checks the chosen voice.
- * «desktopOnly»: the chosen voice is heard only in KINOSOTA Player (a later track, or a release
- * the browser plays without sound).
+ * «desktopOnly»: the chosen voice has no 🌐 — it is heard only in KINOSOTA Player (a later track
+ * with no release of this quality leading with it, or a release the browser plays without sound).
  */
 export type VoiceOption = {
   value: string
@@ -124,14 +125,19 @@ export function markBrowserSilent(sourceId: string | null | undefined, codec?: s
   markCodecSilent(codec)
 }
 export const browserSilent = (sourceId: string | null | undefined) => !!sourceId && silentSources.has(sourceId)
+/** Tests: forget the releases this tab heard play silently. */
+export function resetBrowserSilence(): void {
+  silentSources.clear()
+}
 /**
  * The browser plays the release with picture and sound — proven, never assumed:
  * - the file is in a format this browser opens (no MKV in Safari / iOS, no AVI / TS anywhere);
  * - neither the title nor the file name names a video codec this browser lacks (HEVC, AV1…);
  * - the codec of the first audio track is known from the file and this very browser decodes it
- *   (AAC / MP3 everywhere; AC-3, E-AC-3, FLAC… where the browser itself says so).
+ *   (AAC / MP3 / Opus / Vorbis everywhere, AC-3 / E-AC-3 on desktop browsers until this tab hears
+ *   them play silently; FLAC, DTS, TrueHD… where the browser itself says so).
  *   It outranks the names (a title listing AC-3 for a second track). An unknown codec (rows cached
- *   before the codec parser) is no proof: a plain «WEB-DL» is usually DDP 5.1 and plays silently;
+ *   before the codec parser) is no proof;
  * - the release did not already play silently in this tab.
  */
 export function releaseBrowserCompatible(
@@ -375,15 +381,18 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     const playing = tracks.find((t) => t.value === selectedVoice.value)
     const activeKey = playing ? trackKey(playing) : null
     return tracks.map((track) => {
-      const picked = trackKey(track) === activeKey
-      const desktopOnly = picked && fileTracks && (!track.best || !fits)
+      const key = trackKey(track)
+      const picked = key === activeKey
+      // 🌐: the browser sounds this very voice — the first track here, or the first track of a ready
+      // release of this quality that the pick switches to (smart switch, see pickVoice).
+      const browserCompatible = fileTracks && ((track.best && fits) || !!switchTarget(key, current))
       return {
         ...track,
         sourceId: current.source_id,
-        browserCompatible: track.best && fits,
+        browserCompatible,
         // The ✓ marks what the browser really sounds: its first track, never a later or a silent one.
         active: fits ? track.best : !fileTracks && picked,
-        desktopOnly,
+        desktopOnly: picked && fileTracks && !browserCompatible,
       }
     })
   })
@@ -588,6 +597,11 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       && leadVoiceKey(s) === key && releaseBrowserCompatible(s))
     return bestSource(options, { quality: current.quality, episode: e })
   }
+  /** The release a pick of this voice switches to (never the chosen one itself; null: none). */
+  function switchTarget(key: string, current: TorrentSource): TorrentSource | null {
+    const alt = voiceLeadRelease(key, current)
+    return alt && alt.source_id !== current.source_id ? alt : null
+  }
   /**
    * A voice from the audio list (a track of the chosen release). Smart voice switch: unless the
    * chosen release already sounds it in the browser (its first track, a codec this browser decodes),
@@ -607,8 +621,8 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (!current?.audio_tracks?.length) return
     const key = trackKey(found)
     if (leadVoiceKey(current) === key && releaseBrowserCompatible(current)) return
-    const alt = voiceLeadRelease(key, current)
-    if (alt && alt.source_id !== current.source_id) choose(alt)
+    const alt = switchTarget(key, current)
+    if (alt) choose(alt)
   }
   function followEpisode() {
     const e = currentEpisode.value

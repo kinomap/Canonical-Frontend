@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { audioCodecPlayable, browserDecodes, codecList, missingPicture, missingSound, resetAudioCodecKnowledge, soundWatcher, unsupportedCodecs } from '@/lib/browserCodecs'
+import { audioCodecPlayable, browserDecodes, codecList, desktopBrowser, markCodecSilent, missingPicture, missingSound, resetAudioCodecKnowledge, soundWatcher, unsupportedCodecs } from '@/lib/browserCodecs'
 
 const media = (fields: Record<string, unknown>) => fields as unknown as HTMLVideoElement
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); resetAudioCodecKnowledge() })
@@ -25,14 +25,73 @@ describe('canPlayType answers', () => {
   })
 })
 
+describe('Dolby Digital (AC-3 / E-AC-3) in the MKV stream of a desktop browser', () => {
+  const ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36'
+  const DESKTOP_CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
+  it('is supported by default although the synthetic MP4 question answers «»', () => {
+    vi.stubGlobal('navigator', { userAgent: DESKTOP_CHROME })
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockImplementation(() => '')
+    expect(desktopBrowser()).toBe(true)
+    expect(browserDecodes(['audio/mp4; codecs="ac-3"'])).toBe(false)
+    expect(audioCodecPlayable('ac3')).toBe(true)
+    expect(audioCodecPlayable('eac3')).toBe(true)
+    expect(audioCodecPlayable('aac')).toBe(true)
+    expect(audioCodecPlayable('mp3')).toBe(true)
+    expect(audioCodecPlayable('opus')).toBe(true)
+    expect(audioCodecPlayable('vorbis')).toBe(true)
+  })
+
+  it('loses the support only after soundWatcher heard it play silently in this tab', () => {
+    vi.stubGlobal('navigator', { userAgent: DESKTOP_CHROME })
+    expect(audioCodecPlayable('ac3')).toBe(true)
+    markCodecSilent('ac3')
+    expect(audioCodecPlayable('ac3')).toBe(false)
+    expect(audioCodecPlayable('eac3')).toBe(true)
+    // The baseline is never revoked: a silent AAC stream is a broken file, not a missing decoder.
+    markCodecSilent('aac')
+    expect(audioCodecPlayable('aac')).toBe(true)
+    resetAudioCodecKnowledge()
+    expect(audioCodecPlayable('ac3')).toBe(true)
+  })
+
+  it('DTS, TrueHD and FLAC are asked of the browser itself, never assumed', () => {
+    vi.stubGlobal('navigator', { userAgent: DESKTOP_CHROME })
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockImplementation(() => '')
+    expect(audioCodecPlayable('dts')).toBe(false)
+    expect(audioCodecPlayable('truehd')).toBe(false)
+    expect(audioCodecPlayable('flac')).toBe(false)
+    vi.mocked(HTMLMediaElement.prototype.canPlayType).mockImplementation((type: string) => (type.includes('flac') ? 'maybe' : ''))
+    expect(audioCodecPlayable('flac')).toBe(true)
+    expect(audioCodecPlayable('dts')).toBe(false)
+  })
+
+  it('a phone or tablet is asked like every other codec', () => {
+    vi.stubGlobal('navigator', { userAgent: ANDROID })
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockImplementation(() => '')
+    expect(desktopBrowser()).toBe(false)
+    expect(audioCodecPlayable('ac3')).toBe(false)
+    expect(audioCodecPlayable('aac')).toBe(true)
+    vi.mocked(HTMLMediaElement.prototype.canPlayType).mockImplementation((type: string) => (type.includes('ac-3') ? 'maybe' : ''))
+    expect(audioCodecPlayable('ac3')).toBe(true)
+  })
+
+  it('the Dolby names in a release title are no obstacle on a desktop browser', () => {
+    vi.stubGlobal('navigator', { userAgent: DESKTOP_CHROME })
+    expect(unsupportedCodecs('Heart of the Beast (2026) WEB-DL 1080p | AVC | AC3 5.1, DDP5.1')).toEqual([])
+    vi.stubGlobal('navigator', { userAgent: ANDROID })
+    expect(unsupportedCodecs('Heart of the Beast (2026) WEB-DL 1080p | AVC | AC3 5.1').map((r) => r.label)).toEqual(['Dolby Digital (AC-3)'])
+  })
+})
+
 describe('browser codec check for a release name', () => {
   it('names the codecs a baseline browser cannot decode, once each and in a stable order', () => {
     expect(unsupportedCodecs('Дюна / Dune (2021) BDRip 1080p | HEVC | D, A | DTS, AC3').map((r) => r.label))
-      .toEqual(['HEVC (H.265)', 'Dolby Digital (AC-3)', 'DTS'])
+      .toEqual(['HEVC (H.265)', 'DTS'])
     expect(unsupportedCodecs('Movie.2024.2160p.WEB-DL.x265.10bit.DDP5.1.Atmos').map((r) => r.label))
-      .toEqual(['HEVC (H.265)', 'Dolby Digital Plus (E-AC-3)'])
+      .toEqual(['HEVC (H.265)'])
     expect(unsupportedCodecs('Film 1080p H.265 E-AC-3 TrueHD 7.1').map((r) => r.label))
-      .toEqual(['HEVC (H.265)', 'Dolby Digital Plus (E-AC-3)', 'Dolby TrueHD'])
+      .toEqual(['HEVC (H.265)', 'Dolby TrueHD'])
     expect(unsupportedCodecs('Old.Film.1999.DVDRip.XviD.MP3').map((r) => r.kind)).toEqual(['video'])
   })
 
