@@ -8,7 +8,7 @@ import TorrentCard from '@/components/TorrentCard.vue'
 import TorrentPlayer from '@/components/TorrentPlayer.vue'
 import TorrentWatchPanel from '@/components/TorrentWatchPanel.vue'
 import TorrentPosterStatus from '@/components/TorrentPosterStatus.vue'
-import { markBrowserSilent, releaseName, useTorrentWatch } from '@/composables/useTorrentWatch'
+import { browserTrack, markBrowserSilent, releaseName, useTorrentWatch } from '@/composables/useTorrentWatch'
 import { useAuthStore } from '@/stores/auth'
 import { NEW_RELEASE_YEAR } from '@/router/catalogSections'
 import { formatBudget, formatClock, formatDate, plural } from '@/utils/ruFormat'
@@ -29,7 +29,7 @@ const watchState=useTorrentWatch(detail,playbackAccess)
 const player=ref<InstanceType<typeof TorrentPlayer>|null>(null)
 function playInBrowser(){void player.value?.playInBrowser()}
 /** The browser played this release silently: its badge never lights again in this tab. */
-function browserSilent(){markBrowserSilent(watchState.browserPlan.source?.source_id)}
+function browserSilent(){const s=watchState.browserPlan.source;markBrowserSilent(s?.source_id,s?browserTrack(s)?.codec:null)}
 /** Title page of the reference layout: «2004–2012, США», «Доктор Хаус», «Уже лучше?», «8.6 TMDB · Завершён», «8 сезонов · 176 серий • Драма | Детектив». */
 const titleMeta=computed(()=>{
  const d=detail.value;if(!d)return ''

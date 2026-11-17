@@ -22,7 +22,7 @@ import CinemaIntro from './CinemaIntro.vue'
 import TorrentPlaybackSubscription from './TorrentPlaybackSubscription.vue'
 import PlaybackCompatibility from './PlaybackCompatibility.vue'
 import { torrentPlaybackApi, type StreamChoice, type TorrentPlaybackStatus } from '@/api/torrents'
-import { codecList, missingPicture, soundWatcher, unsupportedCodecs, type CodecRisk, type CompatibilityIssue } from '@/lib/browserCodecs'
+import { codecList, containerRisk, missingPicture, soundWatcher, unsupportedCodecs, type CodecRisk, type CompatibilityIssue } from '@/lib/browserCodecs'
 import { DISSOLVE_MS, fadeInFilm, firstFrameWatcher, introConfig } from '@/lib/cinemaIntro'
 const props = withDefaults(defineProps<{
   access: boolean | null
@@ -68,11 +68,13 @@ const video = ref<HTMLVideoElement | null>(null)
 const isPlayable = computed(() => props.ready !== undefined ? props.ready : props.torrentStatus === 'playable' || props.torrentStatus === 'partial')
 const visible = computed(() => props.access !== true || props.accessError || isPlayable.value)
 /**
- * Codecs this browser cannot decode: the video ones named by the release, and for the sound the
- * codec of the track the browser plays when it is known from the file (the title otherwise).
+ * What this browser cannot play, asked of the browser itself: a file format it cannot open, the
+ * video codecs named by the release, and for the sound the codec of the track the browser plays
+ * when it is known from the file (the title otherwise). Empty: the film plays here with sound.
  */
 const risks = computed<CodecRisk[]>(() => {
-  const named = unsupportedCodecs(props.sourceTitle)
+  const container = containerRisk(props.sourceTitle)
+  const named = [...(container ? [container] : []), ...unsupportedCodecs(props.sourceTitle)]
   if (props.audioRisk === null || props.audioRisk === undefined) return named
   const video = named.filter((r) => r.kind === 'video')
   return props.audioRisk ? [...video, { label: props.audioRisk, kind: 'audio' }] : video

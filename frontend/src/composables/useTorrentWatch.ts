@@ -18,7 +18,7 @@ import { ACTIVE_STAGES, PREP_POLL_MS, PREP_PROGRESS, stageLabel, stageOf, type P
 import { useLibrary } from '@/stores/library'
 import { openDeepLink, waitForPlayer } from '@/lib/desktopLaunch'
 import { hideCinemaPrestart, isCinemaPrestartCompact, showCinemaPrestart } from '@/composables/useCinemaPrestart'
-import { audioCodecLabel, audioCodecPlayable, unsupportedCodecs } from '@/lib/browserCodecs'
+import { audioCodecLabel, audioCodecPlayable, containerRisk, markCodecSilent, unsupportedCodecs } from '@/lib/browserCodecs'
 
 /** Live refresh while something moves (the reference re-reads every 2–3 s). */
 export const POLL_MS = PREP_POLL_MS
@@ -38,10 +38,11 @@ export type QualityOption = { value: string; label: string; available: boolean; 
 export type SeasonOption = { value: number; label: string; episodes: number; available: boolean }
 export type EpisodeOption = { value: number; available: boolean; sizeMb: number | null; sourceId: string | null }
 /**
- * Voice-over pick among the releases of the chosen quality only (the quality pill is a strict
- * filter): «active» when the chosen release plays it, «best» when it leads its release, «sourceId»
- * the release of this quality a pick switches to, «browserCompatible» when the browser plays the
- * voice there (no codec it lacks, and the voice is the release's first track — the browser plays only that one).
+ * One audio track of the chosen release (the quality pill picks the release; its file is the only
+ * source of tracks): «active» when it is the chosen voice, «best» when it is the file's first track,
+ * «sourceId» the chosen release, «browserCompatible» (the 🌐 badge) only when this browser
+ * guaranteed plays it with sound: the file opens here, its video codec decodes, the track is the
+ * first one (the browser plays only that one) and its codec, read from the file, decodes here.
  */
 export type VoiceOption = {
   value: string
@@ -112,14 +113,17 @@ export function releaseName(source: Pick<TorrentSource, 'title' | 'file_name'> |
  * them again, whatever the stored codec says.
  */
 const silentSources = reactive(new Set<string>())
-export function markBrowserSilent(sourceId: string | null | undefined): void {
+export function markBrowserSilent(sourceId: string | null | undefined, codec?: string | null): void {
   if (sourceId) silentSources.add(sourceId)
+  markCodecSilent(codec)
 }
 export const browserSilent = (sourceId: string | null | undefined) => !!sourceId && silentSources.has(sourceId)
 /**
  * The browser plays the release with picture and sound — proven, never assumed:
+ * - the file is in a format this browser opens (no MKV in Safari / iOS, no AVI / TS anywhere);
  * - neither the title nor the file name names a video codec this browser lacks (HEVC, AV1…);
- * - the codec of the first audio track is known from the file and is one a browser plays (AAC, MP3…).
+ * - the codec of the first audio track is known from the file and this very browser decodes it
+ *   (AAC / MP3 everywhere; AC-3, E-AC-3, FLAC… where the browser itself says so).
  *   It outranks the names (a title listing AC-3 for a second track). An unknown codec (rows cached
  *   before the codec parser) is no proof: a plain «WEB-DL» is usually DDP 5.1 and plays silently;
  * - the release did not already play silently in this tab.
@@ -128,7 +132,9 @@ export function releaseBrowserCompatible(
   source: Pick<TorrentSource, 'title' | 'audio_tracks'> & Partial<Pick<TorrentSource, 'source_id' | 'file_name'>>,
 ): boolean {
   if (browserSilent(source.source_id)) return false
-  if (unsupportedCodecs(releaseName(source)).some((r) => r.kind === 'video')) return false
+  const name = releaseName(source)
+  if (containerRisk(name)) return false
+  if (unsupportedCodecs(name).some((r) => r.kind === 'video')) return false
   return audioCodecPlayable(browserTrack(source)?.codec) === true
 }
 /** Sound of the browser track: '' plays, the codec label («Dolby Digital (AC-3)») when dropped, null unknown. */
@@ -341,62 +347,31 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   const currentEpisode = computed<TorrentEpisode | null>(() =>
     showEpisodes.value && season.value !== null && episode.value !== null ? { season: season.value, episode: episode.value } : null)
   const episodeReady = computed(() => !currentEpisode.value || (!!selected.value && hasEpisode(selected.value, currentEpisode.value)))
-  /** Same quality as the chosen release: the quality pill filters voices and browser releases strictly. */
-  const sameQuality = (s: TorrentSource) => !selected.value || s.quality === selected.value.quality
-  /** Releases a voice can come from: the offered ones of the chosen quality, plus the chosen one even when it failed. */
-  const voiceSources = computed<TorrentSource[]>(() => {
-    const s = selected.value
-    const pool = offered.value.filter(sameQuality)
-    return s && !pool.includes(s) ? [s, ...pool] : pool
-  })
   /**
-   * Which release of the chosen quality a voice pick plays. The browser stream carries no track
-   * choice, so among the releases carrying the voice it prefers one the browser plays it from,
-   * without leaving the chosen episode; then the chosen release, a prepared one and the server rank.
+   * «Выбор аудиодорожки»: exactly the tracks of the chosen release's file, in file order — never
+   * a voice of another quality or another release of the same quality. Switching quality switches
+   * the release, so the list follows at once.
    */
-  function voiceRank(s: TorrentSource, track: SourceTrack, inBrowser: boolean): number[] {
-    const e = currentEpisode.value
-    return [
-      e && !hasEpisode(s, e) ? 1 : 0,
-      track.best && inBrowser ? 0 : 1,
-      s === selected.value ? 0 : 1,
-      s.state === 'ready' ? 0 : 1,
-      s.rank ?? Number.MAX_SAFE_INTEGER,
-      -s.seeders,
-      -s.size_bytes,
-    ]
-  }
-  /** Every voice of the offered releases (the chosen release's own first), bound to the release a pick plays. */
   const voiceOptions = computed<VoiceOption[]>(() => {
     const current = selected.value
     if (!current) return []
-    const compatible = new Map<TorrentSource, boolean>()
-    const fits = (s: TorrentSource) => {
-      if (!compatible.has(s)) compatible.set(s, releaseBrowserCompatible(s))
-      return compatible.get(s) === true
-    }
-    const prefs: Prefs = { quality: current.quality, episode: currentEpisode.value }
-    const others = voiceSources.value.filter((s) => s !== current).sort((a, b) => compareRank(rank(a, prefs), rank(b, prefs)))
-    const ownTracks = sourceTracks(current)
-    const playing = ownTracks.find((t) => t.value === selectedVoice.value)
+    const tracks = sourceTracks(current)
+    // Only a track read from the file can be guaranteed: title-derived voices never get the badge.
+    const fits = !!current.audio_tracks?.length && releaseBrowserCompatible(current)
+    const playing = tracks.find((t) => t.value === selectedVoice.value)
     const activeKey = playing ? trackKey(playing) : null
-    const picks = new Map<string, { track: SourceTrack; source: TorrentSource; order: number[] }>()
-    for (const source of [current, ...others]) {
-      for (const track of source === current ? ownTracks : sourceTracks(source)) {
-        const key = trackKey(track)
-        const order = voiceRank(source, track, fits(source))
-        const known = picks.get(key)
-        if (!known || compareRank(order, known.order) < 0) picks.set(key, { track, source, order })
-      }
-    }
-    return [...picks.entries()].map(([key, { track, source }]) => ({
+    return tracks.map((track) => ({
       ...track,
-      sourceId: source.source_id,
-      browserCompatible: track.best && fits(source),
-      active: key === activeKey,
+      sourceId: current.source_id,
+      browserCompatible: track.best && fits,
+      active: trackKey(track) === activeKey,
     }))
   })
-  /** The release and voice the browser stream really plays, see BrowserPlan. */
+  /**
+   * What the browser stream really plays, see BrowserPlan: always the chosen release (the stream
+   * never jumps to another build). Its first track sounds when it is the chosen voice; any other
+   * pick runs muted in the browser and is offered in KINOSOTA Player.
+   */
   const browserPlan = computed<BrowserPlan>(() => {
     const cur = selected.value
     const plain: BrowserPlan = {
@@ -409,35 +384,19 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (!wanted) return { ...plain, playing: tracks[0]?.value ?? null }
     // A release known only by its title leads with the voice its title names first: that language plays as is.
     if (!cur.audio_tracks?.length && wanted.language === tracks[0].language) return plain
-    const e = currentEpisode.value
-    const pool = [cur, ...offered.value.filter((s) => s !== cur && s.state === 'ready' && sameQuality(s) && (!e || hasEpisode(s, e)))]
-    const lead = (s: TorrentSource) => (s.audio_tracks?.length ? sourceTracks(s)[0] : undefined)
-    const order = (s: TorrentSource) => [
-      releaseBrowserCompatible(s) ? 0 : 1, s === cur ? 0 : 1,
-      s.rank ?? Number.MAX_SAFE_INTEGER, -s.seeders, -s.size_bytes,
-    ]
-    const pick = (match: (t: SourceTrack) => boolean) => pool
-      .filter((s) => { const t = lead(s); return !!t && match(t) })
-      .sort((a, b) => compareRank(order(a), order(b)))[0]
+    const lead = cur.audio_tracks?.length ? tracks[0] : undefined
     const key = trackKey(wanted)
     // A studio picked in «Аудио» must lead as such; a language pill accepts any voice of that language.
-    const hit = pick((t) => trackKey(t) === key)
-      ?? (voicePicked.value || wanted.language === 'und' ? undefined : pick((t) => t.language === wanted.language))
+    const hit = !!lead && (trackKey(lead) === key || (!voicePicked.value && wanted.language !== 'und' && lead.language === wanted.language))
     if (!hit) {
-      // No release of this quality leads with the chosen voice: the browser would sound another one,
+      // The chosen voice is not the file's first track: the browser would sound another one,
       // so it plays the chosen release muted (its codecs no longer matter for the sound).
-      const playing = (lead(cur) ?? tracks[0])?.value ?? null
+      const playing = (lead ?? tracks[0])?.value ?? null
       return { ...plain, playing, voiceMatches: false, audioRisk: '' }
     }
-    const source = hit
-    const playing = lead(source)?.value ?? null
-    let note = ''
-    if (hit !== cur) note = `В браузере откроется раздача ${[hit.quality, hit.source_type].filter(Boolean).join(' ') || 'с этой озвучкой'}: в ней «${playing}» — основная дорожка.`
-    else if (playing !== wanted.value) note = `В браузере прозвучит «${playing}» — основная дорожка раздачи.`
-    return {
-      source, wanted: wanted.value, playing, voiceMatches: true,
-      audioRisk: browserAudioRisk(source), compatible: releaseBrowserCompatible(source), note,
-    }
+    const playing = lead.value
+    const note = playing !== wanted.value ? `В браузере прозвучит «${playing}» — основная дорожка раздачи.` : ''
+    return { ...plain, playing, voiceMatches: true, note }
   })
   // Initialize selectedVoice when selected source changes (page load or quality switch).
   watch(selected, (src) => {
@@ -599,21 +558,12 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       if (match) selectedVoice.value = match.value
     }
   }
-  /** A voice from the audio list: switch to the release it is bound to, so the browser stream plays it too. */
+  /** A voice from the audio list: always a track of the chosen release (the release never changes). */
   function pickVoice(voice: string) {
     const found = voiceOptions.value.find((o) => o.value === voice)
     if (!found) {
       selectedVoice.value = voice
       return
-    }
-    const source = voiceSources.value.find((s) => s.source_id === found.sourceId)
-    if (source && source !== selected.value) {
-      const e = currentEpisode.value
-      if (e && !hasEpisode(source, e) && source.episodes.length > 0) {
-        season.value = source.episodes[0].season
-        episode.value = source.episodes[0].episode
-      }
-      choose(source)
     }
     selectedVoice.value = found.value
     voicePicked.value = true
