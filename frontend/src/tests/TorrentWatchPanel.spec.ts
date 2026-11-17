@@ -360,6 +360,33 @@ describe('honest codec detection: the browser itself decides, the 🌐 badge nev
   expect(releaseBrowserCompatible(hit)).toBe(true)
  })
 
+ it('«Сердце зверя»: canPlayType answers «maybe» for AC-3, the first track still gets the 🌐 badge',async()=>{
+  const spy=vi.spyOn(HTMLMediaElement.prototype,'canPlayType').mockImplementation((type:string)=>type.includes('ac-3')||type.includes('ec-3')?'maybe':'')
+  try{
+   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3]}) as any)
+   const w=await at()
+   expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+   const items=await openAudio(w)
+   expect(items.map(name)).toEqual(['Продубляж','HDrezka (DUB)','LeDoyen','English'])
+   expect(items.map(badge)).toEqual([true,false,false,false])
+   expect(document.body.querySelector('[data-testid="audio-browser-legend"]')).not.toBeNull()
+  }finally{spy.mockRestore()}
+ })
+
+ it('the 🌐 badge appears in the open audio modal once MediaCapabilities confirms the codec',async()=>{
+  let release!:()=>void
+  const gate=new Promise<void>(r=>{release=r})
+  vi.stubGlobal('navigator',{userAgent:'Mozilla/5.0 Chrome/131.0',mediaCapabilities:{decodingInfo:async(c:any)=>{await gate;return {supported:String(c.audio?.contentType).includes('ac-3')}}}})
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3]}) as any)
+  const w=await at()
+  let items=await openAudio(w)
+  expect(items.map(badge)).toEqual([false,false,false,false])
+  release();await flushPromises()
+  items=[...document.body.querySelectorAll('.audio-modal-item')] as HTMLElement[]
+  expect(items.map(badge)).toEqual([true,false,false,false])
+  expect(w.exists()).toBe(true)
+ })
+
  it('a codec the tab heard play silently is never badged again, whatever the browser claims',async()=>{
   dolbyBrowser()
   const one=src({source_id:'s-ac3-a',default:true,audio_tracks:[t(1,'ru','Дубляж','ac3',6)]})

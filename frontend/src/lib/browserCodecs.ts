@@ -48,7 +48,12 @@ const HINTS: readonly Hint[] = [
   { re: /(?:^|[^a-z0-9])truehd(?![a-z0-9])/gi, label: 'Dolby TrueHD', kind: 'audio', mime: [], audio: 'truehd' },
 ]
 
-/** True when this browser reports it can decode one of the MIME/codec strings. */
+/**
+ * True when this browser reports it can decode one of the MIME/codec strings. canPlayType answers
+ * «maybe» (not «probably») for Dolby AC-3 / E-AC-3 in Chrome, Edge and Safari even when the file
+ * plays with sound, so both non-empty answers count; a codec the tab later hears play silently is
+ * still excluded by markCodecSilent.
+ */
 export function browserDecodes(mime: readonly string[]): boolean {
   const source = (globalThis as { MediaSource?: { isTypeSupported?: (type: string) => boolean } }).MediaSource
   let probe: HTMLVideoElement | null = null
@@ -56,7 +61,8 @@ export function browserDecodes(mime: readonly string[]): boolean {
     try { if (source?.isTypeSupported?.(type)) return true } catch { /* engine without MSE */ }
     try {
       probe ??= typeof document === 'undefined' ? null : document.createElement('video')
-      if (probe?.canPlayType(type) === 'probably') return true
+      const res = probe?.canPlayType(type)
+      if (res === 'probably' || res === 'maybe') return true
     } catch { /* no media element */ }
   }
   return false

@@ -1,8 +1,29 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { codecList, missingPicture, missingSound, soundWatcher, unsupportedCodecs } from '@/lib/browserCodecs'
+import { audioCodecPlayable, browserDecodes, codecList, missingPicture, missingSound, resetAudioCodecKnowledge, soundWatcher, unsupportedCodecs } from '@/lib/browserCodecs'
 
 const media = (fields: Record<string, unknown>) => fields as unknown as HTMLVideoElement
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); resetAudioCodecKnowledge() })
+
+describe('canPlayType answers', () => {
+  const answer = (fn: (type: string) => CanPlayTypeResult) => vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockImplementation(fn)
+
+  it('accepts «maybe» as well as «probably» (Chrome, Edge, Safari answer «maybe» for Dolby)', () => {
+    answer((type) => (type.includes('ac-3') || type.includes('ec-3') ? 'maybe' : ''))
+    expect(browserDecodes(['audio/mp4; codecs="ac-3"'])).toBe(true)
+    expect(browserDecodes(['audio/mp4; codecs="ec-3"'])).toBe(true)
+    expect(audioCodecPlayable('ac3')).toBe(true)
+    expect(audioCodecPlayable('eac3')).toBe(true)
+    expect(audioCodecPlayable('dts')).toBe(false)
+    expect(unsupportedCodecs('Movie 1080p WEB-DL DDP5.1 AC3 DTS').map((r) => r.label)).toEqual(['DTS'])
+  })
+
+  it('accepts «probably» and rejects the empty answer', () => {
+    answer((type) => (type.includes('ac-3') ? 'probably' : ''))
+    expect(browserDecodes(['audio/mp4; codecs="ac-3"'])).toBe(true)
+    expect(browserDecodes(['audio/mp4; codecs="ec-3"'])).toBe(false)
+    expect(browserDecodes([])).toBe(false)
+  })
+})
 
 describe('browser codec check for a release name', () => {
   it('names the codecs a baseline browser cannot decode, once each and in a stable order', () => {
