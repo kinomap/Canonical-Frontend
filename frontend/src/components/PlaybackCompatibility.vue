@@ -28,7 +28,10 @@ const props = withDefaults(defineProps<{
 }>(), { poster: undefined, codecs: '', voice: '', playing: '', issue: null, overlay: false, canBrowse: false, busy: false, status: '', error: '', pro: null })
 const emit = defineEmits<{ desktop: []; browser: []; close: [] }>()
 
+/** Only the sound is named (AC-3, DTS…, no video codec): the browser shows the picture without sound. */
+const audioOnly = computed(() => !!props.codecs && /AC-3|DTS|TrueHD|PCM|FLAC|Layer II/.test(props.codecs) && !/HEVC|AV1|VC-1|MPEG-2|XviD|формат файла/.test(props.codecs))
 const lead = computed(() => {
+  if (audioOnly.value) return `Аудиокодеки этого фильма не поддерживаются вашим браузером: ${props.codecs}. В браузере он пойдёт без звука — продолжите в KINOSOTA Player или смотрите без звука.`
   if (props.codecs) return `Этот фильм записан кодеками, которые ваш браузер не воспроизводит: ${props.codecs}.`
   switch (props.issue) {
     case 'container': return 'Формат файла этого фильма или его кодеки не поддерживаются вашим браузером.'
@@ -43,11 +46,11 @@ const voiceOnly = computed(() => !!props.voice && !props.codecs && !props.issue)
 const heading = computed(() => voiceOnly.value ? 'Выбранная озвучка недоступна в браузере' : 'Фильм несовместим с вашим браузером')
 const voiceText = computed(() => {
   if (!props.voice) return ''
-  const instead = props.playing ? ` — «${props.playing}»` : ''
-  return `Браузер воспроизводит только первую аудиодорожку раздачи${instead}. Выбранная озвучка «${props.voice}» звучит только в KINOSOTA Player.`
+  const instead = props.playing ? `В браузере звучит: «${props.playing}». ` : ''
+  return `${instead}Выбранная озвучка «${props.voice}» звучит только в KINOSOTA Player.`
 })
 const browseLabel = computed(() => {
-  if (props.codecs && /AC-3|DTS|TrueHD|PCM|FLAC|Layer II/.test(props.codecs) && !/HEVC|AV1|VC-1|MPEG-2|XviD/.test(props.codecs)) return 'Смотреть в браузере без звука'
+  if (audioOnly.value) return 'Смотреть в браузере без звука'
   if (props.issue === 'audio') return 'Смотреть в браузере без звука'
   if (props.issue === 'codec' || props.issue === 'container') return 'Попробовать ещё раз в браузере'
   return 'Всё равно смотреть в браузере'

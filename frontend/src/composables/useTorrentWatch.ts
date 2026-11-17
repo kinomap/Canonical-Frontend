@@ -18,7 +18,7 @@ import { ACTIVE_STAGES, PREP_POLL_MS, PREP_PROGRESS, stageLabel, stageOf, type P
 import { useLibrary } from '@/stores/library'
 import { openDeepLink, waitForPlayer } from '@/lib/desktopLaunch'
 import { hideCinemaPrestart, isCinemaPrestartCompact, showCinemaPrestart } from '@/composables/useCinemaPrestart'
-import { audioCodecLabel, audioCodecPlayable, containerRisk, markCodecSilent, unsupportedCodecs } from '@/lib/browserCodecs'
+import { audioCodecLabel, audioCodecPlayable, codecList, containerRisk, markCodecSilent, unsupportedCodecs } from '@/lib/browserCodecs'
 
 /** Live refresh while something moves (the reference re-reads every 2–3 s). */
 export const POLL_MS = PREP_POLL_MS
@@ -109,8 +109,23 @@ function compareRank(a: number[], b: number[]): number {
   return 0
 }
 
-/** The track a browser plays: the first container audio track (null: the file's tracks are unknown). */
-export const browserTrack = (source: Pick<TorrentSource, 'audio_tracks'>) => source.audio_tracks?.[0] ?? null
+type AudioTrack = NonNullable<TorrentSource['audio_tracks']>[number]
+/** Name of a container track as the audio list shows it (and KINOSOTA Player is asked for). */
+export const audioTrackName = (t: AudioTrack) => t.title || (LANGUAGE_NAMES[t.language] ?? `Аудио ${t.index}`)
+/**
+ * The track the browser really sounds: the Chromium Matroska demuxer skips the tracks whose codec
+ * it cannot decode (AC-3, DTS…) and plays the FIRST track of a codec it decodes, whatever its
+ * position in the file. null: no such track (the browser plays the film without sound), or a track
+ * of unknown codec comes first (rows cached before the codec parser: no proof), or no file tracks.
+ */
+export function browserTrack(source: Pick<TorrentSource, 'audio_tracks'>): AudioTrack | null {
+  for (const t of source.audio_tracks ?? []) {
+    const ok = audioCodecPlayable(t.codec)
+    if (ok === true) return t
+    if (ok === null) return null
+  }
+  return null
+}
 /** Release title plus the file name: «…WEB-DL [H.264/1080p]» rarely names the sound, «….DDP5.1.H.264.mkv» does. */
 export function releaseName(source: Pick<TorrentSource, 'title' | 'file_name'> | null | undefined): string {
   return [source?.title, source?.file_name].filter(Boolean).join(' ')
@@ -133,11 +148,10 @@ export function resetBrowserSilence(): void {
  * The browser plays the release with picture and sound — proven, never assumed:
  * - the file is in a format this browser opens (no MKV in Safari / iOS, no AVI / TS anywhere);
  * - neither the title nor the file name names a video codec this browser lacks (HEVC, AV1…);
- * - the codec of the first audio track is known from the file and this very browser decodes it
- *   (AAC / MP3 / Opus / Vorbis everywhere, AC-3 / E-AC-3 on desktop browsers until this tab hears
- *   them play silently; FLAC, DTS, TrueHD… where the browser itself says so).
- *   It outranks the names (a title listing AC-3 for a second track). An unknown codec (rows cached
- *   before the codec parser) is no proof;
+ * - some audio track of the file has a codec this very browser decodes (browserTrack: AAC / MP3 /
+ *   Opus / Vorbis / FLAC everywhere; AC-3, E-AC-3, DTS, TrueHD… only where the browser itself says
+ *   so). It outranks the names (a title listing AC-3 for another track). An unknown codec (rows
+ *   cached before the codec parser) is no proof;
  * - the release did not already play silently in this tab.
  */
 export function releaseBrowserCompatible(
@@ -147,13 +161,24 @@ export function releaseBrowserCompatible(
   const name = releaseName(source)
   if (containerRisk(name)) return false
   if (unsupportedCodecs(name).some((r) => r.kind === 'video')) return false
-  return audioCodecPlayable(browserTrack(source)?.codec) === true
+  return !!browserTrack(source)
 }
-/** Sound of the browser track: '' plays, the codec label («Dolby Digital (AC-3)») when dropped, null unknown. */
-export function browserAudioRisk(source: Pick<TorrentSource, 'audio_tracks'>): string | null {
-  const codec = browserTrack(source)?.codec
-  const ok = audioCodecPlayable(codec)
-  return ok === null ? null : ok ? '' : audioCodecLabel(codec)
+/**
+ * Sound of the release in the browser: '' a track sounds (browserTrack); the codec labels
+ * («Dolby Digital (AC-3) и DTS») when no track of the file has a codec this browser decodes — known
+ * before play, the film would play silently — or when this tab already heard the release play
+ * silently (the codecs it cannot trust); null unknown (no file tracks, or an unknown codec).
+ */
+export function browserAudioRisk(source: Pick<TorrentSource, 'audio_tracks'> & Partial<Pick<TorrentSource, 'source_id'>>): string | null {
+  const tracks = source.audio_tracks ?? []
+  if (!tracks.length) return null
+  const heardSilent = browserSilent(source.source_id)
+  if (!heardSilent && browserTrack(source)) return ''
+  if (!heardSilent && tracks.some((t) => audioCodecPlayable(t.codec) === null)) return null
+  const dropped = tracks.filter((t) => audioCodecPlayable(t.codec) !== true)
+  const labels = [...new Set((dropped.length ? dropped : tracks).map((t) => audioCodecLabel(t.codec)).filter(Boolean))]
+  if (!labels.length) return null
+  return codecList(labels.map((label) => ({ label, kind: 'audio' as const })))
 }
 /** One voice across releases: its language plus the case-insensitive name. */
 const trackKey = (t: Pick<SourceTrack, 'value' | 'language'>) => `${t.language}:${t.value.toLowerCase()}`
@@ -173,10 +198,7 @@ export function sourceTracks(s: TorrentSource): SourceTrack[] {
 
   // 1. Container tracks directly parsed from MKV stream header
   if (s.audio_tracks && s.audio_tracks.length > 0) {
-    s.audio_tracks.forEach((t, idx) => {
-      const name = t.title || (LANGUAGE_NAMES[t.language] ?? `Аудио ${t.index}`)
-      add(name, t.language, idx === 0)
-    })
+    s.audio_tracks.forEach((t, idx) => add(audioTrackName(t), t.language, idx === 0))
     return tracks
   }
 
@@ -202,11 +224,20 @@ export function sourceTracks(s: TorrentSource): SourceTrack[] {
   return tracks
 }
 
-/** The voice key of the track a browser plays in this release (null: its file tracks are unknown). */
+/** The voice key of the track the browser sounds in this release (browserTrack; null: none / unknown). */
 export function leadVoiceKey(s: TorrentSource): string | null {
-  if (!s.audio_tracks?.length) return null
-  const lead = sourceTracks(s)[0]
-  return lead ? trackKey(lead) : null
+  const t = browserTrack(s)
+  return t ? trackKey({ value: audioTrackName(t), language: t.language }) : null
+}
+/**
+ * The voice preselected for a language: the track the browser sounds when the release plays here
+ * and it speaks that language (WinMedia AAC after an AC-3 dub), the first track of it otherwise.
+ */
+function preferredTrack(s: TorrentSource, lang: TorrentLanguage | 'und'): SourceTrack | undefined {
+  const tracks = sourceTracks(s)
+  const key = releaseBrowserCompatible(s) ? leadVoiceKey(s) : null
+  const sounding = key ? tracks.find((t) => trackKey(t) === key) : undefined
+  return sounding && sounding.language === lang ? sounding : tracks.find((t) => t.language === lang)
 }
 
 /** Prefer working, matching, already prepared, then best-seeded sources. */
@@ -304,13 +335,13 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (current && (!language.value || language.value === 'und' || current.language === 'und' || language.value === current.language)) {
       return
     }
-    const byLang = language.value ? tracks.find((t) => t.language === language.value) : undefined
+    const byLang = language.value ? preferredTrack(src, language.value) : undefined
     if (byLang) {
       selectedVoice.value = byLang.value
       return
     }
     const defLang = (src.languages ?? []).includes('ru') ? 'ru' : (src.languages?.[0] ?? 'und')
-    const preferred = tracks.find((t) => t.language === defLang) ?? tracks[0]
+    const preferred = preferredTrack(src, defLang) ?? tracks[0]
     selectedVoice.value = preferred.value
   }
 
@@ -378,20 +409,23 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     const fileTracks = !!current.audio_tracks?.length
     // Only a track read from the file can be guaranteed: title-derived voices never get the badge.
     const fits = fileTracks && releaseBrowserCompatible(current)
+    // The voice the browser really sounds here: the first track of a codec it decodes (WinMedia AAC
+    // after an AC-3 track), not necessarily the file's first track.
+    const soundingKey = fits ? leadVoiceKey(current) : null
     const playing = tracks.find((t) => t.value === selectedVoice.value)
     const activeKey = playing ? trackKey(playing) : null
     return tracks.map((track) => {
       const key = trackKey(track)
       const picked = key === activeKey
-      // 🌐: the browser sounds this very voice — the first track here, or the first track of a ready
-      // release of this quality that the pick switches to (smart switch, see pickVoice).
-      const browserCompatible = fileTracks && ((track.best && fits) || !!switchTarget(key, current))
+      // 🌐: the browser sounds this very voice — the sounding track here, or the sounding track of a
+      // ready release of this quality that the pick switches to (smart switch, see pickVoice).
+      const browserCompatible = fileTracks && ((!!soundingKey && key === soundingKey) || !!switchTarget(key, current))
       return {
         ...track,
         sourceId: current.source_id,
         browserCompatible,
-        // The ✓ marks what the browser really sounds: its first track, never a later or a silent one.
-        active: fits ? track.best : !fileTracks && picked,
+        // The ✓ marks what the browser really sounds: the sounding track, never a skipped or a silent one.
+        active: fits ? key === soundingKey : !fileTracks && picked,
         desktopOnly: picked && fileTracks && !browserCompatible,
       }
     })
@@ -410,10 +444,17 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (!cur) return plain
     const tracks = sourceTracks(cur)
     const wanted = tracks.find((t) => t.value === selectedVoice.value)
-    if (!wanted) return { ...plain, playing: tracks[0]?.value ?? null }
+    const fileTracks = !!cur.audio_tracks?.length
+    // The voice the browser sounds: the first track of a codec it decodes. A file with no such track
+    // (or one this tab heard play silently) has no sounding voice — the codec notice says so before play.
+    const soundingKey = leadVoiceKey(cur)
+    const sounding = soundingKey ? tracks.find((t) => trackKey(t) === soundingKey) : undefined
+    if (fileTracks && plain.audioRisk) return { ...plain, playing: null, voiceMatches: true }
+    if (!wanted) return { ...plain, playing: (sounding ?? tracks[0])?.value ?? null }
     // A release known only by its title leads with the voice its title names first: that language plays as is.
-    if (!cur.audio_tracks?.length && wanted.language === tracks[0].language) return plain
-    const lead = cur.audio_tracks?.length ? tracks[0] : undefined
+    if (!fileTracks && wanted.language === tracks[0].language) return plain
+    // Codecs unknown (no proof either way): the file's first track, as before the codec parser.
+    const lead = fileTracks ? (sounding ?? tracks[0]) : undefined
     const key = trackKey(wanted)
     // A studio picked in «Аудио» must lead as such; a language pill accepts any voice of that language.
     const hit = !!lead && (trackKey(lead) === key || (!voicePicked.value && wanted.language !== 'und' && lead.language === wanted.language))
@@ -574,7 +615,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     language.value = lang
     voicePicked.value = false
     if (selected.value && speaks(selected.value, lang)) {
-      const match = sourceTracks(selected.value).find((o) => o.language === lang)
+      const match = preferredTrack(selected.value, lang)
       if (match) selectedVoice.value = match.value
       return
     }
@@ -582,7 +623,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     const chosen = bestSource(options, { quality: selected.value?.quality, episode: currentEpisode.value })
     if (chosen) {
       choose(chosen)
-      const match = sourceTracks(chosen).find((o) => o.language === lang)
+      const match = preferredTrack(chosen, lang)
       if (match) selectedVoice.value = match.value
     }
   }
@@ -716,8 +757,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       let chosenTrackIndex: number | null = null
       let chosenTrackLang: TorrentLanguage | null = audioLanguage.value
       if (selectedVoice.value && source.audio_tracks) {
-        const matched = source.audio_tracks.find((track) =>
-          (track.title || (LANGUAGE_NAMES[track.language] ?? `Аудио ${track.index}`)) === selectedVoice.value)
+        const matched = source.audio_tracks.find((track) => audioTrackName(track) === selectedVoice.value)
         if (matched) {
           chosenTrackIndex = matched.index
           if (matched.language === 'ru' || matched.language === 'uk' || matched.language === 'en') {

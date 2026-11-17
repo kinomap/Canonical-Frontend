@@ -166,7 +166,11 @@ describe('the 🌐 badge and the ✓ only where the browser really sounds the tr
   expect(releaseName(hope)).toContain('DDP5.1')
   expect(releaseBrowserCompatible(hope)).toBe(false)
   expect(releaseBrowserCompatible({...hope,file_name:null,audio_tracks:[{index:1,language:'ru',title:'MVO, LostFilm',codec:'aac',channels:2}]})).toBe(true)
+  // Chrome skips E-AC-3: an E-AC-3-only file sounds nowhere in it; a browser that decodes Dolby plays it.
+  expect(releaseBrowserCompatible({...hope,audio_tracks:[{index:1,language:'ru',title:'MVO, LostFilm',codec:'eac3',channels:6}]})).toBe(false)
+  dolbyBrowser()
   expect(releaseBrowserCompatible({...hope,audio_tracks:[{index:1,language:'ru',title:'MVO, LostFilm',codec:'eac3',channels:6}]})).toBe(true)
+  vi.unstubAllGlobals()
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[hope]}) as any)
   const w=await at()
   const items=await openAudio(w)
@@ -208,14 +212,14 @@ describe('the 🌐 badge and the ✓ only where the browser really sounds the tr
   expect((await openAudio(w)).map(badge)).toEqual([true,false])
  })
 
- it('«Сердце зверя» (1263337) 1080p: the AC-3 first track «Продубляж» gets 🌐 and ✓ and plays with no warning',async()=>{
+ it('«Сердце зверя» (1263337) 1080p in Chrome: the AC-3 first track is skipped, the AAC 2nd track «HDrezka (DUB)» gets 🌐 and ✓ and plays with no warning',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3]}) as any)
   const w=await at()
   expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
   const items=await openAudio(w)
   expect(items.map(name)).toEqual(['Продубляж','HDrezka (DUB)','LeDoyen','English'])
-  expect(items.map(badge)).toEqual([true,false,false,false])
-  expect(items.map(checked)).toEqual(['✓','','',''])
+  expect(items.map(badge)).toEqual([false,true,false,false])
+  expect(items.map(checked)).toEqual(['','✓','',''])
   expect(items.map(desktop)).toEqual([false,false,false,false])
   expect(document.body.querySelector('[data-testid="audio-browser-legend"]')).not.toBeNull()
   expect(document.body.querySelector('[data-testid="audio-browser-mismatch"]')).toBeNull()
@@ -230,35 +234,38 @@ describe('the 🌐 badge and the ✓ only where the browser really sounds the tr
   await w.find('.browser-play').trigger('click');await flushPromises()
   await playFor(w,512000)
   expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
-  expect((await openAudio(w)).map(badge)).toEqual([true,false,false,false])
+  expect((await openAudio(w)).map(badge)).toEqual([false,true,false,false])
  })
 
  it('only a silence this tab really heard takes the 🌐 away: the modal and the player then say why',async()=>{
+  dolbyBrowser()
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3]}) as any)
   const w=await at()
   await w.find('.browser-play').trigger('click');await flushPromises()
   await playFor(w,0)
   // The player pauses and names the codec the browser really dropped.
-  expect(w.find('[data-testid="codec-notice"]').text()).toContain('ваш браузер не воспроизводит: Dolby Digital (AC-3)')
+  expect(w.find('[data-testid="codec-notice"]').text()).toContain('Аудиокодеки этого фильма не поддерживаются вашим браузером: Dolby Digital (AC-3)')
   const items=await openAudio(w)
   expect(items.map(name)).toEqual(['Продубляж','HDrezka (DUB)','LeDoyen','English'])
   expect(items.map(badge)).toEqual([false,false,false,false])
   expect(items.map(checked)).toEqual(['','','',''])
   expect(items.map(desktop)).toEqual([true,false,false,false])
   expect(document.body.querySelector('[data-testid="audio-browser-legend"]')).toBeNull()
-  expect(document.body.querySelector('[data-testid="audio-browser-silent"]')!.textContent).toContain('«Продубляж», а её звук (Dolby Digital (AC-3)) не декодирует')
-  expect(releaseBrowserCompatible({...beastAc3,source_id:'b-1080-other'})).toBe(false)
+  expect(document.body.querySelector('[data-testid="audio-browser-silent"]')!.textContent).toContain('Аудиокодеки этой раздачи (Dolby Digital (AC-3)) не поддерживаются браузером')
+  // AC-3 is no longer trusted in this tab: in another build the first AAC track is what sounds.
+  expect(releaseBrowserCompatible({...beastAc3,source_id:'b-1080-other'})).toBe(true)
+  expect(releaseBrowserCompatible({...beastAc3,source_id:'b-1080-ac3-only',audio_tracks:[t(1,'ru','Продубляж','ac3',6)]})).toBe(false)
  })
 
- it('a Ukrainian language pick keeps the chosen build: the browser sounds its AC-3 first track «Продубляж» 🌐 and says so',async()=>{
+ it('a Ukrainian language pick keeps the chosen build: the browser sounds its AAC track «HDrezka (DUB)» 🌐 and says so',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3,ukAac],languages:[{value:'ru',available:true},{value:'uk',available:true}]}) as any)
   const w=await at()
   await langPill(w,'Украинская озвучка').trigger('click');await flushPromises()
   expect(w.find('[data-testid="watch-status"]').text()).toContain('▲ 20')
   const banner=w.get('[data-testid="voice-banner"]')
   expect(banner.find('[data-testid="voice-banner-globe"]').exists()).toBe(true)
-  expect(banner.text()).toContain('В браузере воспроизводится: «Продубляж»')
-  expect(banner.text()).toContain('Чтобы слушать в озвучке «LeDoyen», продолжите в KINOSOTA Player')
+  expect(banner.text()).toContain('В браузере звучит: «HDrezka (DUB)»')
+  expect(banner.text()).toContain('Чтобы слушать выбранную озвучку «LeDoyen», откройте в KINOSOTA Player')
   expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
   await w.find('.browser-play').trigger('click');await flushPromises()
   expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'b-1080',season:null,episode:null})
@@ -270,8 +277,8 @@ describe('the 🌐 badge and the ✓ only where the browser really sounds the tr
   await langPill(w,'Украинская озвучка').trigger('click');await flushPromises()
   let items=await openAudio(w)
   expect(items.map(name)).toEqual(['Продубляж','HDrezka (DUB)','LeDoyen','English'])
-  expect(items.map(badge)).toEqual([true,false,true,false])
-  expect(items.map(checked)).toEqual(['✓','','',''])
+  expect(items.map(badge)).toEqual([false,true,true,false])
+  expect(items.map(checked)).toEqual(['','✓','',''])
   expect(items.map(desktop)).toEqual([false,false,false,false])
   expect(document.body.querySelector('[data-testid="audio-browser-switch"]')!.textContent).toContain('Или выберите «LeDoyen»')
   await pick(items.find((el)=>name(el)==='LeDoyen')!)
@@ -281,7 +288,8 @@ describe('the 🌐 badge and the ✓ only where the browser really sounds the tr
   items=await openAudio(w)
   expect(items.map(name)).toEqual(['LeDoyen','Продубляж'])
   expect(items.map(checked)).toEqual(['✓',''])
-  expect(items.map(badge)).toEqual([true,true])
+  // «Продубляж» is AC-3 in the 1080p build: Chrome never sounds it there, no build to switch to.
+  expect(items.map(badge)).toEqual([true,false])
   closeAudio();await flushPromises()
   await w.find('.browser-play').trigger('click');await flushPromises()
   expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'b-ua',season:null,episode:null})
@@ -294,7 +302,7 @@ describe('the 🌐 badge and the ✓ only where the browser really sounds the tr
   const w=await at()
   await langPill(w,'Украинская озвучка').trigger('click');await flushPromises()
   const banner=w.get('[data-testid="voice-banner"]')
-  expect(banner.text()).toContain('«Продубляж»')
+  expect(banner.text()).toContain('«HDrezka (DUB)»')
   expect(banner.text()).toContain('«LeDoyen»')
   await banner.get('[data-testid="voice-banner-desktop"]').trigger('click');await flushPromises()
   expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'b-1080',season:null,episode:null,audio_lang:'uk',audio_track:3})
@@ -312,6 +320,7 @@ describe('smart voice switch: the browser plays exactly the chosen voice when so
  beforeEach(()=>{vi.mocked(torrentPlaybackApi.playbackTicket).mockResolvedValue({stream_url:'https://media.example/beast.mkv',expires_at:'x'} as any)})
 
  it('a voice another ready build leads with in a codec the browser decodes switches to that build',async()=>{
+  dolbyBrowser()
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3,hdLead]}) as any)
   const w=await at()
   expect(w.find('[data-testid="watch-status"]').text()).toContain('▲ 20')
@@ -323,7 +332,7 @@ describe('smart voice switch: the browser plays exactly the chosen voice when so
   const items=await openAudio(w)
   expect(items.map(name)).toEqual(['HDrezka (DUB)','Продубляж'])
   expect(items.map(checked)).toEqual(['✓',''])
-  // «Продубляж» leads the AC-3 build, which sounds in a desktop browser: its pick switches back there.
+  // «Продубляж» leads the AC-3 build, which sounds in this Dolby browser: its pick switches back there.
   expect(items.map(badge)).toEqual([true,true])
   closeAudio();await flushPromises()
   await w.find('.browser-play').trigger('click');await flushPromises()
@@ -331,7 +340,8 @@ describe('smart voice switch: the browser plays exactly the chosen voice when so
   expect(torrentPlaybackApi.prepareSource).not.toHaveBeenCalled()
  })
 
- it('a desktop browser keeps the AC-3 build when its first track is picked: it already sounds there',async()=>{
+ it('a browser that decodes AC-3 keeps the AC-3 build when its first track is picked: it already sounds there',async()=>{
+  dolbyBrowser()
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3,dubAac]}) as any)
   const w=await at()
   await pick((await openAudio(w)).find((el)=>name(el)==='Продубляж')!)
@@ -354,7 +364,8 @@ describe('smart voice switch: the browser plays exactly the chosen voice when so
   expect(items.map(badge)).toEqual([true,false])
  })
 
- it('picking «Продубляж» again switches back to the AC-3 build that leads with it',async()=>{
+ it('picking «Продубляж» again switches back to the AC-3 build that leads with it (a browser that decodes AC-3)',async()=>{
+  dolbyBrowser()
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3,hdLead]}) as any)
   const w=await at()
   await pick((await openAudio(w)).find((el)=>name(el)==='HDrezka (DUB)')!)
@@ -382,8 +393,8 @@ describe('smart voice switch: the browser plays exactly the chosen voice when so
   expect(items.map(badge)).toEqual([true,false])
   expect(items.map(desktop)).toEqual([false,true])
   const box=document.body.querySelector('[data-testid="audio-browser-mismatch"]')!
-  expect(box.textContent).toContain('В браузере воспроизводится: «HDrezka (DUB)»')
-  expect(box.textContent).toContain('Чтобы слушать в озвучке «Продубляж», продолжите в KINOSOTA Player')
+  expect(box.textContent).toContain('В браузере звучит: «HDrezka (DUB)»')
+  expect(box.textContent).toContain('Чтобы слушать выбранную озвучку «Продубляж», откройте в KINOSOTA Player')
   expect(box.querySelector('.audio-modal-browser-badge')).not.toBeNull()
   expect(w.find('[data-testid="voice-banner-globe"]').exists()).toBe(true)
  })
@@ -400,8 +411,8 @@ describe('smart voice switch: the browser plays exactly the chosen voice when so
   expect(items.map(badge)).toEqual([true,false,false,false])
   expect(items.map(desktop)).toEqual([false,true,false,false])
   const box=document.body.querySelector('[data-testid="audio-browser-mismatch"]')!
-  expect(box.textContent).toContain('В браузере воспроизводится: «Продубляж»')
-  expect(box.textContent).toContain('Чтобы слушать в озвучке «HDrezka (DUB)», продолжите в KINOSOTA Player')
+  expect(box.textContent).toContain('В браузере звучит: «Продубляж»')
+  expect(box.textContent).toContain('Чтобы слушать выбранную озвучку «HDrezka (DUB)», откройте в KINOSOTA Player')
   expect(w.get('[data-testid="voice-banner"]').text()).toContain('«HDrezka (DUB)»')
   expect(torrentPlaybackApi.playbackTicket).not.toHaveBeenCalled()
   ;(box.querySelector('[data-testid="audio-modal-desktop"]') as HTMLElement).click();await flushPromises()
@@ -419,12 +430,13 @@ describe('smart voice switch: the browser plays exactly the chosen voice when so
   expect(items.map(badge)).toEqual([false,false,false,false])
   expect(items.map(desktop)).toEqual([false,true,false,false])
   const silent=document.body.querySelector('[data-testid="audio-browser-silent"]')!
-  expect(silent.textContent).toContain('В браузере эта раздача без звука')
-  expect(silent.textContent).toContain('Чтобы слушать в озвучке «HDrezka (DUB)», продолжите в KINOSOTA Player')
-  expect(document.body.textContent).not.toContain('В браузере воспроизводится')
+  expect(silent.textContent).toContain('не поддерживаются браузером')
+  expect(silent.textContent).toContain('Продолжите в KINOSOTA Player или смотрите без звука')
+  expect(document.body.textContent).not.toContain('В браузере звучит:')
  })
 
  it('a build of another quality never takes over: the switch stays in the chosen quality',async()=>{
+  dolbyBrowser()
   const hdUhd={...hdLead,source_id:'b-hd-uhd',quality:'2160p',title:'Heart of the Beast 2026 2160p WEB-DL HDrezka'}
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3,hdUhd],qualities:[{value:'1080p',available:true},{value:'2160p',available:true}]}) as any)
   const w=await at()
@@ -434,6 +446,7 @@ describe('smart voice switch: the browser plays exactly the chosen voice when so
  })
 
  it('a build that is not ready, that the browser cannot play, or that the tab heard play silently never takes over',async()=>{
+  dolbyBrowser()
   const loading={...hdLead,source_id:'b-hd-wait',state:'queued'}
   const hevc={...hdLead,source_id:'b-hd-hevc',title:'Heart of the Beast 2026 1080p WEB-DL HEVC HDrezka'}
   const dtsHd={...hdLead,source_id:'b-hd-dts',audio_tracks:[t(1,'ru','HDrezka (DUB)','dts',6)]}
@@ -480,9 +493,9 @@ describe('the chosen quality strictly filters voices, badges and the browser rel
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3,uhdLeDoyen],qualities:[{value:'1080p',available:true},{value:'2160p',available:true}]}) as any)
   const w=await at()
   const items=await openAudio(w)
-  // Only the 1080p AC-3 first track sounds here; LeDoyen leads a 2160p build, never a 1080p one.
+  // Only the 1080p AAC track «HDrezka (DUB)» sounds here; LeDoyen leads a 2160p build, never a 1080p one.
   expect(items.map(name)).toEqual(['Продубляж','HDrezka (DUB)','LeDoyen','English'])
-  expect(items.map(badge)).toEqual([true,false,false,false])
+  expect(items.map(badge)).toEqual([false,true,false,false])
   await pick(items.find((el)=>name(el)==='LeDoyen')!)
   expect(w.find('[data-testid="watch-status"]').text()).toContain('1080p')
   expect(document.body.querySelector('[data-testid="audio-browser-switch"]')).toBeNull()
@@ -496,18 +509,18 @@ describe('the chosen quality strictly filters voices, badges and the browser rel
   expect(torrentPlaybackApi.prepareSource).not.toHaveBeenCalled()
  })
 
- it('UA at 1080p never jumps to 2160p: the browser keeps the 1080p build and sounds its first track «Продубляж»',async()=>{
+ it('UA at 1080p never jumps to 2160p: the browser keeps the 1080p build and sounds its AAC track «HDrezka (DUB)»',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(twoQualities() as any)
   const w=await at()
   await langPill(w,'Украинская озвучка').trigger('click');await flushPromises()
   expect(w.find('[data-testid="watch-status"]').text()).toContain('1080p')
-  expect(w.get('[data-testid="voice-banner"]').text()).toContain('В браузере воспроизводится: «Продубляж»')
+  expect(w.get('[data-testid="voice-banner"]').text()).toContain('В браузере звучит: «HDrezka (DUB)»')
   await w.find('.browser-play').trigger('click');await flushPromises()
   expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledTimes(1)
   expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'b-1080',season:null,episode:null})
  })
 
- it('RU at 1080p plays the Russian AC-3 first track with sound: no warning, no voice banner',async()=>{
+ it('RU at 1080p plays the Russian AAC track with sound: no warning, no voice banner',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(twoQualities() as any)
   const w=await at()
   await langPill(w,'Русская озвучка').trigger('click');await flushPromises()
@@ -523,7 +536,7 @@ describe('the chosen quality strictly filters voices, badges and the browser rel
   const items=await openAudio(w)
   expect(items.map(name)).toEqual(['Продубляж','HDrezka (DUB)','LeDoyen','English'])
   // LeDoyen leads the ready 1080p Ukrainian build: picking it would switch there, so it has the 🌐.
-  expect(items.map(badge)).toEqual([true,false,true,false])
+  expect(items.map(badge)).toEqual([false,true,true,false])
   closeAudio();await flushPromises()
   await langPill(w,'Украинская озвучка').trigger('click');await flushPromises()
   expect(w.find('[data-testid="watch-status"]').text()).toContain('1080p')
@@ -551,23 +564,27 @@ describe('honest codec detection: the browser itself decides, the 🌐 badge nev
   expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'b-1080',season:null,episode:null})
  })
 
- it('Chrome answers «» for AC-3 / E-AC-3 in MP4, yet the MKV stream sounds: a desktop browser trusts Dolby, never DTS / TrueHD',async()=>{
+ it('Chrome answers «» for AC-3 / E-AC-3 / DTS / TrueHD: only a file with an AAC / MP3 / Opus / Vorbis / FLAC track sounds',async()=>{
   const spy=vi.spyOn(HTMLMediaElement.prototype,'canPlayType').mockImplementation(()=>'')
   try{
-   expect(releaseBrowserCompatible(src({source_id:'s-c-1',default:true,audio_tracks:[t(1,'ru','Дубляж','ac3',6)]}))).toBe(true)
-   expect(releaseBrowserCompatible(src({source_id:'s-c-2',default:true,audio_tracks:[t(1,'ru','Дубляж','eac3',6)]}))).toBe(true)
+   expect(releaseBrowserCompatible(src({source_id:'s-c-1',default:true,audio_tracks:[t(1,'ru','Дубляж','ac3',6)]}))).toBe(false)
+   expect(releaseBrowserCompatible(src({source_id:'s-c-2',default:true,audio_tracks:[t(1,'ru','Дубляж','eac3',6)]}))).toBe(false)
    expect(releaseBrowserCompatible(src({source_id:'s-c-3',default:true,audio_tracks:[t(1,'ru','Дубляж','aac')]}))).toBe(true)
    expect(releaseBrowserCompatible(src({source_id:'s-c-4',default:true,audio_tracks:[t(1,'ru','Дубляж','dts',6)]}))).toBe(false)
    expect(releaseBrowserCompatible(src({source_id:'s-c-5',default:true,audio_tracks:[t(1,'ru','Дубляж','truehd',8)]}))).toBe(false)
+   expect(releaseBrowserCompatible(src({source_id:'s-c-6',default:true,audio_tracks:[t(1,'ru','Дубляж','flac',2)]}))).toBe(true)
+   // The demuxer skips the AC-3 first track and sounds the AAC second one.
+   expect(releaseBrowserCompatible(src({source_id:'s-c-7',default:true,audio_tracks:[t(1,'ru','Продубляж','ac3',6),t(2,'ru','WinMedia','aac')]}))).toBe(true)
+   expect(releaseBrowserCompatible(src({source_id:'s-c-8',default:true,audio_tracks:[t(1,'ru','Дубляж','ac3',6),t(2,'en','Original','dts',6)]}))).toBe(false)
   }finally{spy.mockRestore()}
  })
 
- it('MediaCapabilities can confirm a codec the synchronous checks deny (a phone asks about Dolby too)',async()=>{
-  vi.stubGlobal('navigator',{userAgent:ANDROID_UA,mediaCapabilities:{decodingInfo:async(c:any)=>({supported:String(c.audio?.contentType).includes('ac-3')})}})
+ it('MediaCapabilities never lights the 🌐: only what the browser itself says it decodes counts',async()=>{
+  vi.stubGlobal('navigator',{userAgent:ANDROID_UA,mediaCapabilities:{decodingInfo:async()=>({supported:true})}})
   const hit=src({source_id:'s-caps',default:true,audio_tracks:[t(1,'ru','Дубляж','ac3',6)]})
   expect(releaseBrowserCompatible(hit)).toBe(false)
   await flushPromises()
-  expect(releaseBrowserCompatible(hit)).toBe(true)
+  expect(releaseBrowserCompatible(hit)).toBe(false)
  })
 
  it('«Сердце зверя»: canPlayType answers «maybe» for AC-3, the first track gets the 🌐 badge',async()=>{
@@ -580,20 +597,6 @@ describe('honest codec detection: the browser itself decides, the 🌐 badge nev
    expect(items.map(badge)).toEqual([true,false,false,false])
    expect(document.body.querySelector('[data-testid="audio-browser-legend"]')).not.toBeNull()
   }finally{spy.mockRestore()}
- })
-
- it('the 🌐 badge appears in the open audio modal once MediaCapabilities confirms the codec',async()=>{
-  let release!:()=>void
-  const gate=new Promise<void>(r=>{release=r})
-  vi.stubGlobal('navigator',{userAgent:ANDROID_UA,mediaCapabilities:{decodingInfo:async(c:any)=>{await gate;return {supported:String(c.audio?.contentType).includes('ac-3')}}}})
-  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3]}) as any)
-  const w=await at()
-  let items=await openAudio(w)
-  expect(items.map(badge)).toEqual([false,false,false,false])
-  release();await flushPromises()
-  items=[...document.body.querySelectorAll('.audio-modal-item')] as HTMLElement[]
-  expect(items.map(badge)).toEqual([true,false,false,false])
-  expect(w.exists()).toBe(true)
  })
 
  it('a codec the tab heard play silently is never badged again, whatever the browser claims',async()=>{
@@ -610,5 +613,91 @@ describe('honest codec detection: the browser itself decides, the 🌐 badge nev
   expect(releaseBrowserCompatible({...mkv,file_name:'Film.2026.DVDRip.avi'})).toBe(false)
   vi.stubGlobal('navigator',{userAgent:'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'})
   expect(releaseBrowserCompatible(mkv)).toBe(false)
+ })
+})
+
+/** «Сердце зверя» on production: an AC-3 dub first, WinMedia in AAC second. */
+const beastWinMedia=src({source_id:'b-wm',title:'Heart of the Beast [2026, WEB-DL 1080p]',file_name:'Heart.of.the.Beast.2026.1080p.WEB-DL.mkv',languages:['ru','en'],default:true,
+ audio_tracks:[t(1,'ru','Продубляж','ac3',6),t(2,'ru','WinMedia','aac'),t(3,'en','English','ac3',6)]})
+/** «Терминатор 2» (280): every track AC-3 / DTS — Chrome plays it without sound. */
+const terminator=src({source_id:'t2',title:'Terminator 2: Judgment Day (1991) BDRip 1080p',file_name:'Terminator.2.1991.1080p.BDRip.mkv',languages:['ru','en'],default:true,
+ audio_tracks:[t(1,'ru','Дубляж','ac3',6),t(2,'ru','MVO','dts',6),t(3,'en','Original','dts',6)]})
+
+describe('honest prestart sound check for MKV: the first track of a codec this browser decodes is what sounds',()=>{
+ beforeEach(()=>{vi.mocked(torrentPlaybackApi.playbackTicket).mockResolvedValue({stream_url:'https://media.example/film.mkv',expires_at:'x'} as any)})
+
+ it('«Сердце зверя»: the 🌐 and the ✓ sit on WinMedia (2nd, AAC), the AC-3 tracks get none, Play streams this build with no warning',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastWinMedia]}) as any)
+  const w=await at()
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  expect(w.find('[data-testid="voice-banner"]').exists()).toBe(false)
+  const items=await openAudio(w)
+  expect(items.map(name)).toEqual(['Продубляж','WinMedia','English'])
+  expect(items.map(badge)).toEqual([false,true,false])
+  expect(items.map(checked)).toEqual(['','✓',''])
+  expect(items.map(desktop)).toEqual([false,false,false])
+  closeAudio();await flushPromises()
+  await w.find('.browser-play').trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'b-wm',season:null,episode:null})
+ })
+
+ it('«Сердце зверя»: picking the AC-3 «Продубляж» says honestly what the browser sounds and hands the pick to KINOSOTA Player',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastWinMedia]}) as any)
+  vi.mocked(torrentPlaybackApi.desktopLaunch).mockResolvedValue({launch_id:'id-wm',deep_link:'kinosota://watch?launch=id-wm',expires_at:'x'} as any)
+  vi.mocked(waitForPlayer).mockResolvedValue(true)
+  const w=await at()
+  await pick((await openAudio(w)).find((el)=>name(el)==='Продубляж')!)
+  const items=[...document.body.querySelectorAll('.audio-modal-item')] as HTMLElement[]
+  expect(items.map(badge)).toEqual([false,true,false])
+  expect(items.map(checked)).toEqual(['','✓',''])
+  expect(items.map(desktop)).toEqual([true,false,false])
+  const box=document.body.querySelector('[data-testid="audio-browser-mismatch"]')!
+  expect(box.textContent).toContain('В браузере звучит: «WinMedia»')
+  expect(box.querySelector('.audio-modal-browser-badge')).not.toBeNull()
+  expect(box.textContent).toContain('Чтобы слушать выбранную озвучку «Продубляж», откройте в KINOSOTA Player')
+  expect(w.get('[data-testid="voice-banner"]').text()).toContain('В браузере звучит: «WinMedia»')
+  ;(box.querySelector('[data-testid="audio-modal-desktop"]') as HTMLElement).click();await flushPromises()
+  expect(torrentPlaybackApi.desktopLaunch).toHaveBeenCalledWith({kind:'movie',tmdb_id:1,source_id:'b-wm',season:null,episode:null,audio_lang:'ru',audio_track:1})
+ })
+
+ it('«Терминатор 2»: no track has a codec the browser decodes — no 🌐 anywhere and the warning shows before Play',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[terminator]}) as any)
+  const w=await at()
+  const notice=w.get('[data-testid="codec-notice"]')
+  expect(notice.text()).toContain('Аудиокодеки этого фильма не поддерживаются вашим браузером: Dolby Digital (AC-3) и DTS')
+  expect(notice.text()).toContain('продолжите в KINOSOTA Player или смотрите без звука')
+  expect(notice.get('[data-testid="codec-notice-browser"]').text()).toBe('Смотреть в браузере без звука')
+  expect(w.find('.browser-play').exists()).toBe(false)
+  expect(torrentPlaybackApi.playbackTicket).not.toHaveBeenCalled()
+  const items=await openAudio(w)
+  expect(items.map(name)).toEqual(['Дубляж','MVO','Original'])
+  expect(items.map(badge)).toEqual([false,false,false])
+  expect(items.map(checked)).toEqual(['','',''])
+  expect(document.body.querySelector('[data-testid="audio-browser-legend"]')).toBeNull()
+  expect(document.body.querySelector('[data-testid="audio-browser-silent"]')!.textContent).toContain('не поддерживаются браузером')
+  expect(document.body.textContent).not.toContain('В браузере звучит:')
+ })
+
+ it('«Терминатор 2» in a browser that decodes AC-3 (Safari, Edge): the AC-3 dub gets the 🌐 and plays without a warning',async()=>{
+  dolbyBrowser()
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[terminator]}) as any)
+  const w=await at()
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  const items=await openAudio(w)
+  expect(items.map(badge)).toEqual([true,false,false])
+  expect(items.map(checked)).toEqual(['✓','',''])
+ })
+
+ it('smart switch: a voice that sounds first in another ready build of the quality carries the 🌐 there',async()=>{
+  const prodAac=src({source_id:'b-prod-aac',title:'Heart of the Beast 2026 1080p WEBRip',file_name:'Heart.of.the.Beast.2026.1080p.WEBRip.mkv',languages:['ru'],rank:6,seeders:6,
+   audio_tracks:[t(1,'ru','Продубляж','aac')]})
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastWinMedia,prodAac]}) as any)
+  const w=await at()
+  const items=await openAudio(w)
+  // «Продубляж» is AC-3 here, but it is the sounding (AAC) track of the other ready 1080p build.
+  expect(items.map(badge)).toEqual([true,true,false])
+  await pick(items.find((el)=>name(el)==='Продубляж')!)
+  expect(w.find('[data-testid="watch-status"]').text()).toContain('▲ 6')
+  expect(w.find('[data-testid="voice-banner"]').exists()).toBe(false)
  })
 })

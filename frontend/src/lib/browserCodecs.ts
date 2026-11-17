@@ -158,53 +158,23 @@ export function soundWatcher(seconds = 4) {
 }
 
 /**
- * Audio codecs every browser that opens the file plays with sound: AAC and MP3 (Opus / Vorbis
- * too). Every other codec (FLAC, DTS, TrueHD…) is asked of this very browser —
- * MediaSource.isTypeSupported, HTMLMediaElement.canPlayType and MediaCapabilities.
+ * Audio codecs every browser that opens the file plays with sound: AAC, MP3, Opus, Vorbis and
+ * FLAC. The Chromium Matroska demuxer picks the first track of one of these codecs.
+ * Every other codec (AC-3, E-AC-3, DTS, TrueHD…) is NOT trusted by default — Chrome / Chromium
+ * skip it — and counts only when this very browser says it decodes it (browserDecodes:
+ * MediaSource.isTypeSupported / HTMLMediaElement.canPlayType, e.g. Safari or Edge with a native
+ * Dolby decoder).
  */
-const BROWSER_AUDIO: ReadonlySet<string> = new Set(['aac', 'mp3', 'opus', 'vorbis'])
-/**
- * Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) in the MKV stream: trusted by default on a
- * desktop browser. The synthetic questions are about MP4 (canPlayType('audio/mp4; codecs="ac-3"')
- * answers «» in Chrome) while the Matroska stream is decoded with the operating system's Dolby
- * decoder and plays with sound. Only a proof of silence in this tab — soundWatcher on the real
- * stream, reported through markCodecSilent — takes the browser badge away from them.
- * Phones and tablets are asked like every other codec.
- */
-const BROWSER_DOLBY: ReadonlySet<string> = new Set(['ac3', 'eac3'])
+const BROWSER_AUDIO: ReadonlySet<string> = new Set(['aac', 'mp3', 'opus', 'vorbis', 'flac'])
 /** A desktop browser: no phone / tablet engine (Android, iOS, iPadOS, «Mobile» builds). */
 export function desktopBrowser(): boolean {
   return !/Android|iP(?:hone|ad|od)|Mobile|Tablet/i.test(userAgent())
 }
-/** Codecs MediaCapabilities.decodingInfo confirmed for this browser (filled once per tab). */
-const confirmedAudio = reactive(new Set<string>())
 /** Codecs this tab already heard play silently: never trusted again, whatever the browser claims. */
 const silentAudio = reactive(new Set<string>())
-let capabilityProbe: Promise<void> | null = null
-
-type DecodingInfo = { supported?: boolean }
-type Capabilities = { decodingInfo?: (config: unknown) => Promise<DecodingInfo> }
-/** Asks MediaCapabilities once per tab about every non-baseline audio codec (5.1, 48 kHz). */
-export function probeAudioCodecs(): Promise<void> {
-  if (capabilityProbe) return capabilityProbe
-  const caps = (globalThis as { navigator?: { mediaCapabilities?: Capabilities } }).navigator?.mediaCapabilities
-  if (!caps?.decodingInfo) return (capabilityProbe = Promise.resolve())
-  const ask = async (codec: string, types: readonly string[]) => {
-    for (const contentType of types) {
-      try {
-        const info = await caps.decodingInfo!({ type: 'file', audio: { contentType, channels: '6', bitrate: 640000, samplerate: 48000 } })
-        if (info?.supported) { confirmedAudio.add(codec); return }
-      } catch { /* malformed for this engine */ }
-    }
-  }
-  capabilityProbe = Promise.all(Object.entries(AUDIO_MIME).filter(([c]) => !BROWSER_AUDIO.has(c)).map(([c, t]) => ask(c, t))).then(() => undefined)
-  return capabilityProbe
-}
 /** Tests: forget what this tab learned. */
 export function resetAudioCodecKnowledge(): void {
-  confirmedAudio.clear()
   silentAudio.clear()
-  capabilityProbe = null
 }
 /** The browser played a track of this codec without sound: it never gets the browser badge again in this tab. */
 export function markCodecSilent(codec: string | null | undefined): void {
@@ -215,15 +185,16 @@ const AUDIO_LABELS: Readonly<Record<string, string>> = {
   ac3: 'Dolby Digital (AC-3)', eac3: 'Dolby Digital Plus (E-AC-3)', dts: 'DTS', truehd: 'Dolby TrueHD',
   flac: 'FLAC', pcm: 'PCM', mp2: 'MPEG Audio Layer II',
 }
-/** true: this browser plays this container audio codec with sound; false: it does not; null: codec unknown. */
+/**
+ * true: this browser plays this container audio codec with sound; false: it does not; null: codec
+ * unknown. AAC / MP3 / Opus / Vorbis / FLAC always; any other codec only when browserDecodes says
+ * so, and never after this tab heard it play silently.
+ */
 export function audioCodecPlayable(codec: string | null | undefined): boolean | null {
   const c = String(codec ?? '').trim().toLowerCase()
   if (!c) return null
   if (BROWSER_AUDIO.has(c)) return true
   if (silentAudio.has(c)) return false
-  if (BROWSER_DOLBY.has(c) && desktopBrowser()) return true
-  if (confirmedAudio.has(c)) return true
-  void probeAudioCodecs()
   return browserDecodes(AUDIO_MIME[c] ?? [])
 }
 /** «Dolby Digital (AC-3)» for ac3; the codec itself in upper case otherwise. */
