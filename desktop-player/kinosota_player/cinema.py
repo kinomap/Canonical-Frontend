@@ -61,6 +61,14 @@ COMMON_OPTIONS = [
     ('ytdl', 'no'), ('load-scripts', 'no'), ('input-vo-keyboard', 'no'), ('audio-client-name', 'KINOSOTA Player'),
     ('sub-auto', 'no'), ('audio-display', 'no'),
 ]
+# Right click on the OSC audio (💬) / subtitle buttons opens KINOSOTA's own track popups instead of blindly
+# cycling: osc.lua runs the configured command, the script-message reaches us as EVENT_CLIENT_MESSAGE.
+AUDIO_MENU_MESSAGE = 'kinosota-audio-menu'
+SUB_MENU_MESSAGE = 'kinosota-sub-menu'
+OSC_SCRIPT_OPTS = ','.join([
+    f'osc-audio_track_mbtn_right_command=script-message {AUDIO_MENU_MESSAGE};script-message-to osc osc-hide',
+    f'osc-sub_track_mbtn_right_command=script-message {SUB_MENU_MESSAGE};script-message-to osc osc-hide',
+])
 # The intro fills the window (panscan crops instead of letterboxing) and holds its last frame.
 INTRO_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'always'), ('panscan', '1.0'), ('osd-level', '0'), ('osc', 'no'),
                  ('input-default-bindings', 'no'), ('pause', 'no'), ('volume', str(INTRO_VOLUME)),
@@ -69,7 +77,8 @@ INTRO_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'always'), ('panscan', '1.0'), (
 FILM_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'no'), ('pause', 'yes'), ('volume', '0'), ('osd-level', '0'), ('osc', 'no'),
                 ('input-default-bindings', 'yes'), ('cache', 'yes'), ('demuxer-max-bytes', '150MiB'),
                 ('demuxer-readahead-secs', '10'), ('cache-pause-wait', '1'), ('cache-pause-initial', 'no'),
-                ('network-timeout', '60'), ('stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=3')]
+                ('network-timeout', '60'), ('stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=3'),
+                ('script-opts', OSC_SCRIPT_OPTS)]
 # engine.Mpv window flags have no meaning here: the surface is the window.
 WINDOW_OPTIONS = {'geometry', 'fullscreen', 'fs', 'native-fs', 'autofit', 'autofit-larger', 'force-window', 'title',
                   'input-ipc-server', 'idle', 'keep-open', 'vo', 'no-config', 'config', 'terminal', 'osd-level', 'osc'}
@@ -500,6 +509,8 @@ class CinemaSurface(QObject):
     filmEnded = Signal(int)    # 0: end of file or quit, 2: the stream failed.
     fullscreenRequested = Signal(bool)
     failed = Signal(str)       # OpenGL / libmpv cannot be used: fall back to the external mpv window.
+    audioMenuRequested = Signal()      # Right click on the OSC 💬 button: show every audio track.
+    subtitlesMenuRequested = Signal()  # Right click on the OSC subtitle button: show every subtitle track.
     _events = Signal()
 
     PLAYING = ('dissolve', 'film')
@@ -788,6 +799,8 @@ class CinemaSurface(QObject):
                 self._film_finished(0)
             elif event.reason == libmpv.END_ERROR:
                 self._film_finished(2)
+        elif name == 'film' and event.id == libmpv.EVENT_CLIENT_MESSAGE:
+            self._client_message(getattr(event, 'args', None) or [])
         elif name == 'film' and event.id == libmpv.EVENT_SHUTDOWN:
             # «q» in the film: mpv's core is gone, the next launch opens a new one.
             self._close('film')
@@ -797,6 +810,15 @@ class CinemaSurface(QObject):
             self._close('intro')
         elif name == 'intro' and event.id == libmpv.EVENT_END_FILE and event.reason == libmpv.END_ERROR:
             self._intro_unplayable(player)
+
+    def _client_message(self, args):
+        """script-message from the film's OSC: only while the film is on screen and takes input."""
+        if not args or not self.accepts_input():
+            return
+        if args[0] == AUDIO_MENU_MESSAGE:
+            self.audioMenuRequested.emit()
+        elif args[0] == SUB_MENU_MESSAGE:
+            self.subtitlesMenuRequested.emit()
 
     def _film_finished(self, code):
         if not self._film_alive:

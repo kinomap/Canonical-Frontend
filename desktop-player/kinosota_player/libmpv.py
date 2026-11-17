@@ -23,6 +23,7 @@ FORMAT_NODE, FORMAT_NODE_ARRAY, FORMAT_NODE_MAP, FORMAT_BYTE_ARRAY = 6, 7, 8, 9
 # mpv_event_id
 EVENT_NONE, EVENT_SHUTDOWN, EVENT_LOG_MESSAGE = 0, 1, 2
 EVENT_START_FILE, EVENT_END_FILE, EVENT_FILE_LOADED = 6, 7, 8
+EVENT_CLIENT_MESSAGE = 16  # script-message from a Lua script (the OSC's right-click track menus).
 EVENT_VIDEO_RECONFIG, EVENT_AUDIO_RECONFIG = 17, 18
 EVENT_PLAYBACK_RESTART, EVENT_PROPERTY_CHANGE = 21, 22
 # mpv_end_file_reason
@@ -75,6 +76,10 @@ class mpv_event_property(Structure):
 
 class mpv_event_end_file(Structure):
     _fields_ = [('reason', c_int), ('error', c_int)]  # Later fields are not needed and vary by API version.
+
+
+class mpv_event_client_message(Structure):
+    _fields_ = [('num_args', c_int), ('args', POINTER(c_char_p))]
 
 
 class mpv_render_param(Structure):
@@ -222,13 +227,25 @@ def node_value(node):
 
 
 class Event:
-    __slots__ = ('id', 'error', 'name', 'value', 'reason')
+    __slots__ = ('id', 'error', 'name', 'value', 'reason', 'args')
 
-    def __init__(self, event_id, error=0, name=None, value=None, reason=None):
+    def __init__(self, event_id, error=0, name=None, value=None, reason=None, args=None):
         self.id, self.error, self.name, self.value, self.reason = event_id, error, name, value, reason
+        self.args = list(args) if args else []
 
     def __repr__(self):
-        return f'Event(id={self.id}, name={self.name!r}, value={self.value!r}, reason={self.reason})'
+        return (f'Event(id={self.id}, name={self.name!r}, value={self.value!r}, reason={self.reason}, '
+                f'args={self.args!r})')
+
+
+def client_message_args(data):
+    """mpv_event_client_message* -> its string arguments (``script-message a b`` -> ['a', 'b'])."""
+    if not data:
+        return []
+    message = cast(data, POINTER(mpv_event_client_message)).contents
+    if message.num_args <= 0 or not message.args:
+        return []
+    return [(message.args[i] or b'').decode('utf-8', 'replace') for i in range(message.num_args)]
 
 
 class Mpv:
@@ -333,6 +350,8 @@ class Mpv:
         if event.event_id == EVENT_END_FILE and event.data:
             end = cast(event.data, POINTER(mpv_event_end_file)).contents
             return Event(event.event_id, end.error, reason=end.reason)
+        if event.event_id == EVENT_CLIENT_MESSAGE:
+            return Event(event.event_id, event.error, args=client_message_args(event.data))
         return Event(event.event_id, event.error)
 
     # Render API ---------------------------------------------------------------------------------------------

@@ -17,6 +17,7 @@ from .cinema import INTRO_STILL, CinemaEngine, create_surface, mpv_key_name
 from .deeplink import parse_launch, parse_mode
 from .engine import FIRST_FRAME_TIMEOUT, Mpv
 from .torrents import audio_args, media_title_args
+from .tracks import AUDIO, OFF_ID, SUBTITLES, TrackSelectionDialog, track_entries
 
 BACKGROUND, BACKGROUND_DEEP = '#070b0e', '#070b0e'  # Unified CinemaPrestartOverlay.vue palette.
 ACCENT, ACCENT_DEEP = '#ffd400', '#ffb800'
@@ -154,6 +155,7 @@ class DirectLaunchSplash(QWidget):
         self.target_screen = None
         self.cinema = None
         self.backdrop = None
+        self.track_dialog = None
         self._fading = False
         self._close_after_fade = False
         self._closing = False
@@ -235,6 +237,8 @@ class DirectLaunchSplash(QWidget):
             cinema.fullscreenRequested.connect(lambda full: self.set_mode('full' if full else 'compact'))
             cinema.failed.connect(self.use_still_backdrop)
             cinema.view.activity.connect(self._reveal_chrome)
+            cinema.audioMenuRequested.connect(self.show_audio_menu)
+            cinema.subtitlesMenuRequested.connect(self.show_subtitles_menu)
             cinema.set_fullscreen(self.mode == 'full')
         else:
             self.backdrop = StillBackdrop(self)
@@ -366,6 +370,57 @@ class DirectLaunchSplash(QWidget):
         self.long_wait = True
         self._refresh_chrome()
 
+    # Track popups -------------------------------------------------------------------------------------------
+    def show_audio_menu(self):
+        """Right click on the OSC 💬 button: every audio track of the file, centred over the film."""
+        return self._show_tracks(AUDIO)
+
+    def show_subtitles_menu(self):
+        """Right click on the OSC subtitle button: «Без субтитров» and every subtitle track."""
+        return self._show_tracks(SUBTITLES)
+
+    def _film_core(self):
+        if not self.film_mode or self.cinema is None or not self.cinema.accepts_input():
+            return None
+        return self.cinema.film_player()
+
+    def _show_tracks(self, kind):
+        film = self._film_core()
+        if film is None or not self.isVisible():
+            return None
+        self.close_track_dialog()
+        dialog = TrackSelectionDialog(self, kind, track_entries(film.get('track-list'), kind))
+        dialog.trackChosen.connect(lambda track_id, kind=kind: self.choose_track(kind, track_id))
+        dialog.finished.connect(lambda _result, dialog=dialog: self._track_dialog_closed(dialog))
+        self.track_dialog = dialog
+        dialog.cover(self)
+        dialog.open()  # Window-modal and non-blocking: the film keeps playing under it.
+        dialog.raise_()
+        dialog.activateWindow()
+        return dialog
+
+    def choose_track(self, kind, track_id):
+        """Switch the running core in place: no reload, no pause."""
+        film = self._film_core()
+        if film is None:
+            return False
+        if kind == AUDIO:
+            return bool(track_id) and film.try_set('aid', int(track_id))
+        return film.try_set('sid', 'no' if track_id == OFF_ID else int(track_id))
+
+    def _track_dialog_closed(self, dialog):
+        if self.track_dialog is dialog:
+            self.track_dialog = None
+        dialog.deleteLater()
+        if self.isVisible():
+            self.activateWindow()
+            self.setFocus()  # Keys go to mpv again.
+
+    def close_track_dialog(self):
+        dialog, self.track_dialog = self.track_dialog, None
+        if dialog is not None:
+            dialog.reject()
+
     def _refresh_chrome(self):
         """Over the intro only □ / ✕ stay; the status shows on errors or a long wait. The still shows all."""
         cinema = self.cinema is not None
@@ -465,6 +520,7 @@ class DirectLaunchSplash(QWidget):
 
     def _stop_media(self):
         """A hidden window never keeps the intro or the film playing."""
+        self.close_track_dialog()
         self.chrome_timer.stop()
         self.long_wait_timer.stop()
         self.long_wait = False

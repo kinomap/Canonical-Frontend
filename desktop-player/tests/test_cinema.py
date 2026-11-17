@@ -598,3 +598,153 @@ def test_offscreen_and_disabled_environments_never_try_opengl(monkeypatch):
     assert cinema.create_surface() is None
     monkeypatch.setenv('KINOSOTA_CINEMA', '0')
     assert cinema.unavailable_reason() == 'disabled by KINOSOTA_CINEMA'
+
+
+# Track popups (right click on the OSC audio / subtitle buttons) --------------------------------------------------
+TRACK_LIST = [
+    {'id': 1, 'type': 'video', 'codec': 'h264', 'selected': True},
+    {'id': 1, 'type': 'audio', 'lang': 'rus', 'title': 'Дубляж', 'codec': 'ac3', 'demux-channel-count': 6,
+     'selected': True},
+    {'id': 2, 'type': 'audio', 'lang': 'ukr', 'title': 'Пифагор', 'codec': 'eac3', 'demux-channel-count': 2},
+    {'id': 3, 'type': 'audio', 'lang': 'eng', 'codec': 'dts', 'demux-channel-count': 8},
+    {'id': 4, 'type': 'audio', 'lang': 'jpn', 'title': 'Original', 'codec': 'aac'},
+    {'id': 1, 'type': 'sub', 'lang': 'rus', 'title': 'Full', 'codec': 'subrip'},
+    {'id': 2, 'type': 'sub', 'lang': 'rus', 'title': 'Надписи', 'codec': 'ass', 'forced': True},
+    {'type': 'audio', 'title': 'no id'}, 'garbage',
+]
+
+
+def playing_film(surface, tracks=TRACK_LIST):
+    surface.present()
+    surface.load_film(URL)
+    surface.handles['film'].props['track-list'] = [dict(t) if isinstance(t, dict) else t for t in tracks]
+    first_film_frame(surface, cached=5)
+    assert surface.accepts_input()
+    return surface.handles['film']
+
+
+def test_client_message_args_are_read_from_the_mpv_event_struct():
+    import ctypes
+    values = (ctypes.c_char_p * 2)(b'kinosota-audio-menu', 'ё'.encode())
+    message = libmpv.mpv_event_client_message(2, ctypes.cast(values, ctypes.POINTER(ctypes.c_char_p)))
+    assert libmpv.client_message_args(ctypes.addressof(message)) == ['kinosota-audio-menu', 'ё']
+    assert libmpv.client_message_args(None) == []
+    assert libmpv.EVENT_CLIENT_MESSAGE == 16
+    assert libmpv.Event(libmpv.EVENT_CLIENT_MESSAGE).args == []
+
+
+def test_the_film_osc_right_click_sends_script_messages_instead_of_cycling_tracks():
+    options = dict(cinema.FILM_OPTIONS)
+    opts = dict(item.split('=', 1) for item in options['script-opts'].split(','))
+    assert opts['osc-audio_track_mbtn_right_command'].startswith('script-message kinosota-audio-menu')
+    assert opts['osc-sub_track_mbtn_right_command'].startswith('script-message kinosota-sub-menu')
+    assert 'cycle' not in options['script-opts']
+    assert 'script-opts' not in dict(cinema.INTRO_OPTIONS)
+
+
+def test_osc_client_messages_become_menu_signals_only_while_the_film_plays():
+    surface, _ = make_surface()
+    asked = []
+    surface.audioMenuRequested.connect(lambda: asked.append('audio'))
+    surface.subtitlesMenuRequested.connect(lambda: asked.append('sub'))
+    surface.present()
+    surface.load_film(URL)
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-audio-menu'])
+    assert asked == []  # Still warming up under the intro.
+    first_film_frame(surface, cached=5)
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-audio-menu'])
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-sub-menu'])
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['something-else'])
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=[])
+    assert asked == ['audio', 'sub']
+    surface.shutdown()
+
+
+def test_track_list_is_filtered_per_kind_with_flags_codecs_and_the_active_mark():
+    from kinosota_player.tracks import AUDIO, SUBTITLES, row_text, track_entries
+    audio = track_entries(TRACK_LIST, AUDIO)
+    assert [row['id'] for row in audio] == [1, 2, 3, 4]
+    assert [row['language'] for row in audio] == ['ru', 'uk', 'en', '']
+    assert audio[0]['selected'] and not any(row['selected'] for row in audio[1:])
+    assert audio[0]['details'] == 'AC-3 · 5.1' and audio[3]['code'] == 'JPN'
+    assert audio[2]['title'] == 'Английский' and audio[2]['details'] == 'DTS · 7.1'
+    assert row_text(audio[0]).endswith('✓') and not row_text(audio[1]).endswith('✓')
+    assert row_text(audio[3]).startswith('JPN  Original')
+    subs = track_entries(TRACK_LIST, SUBTITLES)
+    assert [row['id'] for row in subs] == [0, 1, 2] and subs[0]['title'] == 'Без субтитров' and subs[0]['selected']
+    assert subs[2]['details'] == 'ASS · Forced'
+    assert track_entries(None, AUDIO) == [] and [row['id'] for row in track_entries(None, SUBTITLES)] == [0]
+    shown = [dict(t) for t in TRACK_LIST if isinstance(t, dict)]
+    shown[5]['selected'] = True
+    subs = track_entries(shown, SUBTITLES)
+    assert not subs[0]['selected'] and subs[1]['selected']
+
+
+def test_right_click_on_audio_opens_the_popup_and_a_click_switches_aid_in_place():
+    from kinosota_player.tracks import TrackSelectionDialog
+    surface, _ = make_surface()
+    splash = DirectLaunchSplash(cinema=surface)
+    splash.present()
+    assert splash.show_audio_menu() is None  # No popup over the intro.
+    film = playing_film(surface)
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-audio-menu'])
+    dialog = splash.track_dialog
+    assert isinstance(dialog, TrackSelectionDialog) and dialog.isVisible() and dialog.isModal()
+    assert dialog.title_label.text() == 'Выбор аудиодорожки' and dialog.objectName() == 'trackDialog'
+    assert dialog.card.objectName() == 'audioCard' and dialog.geometry() == splash.frameGeometry()
+    assert list(dialog.track_buttons) == [1, 2, 3, 4] and dialog.track_buttons[1].isChecked()
+    loads = [c for c in film.commands if c and c[0] == 'loadfile']
+    dialog.track_buttons[3].click()
+    assert film.props['aid'] == 3 and film.props['pause'] is False  # Switched on the fly, still playing.
+    assert [c for c in film.commands if c and c[0] == 'loadfile'] == loads  # No reload.
+    assert splash.track_dialog is None and not dialog.isVisible()
+    splash.dismiss()
+
+
+def test_subtitle_popup_offers_off_and_every_subtitle_and_sets_sid():
+    surface, _ = make_surface()
+    splash = DirectLaunchSplash(cinema=surface)
+    splash.present()
+    film = playing_film(surface)
+    surface.subtitlesMenuRequested.emit()
+    dialog = splash.track_dialog
+    assert dialog.title_label.text() == 'Выбор субтитров' and list(dialog.track_buttons) == [0, 1, 2]
+    assert dialog.track_buttons[0].isChecked()
+    dialog.track_buttons[2].click()
+    assert film.props['sid'] == 2 and splash.track_dialog is None
+    surface.subtitlesMenuRequested.emit()
+    splash.track_dialog.track_buttons[0].click()
+    assert film.props['sid'] == 'no'  # «Без субтитров».
+    splash.dismiss()
+
+
+def test_esc_the_close_button_and_a_click_outside_the_card_close_the_popup_and_the_film_keeps_playing():
+    from PySide6.QtGui import QMouseEvent
+    surface, _ = make_surface()
+    splash = DirectLaunchSplash(cinema=surface)
+    splash.present()
+    film = playing_film(surface)
+    surface.audioMenuRequested.emit()
+    dialog = splash.track_dialog
+    dialog.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier, '\x1b'))
+    assert splash.track_dialog is None and not dialog.isVisible()
+    surface.audioMenuRequested.emit()
+    dialog = splash.track_dialog
+    dialog.close_button.click()
+    assert splash.track_dialog is None and not dialog.isVisible()
+    surface.subtitlesMenuRequested.emit()
+    dialog = splash.track_dialog
+    inside = QPointF(dialog.card.geometry().center())
+    dialog.mousePressEvent(QMouseEvent(QEvent.Type.MouseButtonPress, inside, inside, Qt.MouseButton.LeftButton,
+                                       Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+    assert splash.track_dialog is dialog and dialog.isVisible()
+    outside = QPointF(2, 2)
+    dialog.mousePressEvent(QMouseEvent(QEvent.Type.MouseButtonPress, outside, outside, Qt.MouseButton.LeftButton,
+                                       Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+    assert splash.track_dialog is None and not dialog.isVisible()
+    assert 'aid' not in film.props and 'sid' not in film.props and film.props['pause'] is False
+    surface.audioMenuRequested.emit()
+    dialog = splash.track_dialog
+    splash.hide_now()  # The film window goes away: so does its popup.
+    assert splash.track_dialog is None and not dialog.isVisible()
+    splash.dismiss()
