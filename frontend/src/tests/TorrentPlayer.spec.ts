@@ -287,3 +287,47 @@ describe('player proportions, launch screen and closing the codec notice',()=>{
   expect(pause).toHaveBeenCalledTimes(1);w.unmount()
  })
 })
+
+describe('a voice that is not the first track never sounds in the browser',()=>{
+ const ticket=(url:string)=>({stream_url:url,expires_at:'2026-11-17T12:00:00Z'})
+ const voiceNotice={wanted:'LeDoyen',playing:'Продубляж'}
+ it('offers only muted browser playback and keeps the film muted through the dissolve and the native controls',async()=>{
+  api.playbackTicket.mockResolvedValue(ticket('https://media.example/stream/31.mkv'))
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:31,ready:true,voiceNotice}})
+  const notice=w.get('[data-testid="codec-notice"]')
+  expect(notice.text()).toContain('Выбранная озвучка недоступна в браузере')
+  expect(notice.get('[data-testid="codec-notice-voice"]').text()).toContain('«LeDoyen» звучит только в KINOSOTA Player')
+  expect(notice.get('[data-testid="codec-notice-browser"]').text()).toBe('Смотреть в браузере без звука')
+  expect(w.find('.browser-play').exists()).toBe(false)
+  await notice.get('[data-testid="codec-notice-browser"]').trigger('click');await flushPromises()
+  const el=w.get('video.torrent-video'),film=el.element as HTMLVideoElement
+  let paused=true,time=0
+  const play=vi.fn(()=>{paused=false;return Promise.resolve()})
+  Object.defineProperties(film,{play:{configurable:true,value:play},paused:{configurable:true,get:()=>paused},currentTime:{configurable:true,get:()=>time},videoWidth:{configurable:true,get:()=>1920},videoHeight:{configurable:true,get:()=>1080}})
+  expect(film.muted).toBe(true)
+  await el.trigger('loadedmetadata');await el.trigger('playing')
+  time=0.3;await el.trigger('timeupdate')
+  // The intro dissolved into the picture, but the foreign first track stays silent.
+  expect(w.get('[data-testid="launch-overlay"]').classes()).toContain('is-hidden')
+  expect(film.muted).toBe(true)
+  expect(w.get('[data-testid="voice-muted-note"]').text()).toContain('«LeDoyen» звучит только в KINOSOTA Player')
+  expect(w.find('.sound-btn').exists()).toBe(false)
+  film.muted=false;await el.trigger('volumechange')
+  expect(film.muted).toBe(true)
+  // No «missing sound» notice either: the silence is deliberate.
+  time=6;await el.trigger('timeupdate');time=12;await el.trigger('timeupdate')
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  w.unmount()
+ })
+ it('after ✕ on the notice the ready card says the browser plays without sound',async()=>{
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:32,ready:true,voiceNotice}})
+  await w.get('[data-testid="codec-notice-close"]').trigger('click')
+  expect(w.get('.browser-play').text()).toBe('▶ Смотреть в браузере без звука')
+  w.unmount()
+ })
+ it('the chosen voice leading the file plays with sound as before',async()=>{
+  const w=mount(Player,{...options,props:{access:true,accessError:false,kind:'movie',tmdbId:33,ready:true,voiceNotice:null}})
+  expect(w.get('.browser-play').text()).toBe('▶ Смотреть в браузере')
+  w.unmount()
+ })
+})
