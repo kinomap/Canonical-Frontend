@@ -30,6 +30,12 @@ const voiceMismatch = computed(() => {
   if (plan.voiceMatches || !plan.wanted || !plan.playing) return null
   return { wanted: plan.wanted, playing: plan.playing, browser: plan.compatible }
 })
+/** The browser drops the sound of the release's first track: named with its codec, never hidden. */
+const silentTrack = computed(() => {
+  const plan = props.state.browserPlan, lead = props.state.voiceOptions.find((v) => v.best)
+  if (!plan.audioRisk || !lead || !props.state.selected?.audio_tracks?.length) return null
+  return { playing: lead.value, codec: plan.audioRisk }
+})
 function chooseVoice(value: string) {
   props.state.pickVoice(value)
   // Stays open when the browser cannot sound the pick: the viewer reads why and where it plays.
@@ -189,8 +195,10 @@ function browser() {
             <span class="audio-modal-badge" :class="`badge-${v.language}`" :title="LANGUAGE_NAMES[v.language]">{{ v.languageLabel }}</span>
           </li>
         </ul>
-        <div v-if="voiceMismatch" class="audio-modal-mismatch" data-testid="audio-browser-mismatch" role="status">
-          <p>В браузере воспроизводится: <b>«{{ voiceMismatch.playing }}»</b><span v-if="voiceMismatch.browser" class="audio-modal-browser-badge" aria-hidden="true"><Globe :size="14" /></span>. Чтобы слушать в озвучке <b>«{{ voiceMismatch.wanted }}»</b>, продолжите в KINOSOTA Player</p>
+        <div v-if="voiceMismatch || silentTrack" class="audio-modal-mismatch" data-testid="audio-browser-mismatch" role="status">
+          <p v-if="voiceMismatch?.browser">В браузере воспроизводится: <b>«{{ voiceMismatch.playing }}»</b><span class="audio-modal-browser-badge" aria-hidden="true"><Globe :size="14" /></span>. Чтобы слушать в озвучке <b>«{{ voiceMismatch.wanted }}»</b>, продолжите в KINOSOTA Player</p>
+          <p v-else-if="silentTrack" data-testid="audio-browser-silent">В браузере эта раздача без звука: браузер играет только первую дорожку <b>«{{ silentTrack.playing }}»</b>, а её звук ({{ silentTrack.codec }}) не декодирует. {{ voiceMismatch ? `Чтобы слушать в озвучке «${voiceMismatch.wanted}», продолжите в KINOSOTA Player` : 'Со звуком — в KINOSOTA Player' }}</p>
+          <p v-else-if="voiceMismatch">Браузер играет только первую дорожку <b>«{{ voiceMismatch.playing }}»</b>. Чтобы слушать в озвучке <b>«{{ voiceMismatch.wanted }}»</b>, продолжите в KINOSOTA Player</p>
           <button type="button" class="audio-modal-desktop" data-testid="audio-modal-desktop" :disabled="state.busy === 'launch'" @click="continueInPlayer">Продолжить в KINOSOTA Player</button>
         </div>
         <p v-if="browserVoices" class="audio-modal-legend" data-testid="audio-browser-legend"><span class="audio-modal-browser-badge" aria-hidden="true"><Globe :size="14" /></span>Можно смотреть в браузере, остальные озвучки — в KINOSOTA Player</p>

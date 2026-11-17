@@ -43,10 +43,11 @@ export type EpisodeOption = { value: number; available: boolean; sizeMb: number 
  * «browserCompatible» (the 🌐 badge) only when this browser plays it with sound: the file opens here,
  * its video codec decodes, the track is the first one (the browser plays only that one) and its
  * codec, read from the file, decodes here.
- * «active» (the ✓) never lies about the browser: when the release plays in the browser it is the
- * first track — the one really heard there; otherwise the chosen voice when it is the first track
- * (or the file's tracks are unknown). «desktopOnly»: the chosen voice is a later track, heard only
- * in KINOSOTA Player.
+ * «active» (the ✓) never lies about the browser: when the release sounds in the browser it is the
+ * first track — the one really heard there; when the file is known but the browser drops its sound
+ * no track is checked; only a release whose tracks are unknown checks the chosen voice.
+ * «desktopOnly»: the chosen voice is heard only in KINOSOTA Player (a later track, or a release
+ * the browser plays without sound).
  */
 export type VoiceOption = {
   value: string
@@ -375,13 +376,13 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     const activeKey = playing ? trackKey(playing) : null
     return tracks.map((track) => {
       const picked = trackKey(track) === activeKey
-      const desktopOnly = picked && fileTracks && !track.best
+      const desktopOnly = picked && fileTracks && (!track.best || !fits)
       return {
         ...track,
         sourceId: current.source_id,
         browserCompatible: track.best && fits,
-        // The ✓ marks what the browser really sounds: its first track, never a later one.
-        active: fits ? track.best : picked && !desktopOnly,
+        // The ✓ marks what the browser really sounds: its first track, never a later or a silent one.
+        active: fits ? track.best : !fileTracks && picked,
         desktopOnly,
       }
     })
@@ -588,10 +589,10 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     return bestSource(options, { quality: current.quality, episode: e })
   }
   /**
-   * A voice from the audio list (a track of the chosen release). Smart voice switch: when it is not
-   * the first track, the browser would sound another voice — so a ready release of the same quality
-   * leading with it takes over; without one the release stays and the browser plan says honestly
-   * which track the browser plays and that the chosen voice is in KINOSOTA Player.
+   * A voice from the audio list (a track of the chosen release). Smart voice switch: unless the
+   * chosen release already sounds it in the browser (its first track, a codec this browser decodes),
+   * a ready release of the same quality that leads with it and sounds here takes over; without one
+   * the release stays and the modal and the player say honestly what the browser plays.
    */
   function pickVoice(voice: string) {
     const found = voiceOptions.value.find((o) => o.value === voice)
@@ -605,7 +606,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     const current = selected.value
     if (!current?.audio_tracks?.length) return
     const key = trackKey(found)
-    if (leadVoiceKey(current) === key) return
+    if (leadVoiceKey(current) === key && releaseBrowserCompatible(current)) return
     const alt = voiceLeadRelease(key, current)
     if (alt && alt.source_id !== current.source_id) choose(alt)
   }

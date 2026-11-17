@@ -328,7 +328,8 @@ defineExpose({ startPlayback, playInBrowser })
         </div>
       </div>
       <div v-if="voiceNotice && !issue" class="voice-banner" role="status" data-testid="voice-banner">
-        <p class="voice-banner-text">В браузере воспроизводится: <b>«{{ voiceNotice.playing }}»</b><span v-if="voiceNotice.browser" class="voice-banner-globe" title="Звучит в браузере" data-testid="voice-banner-globe"><Globe :size="14" aria-hidden="true" /></span>. Чтобы слушать в озвучке <b>«{{ voiceNotice.wanted }}»</b>, продолжите в KINOSOTA Player</p>
+        <p v-if="voiceNotice.browser" class="voice-banner-text">В браузере воспроизводится: <b>«{{ voiceNotice.playing }}»</b><span class="voice-banner-globe" title="Звучит в браузере" data-testid="voice-banner-globe"><Globe :size="14" aria-hidden="true" /></span>. Чтобы слушать в озвучке <b>«{{ voiceNotice.wanted }}»</b>, продолжите в KINOSOTA Player</p>
+        <p v-else class="voice-banner-text" data-testid="voice-banner-silent">Браузер играет только первую дорожку <b>«{{ voiceNotice.playing }}»</b>, и со звуком её не воспроизводит. Чтобы слушать в озвучке <b>«{{ voiceNotice.wanted }}»</b>, продолжите в KINOSOTA Player</p>
         <button type="button" class="voice-banner-desktop" data-testid="voice-banner-desktop" :disabled="launchBusy" @click="emit('desktop')">Продолжить в KINOSOTA Player</button>
       </div>
     </template>
