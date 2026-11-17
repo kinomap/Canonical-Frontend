@@ -6,7 +6,7 @@
  */
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Globe, Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
+import { Globe, Monitor, Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
 import LibraryButton from './LibraryButton.vue'
 import DesktopPlayerModal from './DesktopPlayerModal.vue'
 import KSelect from './KSelect.vue'
@@ -21,6 +21,24 @@ const auth = useAuthStore(), route = useRoute(), router = useRouter()
 const showAudioModal = ref(false)
 /** The Globe legend under the voice list, only when some voice plays in the browser. */
 const browserVoices = computed(() => props.state.voiceOptions.some((v) => v.browserCompatible))
+/**
+ * The chosen voice is a later track and no ready release of this quality leads with it: the modal
+ * says which track the browser really plays and hands the chosen voice to KINOSOTA Player.
+ */
+const voiceMismatch = computed(() => {
+  const plan = props.state.browserPlan
+  if (plan.voiceMatches || !plan.wanted || !plan.playing) return null
+  return { wanted: plan.wanted, playing: plan.playing, browser: plan.compatible }
+})
+function chooseVoice(value: string) {
+  props.state.pickVoice(value)
+  // Stays open when the browser cannot sound the pick: the viewer reads why and where it plays.
+  if (!voiceMismatch.value) showAudioModal.value = false
+}
+function continueInPlayer() {
+  showAudioModal.value = false
+  void props.state.launch()
+}
 
 /** Flag + code like the reference («RU», «UA», «EN»); the tooltip says what kind of track it is. */
 const LANGUAGE_TEXT: Record<LanguagePill, string> = { ru: 'RU', uk: 'UA', en: 'EN', und: 'Не указан' }
@@ -157,8 +175,8 @@ function browser() {
         </div>
         <ul class="audio-modal-list" role="listbox">
           <li v-for="v in state.voiceOptions" :key="`${v.language}:${v.value}`" role="option" :aria-selected="v.active"
-              class="audio-modal-item" :class="{ active: v.active }"
-              @click="state.pickVoice(v.value); showAudioModal = false">
+              class="audio-modal-item" :class="{ active: v.active, 'desktop-only': v.desktopOnly }"
+              @click="chooseVoice(v.value)">
             <span class="audio-modal-check" aria-hidden="true">{{ v.active ? "✓" : "" }}</span>
             <span class="audio-modal-flag" aria-hidden="true">
               <svg v-if="v.language === 'ru'" class="watch-flag flag-ru" viewBox="0 0 9 6"><rect width="9" height="2" fill="#fff" /><rect y="2" width="9" height="2" fill="#0039a6" /><rect y="4" width="9" height="2" fill="#d52b1e" /></svg>
@@ -167,9 +185,14 @@ function browser() {
             </span>
             <span class="audio-modal-name">{{ v.value }}</span>
             <span v-if="v.browserCompatible" class="audio-modal-browser-badge" data-testid="audio-browser-badge" title="Доступно для просмотра в браузере"><Globe :size="14" aria-hidden="true" /><span class="audio-modal-sr">Доступно для просмотра в браузере</span></span>
+            <span v-if="v.desktopOnly" class="audio-modal-desktop-badge" data-testid="audio-desktop-badge" title="Эта озвучка звучит только в KINOSOTA Player"><Monitor :size="13" aria-hidden="true" />Player</span>
             <span class="audio-modal-badge" :class="`badge-${v.language}`" :title="LANGUAGE_NAMES[v.language]">{{ v.languageLabel }}</span>
           </li>
         </ul>
+        <div v-if="voiceMismatch" class="audio-modal-mismatch" data-testid="audio-browser-mismatch" role="status">
+          <p>В браузере воспроизводится: <b>«{{ voiceMismatch.playing }}»</b><span v-if="voiceMismatch.browser" class="audio-modal-browser-badge" aria-hidden="true"><Globe :size="14" /></span>. Чтобы слушать в озвучке <b>«{{ voiceMismatch.wanted }}»</b>, продолжите в KINOSOTA Player</p>
+          <button type="button" class="audio-modal-desktop" data-testid="audio-modal-desktop" :disabled="state.busy === 'launch'" @click="continueInPlayer">Продолжить в KINOSOTA Player</button>
+        </div>
         <p v-if="browserVoices" class="audio-modal-legend" data-testid="audio-browser-legend"><span class="audio-modal-browser-badge" aria-hidden="true"><Globe :size="14" /></span>Можно смотреть в браузере, остальные озвучки — в KINOSOTA Player</p>
         <p class="audio-modal-tip">💡 Аудиодорожку также можно мгновенно сменить прямо в плеере во время просмотра</p>
       </div>
@@ -236,6 +259,14 @@ function browser() {
 .audio-modal-item.active .audio-modal-badge{background:rgba(255,210,77,.18);border-color:rgba(255,210,77,.45);color:#ffd24d}
 .audio-modal-browser-badge{display:inline-grid;place-items:center;flex:none;width:26px;height:20px;box-sizing:border-box;border-radius:6px;background:rgba(127,216,168,.1);border:1px solid rgba(127,216,168,.32);color:#8fdcb4}
 .audio-modal-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.audio-modal-item.desktop-only{border-color:rgba(132,170,255,.28);border-style:dashed}
+.audio-modal-desktop-badge{display:inline-flex;align-items:center;gap:4px;flex:none;height:20px;padding:0 6px;box-sizing:border-box;border-radius:6px;background:rgba(132,170,255,.1);border:1px solid rgba(132,170,255,.32);color:#a9c1ff;font-size:11px;line-height:16px;font-weight:700}
+.audio-modal-mismatch{margin:12px 12px 0;padding:12px 14px;border-radius:10px;background:rgba(132,170,255,.08);border:1px solid rgba(132,170,255,.26);color:rgba(255,255,255,.85);font-size:13px;line-height:19px}
+.audio-modal-mismatch p{margin:0}
+.audio-modal-mismatch .audio-modal-browser-badge{display:inline-grid;vertical-align:-4px;margin-left:6px}
+.audio-modal-desktop{margin-top:10px;min-height:36px;padding:6px 14px;border:0;border-radius:8px;background:linear-gradient(135deg,#ffe36e 0%,#ffc21a 46%,#ff9e1b 100%);color:#1a1405;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.audio-modal-desktop:disabled{opacity:.6;cursor:default}
+.audio-modal-desktop:focus-visible{outline:2px solid #ffd24d;outline-offset:2px}
 .audio-modal-legend{display:flex;align-items:center;gap:8px;margin:12px 0 0;padding:0 24px 12px;font-size:12px;line-height:16px;color:rgba(255,255,255,.55)}
 .audio-modal-tip{margin:0;padding:16px 24px 20px;font-size:13px;line-height:18px;color:rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.07)}
 

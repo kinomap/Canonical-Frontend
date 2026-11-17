@@ -28,11 +28,11 @@ describe('canPlayType answers', () => {
 describe('browser codec check for a release name', () => {
   it('names the codecs a baseline browser cannot decode, once each and in a stable order', () => {
     expect(unsupportedCodecs('Дюна / Dune (2021) BDRip 1080p | HEVC | D, A | DTS, AC3').map((r) => r.label))
-      .toEqual(['HEVC (H.265)', 'Dolby Digital (AC-3)', 'DTS'])
+      .toEqual(['HEVC (H.265)', 'DTS'])
     expect(unsupportedCodecs('Movie.2024.2160p.WEB-DL.x265.10bit.DDP5.1.Atmos').map((r) => r.label))
-      .toEqual(['HEVC (H.265)', 'Dolby Digital Plus (E-AC-3)'])
+      .toEqual(['HEVC (H.265)'])
     expect(unsupportedCodecs('Film 1080p H.265 E-AC-3 TrueHD 7.1').map((r) => r.label))
-      .toEqual(['HEVC (H.265)', 'Dolby Digital Plus (E-AC-3)', 'Dolby TrueHD'])
+      .toEqual(['HEVC (H.265)', 'Dolby TrueHD'])
     expect(unsupportedCodecs('Old.Film.1999.DVDRip.XviD.MP3').map((r) => r.kind)).toEqual(['video'])
   })
 

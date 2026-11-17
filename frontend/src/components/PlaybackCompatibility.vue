@@ -13,7 +13,7 @@ const props = withDefaults(defineProps<{
   codecs?: string
   /** The chosen voice the browser cannot play (no ready release has it as the first track)… */
   voice?: string
-  /** …and the first track of the file, another voice the browser never plays instead: it goes on muted. */
+  /** …and the first track of the file: the voice the browser plays instead. */
   playing?: string
   issue?: CompatibilityIssue
   /** Drawn over a paused video instead of replacing the player. */
@@ -44,11 +44,9 @@ const heading = computed(() => voiceOnly.value ? 'Выбранная озвуч�
 const voiceText = computed(() => {
   if (!props.voice) return ''
   const instead = props.playing ? ` — «${props.playing}»` : ''
-  return `Браузер воспроизводит только первую аудиодорожку раздачи${instead}. Выбранная озвучка «${props.voice}» звучит только в KINOSOTA Player. В браузере фильм можно смотреть только без звука — другая озвучка не включится.`
+  return `Браузер воспроизводит только первую аудиодорожку раздачи${instead}. Выбранная озвучка «${props.voice}» звучит только в KINOSOTA Player.`
 })
 const browseLabel = computed(() => {
-  // Never offer another voice in the browser: the chosen one or silence.
-  if (props.voice) return 'Смотреть в браузере без звука'
   if (props.codecs && /AC-3|DTS|TrueHD|PCM|FLAC|Layer II/.test(props.codecs) && !/HEVC|AV1|VC-1|MPEG-2|XviD/.test(props.codecs)) return 'Смотреть в браузере без звука'
   if (props.issue === 'audio') return 'Смотреть в браузере без звука'
   if (props.issue === 'codec' || props.issue === 'container') return 'Попробовать ещё раз в браузере'

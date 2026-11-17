@@ -39,10 +39,14 @@ export type SeasonOption = { value: number; label: string; episodes: number; ava
 export type EpisodeOption = { value: number; available: boolean; sizeMb: number | null; sourceId: string | null }
 /**
  * One audio track of the chosen release (the quality pill picks the release; its file is the only
- * source of tracks): «active» when it is the chosen voice, «best» when it is the file's first track,
- * «sourceId» the chosen release, «browserCompatible» (the 🌐 badge) only when this browser
- * guaranteed plays it with sound: the file opens here, its video codec decodes, the track is the
- * first one (the browser plays only that one) and its codec, read from the file, decodes here.
+ * source of tracks): «best» when it is the file's first track, «sourceId» the chosen release,
+ * «browserCompatible» (the 🌐 badge) only when this browser plays it with sound: the file opens here,
+ * its video codec decodes, the track is the first one (the browser plays only that one) and its
+ * codec, read from the file, decodes here.
+ * «active» (the ✓) never lies about the browser: when the release plays in the browser it is the
+ * first track — the one really heard there; otherwise the chosen voice when it is the first track
+ * (or the file's tracks are unknown). «desktopOnly»: the chosen voice is a later track, heard only
+ * in KINOSOTA Player.
  */
 export type VoiceOption = {
   value: string
@@ -52,14 +56,15 @@ export type VoiceOption = {
   best: boolean
   sourceId: string | null
   browserCompatible: boolean
+  desktopOnly: boolean
 }
 export type SourceTrack = { value: string; language: TorrentLanguage | 'und'; languageLabel: string; best: boolean }
 /**
- * What «Смотреть в браузере» plays. A browser plays only the first audio track of a file, so the
- * stream goes to a ready release of the chosen quality where the chosen voice leads (one it plays
- * with sound first). «voiceMatches» false: no such release, its first track «playing» is another
- * voice — the browser never plays it: the film runs muted there, the voice is in KINOSOTA Player.
- * «audioRisk»: '' sound proven, codec label (AC-3, DTS…) when the browser drops the track, null unknown.
+ * What «Смотреть в браузере» plays: the chosen release, whose first audio track is the only one a
+ * browser plays (a voice picked in «Аудио» switches to a ready release of the same quality where it
+ * leads, when there is one). «voiceMatches» false: the chosen voice is a later track — the browser
+ * plays «playing» (the first track) and says so; the chosen voice is in KINOSOTA Player.
+ * «audioRisk»: '' sound proven, codec label (DTS…) when the browser drops the track, null unknown.
  */
 export type BrowserPlan = {
   source: TorrentSource | null
@@ -188,6 +193,13 @@ export function sourceTracks(s: TorrentSource): SourceTrack[] {
   }
 
   return tracks
+}
+
+/** The voice key of the track a browser plays in this release (null: its file tracks are unknown). */
+export function leadVoiceKey(s: TorrentSource): string | null {
+  if (!s.audio_tracks?.length) return null
+  const lead = sourceTracks(s)[0]
+  return lead ? trackKey(lead) : null
 }
 
 /** Prefer working, matching, already prepared, then best-seeded sources. */
@@ -356,21 +368,28 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     const current = selected.value
     if (!current) return []
     const tracks = sourceTracks(current)
+    const fileTracks = !!current.audio_tracks?.length
     // Only a track read from the file can be guaranteed: title-derived voices never get the badge.
-    const fits = !!current.audio_tracks?.length && releaseBrowserCompatible(current)
+    const fits = fileTracks && releaseBrowserCompatible(current)
     const playing = tracks.find((t) => t.value === selectedVoice.value)
     const activeKey = playing ? trackKey(playing) : null
-    return tracks.map((track) => ({
-      ...track,
-      sourceId: current.source_id,
-      browserCompatible: track.best && fits,
-      active: trackKey(track) === activeKey,
-    }))
+    return tracks.map((track) => {
+      const picked = trackKey(track) === activeKey
+      const desktopOnly = picked && fileTracks && !track.best
+      return {
+        ...track,
+        sourceId: current.source_id,
+        browserCompatible: track.best && fits,
+        // The ✓ marks what the browser really sounds: its first track, never a later one.
+        active: fits ? track.best : picked && !desktopOnly,
+        desktopOnly,
+      }
+    })
   })
   /**
-   * What the browser stream really plays, see BrowserPlan: always the chosen release (the stream
-   * never jumps to another build). Its first track sounds when it is the chosen voice; any other
-   * pick runs muted in the browser and is offered in KINOSOTA Player.
+   * What the browser stream really plays, see BrowserPlan: always the chosen release and always its
+   * first track. When the chosen voice is a later track the plan says which track the browser
+   * sounds instead, and the chosen voice is offered in KINOSOTA Player.
    */
   const browserPlan = computed<BrowserPlan>(() => {
     const cur = selected.value
@@ -389,10 +408,9 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     // A studio picked in «Аудио» must lead as such; a language pill accepts any voice of that language.
     const hit = !!lead && (trackKey(lead) === key || (!voicePicked.value && wanted.language !== 'und' && lead.language === wanted.language))
     if (!hit) {
-      // The chosen voice is not the file's first track: the browser would sound another one,
-      // so it plays the chosen release muted (its codecs no longer matter for the sound).
+      // The chosen voice is not the file's first track: the browser sounds the first one, and says so.
       const playing = (lead ?? tracks[0])?.value ?? null
-      return { ...plain, playing, voiceMatches: false, audioRisk: '' }
+      return { ...plain, playing, voiceMatches: false }
     }
     const playing = lead.value
     const note = playing !== wanted.value ? `В браузере прозвучит «${playing}» — основная дорожка раздачи.` : ''
@@ -558,7 +576,23 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       if (match) selectedVoice.value = match.value
     }
   }
-  /** A voice from the audio list: always a track of the chosen release (the release never changes). */
+  /**
+   * A ready release of the chosen quality (and episode) that the browser plays and whose first track
+   * is this voice: there the browser sounds exactly the voice the viewer picked.
+   */
+  function voiceLeadRelease(key: string, current: TorrentSource): TorrentSource | null {
+    const e = currentEpisode.value
+    const options = offered.value.filter((s) =>
+      s.state === 'ready' && s.quality === current.quality && (!e || hasEpisode(s, e))
+      && leadVoiceKey(s) === key && releaseBrowserCompatible(s))
+    return bestSource(options, { quality: current.quality, episode: e })
+  }
+  /**
+   * A voice from the audio list (a track of the chosen release). Smart voice switch: when it is not
+   * the first track, the browser would sound another voice — so a ready release of the same quality
+   * leading with it takes over; without one the release stays and the browser plan says honestly
+   * which track the browser plays and that the chosen voice is in KINOSOTA Player.
+   */
   function pickVoice(voice: string) {
     const found = voiceOptions.value.find((o) => o.value === voice)
     if (!found) {
@@ -568,6 +602,12 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     selectedVoice.value = found.value
     voicePicked.value = true
     if (found.language !== 'und') language.value = found.language
+    const current = selected.value
+    if (!current?.audio_tracks?.length) return
+    const key = trackKey(found)
+    if (leadVoiceKey(current) === key) return
+    const alt = voiceLeadRelease(key, current)
+    if (alt && alt.source_id !== current.source_id) choose(alt)
   }
   function followEpisode() {
     const e = currentEpisode.value
