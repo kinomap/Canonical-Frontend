@@ -41,7 +41,10 @@ const props = withDefaults(defineProps<{
    * («Dolby Digital (AC-3)») when the browser drops it, null/undefined unknown (the title decides).
    */
   audioRisk?: string | null
-  /** The chosen voice is not the first track of any ready release: the browser would play «playing». */
+  /**
+   * The chosen voice is not the first track of any ready release of the chosen quality: the file
+   * would sound «playing», another voice. The browser never plays it: the film runs muted.
+   */
   voiceNotice?: { wanted: string; playing: string } | null
   /** Which release the browser opens for the chosen voice, shown under «Смотреть в браузере». */
   browserNote?: string
@@ -81,6 +84,8 @@ const issue = ref<null | { kind: CompatibilityIssue; stopped: boolean }>(null)
 const warnBefore = computed(() => (risks.value.length > 0 || !!props.voiceNotice) && !riskAccepted.value)
 /** The notice names the voice problem (the codecs, when any, come first). */
 const noticeVoice = computed(() => props.voiceNotice ?? null)
+/** A foreign voice is never heard in the browser: the stream stays muted, even through the native controls. */
+const voiceMuted = computed(() => !!props.voiceNotice)
 let ignoreSilent = false
 /** Bumped by every start and stop: a ticket that arrives late never starts a stale stream. */
 let launchId = 0
@@ -117,7 +122,8 @@ async function startPlayback(force = false) {
     if (id !== launchId) return
     sound.reset()
     frames.reset()
-    ignoreSilent = false
+    // Muted on purpose: the missing sound is no codec problem to report.
+    ignoreSilent = voiceMuted.value
     streamUrl.value = ticket.stream_url
   } catch {
     if (id !== launchId) return
@@ -181,9 +187,19 @@ function autoplayRefused(v: HTMLVideoElement) {
 }
 function unmuteFilm(v: HTMLVideoElement) {
   soundLocked.value = false
+  if (voiceMuted.value) {
+    filmMuted.value = true
+    v.muted = true
+    return
+  }
   filmMuted.value = false
   v.muted = false
   try { v.volume = 1 } catch { /* read-only volume (iOS) */ }
+}
+/** The native volume control cannot bring in a voice the viewer did not choose. */
+function onVolumeChange() {
+  const v = video.value
+  if (v && voiceMuted.value && !v.muted) v.muted = true
 }
 function onMetadata() {
   const v = video.value
@@ -204,6 +220,11 @@ function onProgress() {
 }
 function revealFilm(v: HTMLVideoElement) {
   launching.value = false
+  if (voiceMuted.value) {
+    filmMuted.value = true
+    v.muted = true
+    return
+  }
   filmMuted.value = false
   fadeInFilm(v, introOn ? DISSOLVE_MS : 0)
   // WebKit pauses an autoplayed film that turns audible outside a user gesture: keep the picture running muted.
@@ -293,6 +314,7 @@ defineExpose({ startPlayback, playInBrowser })
           @loadedmetadata="onMetadata"
           @playing="onProgress"
           @timeupdate="onTime"
+          @volumechange="onVolumeChange"
         />
         <div class="launch-overlay" :class="{ 'is-hidden': !launching }" role="status" aria-live="polite" :aria-hidden="launching ? undefined : 'true'" data-testid="launch-overlay">
           <CinemaIntro :key="introKey" :active="launching" :fade-ms="DISSOLVE_MS" class="launch-intro" />
@@ -301,7 +323,8 @@ defineExpose({ startPlayback, playInBrowser })
             <p class="launch-hint">{{ streamUrl ? 'Загружаем первые секунды видео…' : 'Подготовка потока…' }}</p>
           </div>
         </div>
-        <button v-if="soundLocked && !issue && !launching" type="button" class="sound-btn" @click="enableSound">Включить звук</button>
+        <p v-if="voiceMuted && !issue && !launching" class="voice-muted-note" role="status" data-testid="voice-muted-note">Без звука: «{{ voiceNotice?.wanted }}» звучит только в KINOSOTA Player</p>
+        <button v-else-if="soundLocked && !issue && !launching" type="button" class="sound-btn" @click="enableSound">Включить звук</button>
         <button v-if="!issue" type="button" class="stop-btn" @click="stopPlayback">✕ Закрыть плеер</button>
         <PlaybackCompatibility v-else overlay can-browse :issue="issue.kind" :busy="launchBusy" :status="launchMessage" :error="launchError" @desktop="emit('desktop')" @browser="browseAnyway" @close="closeNotice" />
       </div>
@@ -312,7 +335,7 @@ defineExpose({ startPlayback, playInBrowser })
           <p v-if="torrentStatus==='partial'" class="status-hint">Доступны не все серии — остальные появятся позже.</p>
           <p v-if="streamError" role="alert" class="stream-error">{{ streamError }}</p>
           <button type="button" class="browser-play" :disabled="streamLoading" @click="startPlayback(true)">
-            {{ streamLoading ? 'Подготовка…' : '▶ Смотреть в браузере' }}
+            {{ streamLoading ? 'Подготовка…' : voiceMuted ? '▶ Смотреть в браузере без звука' : '▶ Смотреть в браузере' }}
           </button>
           <p v-if="browserNote" class="player-note" data-testid="browser-note">{{ browserNote }}</p>
           <p class="player-note">Максимальное качество и все аудиодорожки — в приложении KINOSOTA Player.</p>
@@ -343,6 +366,7 @@ defineExpose({ startPlayback, playInBrowser })
 .stop-btn{z-index:3;position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;min-height:36px;cursor:pointer;font-size:13px}
 .sound-btn{z-index:3;position:absolute;top:12px;left:12px;background:rgba(0,0,0,.7);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;min-height:36px;cursor:pointer;font-size:13px}
 .stop-btn:focus-visible,.sound-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.voice-muted-note{z-index:3;position:absolute;top:12px;left:12px;max-width:calc(100% - 180px);margin:0;background:rgba(0,0,0,.7);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;font-size:13px;line-height:20px}
 .status-hint{font-size:14px;color:#9ce8d7;margin:0 0 8px}
 .stream-error{color:#ff6b6b;font-size:14px;margin:0 0 8px}
 @media(max-width:600px){.torrent-player-state{aspect-ratio:auto;min-height:400px;padding:24px 16px}}

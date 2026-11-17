@@ -213,3 +213,87 @@ describe('browser plays the chosen voice with sound, or says it cannot',()=>{
   expect(torrentPlaybackApi.playbackTicket).not.toHaveBeenCalled()
  })
 })
+
+/** The 2160p release of «Сердце зверя» leads with a Ukrainian AAC voice; at 1080p it must never leak in. */
+const beastUhd=src({source_id:'b-2160',title:'Heart of the Beast 2026 2160p WEB-DL',quality:'2160p',languages:['uk','ru'],rank:1,seeders:50,
+ audio_tracks:[t(1,'uk','UKR 4K Studio','aac'),t(2,'ru','Кинопоиск HD','aac')]})
+const twoQualities=()=>view({sources:[beastAc3,beastUhd],qualities:[{value:'1080p',available:true},{value:'2160p',available:true}],languages:[{value:'ru',available:true},{value:'uk',available:true}]})
+const qualityPill=(w:any,q:string)=>w.findAll('.watch-pill').find((b:any)=>b.text().startsWith(q))
+function closeAudio(){(document.body.querySelector('.audio-modal-close') as HTMLElement).click()}
+
+describe('the chosen quality strictly filters voices, badges and the browser release',()=>{
+ beforeEach(()=>{vi.mocked(torrentPlaybackApi.playbackTicket).mockResolvedValue({stream_url:'https://media.example/beast.mkv',expires_at:'x'} as any)})
+
+ it('the audio modal lists only the voices of the chosen quality',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(twoQualities() as any)
+  const w=await at()
+  expect(w.find('[data-testid="watch-status"]').text()).toContain('1080p')
+  const at1080=await openAudio(w)
+  expect(at1080.map(name)).toEqual(['Продубляж','HDrezka (DUB)','LeDoyen','English'])
+  closeAudio();await flushPromises()
+  await qualityPill(w,'2160p').trigger('click');await flushPromises()
+  expect(w.find('[data-testid="watch-status"]').text()).toContain('2160p')
+  const at2160=await openAudio(w)
+  expect(at2160.map(name)).toEqual(['UKR 4K Studio','Кинопоиск HD'])
+  expect(at2160.map(badge)).toEqual([true,false])
+ })
+
+ it('the browser badge belongs to the chosen quality: a 2160p voice gives no badge at 1080p',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(twoQualities() as any)
+  const w=await at()
+  const items=await openAudio(w)
+  // Every 1080p voice: the first track is AC-3 and the rest are later tracks — none sounds in the browser.
+  expect(items.map(badge)).toEqual([false,false,false,false])
+  expect(document.body.querySelector('[data-testid="audio-browser-legend"]')).toBeNull()
+ })
+
+ it('a voice picked at 1080p stays in the 1080p release',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(twoQualities() as any)
+  const w=await at()
+  await pick((await openAudio(w)).find((el)=>name(el)==='LeDoyen')!)
+  expect(w.find('[data-testid="watch-status"]').text()).toContain('1080p')
+  expect(torrentPlaybackApi.prepareSource).not.toHaveBeenCalled()
+ })
+
+ it('UA at 1080p never jumps to 2160p and never sounds the Russian first track: it plays muted',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(twoQualities() as any)
+  const w=await at()
+  await langPill(w,'Украинская озвучка').trigger('click');await flushPromises()
+  expect(w.find('[data-testid="watch-status"]').text()).toContain('1080p')
+  const notice=w.find('[data-testid="codec-notice"]')
+  expect(notice.find('[data-testid="codec-notice-voice"]').text()).toContain('«LeDoyen» звучит только в KINOSOTA Player')
+  expect(notice.find('[data-testid="codec-notice-voice"]').text()).toContain('только без звука')
+  const browse=notice.find('[data-testid="codec-notice-browser"]')
+  expect(browse.text()).toBe('Смотреть в браузере без звука')
+  expect(notice.text()).not.toContain('Смотреть в браузере с')
+  await browse.trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledTimes(1)
+  expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'b-1080',season:null,episode:null})
+  const film=w.get('video').element as HTMLVideoElement
+  expect(film.muted).toBe(true)
+  // The native volume control cannot bring the Russian first track in.
+  film.muted=false;await w.get('video').trigger('volumechange')
+  expect(film.muted).toBe(true)
+ })
+
+ it('RU at 1080p plays the Russian first track: only its codec may silence it, no voice notice',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(twoQualities() as any)
+  const w=await at()
+  await langPill(w,'Русская озвучка').trigger('click');await flushPromises()
+  const notice=w.find('[data-testid="codec-notice"]')
+  expect(notice.text()).toContain('Dolby Digital (AC-3)')
+  expect(notice.find('[data-testid="codec-notice-voice"]').exists()).toBe(false)
+  await notice.find('[data-testid="codec-notice-browser"]').trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'b-1080',season:null,episode:null})
+ })
+
+ it('a 1080p release leading with the Ukrainian voice plays it with sound',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({sources:[beastAc3,ukAac,beastUhd],qualities:[{value:'1080p',available:true},{value:'2160p',available:true}],languages:[{value:'ru',available:true},{value:'uk',available:true}]}) as any)
+  const w=await at()
+  await langPill(w,'Украинская озвучка').trigger('click');await flushPromises()
+  expect(w.find('[data-testid="codec-notice"]').exists()).toBe(false)
+  await w.find('.browser-play').trigger('click');await flushPromises()
+  expect(w.find('.browser-play').exists()).toBe(false)
+  expect(torrentPlaybackApi.playbackTicket).toHaveBeenCalledWith('movie',1,{source_id:'b-ua',season:null,episode:null})
+ })
+})
