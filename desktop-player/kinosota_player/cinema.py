@@ -71,7 +71,13 @@ OSC_SCRIPT = MPV_SCRIPTS / 'osc.lua'
 TRACK_MENU_SCRIPT = MPV_SCRIPTS / 'kinosota_tracks.lua'
 MENU_STATE_MESSAGE = 'kinosota-menu'
 FILM_SCRIPTS = os.pathsep.join(str(path) for path in (OSC_SCRIPT, TRACK_MENU_SCRIPT))
-FILM_SCRIPT_OPTS = 'osc-visibility=never,osc-idlescreen=no'  # Shown once the intro is gone (_dissolve_done).
+# The OSC bar and the window's ✕ (direct.DirectLaunchSplash) hide together this long after the last mouse move.
+CHROME_HIDE_MS = 2500
+# Shown once the intro is gone (_dissolve_done).
+FILM_SCRIPT_OPTS = f'osc-visibility=never,osc-idlescreen=no,osc-hidetimeout={CHROME_HIDE_MS}'
+# A fast wheel spin can report several notches in one event: the open menu gets at most this many steps per
+# event, so a flick never floods mpv's input queue and the highlight runs line by line.
+MENU_WHEEL_MAX_STEPS = 3
 # The intro fills the window (panscan crops instead of letterboxing) and holds its last frame.
 INTRO_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'always'), ('panscan', '1.0'), ('osd-level', '0'), ('osc', 'no'),
                  ('input-default-bindings', 'no'), ('pause', 'no'), ('volume', str(INTRO_VOLUME)),
@@ -513,15 +519,23 @@ class CinemaView(QOpenGLWidget):
 
 
     def _menu_wheel_steps(self, delta):
-        """One WHEEL_UP / WHEEL_DOWN per wheel notch; touchpad fractions add up to whole steps."""
-        self._menu_wheel += int(delta)
+        """One WHEEL_UP / WHEEL_DOWN per wheel notch; touchpad fractions add up to whole steps.
+
+        A turn the other way starts afresh (an opposite remainder never cancels or delays it), and one event
+        gives at most MENU_WHEEL_MAX_STEPS steps, all in the same direction."""
+        delta = int(delta)
+        if delta and self._menu_wheel and (delta > 0) != (self._menu_wheel > 0):
+            self._menu_wheel = 0
+        self._menu_wheel += delta
         steps = []
-        while self._menu_wheel >= 120:
+        while self._menu_wheel >= 120 and len(steps) < MENU_WHEEL_MAX_STEPS:
             steps.append('WHEEL_UP')
             self._menu_wheel -= 120
-        while self._menu_wheel <= -120:
+        while self._menu_wheel <= -120 and len(steps) < MENU_WHEEL_MAX_STEPS:
             steps.append('WHEEL_DOWN')
             self._menu_wheel += 120
+        if abs(self._menu_wheel) >= 120:
+            self._menu_wheel = 0  # Notches beyond the cap are dropped, never replayed later.
         return steps
 
 

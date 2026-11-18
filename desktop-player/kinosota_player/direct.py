@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QApplication, QGraphicsOpacityEffect, QHBoxLayout
                                QVBoxLayout, QWidget)
 
 from .api import Api, ApiError
-from .cinema import INTRO_STILL, CinemaEngine, create_surface, mpv_key_name
+from .cinema import CHROME_HIDE_MS, INTRO_STILL, CinemaEngine, create_surface, mpv_key_name
 from .deeplink import parse_launch, parse_mode
 from .engine import FIRST_FRAME_TIMEOUT, Mpv
 from .torrents import audio_args, media_title_args
@@ -24,6 +24,7 @@ TEXT, TEXT_MUTED = '#ffffff', 'rgba(255, 255, 255, 0.58)'
 FADE_MS = 400  # Window fade when the launch is cancelled or handed to the external mpv window.
 RESIZE_MS = 260
 TEXT_FADE_MS = 280
+CLOSE_FADE_MS = 220   # ✕ over the film fades in on pointer movement and out CHROME_HIDE_MS after the last one.
 # The bottom share of the film window that belongs to mpv's OSC bar (0.35 bottombar: 56 of 720 virtual px, plus
 # margin): a press there is a seek / button press, never the start of a window move.
 OSC_BAND = 0.12
@@ -184,6 +185,18 @@ class DirectLaunchSplash(QWidget):
         self.close_button.setToolTip('Отменить запуск')
         self.close_button.setAccessibleName('Отменить запуск')
         self.close_button.clicked.connect(self.cancelRequested)  # Signal to signal: the checked flag is dropped.
+        self.close_effect = QGraphicsOpacityEffect(self.close_button)
+        self.close_effect.setOpacity(1.0)
+        self.close_button.setGraphicsEffect(self.close_effect)
+        self.close_fade = QPropertyAnimation(self.close_effect, b'opacity', self)
+        self.close_fade.setDuration(CLOSE_FADE_MS)
+        self.close_fade.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.close_fade.finished.connect(self._close_fade_finished)
+        self.chrome_timer = QTimer(self)
+        self.chrome_timer.setSingleShot(True)
+        self.chrome_timer.setInterval(CHROME_HIDE_MS)
+        self.chrome_timer.timeout.connect(self._chrome_idle)
+        self._film_close_shown = False
         top.addWidget(self.close_button)
         layout.addLayout(top)
         layout.addStretch(5)
@@ -231,6 +244,7 @@ class DirectLaunchSplash(QWidget):
             self.backdrop = cinema.view
             self.backdrop.setParent(self)
             cinema.filmStarted.connect(self.enter_film)
+            cinema.view.activity.connect(self.show_film_chrome)
             cinema.fullscreenRequested.connect(lambda full: self.set_mode('full' if full else 'compact'))
             cinema.failed.connect(self.use_still_backdrop)
             cinema.set_fullscreen(self.mode == 'full')
@@ -349,7 +363,7 @@ class DirectLaunchSplash(QWidget):
 
     def finish_animations(self):
         """Jump running animations to their end (also used by tests)."""
-        for animation in (self.geometry_animation, self.text_fade, self.fade_animation):
+        for animation in (self.geometry_animation, self.text_fade, self.fade_animation, self.close_fade):
             if animation.state() == QAbstractAnimation.State.Running:
                 animation.setCurrentTime(animation.duration())
 
@@ -357,10 +371,15 @@ class DirectLaunchSplash(QWidget):
     def enter_film(self):
         """The film's first frame is dissolving in: the window becomes the film window.
 
-        □ / ✕ belong to the launch only: the film is driven by mpv's own OSC, a double click and f / Esc / q."""
+        □ belongs to the launch only (the film has mpv's OSC, a double click and f). ✕ fades out with the intro and
+        comes back at the top right whenever the pointer moves over the film (show_film_chrome)."""
         self.film_mode = True
         self.long_wait_timer.stop()
         self._set_on_top(False)
+        self._film_close_shown = False
+        self.chrome_timer.stop()
+        if self.close_button.isVisible():
+            self._fade_close(0.0)
         self._refresh_chrome()
 
     def _long_wait(self):
@@ -368,7 +387,7 @@ class DirectLaunchSplash(QWidget):
         self._refresh_chrome()
 
     def _refresh_chrome(self):
-        """Over the intro only □ / ✕ stay (none over the film); the status shows on errors or a long wait."""
+        """Over the intro only □ / ✕ stay; over the film ✕ follows the pointer; the status shows on errors or a long wait."""
         cinema = self.cinema is not None
         self.brand_label.setVisible(not cinema)
         show_status = not self.film_mode and (not cinema or self.error or self.long_wait)
@@ -378,7 +397,59 @@ class DirectLaunchSplash(QWidget):
         self.status_label.style().unpolish(self.status_label)
         self.status_label.style().polish(self.status_label)
         self.resize_button.setVisible(not self.film_mode)
-        self.close_button.setVisible(not self.film_mode)
+        tip = 'Закрыть плеер' if self.film_mode else 'Отменить запуск'
+        self.close_button.setToolTip(tip)
+        self.close_button.setAccessibleName(tip)
+        if not self.film_mode:
+            self.chrome_timer.stop()
+            self.close_fade.stop()
+            self._film_close_shown = False
+            self.close_effect.setOpacity(1.0)
+            self.close_button.setVisible(True)
+        elif self._film_close_shown:
+            self.close_button.setVisible(True)
+        elif self.close_fade.state() != QAbstractAnimation.State.Running:
+            self.close_button.setVisible(False)
+
+    # Film chrome (✕) ------------------------------------------------------------------------------------------
+    def film_chrome_shown(self):
+        return self.film_mode and self._film_close_shown
+
+    def show_film_chrome(self):
+        """The pointer moved over the film: ✕ fades in at the top right and hides again CHROME_HIDE_MS later."""
+        if not self.film_mode or not self.isVisible() or self._fading:
+            return
+        self.chrome_timer.start()
+        if self._film_close_shown:
+            return
+        self._film_close_shown = True
+        self.close_button.setVisible(True)
+        self.close_button.raise_()
+        self._fade_close(1.0)
+
+    def hide_film_chrome(self):
+        """No pointer movement for CHROME_HIDE_MS (or the pointer left the window): ✕ fades out."""
+        self.chrome_timer.stop()
+        if not self.film_mode or not self._film_close_shown:
+            return
+        self._film_close_shown = False
+        self._fade_close(0.0)
+
+    def _chrome_idle(self):
+        if self.film_mode and self.close_button.underMouse():
+            self.chrome_timer.start()  # The pointer rests on ✕: it stays until the pointer leaves it.
+            return
+        self.hide_film_chrome()
+
+    def _fade_close(self, target):
+        self.close_fade.stop()
+        self.close_fade.setStartValue(self.close_effect.opacity())
+        self.close_fade.setEndValue(float(target))
+        self.close_fade.start()
+
+    def _close_fade_finished(self):
+        if self.film_mode and not self._film_close_shown:
+            self.close_button.setVisible(False)
 
     # Text ---------------------------------------------------------------------------------------------------
     def _update_texts(self):
@@ -533,6 +604,11 @@ class DirectLaunchSplash(QWidget):
         self._drag_origin = None
         super().mouseReleaseEvent(event)
 
+    def leaveEvent(self, event):
+        if self.film_mode:
+            self.hide_film_chrome()  # A window (compact) shows ✕ only while the pointer is over it.
+        super().leaveEvent(event)
+
     def start_window_move(self):
         """Hand the window to the window manager (X11 and Wayland), which follows the pointer until release."""
         if self.cinema is not None:
@@ -542,14 +618,29 @@ class DirectLaunchSplash(QWidget):
 
     def keyPressEvent(self, event):
         if self.film_mode and self.cinema is not None and self.cinema.accepts_input():
+            if self._closes_film(event):
+                self.cancelRequested.emit()  # The same stop-and-close as ✕.
+                return
             name = mpv_key_name(event.key(), event.text(), event.modifiers())
             if name:
-                self.cinema.send_key(name)  # mpv's own bindings: space, arrows, f, m, q, Esc…
+                self.cinema.send_key(name)  # mpv's own bindings: space, arrows, f, m, Esc (leaves fullscreen)…
                 return
         if event.key() == Qt.Key.Key_Escape:
             self.cancelRequested.emit()
             return
         super().keyPressEvent(event)
+
+    def _closes_film(self, event):
+        """q closes the player; so does Esc in a window (compact), unless the track menu is open (Esc closes it).
+
+        In fullscreen Esc stays mpv's: it leaves fullscreen."""
+        modifiers = event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier
+        if modifiers != Qt.KeyboardModifier.NoModifier:
+            return False
+        if event.key() == Qt.Key.Key_Q:
+            return True
+        return (event.key() == Qt.Key.Key_Escape and self.mode == 'compact' and not self.isFullScreen()
+                and not self.cinema.menu_open)
 
     def closeEvent(self, event):
         if self._closing:

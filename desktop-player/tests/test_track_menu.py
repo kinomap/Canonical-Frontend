@@ -13,6 +13,20 @@ from kinosota_player import cinema
 pytestmark = pytest.mark.skipif(not (shutil.which('mpv') and shutil.which('ffmpeg')), reason='needs mpv and ffmpeg')
 
 AUDIO = [('rus', 'Дубляж'), ('rus', 'Авторский одноголосый (А. Гаврилов)'), ('eng', 'Оригинал')]
+# The 1280x720 OSD fallback (vo=null): lines of 35 px under the prompt, the list starts at y=330.
+LIST_TOP, ROW = 330, 35
+
+
+def row_y(line):
+    """The vertical middle of the menu's line (1-based) on the OSD."""
+    return LIST_TOP + (line - 1) * ROW + ROW // 2
+
+
+def focus_moves(log):
+    """Every highlight change the menu logged, in order."""
+    marker = '[kinosota_tracks] focus '
+    return [int(line.split(marker, 1)[1]) for line in log.read_text(encoding='utf-8', errors='replace').splitlines()
+            if marker in line]
 
 
 def make_film(tmp_path):
@@ -175,3 +189,34 @@ def test_subtitle_menu_starts_with_subtitles_off_and_sets_sid(mpv):
     text = log.read_text(encoding='utf-8', errors='replace')
     assert 'menu Select a subtitle track:' in text
     assert 'row ● Выключить субтитры' in text and 'row ○ Full (rus subrip)' in text
+
+
+def test_a_fast_wheel_spin_moves_the_highlight_strictly_down_while_the_hand_jiggles_the_mouse(mpv):
+    ipc, log = mpv
+    ipc.command('script-message-to', 'kinosota_tracks', 'open', 'audio')
+    assert ipc.menu_state() == ['open', 'audio']
+    ipc.command('mouse', 640, row_y(1))  # The pointer rests on the first (highlighted) line.
+    for n in range(6):  # A burst of wheel notches; the hand on the mouse shifts it by a pixel or two each time.
+        ipc.command('keypress', 'WHEEL_DOWN')
+        ipc.command('mouse', 641 + n % 2, row_y(1) + n % 3 - 1)
+    ipc.command('keypress', 'ENTER')
+    assert ipc.menu_state() == ['closed']
+    assert ipc.wait('aid', lambda aid: aid == 3) == 3  # The last line: the wheel won.
+    assert focus_moves(log) == [2, 3]  # Strictly down, never back to the line under the pointer.
+
+
+def test_wheel_up_and_down_bursts_never_bounce_and_a_real_mouse_move_picks_a_line_again(mpv):
+    ipc, log = mpv
+    ipc.command('script-message-to', 'kinosota_tracks', 'open', 'audio')
+    assert ipc.menu_state() == ['open', 'audio']
+    ipc.command('mouse', 640, row_y(1))
+    for name in ('WHEEL_DOWN', 'WHEEL_DOWN', 'WHEEL_UP', 'WHEEL_UP', 'WHEEL_DOWN'):
+        ipc.command('keypress', name)
+        ipc.command('mouse', 641, row_y(1) + 1)  # Jiggle within the slop.
+        ipc.command('mouse', 640, row_y(1))
+    time.sleep(0.5)  # The wheel lock is over...
+    ipc.command('mouse', 640, row_y(3))  # ...and the pointer really moves to the third line: it is highlighted.
+    ipc.command('keypress', 'ENTER')
+    assert ipc.menu_state() == ['closed']
+    assert ipc.wait('aid', lambda aid: aid == 3) == 3
+    assert focus_moves(log) == [2, 3, 2, 1, 2, 3]  # Exactly the wheel's path (no hover in between), then the move.

@@ -20,7 +20,9 @@ into one OpenGL surface: the film loads paused and silent under the intro, and
 as soon as its first frame is decoded (plus ~2.5 s of buffer, at most 4 s hold)
 it cross-dissolves in (1.2 s, light fade-shadow) while an equal-power curve
 fades the intro sound out and the film sound in. The launch window then is the
-film window (mpv key bindings and OSC; □ / ✕ appear on pointer movement).
+film window (mpv key bindings and OSC; ✕ appears at the top right on pointer
+movement and fades out with the OSC 2.5 s after the last one; ✕, q, and Esc in
+a window stop the film and close the player).
 `CinemaEngine` keeps the `engine.Mpv` interface, so retries, leases and the
 first-frame wait are unchanged. Without libmpv2 or OpenGL the app falls back to
 the external mpv window under the intro's logo still (`KINOSOTA_CINEMA=0`

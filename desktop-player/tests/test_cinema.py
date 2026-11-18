@@ -474,12 +474,15 @@ def test_the_splash_plays_the_intro_hides_text_and_becomes_the_film_window():
     splash.fade_out()  # A caller's early «first frame» does not drop the intro under a warming film.
     assert splash.isVisible() and not splash.fading()
     first_film_frame(surface, cached=5)
-    assert splash.film_mode and not splash.status_label.isVisible() and not splash.close_button.isVisible()
+    assert splash.film_mode and not splash.status_label.isVisible() and not splash.film_chrome_shown()
+    splash.finish_animations()  # ✕ fades out with the intro.
+    assert not splash.close_button.isVisible() and not splash.resize_button.isVisible()
     assert not splash.windowFlags() & Qt.WindowType.WindowStaysOnTopHint  # An ordinary film window now.
     splash.fade_out()
     assert splash.isVisible() and not splash.fading()  # The window stays: it shows the film.
     surface.view.activity.emit()
-    assert not splash.close_button.isVisible() and not splash.resize_button.isVisible()  # mpv's OSC drives the film.
+    splash.finish_animations()
+    assert splash.close_button.isVisible() and not splash.resize_button.isVisible()  # ✕ follows the pointer.
     film = surface.handles['film']
     splash.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier, ' '))
     assert film.commands[-1] == ('keypress', 'SPACE')
@@ -556,9 +559,33 @@ def test_closing_a_playing_film_is_a_normal_exit():
     worker.run()
     first_film_frame(surface, cached=5)
     worker.run()
+    surface.dissolve.setCurrentTime(DISSOLVE_MS)
+    direct.splash.finish_animations()
+    assert direct.splash.film_mode and not direct.close_button.isVisible()
+    surface.view.activity.emit()  # The viewer moves the mouse over the film: ✕ is there to click.
+    direct.splash.finish_animations()
+    assert direct.close_button.isVisible() and direct.close_button.isEnabled()
+    film = surface.handles['film']
     direct.splash.close_button.click()
     direct.splash.finish_animations()
-    assert codes == [0] and surface.handles == {}
+    assert codes == [0] and surface.handles == {} and film.terminated  # The film stopped, its core is released...
+    assert not direct.splash.isVisible() and surface.phase == 'idle'  # ...and the player window is closed.
+    direct.shutdown()
+
+
+def test_q_over_a_playing_film_stops_it_and_closes_the_player_like_the_cross():
+    direct, surface, worker, api, codes = cinema_player()
+    direct.open_link(f'kinosota://watch?launch={LAUNCH}')
+    worker.run()
+    worker.run()
+    first_film_frame(surface, cached=5)
+    worker.run()
+    surface.dissolve.setCurrentTime(DISSOLVE_MS)
+    film = surface.handles['film']
+    direct.splash.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Q, Qt.KeyboardModifier.NoModifier, 'q'))
+    direct.splash.finish_animations()
+    assert codes == [0] and surface.handles == {} and film.terminated and not direct.splash.isVisible()
+    direct.shutdown()
 
 
 def test_a_retry_after_a_failed_stream_keeps_the_intro_and_reloads_the_film():
@@ -691,6 +718,32 @@ def test_the_view_wheel_scrolls_the_open_menu_one_line_per_notch_and_never_the_v
     view.deleteLater()
 
 
+def test_a_fast_wheel_spin_scrolls_the_open_menu_one_way_and_never_floods_mpv():
+    qt_app()
+    view = cinema.CinemaView()
+    menu = []
+    view.menuWheel.connect(menu.append)
+    view.menu_open = True
+    for _ in range(25):  # A fast spin: one notch per event.
+        view.wheelEvent(wheel_event((0, -120)))
+    assert menu == ['WHEEL_DOWN'] * 25
+    menu.clear()
+    view.wheelEvent(wheel_event((0, -1200)))  # Ten notches in one event: a few steps, the rest is dropped.
+    assert menu == ['WHEEL_DOWN'] * cinema.MENU_WHEEL_MAX_STEPS and view._menu_wheel == 0
+    menu.clear()
+    view.wheelEvent(wheel_event((0, -100)))  # Almost a notch down, then a whole notch up...
+    view.wheelEvent(wheel_event((0, 120)))
+    assert menu == ['WHEEL_UP']  # ...goes up at once: opposite signs never add up.
+    menu.clear()
+    for _ in range(4):  # A touchpad: half notches, all down.
+        view.wheelEvent(wheel_event((0, -60)))
+    view.wheelEvent(wheel_event((0, 60)))  # A tiny swipe back starts afresh, it does not eat a step.
+    view.wheelEvent(wheel_event((0, -60)))
+    view.wheelEvent(wheel_event((0, -60)))
+    assert menu == ['WHEEL_DOWN', 'WHEEL_DOWN', 'WHEEL_DOWN']
+    view.deleteLater()
+
+
 def test_full_mode_is_a_real_fullscreen_window_and_compact_a_normal_one():
     surface, _ = make_surface()
     splash = DirectLaunchSplash(cinema=surface)
@@ -708,20 +761,75 @@ def test_full_mode_is_a_real_fullscreen_window_and_compact_a_normal_one():
     splash.dismiss()
 
 
-def test_the_film_window_has_no_square_or_cross_buttons():
+def test_the_film_window_shows_the_cross_on_pointer_movement_and_hides_it_with_the_osc():
     surface, _ = make_surface()
     splash = DirectLaunchSplash(cinema=surface)
     splash.present()
     assert splash.resize_button.isVisible() and splash.close_button.isVisible()  # The launch can be cancelled.
     playing_film(surface)
+    splash.finish_animations()
     assert splash.film_mode and not splash.resize_button.isVisible() and not splash.close_button.isVisible()
+    assert splash.chrome_timer.interval() == cinema.CHROME_HIDE_MS == 2500
+    assert f'osc-hidetimeout={cinema.CHROME_HIDE_MS}' in cinema.FILM_SCRIPT_OPTS.split(',')  # Hides with the OSC.
     for _ in range(3):
         surface.view.activity.emit()
         splash.set_status('Буферизация видео…')
-    assert not splash.resize_button.isVisible() and not splash.close_button.isVisible()
+    assert splash.close_button.isVisible() and splash.film_chrome_shown()  # At once, fading in.
+    splash.finish_animations()
+    assert splash.close_effect.opacity() == pytest.approx(1.0) and not splash.resize_button.isVisible()
+    assert splash.chrome_timer.isActive() and splash.close_button.toolTip() == 'Закрыть плеер'
+    QApplication.processEvents()
+    corner = splash.close_button.geometry()
+    assert corner.right() >= splash.width() * 0.9 and corner.bottom() <= splash.height() * 0.2  # Top right.
+    splash._chrome_idle()  # 2.5 s without a mouse move...
+    assert splash.close_button.isVisible() and not splash.film_chrome_shown()  # ...it fades out...
+    splash.finish_animations()
+    assert not splash.close_button.isVisible() and not splash.chrome_timer.isActive()  # ...and is gone.
+    surface.view.activity.emit()
+    splash.finish_animations()
+    assert splash.close_button.isVisible()  # Back with the next mouse move.
+    splash.set_mode('compact', animate=False)
+    surface.view.activity.emit()
+    splash.finish_animations()
+    assert splash.close_button.isVisible()  # A window shows it while the pointer is over it...
+    splash.leaveEvent(QEvent(QEvent.Type.Leave))
+    splash.finish_animations()
+    assert not splash.close_button.isVisible()  # ...and hides it when the pointer leaves.
+    surface.view.activity.emit()
+    splash.finish_animations()
+    assert splash.close_button.isVisible()
     splash.hide_now()
+    assert not splash.chrome_timer.isActive()
     splash.present()
     assert splash.resize_button.isVisible() and splash.close_button.isVisible()  # The next launch again.
+    assert splash.close_effect.opacity() == pytest.approx(1.0) and splash.close_button.toolTip() == 'Отменить запуск'
+    splash.dismiss()
+
+
+def test_q_and_esc_in_a_window_close_the_film_and_esc_in_fullscreen_leaves_fullscreen():
+    surface, _ = make_surface()
+    splash = DirectLaunchSplash(cinema=surface)
+    asked = []
+    splash.cancelRequested.connect(lambda: asked.append(True))
+    splash.present()
+    film = playing_film(surface)
+
+    def key(code, text, modifiers=Qt.KeyboardModifier.NoModifier):
+        splash.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, code, modifiers, text))
+
+    key(Qt.Key.Key_Escape, '\x1b')
+    assert asked == [] and film.commands[-1] == ('keypress', 'ESC')  # Fullscreen: mpv leaves fullscreen.
+    splash.set_mode('compact', animate=False)
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-menu', 'open', 'audio'])
+    key(Qt.Key.Key_Escape, '\x1b')
+    assert asked == [] and film.commands[-1] == ('keypress', 'ESC')  # Esc closes the open track menu first.
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-menu', 'closed'])
+    key(Qt.Key.Key_Escape, '\x1b')
+    assert asked == [True]  # A window: Esc closes the player.
+    key(Qt.Key.Key_Q, 'q')
+    assert asked == [True, True]  # q closes it in any mode.
+    key(Qt.Key.Key_Q, 'Q', Qt.KeyboardModifier.ShiftModifier)
+    assert asked == [True, True] and film.commands[-1] == ('keypress', 'Q')  # Shift+Q stays mpv's.
     splash.dismiss()
 
 

@@ -18,12 +18,19 @@ local SUBTITLES_OFF = 'Выключить субтитры'
 local FLAGS = {'default', 'forced', 'external'}
 local MAX_ROWS = 12
 local STATE_MESSAGE = 'kinosota-menu'
+-- The wheel wins over the pointer. A hand turning the wheel always nudges the mouse by a pixel or two, and every
+-- such MOUSE_MOVE used to put the highlight back on the line under the (now scrolled) cursor: the list jumped
+-- forward and back. After a wheel step the pointer is ignored until it is WHEEL_HOVER_LOCK seconds later AND
+-- really moved more than WHEEL_HOVER_SLOP OSD pixels away from where the wheel was last turned.
+local WHEEL_HOVER_LOCK = 0.35
+local WHEEL_HOVER_SLOP = 10
 local BACKGROUND, BACKGROUND_ALPHA = '0E0B07', '30'  -- ASS colours are &HBBGGRR&: #070b0e, slightly see-through.
 local TEXT, FOCUS_TEXT, FOCUS_BACKGROUND = 'FFFFFF', '222222', 'FFFFFF'
 
 local overlay = mp.create_osd_overlay('ass-events')
 local menu = nil    -- {kind, items, focus, first}
 local layout = nil  -- Geometry of the menu on screen, for the mouse.
+local wheel_lock = nil  -- {deadline, x, y}: the pointer is ignored after a wheel step (WHEEL_HOVER_*).
 local close, choose
 
 local function int(value)
@@ -212,17 +219,48 @@ local function move(delta)
     if not menu then
         return
     end
-    menu.focus = math.max(1, math.min(#menu.items, menu.focus + delta))
+    local focus = math.max(1, math.min(#menu.items, menu.focus + delta))
+    if focus ~= menu.focus then
+        menu.focus = focus
+        msg.verbose('focus ' .. focus)
+    end
     render()
+end
+
+local function wheel(delta)
+    if not menu then
+        return
+    end
+    local x, y = mouse_xy()
+    wheel_lock = {deadline = mp.get_time() + WHEEL_HOVER_LOCK, x = x, y = y}
+    move(delta)
+end
+
+-- True while the pointer must not move the highlight: right after a wheel step, until a real mouse move.
+local function wheel_locked(x, y)
+    if not wheel_lock then
+        return false
+    end
+    local moved = math.abs(x - wheel_lock.x) > WHEEL_HOVER_SLOP or math.abs(y - wheel_lock.y) > WHEEL_HOVER_SLOP
+    if moved and mp.get_time() >= wheel_lock.deadline then
+        wheel_lock = nil
+        return false
+    end
+    return true
 end
 
 local function hover()
     if not menu then
         return
     end
-    local index = row_at(mouse_xy())
+    local x, y = mouse_xy()
+    if wheel_locked(x, y) then
+        return
+    end
+    local index = row_at(x, y)
     if index and index ~= menu.focus then
         menu.focus = index
+        msg.verbose('focus ' .. index)
         render()
     end
 end
@@ -248,8 +286,8 @@ local BINDINGS = {
     {'KP_ENTER', function() choose(menu and menu.focus) end},
     {'UP', function() move(-1) end, REPEAT},
     {'DOWN', function() move(1) end, REPEAT},
-    {'WHEEL_UP', function() move(-1) end, REPEAT},
-    {'WHEEL_DOWN', function() move(1) end, REPEAT},
+    {'WHEEL_UP', function() wheel(-1) end, REPEAT},
+    {'WHEEL_DOWN', function() wheel(1) end, REPEAT},
     {'PGUP', function() move(-MAX_ROWS) end, REPEAT},
     {'PGDWN', function() move(MAX_ROWS) end, REPEAT},
     {'HOME', function() move(-math.huge) end},
@@ -275,6 +313,7 @@ local function open(kind)
     end
     local reopened = menu ~= nil
     menu = {kind = kind, items = items, focus = 1, first = 1}
+    wheel_lock = nil
     for index, item in ipairs(items) do
         if item.selected then
             menu.focus = index
@@ -299,7 +338,7 @@ close = function(after_click)
     if not menu then
         return
     end
-    menu, layout = nil, nil
+    menu, layout, wheel_lock = nil, nil, nil
     overlay:remove()
     for _, binding in ipairs(BINDINGS) do
         mp.remove_key_binding('kinosota-menu-' .. binding[1])
