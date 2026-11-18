@@ -1,14 +1,17 @@
 <script setup lang="ts">
 /**
  * Prestart intro CMS (Ad Studio): preview of the active intro, MP4/WebM upload with progress,
- * on/off toggle and reset to the bundled KINOSOTA intro. Web and desktop players pick the
- * change up on their own (GET /api/v1/cinema/intro), no rebuilds.
+ * four independent playback targets (browser / desktop player × Telegram / torrents) and reset
+ * to the bundled KINOSOTA intro. Web and desktop players pick the change up on their own
+ * (GET /api/v1/cinema/intro), no rebuilds. The intro is a brand bumper, not an ad slot.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import axios from 'axios'
 
+type IntroTarget = 'browser_telegram' | 'player_telegram' | 'browser_torrents' | 'player_torrents'
+type IntroTargets = Record<IntroTarget, boolean>
 interface IntroView {
-  enabled: boolean; version: string; video_url: string; webm_url: string | null; still_url: string; poster_url?: string
+  enabled: boolean; targets?: IntroTargets; version: string; video_url: string; webm_url: string | null; still_url: string; poster_url?: string
   duration_ms: number; is_custom: boolean; processing: boolean; last_error: string | null; original_name?: string | null
   byte_size?: number | null; max_upload_bytes: number
 }
@@ -20,6 +23,19 @@ let poll: ReturnType<typeof setInterval> | null = null, disposed = false
 const maxBytes = computed(() => view.value?.max_upload_bytes || 50_000_000)
 const seconds = computed(() => ((view.value?.duration_ms || 0) / 1000).toFixed(1))
 const previewKey = computed(() => view.value ? view.value.version : '')
+const TARGETS: { key: IntroTarget; label: string }[] = [
+  { key: 'browser_telegram', label: 'Браузер: Telegram-стримы' },
+  { key: 'player_telegram', label: 'Десктоп-плеер: Telegram-стримы' },
+  { key: 'browser_torrents', label: 'Браузер: Торрент-стримы' },
+  { key: 'player_torrents', label: 'Десктоп-плеер: Торрент-стримы' },
+]
+/** Old backend without `targets`: every target follows `enabled`. */
+const targets = computed<IntroTargets>(() => Object.fromEntries(TARGETS.map(({ key }) => {
+  const value = view.value?.targets?.[key]
+  return [key, typeof value === 'boolean' ? value : !!view.value?.enabled]
+})) as IntroTargets)
+const allOn = computed(() => TARGETS.every(({ key }) => targets.value[key]))
+const allOff = computed(() => TARGETS.every(({ key }) => !targets.value[key]))
 
 function message(e: any) {
   const d = e?.response?.data?.detail
@@ -42,15 +58,20 @@ function schedulePoll() {
   if (view.value?.processing && !poll) poll = setInterval(() => void load(), 2000)
   if (!view.value?.processing && poll) { clearInterval(poll); poll = null }
 }
-async function toggle() {
+async function saveTargets(changes: Partial<IntroTargets>) {
   if (!view.value || busy.value) return
   busy.value = true; error.value = ''; notice.value = ''
   try {
-    const { data } = await axios.patch<IntroView>(endpoint, { enabled: !view.value.enabled }, { headers: headers() })
+    const { data } = await axios.patch<IntroView>(endpoint, { targets: changes }, { headers: headers() })
     view.value = data
-    notice.value = data.enabled ? 'Интро включено.' : 'Интро выключено: фильм стартует сразу, без заставки.'
+    notice.value = !data.enabled ? 'Интро выключено везде: фильм стартует сразу, без заставки.'
+      : TARGETS.every(({ key }) => data.targets?.[key] !== false) ? 'Интро включено везде.' : 'Среды показа интро сохранены.'
   } catch (e) { error.value = message(e) } finally { busy.value = false }
 }
+function toggleTarget(key: IntroTarget) { return saveTargets({ [key]: !targets.value[key] }) }
+function setAll(on: boolean) { return saveTargets(Object.fromEntries(TARGETS.map(({ key }) => [key, on])) as IntroTargets) }
+/** Legacy single switch, kept for callers of the exposed API. */
+function toggle() { return setAll(!view.value?.enabled) }
 async function reset() {
   if (busy.value || !window.confirm('Вернуть стандартное интро KINOSOTA? Загруженный ролик будет удалён, интро включится.')) return
   busy.value = true; error.value = ''; notice.value = ''
@@ -90,7 +111,7 @@ function picked(e: Event) { void upload((e.target as HTMLInputElement).files?.[0
 function dropped(e: DragEvent) { dragging.value = false; void upload(e.dataTransfer?.files?.[0]) }
 onMounted(() => void load())
 onBeforeUnmount(() => { disposed = true; if (poll) clearInterval(poll) })
-defineExpose({ load, upload, toggle, reset })
+defineExpose({ load, upload, toggle, toggleTarget, setAll, reset })
 </script>
 
 <template>
@@ -100,11 +121,19 @@ defineExpose({ load, upload, toggle, reset })
         <h2>Интро престарта</h2>
         <p class="muted">Заставка перед фильмом на сайте и в KINOSOTA Player. Изменения применяются без пересборки и обновления приложения.</p>
       </div>
-      <label class="intro-switch" :class="{ on: view?.enabled }">
-        <input type="checkbox" role="switch" :checked="!!view?.enabled" :disabled="!view || busy" @change="toggle" data-testid="intro-toggle" />
-        <span>{{ view?.enabled ? 'Интро включено' : 'Интро выключено' }}</span>
-      </label>
     </header>
+    <fieldset class="intro-targets" :disabled="!view || busy" data-testid="intro-targets">
+      <legend>Где показывать интро</legend>
+      <label v-for="t in TARGETS" :key="t.key" class="check">
+        <input type="checkbox" :checked="targets[t.key]" @change="toggleTarget(t.key)" :data-testid="'intro-target-' + t.key" />
+        <span>{{ t.label }}</span>
+      </label>
+      <div class="row">
+        <button type="button" :disabled="allOn" @click="setAll(true)" data-testid="intro-all-on">Включить везде</button>
+        <button type="button" :disabled="allOff" @click="setAll(false)" data-testid="intro-all-off">Выключить везде</button>
+      </div>
+      <p class="muted">Интро — фирменная заставка, не реклама: оно не занимает слот Pre-roll. Порядок показа: интро → Pre-roll → фильм.</p>
+    </fieldset>
     <div v-if="error" class="alert error" role="alert">{{ error }}</div>
     <div v-if="notice" class="alert success" role="status">{{ notice }}</div>
     <div class="intro-body">
@@ -127,7 +156,7 @@ defineExpose({ load, upload, toggle, reset })
           <progress v-if="uploading" max="100" :value="progress" aria-label="Загрузка интро"></progress>
           <p v-if="uploading" role="status">{{ progress }}%</p>
         </div>
-        <button type="button" :disabled="busy || !view || (!view.is_custom && view.enabled)" @click="reset" data-testid="intro-reset">Сбросить до стандартного</button>
+        <button type="button" :disabled="busy || !view || (!view.is_custom && allOn)" @click="reset" data-testid="intro-reset">Сбросить до стандартного</button>
       </div>
     </div>
   </section>
@@ -142,7 +171,10 @@ defineExpose({ load, upload, toggle, reset })
 .intro-drop{border:1px dashed rgba(255,255,255,.28);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .intro-drop.dragging{border-color:currentColor;background:rgba(255,255,255,.05)}
 .intro-drop progress{width:100%}
-.intro-switch{display:inline-flex;gap:8px;align-items:center;cursor:pointer;white-space:nowrap}
+.intro-targets{border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 16px;margin:0 0 16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px}
+.intro-targets legend{padding:0 6px;font-weight:600}
+.intro-targets .row,.intro-targets .muted{grid-column:1/-1}
+@media (max-width:820px){.intro-targets{grid-template-columns:1fr}}
 .intro-processing{font-weight:600}
 @media (max-width:820px){.intro-body{grid-template-columns:1fr}}
 </style>

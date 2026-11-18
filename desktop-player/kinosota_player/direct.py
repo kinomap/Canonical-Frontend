@@ -17,6 +17,8 @@ from .cinema import CHROME_HIDE_MS, INTRO_STILL, CinemaEngine, create_surface, m
 from .deeplink import parse_launch, parse_mode
 from .engine import FIRST_FRAME_TIMEOUT, Mpv
 from .torrents import audio_args, media_title_args
+from .ads import fetch_preroll, report as report_ad
+from .intro_source import target_for
 
 BACKGROUND, BACKGROUND_DEEP = '#070b0e', '#070b0e'  # Unified CinemaPrestartOverlay.vue palette.
 ACCENT, ACCENT_DEEP = '#ffd400', '#ffb800'
@@ -797,6 +799,7 @@ class DirectPlayer(QObject):
                 self.fallback.emit(dict(meta))
                 return
             self.started_at = time.monotonic()
+            self._prepare_launch(generation, self.meta)
             self._start_attempt(generation, 0)
 
         def fail(error):
@@ -805,6 +808,45 @@ class DirectPlayer(QObject):
 
         self.work(lambda: api.open_launch(launch_id), done, fail)
         return True
+
+    def _prepare_launch(self, generation, meta):
+        """The redeemed launch names its stream: intro per environment, then its Pre-roll (Intro -> Pre-roll -> film).
+
+        A torrent stream (``tmdb_id``) is ``player_torrents``, a KINOSOTA catalogue film ``player_telegram``. The ad
+        plan is asked with the launch's own session grant on a separate client; without one there is no ad.
+        """
+        cinema = self.cinema
+        if cinema is None:
+            return
+        cinema.set_intro_target(target_for(meta))
+        grant = meta.get('access_token') if isinstance(meta, dict) else None
+        if not isinstance(grant, str) or not grant.strip():
+            return
+        token = cinema.expect_preroll()
+
+        def fetch():
+            api = self.api_factory()
+            try:
+                api.token = grant.strip()
+                return api, fetch_preroll(api, meta)
+            finally:
+                close = getattr(api, 'close', None)
+                if callable(close):
+                    close()
+
+        def tell(api, ad, event):
+            self.work(lambda: report_ad(api, ad, event), lambda _value: None, lambda _error: None)
+
+        def done(value):
+            api, ad = value if isinstance(value, tuple) else (None, None)
+            if ad is None or generation != self.generation or self.cinema is not cinema:
+                cinema.cancel_preroll(token)
+                return
+            cinema.queue_preroll(token, ad.media_url, duration=ad.duration_sec,
+                                 on_start=lambda: tell(api, ad, 'impression'),
+                                 on_end=lambda kind: tell(api, ad, 'completion') if kind == 'completion' else None)
+
+        self.work(fetch, done, lambda _error: cinema.cancel_preroll(token))
 
     def _start_attempt(self, generation, attempt):
         if generation != self.generation or self.api is None or not self.meta:

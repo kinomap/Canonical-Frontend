@@ -3,7 +3,9 @@ import { t, tr } from '@/i18n'
 import { adRequest } from '@/api/client'
 import {createHistoryWriter} from '@/api/watchHistory'
 import AdPlaybackContainer from './AdPlaybackContainer.vue'
+import CinemaIntro from './CinemaIntro.vue'
 import { missingPicture, soundWatcher } from '@/lib/browserCodecs'
+import { DISSOLVE_MS, introConfig, introEnabledFor, prefersReducedMotion } from '@/lib/cinemaIntro'
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
@@ -23,6 +25,35 @@ const emit = defineEmits(['close', 'ended', 'media-error', 'codec-issue'])
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 const adsRef=ref<InstanceType<typeof AdPlaybackContainer>|null>(null)
+/**
+ * Prestart intro for Telegram streams in the browser (admin target «browser_telegram»).
+ * Strict order: Intro → Pre-roll → film. While the intro plays the film and the pre-roll wait;
+ * the intro then dissolves away and the ad container takes over. The intro is not an ad.
+ */
+const introPlaying = ref(false), introShown = ref(false), introKey = ref(0)
+let introTimer: ReturnType<typeof setTimeout> | undefined, introFade: ReturnType<typeof setTimeout> | undefined
+function startIntroFor(src: string) {
+  clearTimeout(introTimer); clearTimeout(introFade)
+  const on = !!src && introEnabledFor(introConfig.value, 'browser_telegram')
+  introPlaying.value = on; introShown.value = on
+  if (!on) return
+  introKey.value++
+  videoRef.value?.pause()
+  // Safety net: a clip that never reports its end (reduced motion, refused autoplay) never blocks the film.
+  const limit = prefersReducedMotion() ? 1200 : Math.min(60_000, introConfig.value.duration_ms || 15_000) + 1500
+  introTimer = setTimeout(finishIntro, limit)
+}
+function finishIntro() {
+  if (!introPlaying.value) return
+  clearTimeout(introTimer)
+  introPlaying.value = false
+  introFade = setTimeout(() => { introShown.value = false }, DISSOLVE_MS)
+  // No ads for this video: the film starts itself; otherwise the ad container starts the pre-roll, then the film.
+  if (!props.targetId && props.requested !== false) videoRef.value?.play()?.catch(() => {})
+}
+function introStarted(result: string) { if (result === 'blocked') finishIntro() }
+watch(() => props.src, (src) => startIntroFor(src), { immediate: true })
+onBeforeUnmount(() => { clearTimeout(introTimer); clearTimeout(introFade) })
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
@@ -319,12 +350,15 @@ onBeforeUnmount(() => {
         @pause="handlePause"
         @ended="handleEnded"
         @click="togglePlay"
-        :autoplay="!targetId"
+        :autoplay="!targetId && !introPlaying"
         @seeking="adsRef?.tick()"
         @seeked="handleSeeked"
       ></video>
       
-      <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" :requested="requested" />
+      <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" :requested="requested && !introPlaying" surface="telegram_browser" />
+      <div v-if="introShown" class="vp-intro" :class="{ 'is-leaving': !introPlaying }" :style="{ transitionDuration: DISSOLVE_MS + 'ms' }" data-testid="telegram-intro" @click.stop>
+        <CinemaIntro :key="introKey" :active="introPlaying" :fade-ms="DISSOLVE_MS" target="browser_telegram" @started="introStarted" @finished="finishIntro" />
+      </div>
       <slot name="overlay" />
       <!-- Buffering overlay -->
       <div class="buf-overlay" :class="{ show: isBuffering }">
@@ -429,6 +463,8 @@ onBeforeUnmount(() => {
   cursor: none !important;
 }
 
+.vp-intro { position: absolute; inset: 0; z-index: 40; opacity: 1; transition-property: opacity; transition-timing-function: ease; }
+.vp-intro.is-leaving { opacity: 0; pointer-events: none; }
 .video-wrap {
   width: 100%;
   height: 100%;

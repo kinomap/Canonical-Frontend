@@ -2,7 +2,20 @@
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { adRequest } from '@/api/client'
 import { pendingCues, resolvedCues, type Cue } from '@/utils/adTimeline'
-const props=withDefaults(defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string;requested?:boolean}>(),{requested:true})
+/**
+ * surface: where this playback happens (Ad Studio «Среды показа»); the plan holds only ads enabled there.
+ * Torrent streams have no catalogue id: torrentKind + tmdbId (+ season / episode) name the title.
+ * requested=false holds the pre-roll (e.g. while the prestart intro plays): Intro → Pre-roll → film.
+ * hostStarts: the host player starts the film itself; the container then resumes `main` only after it
+ * actually paused it for an ad, and never plays or pauses it on its own otherwise.
+ */
+type AdSurface='telegram_browser'|'torrent_browser'
+const props=withDefaults(defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string;requested?:boolean;surface?:AdSurface;torrentKind?:'movie'|'tv';tmdbId?:number;season?:number;episode?:number;hostStarts?:boolean}>(),{requested:true,hostStarts:false,surface:'telegram_browser',targetId:undefined,targetType:undefined,torrentKind:undefined,tmdbId:undefined,season:undefined,episode:undefined})
+const planPath=computed(()=>{
+ const surface='surface='+encodeURIComponent(props.surface)
+ if(props.torrentKind&&props.tmdbId){const extra=props.season!=null&&props.episode!=null?'&season='+props.season+'&episode='+props.episode:'';return '/ads/plan/torrent/'+props.torrentKind+'/'+props.tmdbId+'?'+surface+extra}
+ return props.targetId?'/ads/plan/'+(props.targetType||'movie')+'/'+props.targetId+'?'+surface:''
+})
 type Ad={cache_ttl_ms?:number;delivery_id:string;media_url:string;duration_sec:number;skip_after:number|null;cta_url:string;cta_text:string}
 const media=ref<HTMLVideoElement|null>(null), active=ref(false), loading=ref(false), ad=ref<Ad|null>(null), elapsed=ref(0), blocked=ref(false)
 const requested=computed(()=>props.requested!==false)
@@ -11,7 +24,7 @@ const remaining=computed(()=>Math.max(0,Math.ceil((ad.value?.duration_sec||0)-el
 const canSkip=computed(()=>ad.value?.skip_after!=null&&elapsed.value>=ad.value.skip_after)
 let cues:Cue[]=[], token='', played=new Set<string>(), generation=0, disposed=false, finish:(()=>void)|null=null, watchdog:ReturnType<typeof setTimeout>|null=null, started=false
 let initialReady:Promise<void>=Promise.resolve(),preStarted=false
-let running:Promise<void>=Promise.resolve()
+let running:Promise<unknown>=Promise.resolve()
 let prepared:{id:string;at:number;maxAge:number;value:Promise<Ad|null>}|null=null
 function clearTimer(){if(watchdog)clearTimeout(watchdog);watchdog=null}
 function arm(){clearTimer();watchdog=setTimeout(()=>complete('error'),20000)}
@@ -25,8 +38,9 @@ function prepare(cue:Cue):Promise<Ad|null>{
  return prepared.value
 }
 async function preload(cue:Cue){const g=generation;const value=await prepare(cue);if(g!==generation||busy.value)return;ad.value=value;await nextTick();media.value?.load()}
-async function run(list:Cue[],g:number){
- if(!list.length)return
+/** Plays the listed cues; true when it paused `main` for them (so the caller must resume it). */
+async function run(list:Cue[],g:number):Promise<boolean>{
+ if(!list.length)return false
  loading.value=true;props.main?.pause()
  for(const cue of list){
   if(disposed||g!==generation)break
@@ -41,25 +55,28 @@ async function run(list:Cue[],g:number){
   active.value=false;ad.value=null;prepared=null;loading.value=true
  }
  if(g===generation){loading.value=false;active.value=false}
+ return true
 }
 async function initialize(){
  const g=++generation;preStarted=false;clearTimer();finish?.();finish=null;played=new Set();cues=[];token='';prepared=null;ad.value=null;active.value=false
- if(!props.targetId){loading.value=false;return}
- loading.value=requested.value;props.main?.pause()
+ const path=planPath.value
+ if(!path){loading.value=false;return}
+ loading.value=requested.value;if(!props.hostStarts)props.main?.pause()
  try{
-  const p=await adRequest<{cue_points:Cue[];plan_token:string|null}>('/ads/plan/'+(props.targetType||'movie')+'/'+props.targetId,{signal:AbortSignal.timeout(5000)})
+  const p=await adRequest<{cue_points:Cue[];plan_token:string|null}>(path,{signal:AbortSignal.timeout(5000)})
   if(g!==generation||disposed)return
   cues=p.cue_points;token=p.plan_token||''
   if(requested.value)await startInitial(g)
   else {const first=cues.find(c=>c.kind==='pre');if(first)await preload(first)}
  }catch{/* Ad service failure must not take down main playback. */}
- if(g===generation&&!disposed){loading.value=false;if(props.source&&requested.value)props.main?.play()?.catch(()=>{})}
+ if(g===generation&&!disposed){loading.value=false;if(props.source&&requested.value&&!props.hostStarts)props.main?.play()?.catch(()=>{})}
 }
 async function startInitial(g:number){
  if(preStarted||g!==generation||disposed||!requested.value)return
  preStarted=true
- await (running=run(cues.filter(c=>c.kind==='pre'),g))
- if(g===generation&&!disposed&&requested.value){loading.value=false;if(props.source)props.main?.play()?.catch(()=>{})}
+ let paused=false
+ await (running=run(cues.filter(c=>c.kind==='pre'),g).then(x=>{paused=x}))
+ if(g===generation&&!disposed&&requested.value){loading.value=false;if(props.source&&(paused||!props.hostStarts))props.main?.play()?.catch(()=>{})}
 }
 function tick(){
  if(!requested.value||!props.main||busy.value)return
@@ -79,9 +96,9 @@ function complete(kind:'completion'|'skip'|'error'){
 }
 function play(){void media.value?.play().catch(()=>{blocked.value=true})}
 // Main URL is resolved independently; changing it must not restart pre-roll.
-watch(()=>[props.targetId,props.main],()=>{if(props.main)initialReady=initialize()},{immediate:true,flush:'post'})
-watch(()=>props.source,()=>{if(props.source&&requested.value&&!busy.value)props.main?.play()?.catch(()=>{})},{flush:'post'})
-watch(requested,value=>{if(!value){media.value?.pause();props.main?.pause();return}if(active.value){void media.value?.play().catch(()=>{blocked.value=true});return}if(preStarted&&props.source){props.main?.play()?.catch(()=>{});return}void initialReady.then(()=>startInitial(generation))},{flush:'post'})
+watch(()=>[planPath.value,props.main],()=>{if(props.main)initialReady=initialize()},{immediate:true,flush:'post'})
+watch(()=>props.source,()=>{if(props.source&&requested.value&&!busy.value&&!props.hostStarts)props.main?.play()?.catch(()=>{})},{flush:'post'})
+watch(requested,value=>{if(!value){media.value?.pause();props.main?.pause();return}if(active.value){void media.value?.play().catch(()=>{blocked.value=true});return}if(preStarted&&props.source){if(!props.hostStarts)props.main?.play()?.catch(()=>{});return}void initialReady.then(()=>startInitial(generation))},{flush:'post'})
 onBeforeUnmount(()=>{disposed=true;generation++;clearTimer();finish?.();media.value?.pause()})
 defineExpose({busy,tick,end})
 </script>

@@ -22,6 +22,8 @@ from .torrents import TorrentPage, audio_args, media_title_args
 from .deeplink import parse_launch, parse_mode
 from .direct import BUFFERING, DirectLaunchSplash, DirectPlayer, geometry_text, launch_args, stream_of
 from .cinema import CinemaEngine, create_surface
+from .ads import fetch_preroll, report as report_ad
+from .intro_source import target_for
 from .suggest import SuggestPopup
 ASSET=Path(__file__).parent/'assets'/'drone.png'
 STYLE=PREMIUM_STYLE
@@ -417,6 +419,20 @@ class Window(QMainWindow):
         if not self.splash.isVisible() or self.splash.fading():
             self.splash.present()
         return self.splash.mpv_args()
+    def _target_intro(self,meta):
+        """Admin «Интро престарта» per environment: player_telegram (catalogue film) / player_torrents (tmdb_id)."""
+        if self.cinema is not None:self.cinema.set_intro_target(target_for(meta))
+    def _prepare_preroll(self,meta):
+        """Ad Studio Pre-roll for this surface, fetched beside the stream: Intro → Pre-roll → film."""
+        cinema=self.cinema
+        if cinema is None:return
+        token=cinema.expect_preroll();api=self.api;generation=self.play_generation
+        def tell(ad,event):self.work(lambda:report_ad(api,ad,event),lambda _:None,lambda _:None)
+        def done(ad):
+            if ad is None or generation!=self.play_generation or self.cinema is not cinema:cinema.cancel_preroll(token);return
+            cinema.queue_preroll(token,ad.media_url,duration=ad.duration_sec,on_start=lambda:tell(ad,'impression'),
+                                 on_end=lambda kind:tell(ad,'completion') if kind=='completion' else None)
+        self.work(lambda:fetch_preroll(api,meta),done,lambda _error:cinema.cancel_preroll(token))
     def _await_splash_first_frame(self,generation):
         if not self.splash.isVisible():return
         wait=getattr(self.engine,'wait_playback_started',None)
@@ -464,7 +480,10 @@ class Window(QMainWindow):
         """KINOSOTA film (catalogue card or website launch): lease → mpv → heartbeat."""
         if self.busy and not force:return
         self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False);self.message.setText('Открываем фильм…')
+        ad_meta={'kind':'movie','movie_id':movie.get('id')}  # A KINOSOTA catalogue film is a Telegram stream.
+        self._target_intro(ad_meta)
         win_args=self._present_playback_splash('Подготовка фильма…')
+        self._prepare_preroll(ad_meta)
         epoch=self.epoch;generation=self.play_generation
         def start():
             # Finish our previous lease before asking for another stream slot.
@@ -576,7 +595,9 @@ class Window(QMainWindow):
         if self.busy and not force:return
         self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False)
         title=str(choice.get('title') or 'KINOSOTA');self.message.setText('Переподключаемся…' if attempt else 'Открываем фильм…')
+        self._target_intro(choice)
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка фильма…')
+        if not attempt:self._prepare_preroll(choice)  # A reconnect never replays the ad.
         self.torrent_starting=True;self.start_timer.start()
         epoch=self.epoch;generation=self.play_generation
         def cancelled():return self.closed or epoch!=self.epoch or generation!=self.play_generation
@@ -611,7 +632,9 @@ class Window(QMainWindow):
         self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False)
         title=str(meta.get('title') or 'KINOSOTA')
         self.message.setText('Переподключаемся…' if attempt else 'Открываем фильм…')
+        self._target_intro(meta)
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка фильма…')
+        if not attempt:self._prepare_preroll(meta)
         self.torrent_starting=True;self.start_timer.start()
         epoch=self.epoch;generation=self.play_generation
         def cancelled():return self.closed or epoch!=self.epoch or generation!=self.play_generation

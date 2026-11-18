@@ -29,6 +29,22 @@ the external mpv window under the intro's logo still (`KINOSOTA_CINEMA=0`
 forces this). Real GPU test: `QT_QPA_PLATFORM=xcb xvfb-run -a python -m pytest
 tests/test_real_cinema.py` (needs libmpv2, ffmpeg and Mesa).
 
+### Targeting: intro and Pre-roll per environment
+
+The admin switches the intro per environment (`GET /api/v1/cinema/intro` →
+`targets`). The player honours `player_telegram` for a KINOSOTA catalogue film
+(Telegram stream, no `tmdb_id`) and `player_torrents` for a torrent stream
+(`tmdb_id` present); a switched-off target plays no intro and the film starts on
+its first decoded frame. A website launch names its stream only after it is
+redeemed: when the two desktop targets differ, the logo still holds until then.
+
+Ad Studio «Среды показа» work the same way: `ads.py` asks
+`/api/v1/ads/plan/...?surface=player_telegram|player_torrents` beside the stream
+and prepares the first Pre-roll. It plays in the intro core after the intro, and
+the film cross-dissolves in over it: **Intro → Pre-roll → film**. A ready film
+waits at most 2.5 s for an ad that is still being prepared; a broken or stalled
+ad is skipped and never blocks the film. Reconnects never replay the ad.
+
 ## Run / test
 
 Create an isolated virtualenv, `pip install -r requirements.txt`, install mpv using

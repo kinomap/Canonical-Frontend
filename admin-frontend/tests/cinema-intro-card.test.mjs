@@ -23,5 +23,6 @@ test('Intro card polls while the server transcodes and stops polling afterwards'
 });
 test('Reset is confirmed and disabled when already on the stock intro',()=>{
  assert.match(card,/window\.confirm\(/);
- assert.match(card,/\(!view\.is_custom && view\.enabled\)/);
+ // Stock intro already shown on every target: nothing to reset.
+ assert.match(card,/\(!view\.is_custom && allOn\)/);
 });

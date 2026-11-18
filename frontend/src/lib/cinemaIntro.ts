@@ -25,8 +25,13 @@ export const HOLD_LEAD_S = 0.25
  * whether the intro is on and which clip is active. Fail-safe: any error keeps the bundled
  * default clip; the answer is cached in sessionStorage so «Смотреть» never waits for the network.
  */
+/** Where the intro plays (admin «Интро престарта» checkboxes). The intro is a brand bumper, not an ad. */
+export const INTRO_TARGETS = ['browser_telegram', 'player_telegram', 'browser_torrents', 'player_torrents'] as const
+export type IntroTarget = typeof INTRO_TARGETS[number]
+export type IntroTargets = Record<IntroTarget, boolean>
 export interface IntroConfig {
   enabled: boolean
+  targets: IntroTargets
   version: string
   video_url: string
   webm_url: string | null
@@ -35,12 +40,25 @@ export interface IntroConfig {
   duration_ms: number
   is_custom: boolean
 }
+export const allTargets = (on: boolean): IntroTargets =>
+  Object.fromEntries(INTRO_TARGETS.map((key) => [key, on])) as IntroTargets
+/** Old backends (or caches) without `targets`: every target follows `enabled`. */
+export function normalizeTargets(raw: unknown, fallback: boolean): IntroTargets {
+  const data = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+  return Object.fromEntries(INTRO_TARGETS.map((key) => [key, typeof data[key] === 'boolean' ? data[key] : fallback])) as IntroTargets
+}
+/** Should the intro play on this surface? */
+export function introEnabledFor(config: Pick<IntroConfig, 'enabled'> & { targets?: Partial<IntroTargets> }, target: IntroTarget): boolean {
+  const value = config.targets?.[target]
+  return typeof value === 'boolean' ? value : !!config.enabled
+}
 export type IntroSource = { src: string; type: string }
 export const INTRO_ENDPOINT = '/api/v1/cinema/intro'
 export const INTRO_CACHE_KEY = 'kinosota.cinema-intro.v1'
 export const INTRO_CACHE_TTL_MS = 60_000
 export const DEFAULT_INTRO: IntroConfig = Object.freeze({
   enabled: true,
+  targets: Object.freeze(allTargets(true)),
   version: 'default-v1',
   video_url: INTRO_SOURCES[1].src,
   webm_url: INTRO_SOURCES[0].src,
@@ -70,11 +88,14 @@ export function sanitizeIntroConfig(raw: unknown): IntroConfig | null {
   if (!raw || typeof raw !== 'object') return null
   const data = raw as Record<string, unknown>
   if (typeof data.enabled !== 'boolean') return null
+  const targets = normalizeTargets(data.targets, data.enabled)
+  const playsSomewhere = Object.values(targets).some(Boolean)
   const video = safeIntroPath(data.video_url)
   const still = safeIntroPath(data.still_url)
-  if (data.enabled && (!video || !still)) return null
+  if ((data.enabled || playsSomewhere) && (!video || !still)) return null
   return {
-    enabled: data.enabled,
+    enabled: playsSomewhere,
+    targets,
     version: typeof data.version === 'string' ? data.version.slice(0, 64) : 'unknown',
     video_url: video ?? DEFAULT_INTRO.video_url,
     webm_url: safeIntroPath(data.webm_url),

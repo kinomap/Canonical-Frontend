@@ -11,15 +11,17 @@
  * when the intro is switched off the layer is a plain backdrop and nothing plays.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { DISSOLVE_MS, HOLD_LEAD_S, attachIntroAudio, introConfig, introSources, loadIntroConfig, prefersReducedMotion, startIntro, type IntroAudio, type IntroStart } from '@/lib/cinemaIntro'
+import { DISSOLVE_MS, HOLD_LEAD_S, attachIntroAudio, introConfig, introEnabledFor, introSources, loadIntroConfig, prefersReducedMotion, startIntro, type IntroAudio, type IntroStart, type IntroTarget } from '@/lib/cinemaIntro'
 
-const props = withDefaults(defineProps<{ active?: boolean; fadeMs?: number }>(), { active: true, fadeMs: DISSOLVE_MS })
-const emit = defineEmits<{ started: [result: IntroStart] }>()
+/** `target`: the playback surface; the intro plays only where the admin enabled it. */
+const props = withDefaults(defineProps<{ active?: boolean; fadeMs?: number; target?: IntroTarget }>(), { active: true, fadeMs: DISSOLVE_MS, target: undefined })
+/** `finished`: the clip reached its final picture (or cannot play): the next stage (pre-roll / film) may start. */
+const emit = defineEmits<{ started: [result: IntroStart]; finished: [] }>()
 const video = ref<HTMLVideoElement | null>(null)
 const still = prefersReducedMotion()
 // Frozen at mount: a config refresh mid-launch never swaps the clip under the viewer.
 const config = introConfig.value
-const enabled = config.enabled
+const enabled = props.target ? introEnabledFor(config, props.target) : config.enabled
 const sources = introSources(config)
 const poster = config.poster_url
 const backdrop = computed(() => (config.is_custom ? { backgroundImage: `url('${poster}')` } : undefined))
@@ -48,6 +50,7 @@ function end(): Promise<void> {
 /** Freeze on the final picture while the film is still loading; the dissolve later takes it from here. */
 function hold() {
   const media = video.value
+  if (media && !ending) emit('finished')
   if (!media || holding.value || ending || !props.active) return
   holding.value = true
   if (!media.ended) { try { media.pause() } catch { /* jsdom */ } }

@@ -20,11 +20,12 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Globe } from 'lucide-vue-next'
 import CinemaIntro from './CinemaIntro.vue'
+import AdPlaybackContainer from './AdPlaybackContainer.vue'
 import TorrentPlaybackSubscription from './TorrentPlaybackSubscription.vue'
 import PlaybackCompatibility from './PlaybackCompatibility.vue'
 import { torrentPlaybackApi, type StreamChoice, type TorrentPlaybackStatus } from '@/api/torrents'
 import { codecList, containerRisk, missingPicture, soundWatcher, unsupportedCodecs, type CodecRisk, type CompatibilityIssue } from '@/lib/browserCodecs'
-import { DISSOLVE_MS, fadeInFilm, firstFrameWatcher, introConfig } from '@/lib/cinemaIntro'
+import { DISSOLVE_MS, fadeInFilm, firstFrameWatcher, introConfig, introEnabledFor } from '@/lib/cinemaIntro'
 const props = withDefaults(defineProps<{
   access: boolean | null
   accessError: boolean
@@ -67,6 +68,10 @@ const launching = ref(false)
 const introKey = ref(0)
 const root = ref<HTMLElement | null>(null)
 const video = ref<HTMLVideoElement | null>(null)
+/** Ads for torrent streams in the browser (Ad Studio surface «torrent_browser»): Intro → Pre-roll → film. */
+const adsRef = ref<InstanceType<typeof AdPlaybackContainer> | null>(null)
+const adSeason = computed(() => props.kind === 'tv' ? props.choice?.season ?? undefined : undefined)
+const adEpisode = computed(() => props.kind === 'tv' ? props.choice?.episode ?? undefined : undefined)
 const isPlayable = computed(() => props.ready !== undefined ? props.ready : props.torrentStatus === 'playable' || props.torrentStatus === 'partial')
 const visible = computed(() => props.access !== true || props.accessError || isPlayable.value)
 /**
@@ -113,7 +118,7 @@ async function startPlayback(force = false) {
   issue.value = null
   streamError.value = ''
   streamLoading.value = true
-  introOn = introConfig.value.enabled
+  introOn = introEnabledFor(introConfig.value, 'browser_torrents')
   launching.value = true
   introKey.value++
   filmMuted.value = true
@@ -218,7 +223,8 @@ function revealFilm(v: HTMLVideoElement) {
   // WebKit pauses an autoplayed film that turns audible outside a user gesture: keep the picture running muted.
   clearTimeout(soundGuard)
   soundGuard = setTimeout(() => {
-    if (video.value !== v || !v.paused || v.ended || issue.value) return
+    // A pre-roll pauses the film on purpose: never fight the ad container.
+    if (video.value !== v || !v.paused || v.ended || issue.value || adsRef.value?.busy) return
     filmMuted.value = true
     v.muted = true
     soundLocked.value = true
@@ -235,7 +241,13 @@ function enableSound() {
 function onTime() {
   const v = video.value
   onProgress()
+  adsRef.value?.tick()
   if (v && !ignoreSilent && !issue.value && sound.check(v)) silent('audio')
+}
+/** Post-roll (when planned) before the player closes. */
+async function onEnded() {
+  try { await adsRef.value?.end() } catch { /* ads never block closing */ }
+  stopPlayback()
 }
 /** «Смотреть в браузере» on the notice: resume the paused video, or try the stream again. */
 function browseAnyway() {
@@ -297,20 +309,21 @@ defineExpose({ startPlayback, playInBrowser })
           preload="auto"
           class="torrent-video"
           aria-label="Видеоплеер"
-          @ended="stopPlayback"
+          @ended="onEnded"
           @error="onVideoError"
           @loadedmetadata="onMetadata"
           @playing="onProgress"
           @timeupdate="onTime"
         />
         <div class="launch-overlay" :class="{ 'is-hidden': !launching }" role="status" aria-live="polite" :aria-hidden="launching ? undefined : 'true'" data-testid="launch-overlay">
-          <CinemaIntro :key="introKey" :active="launching" :fade-ms="DISSOLVE_MS" class="launch-intro" />
+          <CinemaIntro :key="introKey" :active="launching" :fade-ms="DISSOLVE_MS" target="browser_torrents" class="launch-intro" />
           <div class="launch-caption">
             <p class="launch-title">Запуск воспроизведения…</p>
             <p class="launch-hint">{{ streamUrl ? 'Загружаем первые секунды видео…' : 'Подготовка потока…' }}</p>
           </div>
         </div>
         <button v-if="soundLocked && !issue && !launching" type="button" class="sound-btn" @click="enableSound">Включить звук</button>
+        <AdPlaybackContainer v-if="streamUrl && tmdbId" ref="adsRef" :main="video" :source="streamUrl" :requested="!launching" host-starts surface="torrent_browser" :torrent-kind="kind" :tmdb-id="tmdbId" :season="adSeason" :episode="adEpisode" />
         <button v-if="!issue" type="button" class="stop-btn" @click="stopPlayback">✕ Закрыть плеер</button>
         <PlaybackCompatibility v-else overlay can-browse :issue="issue.kind" :busy="launchBusy" :status="launchMessage" :error="launchError" @desktop="emit('desktop')" @browser="browseAnyway" @close="closeNotice" />
       </div>

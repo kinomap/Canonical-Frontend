@@ -34,7 +34,7 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from . import libmpv
 from . import intro_source
 from .engine import WHEEL_VOLUME_STEP
-from .intro_source import BUNDLED, BUNDLED_FIRST_FRAME, BUNDLED_STILL, BUNDLED_VIDEO, IntroChoice
+from .intro_source import BUNDLED, BUNDLED_FIRST_FRAME, BUNDLED_STILL, BUNDLED_VIDEO, DISABLED, PLAYER_TARGETS, IntroChoice
 
 log = logging.getLogger('kinosota.cinema')
 
@@ -55,6 +55,13 @@ INTRO_VOLUME = 100
 FILM_VOLUME = 100
 BACKGROUND = QColor('#070b0e')
 FIRST_FRAME_TIMEOUT = 30
+# Pre-roll (Ad Studio surfaces player_telegram / player_torrents): Intro -> Pre-roll -> film. The ad plays in the
+# intro core (same OpenGL layer), so the film still cross-dissolves in over it.
+AD_WAIT_MS = 2500           # A ready film waits this long for a Pre-roll that is still being prepared, never longer.
+AD_LOAD_TIMEOUT_S = 10.0    # The ad clip must start playing within this time.
+AD_GRACE_S = 15.0           # ...and end within its declared duration plus this (stalls never block the film).
+AD_DEFAULT_MAX_S = 120.0
+INTRO_MAX_S = 65.0          # An intro longer than this (admin limit 60 s) never delays the Pre-roll further.
 
 COMMON_OPTIONS = [
     ('vo', 'libmpv'), ('hwdec', 'auto-safe'), ('terminal', 'no'), ('config', 'no'), ('idle', 'yes'),
@@ -572,6 +579,10 @@ class CinemaSurface(QObject):
         self._film_exit = None
         self._fullscreen = None
         self.menu_open = False          # The OSD track menu (kinosota_tracks.lua) is on screen.
+        self.intro_target = None        # intro_source.target_for(launch): player_telegram / player_torrents.
+        self._intro_pending = False     # Admin targets differ and the launch has not named its stream yet.
+        self._ad = None                 # Pre-roll of the launch on screen (expect_preroll / queue_preroll).
+        self._ad_token = 0
         self._loaded_core = None
         self._film_fade_from = FILM_VOLUME
         self.started = threading.Event()  # Set when the film plays or ends (CinemaEngine waits on it).
@@ -593,6 +604,9 @@ class CinemaSurface(QObject):
         self.watchdog.setSingleShot(True)
         self.watchdog.setInterval(GL_WATCHDOG_MS)
         self.watchdog.timeout.connect(self._check_gl)
+        self.ad_timer = QTimer(self)
+        self.ad_timer.setInterval(READY_POLL_MS)
+        self.ad_timer.timeout.connect(self._ad_tick)
         self._events.connect(self._drain, Qt.ConnectionType.QueuedConnection)
         self.view.frameReady.connect(self._frame_ready)
         self.view.glFailed.connect(self._fail)
@@ -632,8 +646,9 @@ class CinemaSurface(QObject):
         """Local and instant. Any problem means the bundled intro; the server is asked in the background."""
         if self.intro is None:
             return BUNDLED
+        self._intro_pending = False
         try:
-            choice = self.intro.current()
+            choice = self._intro_for_target()
         except Exception as error:
             log.warning('Intro source failed, using the bundled intro: %s', error)
             choice = BUNDLED
@@ -646,6 +661,189 @@ class CinemaSurface(QObject):
         if choice.enabled and not Path(choice.video).is_file():
             return BUNDLED
         return choice
+
+    def _intro_current(self, target):
+        try:
+            return self.intro.current(target)
+        except TypeError:  # An intro source without per-target switches.
+            return self.intro.current()
+
+    def _intro_for_target(self):
+        """The intro of this launch's environment. Unknown yet: play it only where every desktop target shows it."""
+        if self.intro_target is not None:
+            return self._intro_current(self.intro_target)
+        flags = getattr(self.intro, 'player_targets', None)
+        flags = flags() if callable(flags) else None
+        if isinstance(flags, dict) and flags and not all(flags.values()):
+            self._intro_pending = any(flags.values())  # Decided in set_intro_target once the stream is known.
+            return DISABLED
+        return self._intro_current(None)
+
+    def set_intro_target(self, target):
+        """Which desktop environment this launch is (``intro_source.target_for``).
+
+        Called before ``present()`` the intro is simply resolved for it. Called while a prestart is already on
+        screen (a website launch names its stream only after redeeming), a switched-off target drops the intro
+        at once and the film starts on its first frame; a launch held on the still starts its intro now.
+        """
+        self.intro_target = target if target in PLAYER_TARGETS else None
+        if self.intro is None or self.intro_target is None or self.phase not in ('intro', 'warmup') or self._ad_busy():
+            return
+        previous = self.intro_choice
+        choice = self._resolve_intro()
+        if not choice.enabled:
+            self.intro_choice = choice
+            if 'intro' in self.handles:
+                self._close('intro')
+                self.view.set_poster(choice.still)
+            if self.phase == 'warmup' and self.film_frame_at is not None:
+                self._check_ready()
+            return
+        if previous.enabled or 'intro' in self.handles:
+            return  # The intro on screen keeps playing: a clip is never swapped mid-play.
+        self.intro_choice = choice
+        self.presented_at, self.intro_frame_at = time.monotonic(), None
+        self.view.set_poster(choice.first_frame)
+        try:
+            self._open('intro', INTRO_OPTIONS).command('loadfile', str(choice.video))
+        except libmpv.MpvError as error:
+            log.info('Intro could not be started: %s', error)
+
+    # Pre-roll -----------------------------------------------------------------------------------------------
+    def expect_preroll(self):
+        """This launch may have a Pre-roll: a ready film waits up to AD_WAIT_MS for it. Returns the launch token."""
+        self._end_ad(None, notify=False)
+        self._ad_token += 1
+        self._ad = {'token': self._ad_token, 'state': 'pending'}
+        return self._ad_token
+
+    def queue_preroll(self, token, url, *, duration=0.0, on_start=None, on_end=None):
+        """Play ``url`` after the intro and before the film. False when it came too late for this launch."""
+        ad = self._ad
+        if ad is None or ad['token'] != token or ad['state'] != 'pending' or self.phase not in ('intro', 'warmup', 'failed'):
+            return False
+        try:
+            duration = float(duration or 0)
+        except (TypeError, ValueError):
+            duration = 0.0
+        ad.update(state='queued', url=str(url), on_start=on_start, on_end=on_end,
+                  max_s=duration + AD_GRACE_S if duration > 0 else AD_DEFAULT_MAX_S)
+        self.ad_timer.start()
+        self._ad_tick()
+        return True
+
+    def cancel_preroll(self, token=None):
+        """No Pre-roll after all (none planned, PRO, offline): the film no longer waits for one."""
+        ad = self._ad
+        if ad is None or (token is not None and ad['token'] != token) or ad['state'] not in ('pending', 'queued'):
+            return
+        ad['state'] = 'done'
+        self.ad_timer.stop()
+        self._resume_after_ad()
+
+    def preroll_state(self):
+        return self._ad['state'] if self._ad is not None else None
+
+    def _ad_busy(self):
+        return self._ad is not None and self._ad['state'] in ('queued', 'playing')
+
+    def _ad_holds(self, now):
+        ad = self._ad
+        if ad is None:
+            return False
+        if ad['state'] in ('queued', 'playing'):
+            return True
+        if ad['state'] == 'pending':
+            if self.film_frame_at is not None and (now - self.film_frame_at) * 1000 >= AD_WAIT_MS:
+                ad['state'] = 'done'  # The ad service is slow: the film is never held hostage by it.
+                return False
+            return True
+        return False
+
+    def _ad_tick(self):
+        ad = self._ad
+        if ad is None or ad['state'] not in ('queued', 'playing'):
+            self.ad_timer.stop()
+            return
+        if self.phase not in ('intro', 'warmup', 'failed'):
+            self._end_ad('error')
+            return
+        now = time.monotonic()
+        core = self.handles.get('intro')
+        if ad['state'] == 'queued':
+            intro_running = core is not None and self.intro_choice.enabled and core.get('eof-reached') is not True
+            if intro_running and self.presented_at is not None and now - self.presented_at < INTRO_MAX_S:
+                return  # Intro first, then the Pre-roll.
+            self._start_ad(now)
+            return
+        if core is None or core is not ad.get('core'):
+            self._end_ad('error')
+        elif not ad.get('loaded'):
+            if now - ad['started_at'] > AD_LOAD_TIMEOUT_S:
+                self._end_ad('error')
+        elif core.get('eof-reached') is True:
+            self._end_ad('completion')
+        elif now - ad['started_at'] > ad['max_s']:
+            self._end_ad('error')
+
+    def _start_ad(self, now):
+        ad = self._ad
+        try:
+            core = self.handles.get('intro') or self._open('intro', INTRO_OPTIONS)
+            core.try_set('panscan', '0')  # An ad is letterboxed; only the intro fills the window.
+            core.try_set('volume', INTRO_VOLUME)
+            core.command('loadfile', ad['url'], 'replace')
+        except libmpv.MpvError as error:
+            log.info('Pre-roll could not be started: %s', error)
+            self._end_ad('error')
+            return
+        self.view.set_alpha('intro', 1.0)
+        ad.update(state='playing', core=core, started_at=now, loaded=False)
+
+    def _ad_loaded(self, player):
+        ad = self._ad
+        if ad is None or ad['state'] != 'playing' or ad.get('core') is not player or ad.get('loaded'):
+            return
+        ad['loaded'] = True
+        self._ad_callback(ad.get('on_start'))
+
+    def _end_ad(self, kind, *, notify=True):
+        """The Pre-roll ended (completion / error): the logo still holds until the film dissolves in."""
+        ad = self._ad
+        if ad is None or ad['state'] not in ('pending', 'queued', 'playing'):
+            return
+        state, ad['state'] = ad['state'], 'done'
+        self.ad_timer.stop()
+        if state != 'playing':
+            if notify:
+                self._resume_after_ad()
+            return
+        core = self.handles.get('intro')
+        if core is not None and core is ad.get('core'):
+            if self.phase == 'warmup' and self.film_frame_at is not None:
+                pass  # The film is ready: it dissolves in over the ad's last frame.
+            else:
+                try:
+                    core.command('loadfile', str(self.intro_choice.still), 'replace')
+                except libmpv.MpvError:
+                    self._close('intro')
+                    self.view.set_poster(self.intro_choice.still)
+        if notify:
+            self._ad_callback(ad.get('on_end'), kind)
+            self._resume_after_ad()
+
+    @staticmethod
+    def _ad_callback(callback, *args):
+        if callable(callback):
+            try:
+                callback(*args)
+            except Exception as error:  # Telemetry never breaks the launch.
+                log.info('Pre-roll callback failed: %s', error)
+
+    def _resume_after_ad(self):
+        if self.phase == 'warmup' and self.film_frame_at is not None:
+            self.ready_timer.start()
+            self._check_ready()
 
     def _prestart_on_screen(self):
         if 'intro' in self.handles:
@@ -754,6 +952,8 @@ class CinemaSurface(QObject):
         self.audio_fade.stop()
         self.ready_timer.stop()
         self.watchdog.stop()
+        self.ad_timer.stop()
+        self._ad = None
         for name in list(self.handles):
             self._close(name)
         self._film_alive, self._film_exit = False, None
@@ -862,6 +1062,8 @@ class CinemaSurface(QObject):
     def _event(self, name, player, event):
         if event.id == libmpv.EVENT_PLAYBACK_RESTART:
             self.view.arm(name)
+            if name == 'intro':
+                self._ad_loaded(player)
         elif event.id == libmpv.EVENT_PROPERTY_CHANGE and event.name == 'fullscreen' and name == 'film':
             if isinstance(event.value, bool) and event.value != self._fullscreen and self.accepts_input():
                 self._fullscreen = event.value
@@ -880,8 +1082,13 @@ class CinemaSurface(QObject):
                 self._film_finished(0)
         elif name == 'intro' and event.id == libmpv.EVENT_SHUTDOWN:
             self._close('intro')
+            if self._ad is not None and self._ad['state'] == 'playing':
+                self._end_ad('error')
         elif name == 'intro' and event.id == libmpv.EVENT_END_FILE and event.reason == libmpv.END_ERROR:
-            self._intro_unplayable(player)
+            if self._ad is not None and self._ad['state'] == 'playing':
+                self._end_ad('error')  # A broken creative is skipped; the film is never blocked by it.
+            else:
+                self._intro_unplayable(player)
 
     def _client_message(self, args):
         """«script-message kinosota-menu open|closed» from kinosota_tracks.lua."""
@@ -929,6 +1136,8 @@ class CinemaSurface(QObject):
         if film is None:
             return
         now = time.monotonic()
+        if self._ad_holds(now):
+            return  # Intro -> Pre-roll -> film: the warmed-up film waits for the ad.
         with_intro = self.intro_choice.enabled
         if with_intro and self.presented_at is not None and (now - self.presented_at) * 1000 < MIN_INTRO_MS:
             return

@@ -14,6 +14,11 @@ The launch never waits for the network:
 
 Everything the server says is validated: only the API host, only ``…/cinema-intro/<version>``
 paths, bounded sizes and real MP4 / JPEG signatures. Any failure keeps the previous choice.
+
+The admin switches the intro per playback environment (``targets``): the desktop player honours
+``player_telegram`` for Telegram streams (a catalogue film without ``tmdb_id``) and
+``player_torrents`` for torrent streams (``tmdb_id`` present). A switched-off target means no
+intro at all: the film starts on its first decoded frame.
 """
 from __future__ import annotations
 
@@ -53,6 +58,21 @@ URL_KEYS = {'video': 'video_url', 'poster': 'poster_url', 'still': 'still_url'}
 SIGNATURES = {'video': lambda head: head[4:8] == b'ftyp', 'poster': lambda head: head[:3] == b'\xff\xd8\xff',
               'still': lambda head: head[:3] == b'\xff\xd8\xff'}
 DOWNLOAD_ORDER = ('poster', 'still', 'video')          # Video last: its presence marks a complete version.
+TARGETS = ('browser_telegram', 'player_telegram', 'browser_torrents', 'player_torrents')
+PLAYER_TELEGRAM, PLAYER_TORRENTS = 'player_telegram', 'player_torrents'
+PLAYER_TARGETS = (PLAYER_TELEGRAM, PLAYER_TORRENTS)
+
+
+def target_for(meta) -> str:
+    """The desktop environment of a launch: a torrent stream names its TMDB title, a Telegram stream does not."""
+    meta = meta if isinstance(meta, dict) else {}
+    return PLAYER_TORRENTS if type(meta.get('tmdb_id')) is int else PLAYER_TELEGRAM
+
+
+def normalize_targets(raw, fallback: bool) -> dict:
+    """Every known target as a bool; a missing one (older server or saved state) follows ``enabled``."""
+    raw = raw if isinstance(raw, dict) else {}
+    return {key: raw[key] if type(raw.get(key)) is bool else bool(fallback) for key in TARGETS}
 
 
 @dataclass(frozen=True)
@@ -90,7 +110,8 @@ def sanitize_config(raw, origin: str = API_ORIGIN):
     if not isinstance(raw, dict) or type(raw.get('enabled')) is not bool:
         return None
     custom = raw.get('is_custom') is True
-    config = {'enabled': raw['enabled'], 'is_custom': custom, 'version': 'default', 'urls': {}}
+    config = {'enabled': raw['enabled'], 'targets': normalize_targets(raw.get('targets'), raw['enabled']),
+              'is_custom': custom, 'version': 'default', 'urls': {}}
     if not custom:
         return config  # The stock KINOSOTA intro is the one bundled with the app: nothing to download.
     version = raw.get('version')
@@ -139,12 +160,13 @@ class IntroSource:
         self._config, self._etag = self._load_state()
 
     # Local, instant -------------------------------------------------------------------------------------------
-    def current(self) -> IntroChoice:
+    def current(self, target=None) -> IntroChoice:
+        """The intro for ``target`` (``player_telegram`` / ``player_torrents``); None: shown anywhere at all."""
         with self._lock:
             config = self._config
         if config is None:
             return BUNDLED
-        if not config['enabled']:
+        if not self._enabled(config, target):
             return DISABLED
         if not config['is_custom']:
             return BUNDLED
@@ -152,6 +174,20 @@ class IntroSource:
         if all(path.is_file() and path.stat().st_size > 0 for path in files.values()):
             return IntroChoice(True, config['version'], files['video'], files['poster'], files['still'], True)
         return BUNDLED  # Still downloading, or the cache was cleared: the bundled intro plays instantly.
+
+    @staticmethod
+    def _enabled(config, target) -> bool:
+        if target not in TARGETS:
+            return bool(config['enabled'])
+        return normalize_targets(config.get('targets'), config['enabled'])[target]
+
+    def player_targets(self) -> dict:
+        """{'player_telegram': bool, 'player_torrents': bool}; both on until the server said otherwise."""
+        with self._lock:
+            config = self._config
+        if config is None:
+            return dict.fromkeys(PLAYER_TARGETS, True)
+        return {target: self._enabled(config, target) for target in PLAYER_TARGETS}
 
     def files(self, version: str) -> dict:
         return {kind: self.cache_dir / f'{version}{suffix}' for kind, suffix in SUFFIXES.items()}
