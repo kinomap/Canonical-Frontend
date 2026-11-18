@@ -19,6 +19,14 @@ native install/uninstall, real HTTPS playback and account revocation tests pass.
 Windows Authenticode and macOS Developer ID + notarization require owner-managed
 signing identities. Build scripts do not claim to sign or notarize a candidate.
 
+## mpv scripts (OSC and track menu)
+
+kinosota_player/assets/mpv/osc.lua is mpv 0.35.1 player/lua/osc.lua (part of mpv, LGPLv2.1+ / GPLv2+ like the
+libmpv it runs in), with the KINOSOTA changes marked in the file: the right click on the audio / subtitle button
+opens the track menu instead of cycling, and fallbacks for script APIs that newer mpv versions removed. The film
+core loads it in place of the built-in OSC. kinosota_player/assets/mpv/kinosota_tracks.lua (the OSD track menu,
+modelled on the look of mpv's select.lua) is written for this project.
+
 ## Manrope font
 
 Bundled static Manrope font weights are distributed under SIL OFL 1.1. The full notice is shipped with the application at kinosota_player/assets/fonts/OFL.txt. See assets/SOURCES.md for origin and conversion details.

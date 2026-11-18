@@ -19,6 +19,7 @@ from kinosota_player.engine import Mpv
 
 from test_deeplink import LAUNCH, Deferred, SplashApi
 
+OSC_AUTO = ('script-message-to', 'osc', 'osc-visibility', 'auto', 'no-osd')
 URL = 'https://media.example/stream/0f4c4d2e-8a59-4d7e-9a3e-3a6f1b2c4d5e'
 
 
@@ -71,9 +72,11 @@ class FakeView(QWidget):
     mouseButton = Signal(str, bool)
     mouseDouble = Signal(str)
     volumeWheel = Signal(float)
+    menuWheel = Signal(str)
 
     def __init__(self):
         super().__init__()
+        self.menu_open, self._menu_wheel = False, 0
         self.layers, self.armed, self.posters, self.seen = {}, set(), [], set()
         self.initialized, self.failure = True, ''
 
@@ -202,7 +205,8 @@ def test_smart_prestart_waits_for_the_first_frame_and_a_short_buffer_then_dissol
     assert 60 < film.props['volume'] < 80 and 60 < intro.props['volume'] < 80  # Equal-power: ~71 each.
     surface.dissolve.setCurrentTime(DISSOLVE_MS)
     assert surface.phase == 'film' and 'intro' not in surface.handles and intro.terminated
-    assert film.props['volume'] == FILM_VOLUME and film.props['osc'] is True and film.props['osd-level'] == 1
+    assert film.props['volume'] == FILM_VOLUME and film.props['osd-level'] == 1
+    assert film.commands[-1] == OSC_AUTO and OSC_AUTO not in film.commands[:-1]  # mpv's OSC: on the film only.
     assert events == [('filmStarted',), ('filmDissolved',)] and surface.view.posters[-1] == INTRO_STILL
     surface.shutdown()
 
@@ -363,7 +367,8 @@ def test_the_mouse_wheel_only_changes_the_film_volume_and_never_seeks():
     assert surface.phase == 'film' and WHEEL_VOLUME_STEP == 5
     for notches in (1.0, 1.0, -1.0, 0.25, -3.0, 0.0):
         surface.view.volumeWheel.emit(notches)
-    assert film.commands[1:] == [('osd-auto', 'add', 'volume', '5'), ('osd-auto', 'add', 'volume', '5'),
+    assert film.commands[1] == OSC_AUTO
+    assert film.commands[2:] == [('osd-auto', 'add', 'volume', '5'), ('osd-auto', 'add', 'volume', '5'),
                                  ('osd-auto', 'add', 'volume', '-5'), ('osd-auto', 'add', 'volume', '1.25'),
                                  ('osd-auto', 'add', 'volume', '-15')]
     sent = [part for command in film.commands for part in command]
@@ -471,11 +476,10 @@ def test_the_splash_plays_the_intro_hides_text_and_becomes_the_film_window():
     first_film_frame(surface, cached=5)
     assert splash.film_mode and not splash.status_label.isVisible() and not splash.close_button.isVisible()
     assert not splash.windowFlags() & Qt.WindowType.WindowStaysOnTopHint  # An ordinary film window now.
-    assert splash.close_button.toolTip() == 'Закрыть фильм'
     splash.fade_out()
     assert splash.isVisible() and not splash.fading()  # The window stays: it shows the film.
     surface.view.activity.emit()
-    assert splash.close_button.isVisible() and splash.chrome_timer.isActive()
+    assert not splash.close_button.isVisible() and not splash.resize_button.isVisible()  # mpv's OSC drives the film.
     film = surface.handles['film']
     splash.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier, ' '))
     assert film.commands[-1] == ('keypress', 'SPACE')
@@ -600,151 +604,163 @@ def test_offscreen_and_disabled_environments_never_try_opengl(monkeypatch):
     assert cinema.unavailable_reason() == 'disabled by KINOSOTA_CINEMA'
 
 
-# Track popups (right click on the OSC audio / subtitle buttons) --------------------------------------------------
-TRACK_LIST = [
-    {'id': 1, 'type': 'video', 'codec': 'h264', 'selected': True},
-    {'id': 1, 'type': 'audio', 'lang': 'rus', 'title': 'Дубляж', 'codec': 'ac3', 'demux-channel-count': 6,
-     'selected': True},
-    {'id': 2, 'type': 'audio', 'lang': 'ukr', 'title': 'Пифагор', 'codec': 'eac3', 'demux-channel-count': 2},
-    {'id': 3, 'type': 'audio', 'lang': 'eng', 'codec': 'dts', 'demux-channel-count': 8},
-    {'id': 4, 'type': 'audio', 'lang': 'jpn', 'title': 'Original', 'codec': 'aac'},
-    {'id': 1, 'type': 'sub', 'lang': 'rus', 'title': 'Full', 'codec': 'subrip'},
-    {'id': 2, 'type': 'sub', 'lang': 'rus', 'title': 'Надписи', 'codec': 'ass', 'forced': True},
-    {'type': 'audio', 'title': 'no id'}, 'garbage',
-]
-
-
-def playing_film(surface, tracks=TRACK_LIST):
+# OSD track menu, fullscreen, window move ------------------------------------------------------------------------
+def playing_film(surface):
     surface.present()
     surface.load_film(URL)
-    surface.handles['film'].props['track-list'] = [dict(t) if isinstance(t, dict) else t for t in tracks]
     first_film_frame(surface, cached=5)
-    assert surface.accepts_input()
+    surface.dissolve.setCurrentTime(DISSOLVE_MS)
+    assert surface.phase == 'film' and surface.accepts_input()
     return surface.handles['film']
 
 
 def test_client_message_args_are_read_from_the_mpv_event_struct():
     import ctypes
-    values = (ctypes.c_char_p * 2)(b'kinosota-audio-menu', 'ё'.encode())
+    values = (ctypes.c_char_p * 2)(b'kinosota-menu', 'ё'.encode())
     message = libmpv.mpv_event_client_message(2, ctypes.cast(values, ctypes.POINTER(ctypes.c_char_p)))
-    assert libmpv.client_message_args(ctypes.addressof(message)) == ['kinosota-audio-menu', 'ё']
+    assert libmpv.client_message_args(ctypes.addressof(message)) == ['kinosota-menu', 'ё']
     assert libmpv.client_message_args(None) == []
     assert libmpv.EVENT_CLIENT_MESSAGE == 16
     assert libmpv.Event(libmpv.EVENT_CLIENT_MESSAGE).args == []
 
 
-def test_the_film_osc_right_click_sends_script_messages_instead_of_cycling_tracks():
+def test_the_qt_track_popup_is_gone_the_menu_is_mpv_osd():
+    import importlib.util
+    assert importlib.util.find_spec('kinosota_player.tracks') is None
+    assert not hasattr(CinemaSurface, 'audioMenuRequested') and not hasattr(DirectLaunchSplash, 'show_audio_menu')
     options = dict(cinema.FILM_OPTIONS)
-    opts = dict(item.split('=', 1) for item in options['script-opts'].split(','))
-    assert opts['osc-audio_track_mbtn_right_command'].startswith('script-message kinosota-audio-menu')
-    assert opts['osc-sub_track_mbtn_right_command'].startswith('script-message kinosota-sub-menu')
-    assert 'cycle' not in options['script-opts']
-    assert 'script-opts' not in dict(cinema.INTRO_OPTIONS)
+    assert options['osc'] == 'no' and options['load-scripts'] == 'no'  # Only the two bundled scripts, nothing else.
+    assert options['scripts'] == os.pathsep.join([str(cinema.OSC_SCRIPT), str(cinema.TRACK_MENU_SCRIPT)])
+    assert 'scripts' not in dict(cinema.INTRO_OPTIONS)  # The intro core stays a bare picture.
 
 
-def test_osc_client_messages_become_menu_signals_only_while_the_film_plays():
+def test_the_osc_stays_hidden_under_the_intro_and_a_reconnect_hides_it_and_the_menu_again():
     surface, _ = make_surface()
-    asked = []
-    surface.audioMenuRequested.connect(lambda: asked.append('audio'))
-    surface.subtitlesMenuRequested.connect(lambda: asked.append('sub'))
     surface.present()
     surface.load_film(URL)
-    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-audio-menu'])
-    assert asked == []  # Still warming up under the intro.
+    film = surface.handles['film']
+    assert 'osc-visibility=never' in film.options['script-opts'] and film.commands == [('loadfile', URL, 'replace')]
     first_film_frame(surface, cached=5)
-    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-audio-menu'])
-    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-sub-menu'])
-    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['something-else'])
-    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=[])
-    assert asked == ['audio', 'sub']
+    assert OSC_AUTO not in film.commands  # Still dissolving.
+    surface.dissolve.setCurrentTime(DISSOLVE_MS)
+    assert film.commands[-1] == OSC_AUTO
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-menu', 'open', 'audio'])
+    assert surface.menu_open
+    surface.load_film(URL)  # Reconnect in the same core.
+    assert not surface.menu_open and film.commands[-3:] == [
+        ('script-message-to', 'kinosota_tracks', 'close'),
+        ('script-message-to', 'osc', 'osc-visibility', 'never', 'no-osd'), ('loadfile', URL, 'replace')]
     surface.shutdown()
 
 
-def test_track_list_is_filtered_per_kind_with_flags_codecs_and_the_active_mark():
-    from kinosota_player.tracks import AUDIO, SUBTITLES, row_text, track_entries
-    audio = track_entries(TRACK_LIST, AUDIO)
-    assert [row['id'] for row in audio] == [1, 2, 3, 4]
-    assert [row['language'] for row in audio] == ['ru', 'uk', 'en', '']
-    assert audio[0]['selected'] and not any(row['selected'] for row in audio[1:])
-    assert audio[0]['details'] == 'AC-3 · 5.1' and audio[3]['code'] == 'JPN'
-    assert audio[2]['title'] == 'Английский' and audio[2]['details'] == 'DTS · 7.1'
-    assert row_text(audio[0]).endswith('✓') and not row_text(audio[1]).endswith('✓')
-    assert row_text(audio[3]).startswith('JPN  Original')
-    subs = track_entries(TRACK_LIST, SUBTITLES)
-    assert [row['id'] for row in subs] == [0, 1, 2] and subs[0]['title'] == 'Без субтитров' and subs[0]['selected']
-    assert subs[2]['details'] == 'ASS · Forced'
-    assert track_entries(None, AUDIO) == [] and [row['id'] for row in track_entries(None, SUBTITLES)] == [0]
-    shown = [dict(t) for t in TRACK_LIST if isinstance(t, dict)]
-    shown[5]['selected'] = True
-    subs = track_entries(shown, SUBTITLES)
-    assert not subs[0]['selected'] and subs[1]['selected']
+def test_the_menu_state_message_hands_the_wheel_to_the_menu_and_back_to_the_volume():
+    surface, _ = make_surface()
+    surface.present()
+    surface.load_film(URL)
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-menu', 'open', 'audio'])
+    assert not surface.menu_open  # Nothing is interactive under the intro.
+    film = playing_film(surface)
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-menu', 'open', 'audio'])
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['something-else', 'closed'])
+    assert surface.menu_open and surface.view.menu_open
+    surface.view.menuWheel.emit('WHEEL_DOWN')
+    assert film.commands[-1] == ('keypress', 'WHEEL_DOWN')
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-menu', 'closed'])
+    assert not surface.menu_open and not surface.view.menu_open
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-menu', 'open', 'sub'])
+    surface.stop_film()
+    assert not surface.menu_open  # A stopped film has no menu.
+    surface.shutdown()
 
 
-def test_right_click_on_audio_opens_the_popup_and_a_click_switches_aid_in_place():
-    from kinosota_player.tracks import TrackSelectionDialog
+def test_the_view_wheel_scrolls_the_open_menu_one_line_per_notch_and_never_the_volume():
+    qt_app()
+    view = cinema.CinemaView()
+    volume, menu = [], []
+    view.volumeWheel.connect(volume.append)
+    view.menuWheel.connect(menu.append)
+    view.menu_open = True
+    for angle in ((0, 120), (0, -240), (0, 60), (0, 60), (120, 0)):
+        event = wheel_event(angle)
+        view.wheelEvent(event)
+        assert event.isAccepted()
+    assert menu == ['WHEEL_UP', 'WHEEL_DOWN', 'WHEEL_DOWN', 'WHEEL_UP'] and volume == []  # Touchpad halves add up.
+    view.menu_open = False
+    view.wheelEvent(wheel_event((0, 120)))
+    assert volume == [pytest.approx(1.0)] and len(menu) == 4
+    view.deleteLater()
+
+
+def test_full_mode_is_a_real_fullscreen_window_and_compact_a_normal_one():
     surface, _ = make_surface()
     splash = DirectLaunchSplash(cinema=surface)
     splash.present()
-    assert splash.show_audio_menu() is None  # No popup over the intro.
-    film = playing_film(surface)
-    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-audio-menu'])
-    dialog = splash.track_dialog
-    assert isinstance(dialog, TrackSelectionDialog) and dialog.isVisible() and dialog.isModal()
-    assert dialog.title_label.text() == 'Выбор аудиодорожки' and dialog.objectName() == 'trackDialog'
-    assert dialog.card.objectName() == 'audioCard' and dialog.geometry() == splash.frameGeometry()
-    assert list(dialog.track_buttons) == [1, 2, 3, 4] and dialog.track_buttons[1].isChecked()
-    loads = [c for c in film.commands if c and c[0] == 'loadfile']
-    dialog.track_buttons[3].click()
-    assert film.props['aid'] == 3 and film.props['pause'] is False  # Switched on the fly, still playing.
-    assert [c for c in film.commands if c and c[0] == 'loadfile'] == loads  # No reload.
-    assert splash.track_dialog is None and not dialog.isVisible()
+    assert splash.isFullScreen() and splash.geometry() == splash.screen_area()  # Over the dock and the top panel.
+    playing_film(surface)
+    splash.set_mode('compact', animate=False)
+    assert not splash.isFullScreen() and splash.geometry() == splash.target_geometry('compact')
+    surface.fullscreenRequested.emit(True)  # mpv's f / double click.
+    assert splash.mode == 'full' and splash.isFullScreen()
+    splash.hide_now()
+    splash.set_mode('compact')
+    splash.present()
+    assert not splash.isFullScreen() and splash.geometry() == splash.target_geometry()
     splash.dismiss()
 
 
-def test_subtitle_popup_offers_off_and_every_subtitle_and_sets_sid():
+def test_the_film_window_has_no_square_or_cross_buttons():
     surface, _ = make_surface()
     splash = DirectLaunchSplash(cinema=surface)
     splash.present()
-    film = playing_film(surface)
-    surface.subtitlesMenuRequested.emit()
-    dialog = splash.track_dialog
-    assert dialog.title_label.text() == 'Выбор субтитров' and list(dialog.track_buttons) == [0, 1, 2]
-    assert dialog.track_buttons[0].isChecked()
-    dialog.track_buttons[2].click()
-    assert film.props['sid'] == 2 and splash.track_dialog is None
-    surface.subtitlesMenuRequested.emit()
-    splash.track_dialog.track_buttons[0].click()
-    assert film.props['sid'] == 'no'  # «Без субтитров».
+    assert splash.resize_button.isVisible() and splash.close_button.isVisible()  # The launch can be cancelled.
+    playing_film(surface)
+    assert splash.film_mode and not splash.resize_button.isVisible() and not splash.close_button.isVisible()
+    for _ in range(3):
+        surface.view.activity.emit()
+        splash.set_status('Буферизация видео…')
+    assert not splash.resize_button.isVisible() and not splash.close_button.isVisible()
+    splash.hide_now()
+    splash.present()
+    assert splash.resize_button.isVisible() and splash.close_button.isVisible()  # The next launch again.
     splash.dismiss()
 
 
-def test_esc_the_close_button_and_a_click_outside_the_card_close_the_popup_and_the_film_keeps_playing():
+def mouse(kind, pos, button=Qt.MouseButton.LeftButton, buttons=None):
     from PySide6.QtGui import QMouseEvent
+    pos = QPointF(*pos)
+    held = button if buttons is None else buttons
+    return QMouseEvent(kind, pos, pos, button, held, Qt.KeyboardModifier.NoModifier)
+
+
+def test_holding_the_left_button_on_the_picture_moves_the_compact_window():
     surface, _ = make_surface()
     splash = DirectLaunchSplash(cinema=surface)
+    film = None
+    moves = []
+    splash.start_window_move = lambda: moves.append(True) or DirectLaunchSplash.start_window_move(splash)
     splash.present()
     film = playing_film(surface)
-    surface.audioMenuRequested.emit()
-    dialog = splash.track_dialog
-    dialog.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier, '\x1b'))
-    assert splash.track_dialog is None and not dialog.isVisible()
-    surface.audioMenuRequested.emit()
-    dialog = splash.track_dialog
-    dialog.close_button.click()
-    assert splash.track_dialog is None and not dialog.isVisible()
-    surface.subtitlesMenuRequested.emit()
-    dialog = splash.track_dialog
-    inside = QPointF(dialog.card.geometry().center())
-    dialog.mousePressEvent(QMouseEvent(QEvent.Type.MouseButtonPress, inside, inside, Qt.MouseButton.LeftButton,
-                                       Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
-    assert splash.track_dialog is dialog and dialog.isVisible()
-    outside = QPointF(2, 2)
-    dialog.mousePressEvent(QMouseEvent(QEvent.Type.MouseButtonPress, outside, outside, Qt.MouseButton.LeftButton,
-                                       Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
-    assert splash.track_dialog is None and not dialog.isVisible()
-    assert 'aid' not in film.props and 'sid' not in film.props and film.props['pause'] is False
-    surface.audioMenuRequested.emit()
-    dialog = splash.track_dialog
-    splash.hide_now()  # The film window goes away: so does its popup.
-    assert splash.track_dialog is None and not dialog.isVisible()
+    splash.set_mode('compact', animate=False)
+    height = splash.height()
+    drag = QApplication.startDragDistance() + 2
+
+    def gesture(y, *, dx=drag, button=Qt.MouseButton.LeftButton):
+        splash.mousePressEvent(mouse(QEvent.Type.MouseButtonPress, (50, y), button))
+        splash.mouseMoveEvent(mouse(QEvent.Type.MouseMove, (50 + dx, y), Qt.MouseButton.NoButton, button))
+        splash.mouseReleaseEvent(mouse(QEvent.Type.MouseButtonRelease, (50 + dx, y), button, Qt.MouseButton.NoButton))
+
+    gesture(height * 0.4, dx=1)
+    assert moves == []  # A click is a click.
+    gesture(height * 0.4)
+    assert moves == [True] and film.commands[-1] == ('keyup', 'MBTN_LEFT')  # mpv does not keep the button held.
+    gesture(height * 0.95)
+    gesture(height * 0.4, button=Qt.MouseButton.RightButton)
+    assert moves == [True]  # The OSC bar (seek bar, buttons) and the right button never move the window.
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-menu', 'open', 'audio'])
+    gesture(height * 0.4)
+    assert moves == [True]  # The open menu takes the clicks.
+    push(surface, 'film', libmpv.EVENT_CLIENT_MESSAGE, args=['kinosota-menu', 'closed'])
+    splash.set_mode('full', animate=False)
+    gesture(height * 0.4)
+    assert moves == [True]  # A fullscreen window is not moved.
     splash.dismiss()

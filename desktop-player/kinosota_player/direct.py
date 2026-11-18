@@ -9,15 +9,14 @@ from urllib.parse import urlsplit
 from PySide6.QtCore import (QAbstractAnimation, QEasingCurve, QObject, QPointF, QPropertyAnimation, QRect, QRectF,
                             QRunnable, QThreadPool, QTimer, Qt, Signal, Slot)
 from PySide6.QtGui import QBrush, QColor, QCursor, QGuiApplication, QImage, QLinearGradient, QPainter, QRadialGradient
-from PySide6.QtWidgets import (QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLayout, QPushButton, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QApplication, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLayout, QPushButton,
+                               QVBoxLayout, QWidget)
 
 from .api import Api, ApiError
 from .cinema import INTRO_STILL, CinemaEngine, create_surface, mpv_key_name
 from .deeplink import parse_launch, parse_mode
 from .engine import FIRST_FRAME_TIMEOUT, Mpv
 from .torrents import audio_args, media_title_args
-from .tracks import AUDIO, OFF_ID, SUBTITLES, TrackSelectionDialog, track_entries
 
 BACKGROUND, BACKGROUND_DEEP = '#070b0e', '#070b0e'  # Unified CinemaPrestartOverlay.vue palette.
 ACCENT, ACCENT_DEEP = '#ffd400', '#ffb800'
@@ -25,7 +24,9 @@ TEXT, TEXT_MUTED = '#ffffff', 'rgba(255, 255, 255, 0.58)'
 FADE_MS = 400  # Window fade when the launch is cancelled or handed to the external mpv window.
 RESIZE_MS = 260
 TEXT_FADE_MS = 280
-CHROME_HIDE_MS = 2500  # While the film plays, □ / ✕ appear on pointer movement and hide again.
+# The bottom share of the film window that belongs to mpv's OSC bar (0.35 bottombar: 56 of 720 virtual px, plus
+# margin): a press there is a seek / button press, never the start of a window move.
+OSC_BAND = 0.12
 LONG_WAIT_MS = 15000   # The intro has ended and the film is still buffering: say so.
 # Delay between mpv reporting its first frame (IPC) and the splash fade-out (external mpv window only).
 FIRST_FRAME_FADE_DELAY_MS = 0
@@ -155,7 +156,7 @@ class DirectLaunchSplash(QWidget):
         self.target_screen = None
         self.cinema = None
         self.backdrop = None
-        self.track_dialog = None
+        self._drag_origin = None
         self._fading = False
         self._close_after_fade = False
         self._closing = False
@@ -210,10 +211,6 @@ class DirectLaunchSplash(QWidget):
         self.fade_animation.setDuration(FADE_MS)
         self.fade_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self.fade_animation.finished.connect(self._fade_finished)
-        self.chrome_timer = QTimer(self)
-        self.chrome_timer.setSingleShot(True)
-        self.chrome_timer.setInterval(CHROME_HIDE_MS)
-        self.chrome_timer.timeout.connect(self._hide_chrome)
         self.long_wait_timer = QTimer(self)
         self.long_wait_timer.setSingleShot(True)
         self.long_wait_timer.setInterval(LONG_WAIT_MS)
@@ -236,9 +233,6 @@ class DirectLaunchSplash(QWidget):
             cinema.filmStarted.connect(self.enter_film)
             cinema.fullscreenRequested.connect(lambda full: self.set_mode('full' if full else 'compact'))
             cinema.failed.connect(self.use_still_backdrop)
-            cinema.view.activity.connect(self._reveal_chrome)
-            cinema.audioMenuRequested.connect(self.show_audio_menu)
-            cinema.subtitlesMenuRequested.connect(self.show_subtitles_menu)
             cinema.set_fullscreen(self.mode == 'full')
         else:
             self.backdrop = StillBackdrop(self)
@@ -307,7 +301,7 @@ class DirectLaunchSplash(QWidget):
                 handle.setScreen(self.target_screen)
         self.setWindowOpacity(1.0)
         self.setGeometry(self.target_geometry())
-        self.show()
+        self._show_in_mode()
         self.raise_()
         self.activateWindow()
         self.setFocus()  # Esc reaches the splash; the buttons stay unhighlighted until Tab.
@@ -318,21 +312,36 @@ class DirectLaunchSplash(QWidget):
                 self.long_wait_timer.start()
         self._refresh_chrome()
 
+    def _show_in_mode(self):
+        """'full' is a real fullscreen window: the window manager hides the dock and the top panel over it."""
+        if self.mode == 'full':
+            self.showFullScreen()
+        else:
+            self.showNormal()
+
     def set_mode(self, mode, *, animate=True):
         if mode not in ('full', 'compact') or mode == self.mode:
             return
         self.mode = mode
+        self._drag_origin = None
         self._update_texts()
         if self.cinema is not None:
             self.cinema.set_fullscreen(mode == 'full')
         target = self.target_geometry()
         self.geometry_animation.stop()
-        if animate and self.isVisible():
-            self.geometry_animation.setStartValue(self.geometry())
-            self.geometry_animation.setEndValue(target)
-            self.geometry_animation.start()
-        else:
+        if not self.isVisible():
             self.setGeometry(target)
+        elif mode == 'full':
+            self.setGeometry(target)  # On the splash's monitor...
+            self.showFullScreen()     # ...as a real fullscreen window, the same native one: never a black frame.
+        else:
+            self.showNormal()
+            if animate:
+                self.geometry_animation.setStartValue(self.geometry())
+                self.geometry_animation.setEndValue(target)
+                self.geometry_animation.start()
+            else:
+                self.setGeometry(target)
         self.modeChanged.emit(mode)
 
     def toggle_mode(self):
@@ -346,83 +355,20 @@ class DirectLaunchSplash(QWidget):
 
     # Film hand-over -----------------------------------------------------------------------------------------
     def enter_film(self):
-        """The film's first frame is dissolving in: the window becomes the film window."""
+        """The film's first frame is dissolving in: the window becomes the film window.
+
+        □ / ✕ belong to the launch only: the film is driven by mpv's own OSC, a double click and f / Esc / q."""
         self.film_mode = True
         self.long_wait_timer.stop()
         self._set_on_top(False)
-        self.close_button.setToolTip('Закрыть фильм')
-        self.close_button.setAccessibleName('Закрыть фильм')
         self._refresh_chrome()
-        self._hide_chrome()
-
-    def _reveal_chrome(self):
-        if self.film_mode:
-            self.resize_button.show()
-            self.close_button.show()
-            self.chrome_timer.start()
-
-    def _hide_chrome(self):
-        if self.film_mode and not (self.resize_button.underMouse() or self.close_button.underMouse()):
-            self.resize_button.hide()
-            self.close_button.hide()
 
     def _long_wait(self):
         self.long_wait = True
         self._refresh_chrome()
 
-    # Track popups -------------------------------------------------------------------------------------------
-    def show_audio_menu(self):
-        """Right click on the OSC 💬 button: every audio track of the file, centred over the film."""
-        return self._show_tracks(AUDIO)
-
-    def show_subtitles_menu(self):
-        """Right click on the OSC subtitle button: «Без субтитров» and every subtitle track."""
-        return self._show_tracks(SUBTITLES)
-
-    def _film_core(self):
-        if not self.film_mode or self.cinema is None or not self.cinema.accepts_input():
-            return None
-        return self.cinema.film_player()
-
-    def _show_tracks(self, kind):
-        film = self._film_core()
-        if film is None or not self.isVisible():
-            return None
-        self.close_track_dialog()
-        dialog = TrackSelectionDialog(self, kind, track_entries(film.get('track-list'), kind))
-        dialog.trackChosen.connect(lambda track_id, kind=kind: self.choose_track(kind, track_id))
-        dialog.finished.connect(lambda _result, dialog=dialog: self._track_dialog_closed(dialog))
-        self.track_dialog = dialog
-        dialog.cover(self)
-        dialog.open()  # Window-modal and non-blocking: the film keeps playing under it.
-        dialog.raise_()
-        dialog.activateWindow()
-        return dialog
-
-    def choose_track(self, kind, track_id):
-        """Switch the running core in place: no reload, no pause."""
-        film = self._film_core()
-        if film is None:
-            return False
-        if kind == AUDIO:
-            return bool(track_id) and film.try_set('aid', int(track_id))
-        return film.try_set('sid', 'no' if track_id == OFF_ID else int(track_id))
-
-    def _track_dialog_closed(self, dialog):
-        if self.track_dialog is dialog:
-            self.track_dialog = None
-        dialog.deleteLater()
-        if self.isVisible():
-            self.activateWindow()
-            self.setFocus()  # Keys go to mpv again.
-
-    def close_track_dialog(self):
-        dialog, self.track_dialog = self.track_dialog, None
-        if dialog is not None:
-            dialog.reject()
-
     def _refresh_chrome(self):
-        """Over the intro only □ / ✕ stay; the status shows on errors or a long wait. The still shows all."""
+        """Over the intro only □ / ✕ stay (none over the film); the status shows on errors or a long wait."""
         cinema = self.cinema is not None
         self.brand_label.setVisible(not cinema)
         show_status = not self.film_mode and (not cinema or self.error or self.long_wait)
@@ -431,12 +377,8 @@ class DirectLaunchSplash(QWidget):
         self.status_label.setProperty('cinema', 'true' if cinema else 'false')
         self.status_label.style().unpolish(self.status_label)
         self.status_label.style().polish(self.status_label)
-        if not self.film_mode:
-            self.resize_button.show()
-            self.close_button.show()
-            self.chrome_timer.stop()
-            self.close_button.setToolTip('Отменить запуск')
-            self.close_button.setAccessibleName('Отменить запуск')
+        self.resize_button.setVisible(not self.film_mode)
+        self.close_button.setVisible(not self.film_mode)
 
     # Text ---------------------------------------------------------------------------------------------------
     def _update_texts(self):
@@ -520,8 +462,7 @@ class DirectLaunchSplash(QWidget):
 
     def _stop_media(self):
         """A hidden window never keeps the intro or the film playing."""
-        self.close_track_dialog()
-        self.chrome_timer.stop()
+        self._drag_origin = None
         self.long_wait_timer.stop()
         self.long_wait = False
         self.film_mode = False
@@ -564,6 +505,40 @@ class DirectLaunchSplash(QWidget):
             self.close()
         finally:
             self._closing = False
+
+    # Window move --------------------------------------------------------------------------------------------
+    def _may_drag(self, event):
+        """A window (compact) is moved by holding the left button on the picture, away from mpv's OSC bar and menu."""
+        if self.mode != 'compact' or self.isFullScreen() or event.button() != Qt.MouseButton.LeftButton:
+            return False
+        if self.cinema is not None and self.cinema.menu_open:
+            return False
+        return not (self.film_mode and event.position().y() >= self.height() * (1.0 - OSC_BAND))
+
+    def mousePressEvent(self, event):
+        # The picture (CinemaView) passes its presses on to the window after mpv has seen them.
+        self._drag_origin = QPointF(event.globalPosition()) if self._may_drag(event) else None
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        origin = self._drag_origin
+        if origin is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            if (event.globalPosition() - origin).manhattanLength() >= QApplication.startDragDistance():
+                self._drag_origin = None
+                self.start_window_move()
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_origin = None
+        super().mouseReleaseEvent(event)
+
+    def start_window_move(self):
+        """Hand the window to the window manager (X11 and Wayland), which follows the pointer until release."""
+        if self.cinema is not None:
+            self.cinema.release_mouse()  # The release goes to the window manager, not to mpv.
+        handle = self.windowHandle()
+        return bool(handle is not None and handle.startSystemMove())
 
     def keyPressEvent(self, event):
         if self.film_mode and self.cinema is not None and self.cinema.accepts_input():

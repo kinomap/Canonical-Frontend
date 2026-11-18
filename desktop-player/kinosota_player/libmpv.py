@@ -23,7 +23,7 @@ FORMAT_NODE, FORMAT_NODE_ARRAY, FORMAT_NODE_MAP, FORMAT_BYTE_ARRAY = 6, 7, 8, 9
 # mpv_event_id
 EVENT_NONE, EVENT_SHUTDOWN, EVENT_LOG_MESSAGE = 0, 1, 2
 EVENT_START_FILE, EVENT_END_FILE, EVENT_FILE_LOADED = 6, 7, 8
-EVENT_CLIENT_MESSAGE = 16  # script-message from a Lua script (the OSC's right-click track menus).
+EVENT_CLIENT_MESSAGE = 16  # script-message from a Lua script (the track menu says when it is open).
 EVENT_VIDEO_RECONFIG, EVENT_AUDIO_RECONFIG = 17, 18
 EVENT_PLAYBACK_RESTART, EVENT_PROPERTY_CHANGE = 21, 22
 # mpv_end_file_reason

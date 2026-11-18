@@ -61,14 +61,17 @@ COMMON_OPTIONS = [
     ('ytdl', 'no'), ('load-scripts', 'no'), ('input-vo-keyboard', 'no'), ('audio-client-name', 'KINOSOTA Player'),
     ('sub-auto', 'no'), ('audio-display', 'no'),
 ]
-# Right click on the OSC audio (💬) / subtitle buttons opens KINOSOTA's own track popups instead of blindly
-# cycling: osc.lua runs the configured command, the script-message reaches us as EVENT_CLIENT_MESSAGE.
-AUDIO_MENU_MESSAGE = 'kinosota-audio-menu'
-SUB_MENU_MESSAGE = 'kinosota-sub-menu'
-OSC_SCRIPT_OPTS = ','.join([
-    f'osc-audio_track_mbtn_right_command=script-message {AUDIO_MENU_MESSAGE};script-message-to osc osc-hide',
-    f'osc-sub_track_mbtn_right_command=script-message {SUB_MENU_MESSAGE};script-message-to osc osc-hide',
-])
+# The film core's OSC and track menu are mpv scripts drawn by mpv's own OSD (no widget over the film). The bundled
+# libmpv 0.35 has no select.lua and its OSC cannot rebind the track buttons, so the film core runs a copy of the
+# 0.35 osc.lua whose right click on the audio (💬) / subtitle button opens kinosota_tracks.lua: the
+# «Select an audio track:» / «Select a subtitle track:» menu of select.lua. The menu tells us when it is on screen
+# (script-message kinosota-menu open|closed), so the mouse wheel scrolls it instead of changing the volume.
+MPV_SCRIPTS = Path(__file__).resolve().parent / 'assets' / 'mpv'
+OSC_SCRIPT = MPV_SCRIPTS / 'osc.lua'
+TRACK_MENU_SCRIPT = MPV_SCRIPTS / 'kinosota_tracks.lua'
+MENU_STATE_MESSAGE = 'kinosota-menu'
+FILM_SCRIPTS = os.pathsep.join(str(path) for path in (OSC_SCRIPT, TRACK_MENU_SCRIPT))
+FILM_SCRIPT_OPTS = 'osc-visibility=never,osc-idlescreen=no'  # Shown once the intro is gone (_dissolve_done).
 # The intro fills the window (panscan crops instead of letterboxing) and holds its last frame.
 INTRO_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'always'), ('panscan', '1.0'), ('osd-level', '0'), ('osc', 'no'),
                  ('input-default-bindings', 'no'), ('pause', 'no'), ('volume', str(INTRO_VOLUME)),
@@ -78,7 +81,7 @@ FILM_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'no'), ('pause', 'yes'), ('volume
                 ('input-default-bindings', 'yes'), ('cache', 'yes'), ('demuxer-max-bytes', '150MiB'),
                 ('demuxer-readahead-secs', '10'), ('cache-pause-wait', '1'), ('cache-pause-initial', 'no'),
                 ('network-timeout', '60'), ('stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=3'),
-                ('script-opts', OSC_SCRIPT_OPTS)]
+                ('scripts', FILM_SCRIPTS), ('script-opts', FILM_SCRIPT_OPTS)]
 # engine.Mpv window flags have no meaning here: the surface is the window.
 WINDOW_OPTIONS = {'geometry', 'fullscreen', 'fs', 'native-fs', 'autofit', 'autofit-larger', 'force-window', 'title',
                   'input-ipc-server', 'idle', 'keep-open', 'vo', 'no-config', 'config', 'terminal', 'osd-level', 'osc'}
@@ -220,7 +223,8 @@ class CinemaView(QOpenGLWidget):
     mouseMoved = Signal(QPointF)  # Device pixels.
     mouseButton = Signal(str, bool)
     mouseDouble = Signal(str)
-    volumeWheel = Signal(float)   # Signed wheel notches: the wheel is the volume control and nothing else.
+    volumeWheel = Signal(float)   # Signed wheel notches: the wheel is the volume control...
+    menuWheel = Signal(str)       # ...except while the track menu is open: WHEEL_UP / WHEEL_DOWN scroll its list.
     _wake = Signal()
 
     ORDER = ('intro', 'film')
@@ -242,6 +246,8 @@ class CinemaView(QOpenGLWidget):
         self._bind_vao = None
         self._bind_sampler = None
         self.first_paint_at = None
+        self.menu_open = False
+        self._menu_wheel = 0
         self._wake.connect(self.update, Qt.ConnectionType.QueuedConnection)
         self.frameSwapped.connect(self._swapped)
 
@@ -494,10 +500,29 @@ class CinemaView(QOpenGLWidget):
         super().mouseDoubleClickEvent(event)
 
     def wheelEvent(self, event):
+        if self.menu_open:
+            for name in self._menu_wheel_steps(event.angleDelta().y()):
+                self.menuWheel.emit(name)
+            event.accept()
+            return
+        self._menu_wheel = 0
         notches = wheel_volume_notches(event.angleDelta(), event.inverted())
         if notches:
             self.volumeWheel.emit(notches)
         event.accept()
+
+
+    def _menu_wheel_steps(self, delta):
+        """One WHEEL_UP / WHEEL_DOWN per wheel notch; touchpad fractions add up to whole steps."""
+        self._menu_wheel += int(delta)
+        steps = []
+        while self._menu_wheel >= 120:
+            steps.append('WHEEL_UP')
+            self._menu_wheel -= 120
+        while self._menu_wheel <= -120:
+            steps.append('WHEEL_DOWN')
+            self._menu_wheel += 120
+        return steps
 
 
 # Surface --------------------------------------------------------------------------------------------------------
@@ -509,8 +534,6 @@ class CinemaSurface(QObject):
     filmEnded = Signal(int)    # 0: end of file or quit, 2: the stream failed.
     fullscreenRequested = Signal(bool)
     failed = Signal(str)       # OpenGL / libmpv cannot be used: fall back to the external mpv window.
-    audioMenuRequested = Signal()      # Right click on the OSC 💬 button: show every audio track.
-    subtitlesMenuRequested = Signal()  # Right click on the OSC subtitle button: show every subtitle track.
     _events = Signal()
 
     PLAYING = ('dissolve', 'film')
@@ -534,6 +557,8 @@ class CinemaSurface(QObject):
         self._film_alive = False
         self._film_exit = None
         self._fullscreen = None
+        self.menu_open = False          # The OSD track menu (kinosota_tracks.lua) is on screen.
+        self._loaded_core = None
         self._film_fade_from = FILM_VOLUME
         self.started = threading.Event()  # Set when the film plays or ends (CinemaEngine waits on it).
         self.dissolve = QVariantAnimation(self)
@@ -561,6 +586,7 @@ class CinemaSurface(QObject):
         self.view.mouseButton.connect(self._mouse_button)
         self.view.mouseDouble.connect(self.send_key)
         self.view.volumeWheel.connect(self.wheel_volume)
+        self.view.menuWheel.connect(self.send_key)
 
     # Players ------------------------------------------------------------------------------------------------
     def _open(self, name, options):
@@ -573,6 +599,8 @@ class CinemaSurface(QObject):
         return player
 
     def _close(self, name):
+        if name == 'film':
+            self._set_menu_open(False)
         player = self.handles.pop(name, None)
         self.view.detach(name)
         if player is not None:
@@ -660,6 +688,7 @@ class CinemaSurface(QObject):
         if 'intro' not in self.handles and self.phase not in self.PLAYING:
             self.present()
         film = self.handles.get('film') or self._open('film', FILM_OPTIONS)
+        reloaded = self._loaded_core is film  # This core played (or tried) a film before: a reconnect.
         self.view.disarm('film')
         self.view.set_alpha('film', 0.0)
         if 'intro' in self.handles:
@@ -671,12 +700,16 @@ class CinemaSurface(QObject):
                 log.debug('mpv option %s was not accepted', name)
         film.set('pause', True)
         film.set('volume', 0)
-        film.try_set('osc', False)
+        self._set_menu_open(False)
+        if reloaded:  # A reconnect under the logo still: no menu, no controls until the film is back.
+            self._film_script('kinosota_tracks', 'close')
+            self._osc_visibility('never')  # A new core starts hidden by FILM_SCRIPT_OPTS.
         film.try_set('osd-level', 0)
         self._film_alive, self._film_exit = True, None
         self.started.clear()
         self.film_loaded_at, self.film_frame_at, self.film_started_at = time.monotonic(), None, None
         self.phase = 'warmup'
+        self._loaded_core = film
         film.command('loadfile', url, 'replace')
 
     def stop_film(self):
@@ -690,6 +723,7 @@ class CinemaSurface(QObject):
             except libmpv.MpvError:
                 pass
         self._film_alive, self._film_exit = False, None
+        self._set_menu_open(False)
         self.started.set()
         self.view.disarm('film')
         self.view.set_alpha('film', 0.0)
@@ -746,6 +780,29 @@ class CinemaSurface(QObject):
         if film is not None:
             film.try_set('fullscreen', bool(full))
 
+    def _film_script(self, script, *args):
+        """script-message-to one of the film core's scripts; quietly nothing while they are still loading."""
+        film = self.handles.get('film')
+        if film is None:
+            return False
+        try:
+            film.command('script-message-to', script, *args)
+        except libmpv.MpvError:
+            return False
+        return True
+
+    def _osc_visibility(self, mode):
+        return self._film_script('osc', 'osc-visibility', mode, 'no-osd')
+
+    def _set_menu_open(self, value):
+        self.menu_open = bool(value)
+        self.view.menu_open = self.menu_open
+        self.view._menu_wheel = 0
+
+    def release_mouse(self, name='MBTN_LEFT'):
+        """The window manager took the pointer (window move): mpv must not keep the button held."""
+        self._mouse_button(name, False)
+
     def send_key(self, name):
         film = self.handles.get('film')
         if name and film is not None and self.accepts_input():
@@ -759,6 +816,7 @@ class CinemaSurface(QObject):
 
         The wheel is not forwarded to mpv as WHEEL_UP / WHEEL_DOWN: the bundled libmpv binds those to
         «seek ±10 s» and its OSC seek bar reacts to them too, so the film jumped while the volume moved.
+        Only the open track menu gets them (CinemaView.menuWheel): there they scroll its list.
         """
         film = self.handles.get('film')
         step = round(WHEEL_VOLUME_STEP * float(notches), 2)
@@ -812,13 +870,9 @@ class CinemaSurface(QObject):
             self._intro_unplayable(player)
 
     def _client_message(self, args):
-        """script-message from the film's OSC: only while the film is on screen and takes input."""
-        if not args or not self.accepts_input():
-            return
-        if args[0] == AUDIO_MENU_MESSAGE:
-            self.audioMenuRequested.emit()
-        elif args[0] == SUB_MENU_MESSAGE:
-            self.subtitlesMenuRequested.emit()
+        """«script-message kinosota-menu open|closed» from kinosota_tracks.lua."""
+        if len(args) >= 2 and args[0] == MENU_STATE_MESSAGE:
+            self._set_menu_open(args[1] == 'open' and self.accepts_input())
 
     def _film_finished(self, code):
         if not self._film_alive:
@@ -912,7 +966,7 @@ class CinemaSurface(QObject):
         if film is not None:
             film.try_set('volume', FILM_VOLUME)
             film.try_set('osd-level', 1)
-            film.try_set('osc', True)
+        self._osc_visibility('auto')  # mpv's own controls appear on the film only, never over the intro.
         if self.phase == 'dissolve':
             self.phase = 'film'
         self.filmDissolved.emit()
@@ -1068,7 +1122,7 @@ class CinemaEngine:
         return player.get(name) if player is not None else None
 
     def enable_osc(self):
-        """The surface enables the OSC itself when the dissolve ends."""
+        """The surface shows the OSC itself when the dissolve ends."""
 
     def wait_playback_started(self, timeout=FIRST_FRAME_TIMEOUT, *, cancelled=lambda: False, interval=0.1,
                               sleep=time.sleep, clock=time.monotonic):
