@@ -4,6 +4,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
 
 import pytest
@@ -51,6 +52,8 @@ def make_film(tmp_path):
 
 class Ipc:
     def __init__(self, path):
+        if not hasattr(socket, 'AF_UNIX'):
+            pytest.skip('AF_UNIX not supported on this platform')
         deadline = time.monotonic() + 15
         while True:
             try:
@@ -105,8 +108,17 @@ class Ipc:
 
 @pytest.fixture
 def mpv(tmp_path):
+    if not hasattr(socket, 'AF_UNIX'):
+        pytest.skip('AF_UNIX not supported on this platform')
     media = make_film(tmp_path)
-    sock, log = tmp_path / 'mpv.sock', tmp_path / 'mpv.log'
+    sock_dir = None
+    if sys.platform == 'darwin' or len(str(tmp_path / 'mpv.sock').encode()) >= 100:
+        import tempfile
+        sock_dir = Path(tempfile.mkdtemp(prefix='kino_'))
+        sock = sock_dir / 'm.sock'
+    else:
+        sock = tmp_path / 'mpv.sock'
+    log = tmp_path / 'mpv.log'
     options = dict(cinema.FILM_OPTIONS)
     process = subprocess.Popen(['mpv', '--no-config', '--idle=no', '--vo=null', '--ao=null', '--pause', '--osc=no',
                                 f'--scripts={options["scripts"]}', f'--script-opts={options["script-opts"]}',
@@ -119,6 +131,8 @@ def mpv(tmp_path):
     finally:
         process.terminate()
         process.wait(10)
+        if sock_dir and sock_dir.exists():
+            shutil.rmtree(sock_dir, ignore_errors=True)
     text = log.read_text(errors='replace')
     assert 'Lua error' not in text and '[kinosota_tracks] error' not in text.lower(), text[-4000:]
     assert not [line for line in text.splitlines() if '[osc]' in line and ' e]' in line.lower()], text[-4000:]
