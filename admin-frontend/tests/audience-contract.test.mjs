@@ -30,3 +30,16 @@ test('plan writes whitelist editable fields, cloning entitlement selection',()=>
  assert.match(source,/entitlements: \[\.\.\.p.entitlements\]/)
  assert.doesNotMatch(source,/plan.value\s*=\s*\{\s*\.\.\.p[,}]/)
 })
+test('single PRO tariff: 1/6/12-month periods, shared modules incl. feature:no_ads, no legacy Premium card',()=>{
+ assert.match(source,/PRO_CODES = \['pro_1m', 'pro_6m', 'pro_12m'\]/)
+ assert.match(source,/v-for="p in visiblePlans"/);assert.doesNotMatch(source,/v-for="p in plans"/)
+ assert.match(source,/const activePlans = computed\(\(\) => visiblePlans\.value\.filter/)
+ assert.match(source,/toggleProRight\(m\.code/);assert.match(source,/for \(const p of proPlans\.value\)/)
+ assert.ok(source.includes('Возможности тарифа PRO'));assert.doesNotMatch(source,/Только Premium/)
+ assert.match(source,/v-if="!proPlans\.length" class="primary" @click="editPlan\(\)"/)
+})
+test('torrent stream access switch is persisted on the backend, PRO-only by default',()=>{
+ assert.match(source,/base \+ '\/platform-settings'/);assert.match(source,/torrents_public: value/)
+ assert.ok(source.includes('Доступ к торрент-стримам'));assert.ok(source.includes('Только подписчикам PRO'));assert.ok(source.includes('Доступно всем пользователям (Free)'))
+ assert.match(source,/:checked="torrentsPublic === false"/);assert.match(source,/:disabled="busy \|\| torrentsPublic === null"/)
+})
