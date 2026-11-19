@@ -666,7 +666,11 @@ class CinemaSurface(QObject):
             log.warning('Intro source failed, using the bundled intro: %s', error)
             choice = BUNDLED
         try:
-            self.intro.refresh_async()  # Picks up admin changes for the next launch; never blocks this one.
+            # Every launch asks the server again (no 60 s throttle): an admin switch applies to the next start.
+            try:
+                self.intro.refresh_async(force=True)
+            except TypeError:  # An intro source without the force switch.
+                self.intro.refresh_async()
         except Exception as error:
             log.info('Intro refresh could not start: %s', error)
         if not isinstance(choice, IntroChoice):
@@ -708,7 +712,9 @@ class CinemaSurface(QObject):
             self.intro_choice = choice
             if 'intro' in self.handles:
                 self._close('intro')
-                self.view.set_poster(choice.still)
+                # Switched off for this environment: the clean splash background, never the intro's
+                # final (logo) frame - it used to flash for a second before every such film.
+                self.view.set_poster(None)
             if self.phase == 'warmup' and self.film_frame_at is not None:
                 self._check_ready()
             return
@@ -916,6 +922,16 @@ class CinemaSurface(QObject):
             log.info('Bundled intro could not be loaded: %s', error)
 
     # Public API ---------------------------------------------------------------------------------------------
+    def _rest_poster(self):
+        """Picture under the layers when no intro clip is on screen.
+
+        The intro still (its final logo frame) only when this launch really plays the intro; otherwise
+        (intro off for this environment, or the environment not decided yet) nothing, so the splash
+        stays its plain dark background instead of flashing the bumper's last frame.
+        """
+        choice = self.intro_choice
+        return choice.still if choice.enabled else None
+
     def present(self):
         """Start (or keep) the intro; idempotent while a launch is on screen."""
         if self.phase == 'unavailable':
@@ -926,7 +942,7 @@ class CinemaSurface(QObject):
         self.presented_at = time.monotonic()
         self.intro_frame_at = None
         choice = self.intro_choice
-        self.view.set_poster(choice.first_frame if choice.enabled else choice.still)
+        self.view.set_poster(choice.first_frame if choice.enabled else None)
         try:
             self._open_players()
         except libmpv.MpvError as error:
@@ -952,7 +968,7 @@ class CinemaSurface(QObject):
         if 'intro' in self.handles:
             self.view.set_alpha('intro', 1.0)
         else:
-            self.view.set_poster(self.intro_choice.still)  # A reconnect after the intro: the logo still, never black.
+            self.view.set_poster(self._rest_poster())  # A reconnect after a played intro: its logo still; no intro: plain splash.
         for name, value in options:
             if not film.try_set(name, value):
                 log.debug('mpv option %s was not accepted', name)
@@ -1237,7 +1253,7 @@ class CinemaSurface(QObject):
         self.ad_fade.stop()
         self._close('intro')
         self._close('ad')
-        self.view.set_poster(self.intro_choice.still)
+        self.view.set_poster(self._rest_poster())
         film = self.handles.get('film')
         if film is not None:
             film.try_set('volume', FILM_VOLUME)

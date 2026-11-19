@@ -48,7 +48,7 @@ BUNDLED_STILL = BUNDLED_DIR / 'kinosota-intro-still.jpg'
 ENDPOINT = '/api/v1/cinema/intro'
 CONFIG_TIMEOUT = httpx.Timeout(3.0, connect=2.0)      # The answer is tiny; a slow network just means «next time».
 DOWNLOAD_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
-REFRESH_INTERVAL_S = 60.0                              # Matches the API's max-age and the web player's cache TTL.
+REFRESH_INTERVAL_S = 60.0                              # Background (non-forced) refresh throttle; every launch forces one.
 MAX_VIDEO_BYTES = 120 * 1000 * 1000                    # Upload is <= 50 MB; the normalised H.264 copy stays far below.
 MAX_IMAGE_BYTES = 8 * 1000 * 1000
 STATE_FILE = 'state.json'

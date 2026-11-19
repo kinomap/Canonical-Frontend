@@ -15,6 +15,7 @@ import DesktopPlayerModal from '@/components/DesktopPlayerModal.vue'
 import { torrentPlaybackApi } from '@/api/torrents'
 import { useDesktopHandoff } from '@/composables/useDesktopHandoff'
 import type { CompatibilityIssue } from '@/lib/browserCodecs'
+import { loadIntroConfig } from '@/lib/cinemaIntro'
 import PlaybackUnavailable from '@/components/PlaybackUnavailable.vue'
 import PlaybackSubscription from '@/components/PlaybackSubscription.vue'
 import ReactionsBlock from '@/components/ReactionsBlock.vue'
@@ -161,6 +162,8 @@ async function handlePlay() {
   compatIssue.value = null
   codecIssue.value = null
   handoff.reset()
+  // Revalidate the admin intro targets in parallel with the stream request (no extra wait).
+  void loadIntroConfig()
   if (streamUrl.value) {
     shouldPlay.value = true
     return

@@ -34,7 +34,9 @@ export function introRemaining(startedAt: number, now = introClock.now()): numbe
 /**
  * Dynamic intro (admin «Видео и Реклама» → «Интро престарта»): GET /api/v1/cinema/intro says
  * whether the intro is on and which clip is active. Fail-safe: any error keeps the bundled
- * default clip; the answer is cached in sessionStorage so «Смотреть» never waits for the network.
+ * default clip. The last answer is kept in sessionStorage only as the instant fallback value:
+ * every load revalidates with the server (Cache-Control: no-cache + ETag, a cheap 304 while
+ * unchanged), so an admin checkbox change applies to the very next start, never 60 s later.
  */
 /** Where the intro plays (admin «Интро престарта» checkboxes). The intro is a brand bumper, not an ad. */
 export const INTRO_TARGETS = ['browser_telegram', 'player_telegram', 'browser_torrents', 'player_torrents'] as const
@@ -66,7 +68,8 @@ export function introEnabledFor(config: Pick<IntroConfig, 'enabled'> & { targets
 export type IntroSource = { src: string; type: string }
 export const INTRO_ENDPOINT = '/api/v1/cinema/intro'
 export const INTRO_CACHE_KEY = 'kinosota.cinema-intro.v1'
-export const INTRO_CACHE_TTL_MS = 60_000
+/** 0: a stored answer is never trusted without asking the server (it only bridges network errors). */
+export const INTRO_CACHE_TTL_MS = 0
 export const DEFAULT_INTRO: IntroConfig = Object.freeze({
   enabled: true,
   targets: Object.freeze(allTargets(true)),

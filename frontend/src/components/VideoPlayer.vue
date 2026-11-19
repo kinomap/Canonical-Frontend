@@ -5,7 +5,7 @@ import {createHistoryWriter} from '@/api/watchHistory'
 import AdPlaybackContainer from './AdPlaybackContainer.vue'
 import CinemaIntro from './CinemaIntro.vue'
 import { missingPicture, soundWatcher } from '@/lib/browserCodecs'
-import { DISSOLVE_MS, MIN_INTRO_MS, introClock, introConfig, introEnabledFor, introRemaining, prefersReducedMotion } from '@/lib/cinemaIntro'
+import { DISSOLVE_MS, MIN_INTRO_MS, introClock, introConfig, introEnabledFor, introRemaining, loadIntroConfig, prefersReducedMotion } from '@/lib/cinemaIntro'
 import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
@@ -48,11 +48,33 @@ const INTRO_SAFETY_MS = 45_000
 let adReveal: ReturnType<typeof setTimeout> | undefined
 const introLeaving = computed(() => !introPlaying.value && !(awaitingAd.value && !adsRef.value?.playing && !adsRef.value?.blocked))
 function clearIntroTimers() { clearTimeout(introTimer); clearTimeout(introFade); clearTimeout(introMin); clearInterval(introPoll); clearTimeout(adReveal); introMin = undefined; introPoll = undefined; introFade = undefined }
+/** Bumped on every new source: a late config answer for an older source never starts its intro. */
+let introDecision = 0
+/**
+ * The admin «browser_telegram» checkbox decides with the FRESH config, never with a stale tab copy:
+ * the old code decided from the cached value and only <CinemaIntro> (mounted only when the intro is
+ * already on) ever reloaded it, so a tab that once saw `false` never showed the intro again.
+ * While the answer is on its way (one revalidation, at most its 3 s timeout) the film and the
+ * pre-roll are held exactly as during the intro, so neither starts under an intro that follows.
+ */
 function startIntroFor(src: string) {
   clearIntroTimers()
-  const on = !!src && introEnabledFor(introConfig.value, 'browser_telegram')
-  introPlaying.value = on; introShown.value = on; awaitingAd.value = false
-  if (!on) return
+  const decision = ++introDecision
+  awaitingAd.value = false; introShown.value = false
+  if (!src) { introPlaying.value = false; return }
+  introPlaying.value = true
+  videoRef.value?.pause()
+  void loadIntroConfig().then(() => decideIntro(src, decision), () => decideIntro(src, decision))
+}
+function decideIntro(src: string, decision: number) {
+  if (decision !== introDecision || props.src !== src || !introPlaying.value) return
+  if (!introEnabledFor(introConfig.value, 'browser_telegram')) {
+    introPlaying.value = false
+    // No ads for this video: the film starts itself; otherwise the released ad container starts it.
+    if (!props.targetId && props.requested !== false) videoRef.value?.play()?.catch(() => {})
+    return
+  }
+  introShown.value = true
   introKey.value++
   introStartedAt = introClock.now()
   videoRef.value?.pause()
@@ -342,6 +364,8 @@ function onTrafficPageHide(){sampleTraffic();void sendTraffic(true);void saveHis
 function onHistoryVisibility(){if(document.visibilityState==='hidden')void saveHistory(true)}
 
 onMounted(() => {
+  // Fresh admin intro targets before «Смотреть»: the player mounts with the details page, long before the stream URL.
+  void loadIntroConfig()
   trafficTimer=setInterval(()=>{if((isPlaying.value||historySaveError.value)&&!adsRef.value?.busy&&Date.now()-lastHistorySave>=5000)void saveHistory();sampleTraffic();if(++trafficTick%15===0)void sendTraffic()},1000)
   window.addEventListener('pagehide',onTrafficPageHide)
   document.addEventListener('visibilitychange',onHistoryVisibility)

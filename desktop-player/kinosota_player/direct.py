@@ -60,6 +60,34 @@ def stream_of(meta) -> str:
     return value
 
 
+def catalog_movie_id(meta) -> str:
+    """A redeemed KINOSOTA catalogue (Telegram) launch without a ready stream: its movie id, else ''.
+
+    Such a launch is leased with its own single-use grant (``/desktop/playback/start``) right inside the
+    direct player, under the same splash and intro as a torrent, instead of being handed to the app window.
+    """
+    if not isinstance(meta, dict) or meta.get('kind') != 'movie' or type(meta.get('tmdb_id')) is int:
+        return ''
+    movie_id, grant = meta.get('movie_id'), meta.get('access_token')
+    if not isinstance(movie_id, str) or not movie_id.strip() or not isinstance(grant, str) or not grant.strip():
+        return ''
+    return movie_id.strip()
+
+
+def lease_url(session) -> str:
+    """The media URL of a playback lease (HTTPS only; it carries the node's playback token)."""
+    value = session.get('media_url') if isinstance(session, dict) else None
+    if not isinstance(value, str) or not value or value != value.strip():
+        return ''
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return ''
+    if parts.scheme.lower() != 'https' or not parts.hostname or parts.username or parts.password or parts.fragment:
+        return ''
+    return value
+
+
 def launch_args(meta) -> list[str]:
     """mpv start flags for the website's selected language, track, and title."""
     meta = meta if isinstance(meta, dict) else {}
@@ -703,6 +731,11 @@ class DirectPlayer(QObject):
         self.timer = QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self._watch)
+        # A catalogue film leased here (catalog_movie_id): its heartbeat keeps the Telegram stream slot.
+        self.session_id = ''
+        self._lease_grant = ''
+        self.lease_timer = QTimer(self)
+        self.lease_timer.timeout.connect(self._heartbeat)
         self.splash = self._make_splash() if show_splash else None
         if cinema is not None:
             cinema.failed.connect(self._cinema_failed)
@@ -767,8 +800,10 @@ class DirectPlayer(QObject):
         generation = self.generation
         self.timer.stop()
         self.engine.stop()
+        self._release_lease()
         self._close_api()
         self.meta, self.url, self.attempt, self.playing = None, '', 0, False
+        self._refresh_intro()
         self._status(STARTING)
         api = self.api_factory()
         if hasattr(api, 'token'):
@@ -793,6 +828,13 @@ class DirectPlayer(QObject):
             self.meta = dict(meta)
             self.url = stream_of(meta)
             if not self.url:
+                movie_id = catalog_movie_id(meta)
+                if movie_id:
+                    # Telegram catalogue film: one seamless splash + intro, exactly like a torrent stream.
+                    self.started_at = time.monotonic()
+                    self._prepare_launch(generation, self.meta)
+                    self._start_lease(generation, movie_id)
+                    return
                 self.timer.stop()
                 self._close_api()
                 self._hide_splash()
@@ -808,6 +850,87 @@ class DirectPlayer(QObject):
 
         self.work(lambda: api.open_launch(launch_id), done, fail)
         return True
+
+    def _refresh_intro(self):
+        """Every new launch asks the server for the admin intro switches at once (no 60 s throttle)."""
+        source = getattr(self.cinema, 'intro', None) if self.cinema is not None else None
+        refresh = getattr(source, 'refresh_async', None)
+        if not callable(refresh):
+            return
+        try:
+            refresh(force=True)
+        except TypeError:  # An intro source without the force switch.
+            refresh()
+        except Exception:  # Never block a launch on the intro config; the last known choice stays.
+            pass
+
+    def _start_lease(self, generation, movie_id):
+        """Lease the catalogue film with the launch grant, then play it under the splash already on screen."""
+        api, grant = self.api, str(self.meta.get('access_token') or '').strip()
+        if api is None:
+            return
+        self._status(CONNECTING)
+
+        def start():
+            if generation != self.generation:
+                raise RuntimeError('Cancelled')
+            api.token = grant
+            return api.start(movie_id)
+
+        def done(session):
+            sid = session.get('session_id') if isinstance(session, dict) else None
+            sid = sid if isinstance(sid, str) and sid else ''
+            if generation != self.generation or self.api is not api:
+                self._stop_lease(sid, grant)  # Cancelled while the lease was being granted.
+                return
+            url = lease_url(session)
+            if not url or not sid:
+                self._stop_lease(sid, grant)
+                self._error('Не удалось открыть фильм с сайта. Нажмите «Смотреть» ещё раз.')
+                return
+            self.session_id, self._lease_grant, self.url = sid, grant, url
+            try:
+                interval = max(5, int(session.get('heartbeat_interval_seconds') or 20))
+            except (TypeError, ValueError):
+                interval = 20
+            self.lease_timer.start(interval * 1000)
+            self._start_attempt(generation, 0)
+
+        def fail(error):
+            if generation == self.generation:
+                self._error(self._explain(error))
+
+        self.work(start, done, fail)
+
+    def _heartbeat(self):
+        sid, api = self.session_id, self.api
+        if not sid or api is None:
+            self.lease_timer.stop()
+            return
+        self.work(lambda: api.heartbeat(sid), lambda _value: None, lambda _error: None)
+
+    def _stop_lease(self, sid, grant):
+        """End a lease on its own short-lived client: the launch client may be closed right after."""
+        if not sid:
+            return
+
+        def stop():
+            api = self.api_factory()
+            try:
+                api.token = grant
+                return api.stop(sid)
+            finally:
+                close = getattr(api, 'close', None)
+                if callable(close):
+                    close()
+
+        self.work(stop, lambda _value: None, lambda _error: None)
+
+    def _release_lease(self):
+        self.lease_timer.stop()
+        sid, grant = self.session_id, self._lease_grant
+        self.session_id, self._lease_grant = '', ''
+        self._stop_lease(sid, grant)
 
     def _prepare_launch(self, generation, meta):
         """The redeemed launch names its stream: intro per environment, then its Pre-roll (Intro -> Pre-roll -> film).
@@ -948,6 +1071,7 @@ class DirectPlayer(QObject):
         code = self.engine.exit_code()
         if code in (None, 0):
             self._hide_splash()
+            self._release_lease()
             self._close_api()
             self.finished.emit(0)
             return
@@ -1002,6 +1126,7 @@ class DirectPlayer(QObject):
         self.frame_token += 1
         self.timer.stop()
         self.engine.stop()
+        self._release_lease()
         self._close_api()  # Closing the httpx clients aborts a request that is still in flight.
 
     def _hide_splash_fade(self):

@@ -266,7 +266,7 @@ def test_disabled_intro_goes_straight_to_the_film_on_its_first_frame():
     surface, events = surface_with(DISABLED)
     assert surface.present() is True
     assert 'intro' not in surface.handles and 'film' in surface.handles and surface.phase == 'intro'
-    assert surface.view.posters[-1] == DISABLED.still and surface.present() is True  # Idempotent, no intro core.
+    assert surface.view.posters[-1] is None and surface.present() is True  # Plain splash, never the intro's last frame.
     surface.load_film(URL)
     surface.handles['film'].props['demuxer-cache-duration'] = 0.0
     push(surface, 'film', libmpv.EVENT_PLAYBACK_RESTART)

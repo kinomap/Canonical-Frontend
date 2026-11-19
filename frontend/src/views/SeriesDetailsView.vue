@@ -6,6 +6,7 @@ import { apiClient, ApiError } from '@/api/client'
 import type { SeriesDetail, SeriesSeason, SeriesEpisode } from '@/types/movie'
 import { useAuthStore } from '@/stores/auth'
 import VideoPlayer from '@/components/VideoPlayer.vue'
+import { loadIntroConfig } from '@/lib/cinemaIntro'
 import ReactionsBlock from '@/components/ReactionsBlock.vue'
 import CommentsBlock from '@/components/CommentsBlock.vue'
 import { Play } from 'lucide-vue-next'
@@ -148,6 +149,8 @@ async function handlePlay() {
 
 async function startEpisodePlayback(episodeId: string) {
   playError.value = null
+  // Revalidate the admin intro targets in parallel with the stream request (no extra wait).
+  void loadIntroConfig()
   try {
     const res = await apiClient.startSeriesPlayback(episodeId)
       trafficId.value = res.traffic_id || ''

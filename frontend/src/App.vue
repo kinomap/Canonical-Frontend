@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { RouterView, useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import CinemaFooter from '@/components/CinemaFooter.vue'
@@ -42,6 +42,9 @@ function handleSessionConfirm() {
 
 // Register before RouterView children mount and start their first account request.
 window.addEventListener('auth:expired', handleAuthExpired)
+
+// Current admin intro targets as soon as the site opens (each player start revalidates again).
+onMounted(() => { void loadIntroConfig() })
 
 onUnmounted(() => {
   window.removeEventListener('auth:expired', handleAuthExpired)
