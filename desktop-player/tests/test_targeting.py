@@ -101,7 +101,7 @@ def test_a_website_launch_decides_the_intro_once_it_names_its_stream(tmp_path):
 
 def ready_film(surface):
     surface.load_film(URL)
-    surface.presented_at = time.monotonic() - 5
+    surface.presented_at = time.monotonic() - cinema.MIN_INTRO_MS / 1000 - 1
     surface.handles['film'].props['demuxer-cache-duration'] = 5.0
     push(surface, 'film', libmpv.EVENT_PLAYBACK_RESTART)
     surface._frame_ready('film')
@@ -115,14 +115,16 @@ def test_intro_then_preroll_then_film_with_the_cross_dissolve(tmp_path):
     token = surface.expect_preroll()
     ready_film(surface)
     assert surface.phase == 'warmup' and events == []  # The film waits for the planned ad.
+    surface.presented_at = time.monotonic() - 1  # The intro has run only 1 s so far.
     assert surface.queue_preroll(token, AD_URL, duration=10, on_start=lambda: seen.append('start'),
                                  on_end=seen.append) is True
     intro = surface.handles['intro']
-    assert ('loadfile', AD_URL, 'replace') not in intro.commands  # The intro plays to its end first.
-    intro.props['eof-reached'] = True
     surface._ad_tick()
+    assert ('loadfile', AD_URL, 'replace') not in intro.commands  # The intro always runs its 5 s minimum first.
+    surface.presented_at = time.monotonic() - cinema.MIN_INTRO_MS / 1000 - 0.05
+    surface._ad_tick()
+    # 5 s are over: the Pre-roll starts at once, without waiting for the end of the intro clip.
     assert intro.commands[-1] == ('loadfile', AD_URL, 'replace') and surface.preroll_state() == 'playing'
-    intro.props['eof-reached'] = False
     push(surface, 'intro', libmpv.EVENT_PLAYBACK_RESTART)
     assert seen == ['start']
     surface._check_ready()
@@ -130,8 +132,31 @@ def test_intro_then_preroll_then_film_with_the_cross_dissolve(tmp_path):
     intro.props['eof-reached'] = True
     surface._ad_tick()
     assert seen == ['start', 'completion'] and surface.phase == 'dissolve'
+    # Straight from the ad to the film: the intro still is never reloaded.
+    assert ('loadfile', str(surface.intro_choice.still), 'replace') not in intro.commands
     surface.dissolve.setCurrentTime(cinema.DISSOLVE_MS)
     assert surface.phase == 'film' and 'intro' not in surface.handles
+    surface.shutdown()
+
+
+def test_a_preroll_that_ends_before_the_film_is_ready_never_brings_the_intro_back(tmp_path):
+    surface, _ = surface_for(tmp_path, config())
+    surface.set_intro_target('player_telegram')
+    surface.present()
+    token = surface.expect_preroll()
+    surface.presented_at = time.monotonic() - cinema.MIN_INTRO_MS / 1000 - 0.05
+    surface.queue_preroll(token, AD_URL, duration=5)
+    surface._ad_tick()
+    intro = surface.handles['intro']
+    assert intro.commands[-1] == ('loadfile', AD_URL, 'replace')
+    push(surface, 'intro', libmpv.EVENT_PLAYBACK_RESTART)
+    intro.props['eof-reached'] = True
+    surface._ad_tick()
+    assert surface.preroll_state() == 'done'
+    assert intro.commands[-1] == ('loadfile', AD_URL, 'replace')  # No intro still after the ad.
+    assert ('loadfile', str(surface.intro_choice.still), 'replace') not in intro.commands
+    ready_film(surface)
+    assert surface.phase == 'dissolve'  # The film takes over from the ad's last frame.
     surface.shutdown()
 
 

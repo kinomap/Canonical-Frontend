@@ -5,7 +5,7 @@ import {createHistoryWriter} from '@/api/watchHistory'
 import AdPlaybackContainer from './AdPlaybackContainer.vue'
 import CinemaIntro from './CinemaIntro.vue'
 import { missingPicture, soundWatcher } from '@/lib/browserCodecs'
-import { DISSOLVE_MS, introConfig, introEnabledFor, prefersReducedMotion } from '@/lib/cinemaIntro'
+import { DISSOLVE_MS, MIN_INTRO_MS, introClock, introConfig, introEnabledFor, introRemaining, prefersReducedMotion } from '@/lib/cinemaIntro'
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
@@ -29,23 +29,45 @@ const adsRef=ref<InstanceType<typeof AdPlaybackContainer>|null>(null)
  * Prestart intro for Telegram streams in the browser (admin target «browser_telegram»).
  * Strict order: Intro → Pre-roll → film. While the intro plays the film and the pre-roll wait;
  * the intro then dissolves away and the ad container takes over. The intro is not an ad.
+ * The intro always plays at least MIN_INTRO_MS (5 s). Then it gives way as soon as the pre-roll is
+ * prepared, or (no ad) as soon as the film can play; at the latest at the end of the clip. After the
+ * pre-roll the film starts at once: the intro never comes back.
  */
 const introPlaying = ref(false), introShown = ref(false), introKey = ref(0)
 let introTimer: ReturnType<typeof setTimeout> | undefined, introFade: ReturnType<typeof setTimeout> | undefined
+let introMin: ReturnType<typeof setTimeout> | undefined, introPoll: ReturnType<typeof setInterval> | undefined
+let introStartedAt = 0
+function clearIntroTimers() { clearTimeout(introTimer); clearTimeout(introFade); clearTimeout(introMin); clearInterval(introPoll); introMin = undefined; introPoll = undefined }
 function startIntroFor(src: string) {
-  clearTimeout(introTimer); clearTimeout(introFade)
+  clearIntroTimers()
   const on = !!src && introEnabledFor(introConfig.value, 'browser_telegram')
   introPlaying.value = on; introShown.value = on
   if (!on) return
   introKey.value++
+  introStartedAt = introClock.now()
   videoRef.value?.pause()
   // Safety net: a clip that never reports its end (reduced motion, refused autoplay) never blocks the film.
-  const limit = prefersReducedMotion() ? 1200 : Math.min(60_000, introConfig.value.duration_ms || 15_000) + 1500
+  const limit = prefersReducedMotion() ? MIN_INTRO_MS : Math.max(MIN_INTRO_MS, Math.min(60_000, introConfig.value.duration_ms || 15_000) + 1500)
   introTimer = setTimeout(finishIntro, limit)
+  // After its 5 s the intro hands over to whatever is ready first (see introHandoff).
+  introMin = setTimeout(() => { introMin = undefined; introPoll = setInterval(introHandoff, 250); introHandoff() }, MIN_INTRO_MS)
+}
+/** Past the 5 s minimum: a prepared pre-roll takes over at once; without an ad, the film once it can play. */
+function introHandoff() {
+  if (!introPlaying.value) { clearInterval(introPoll); introPoll = undefined; return }
+  const preroll = adsRef.value?.preroll
+  if (preroll === 'ready') return finishIntro()
+  const noAd = !props.targetId || preroll === 'none'
+  const film = videoRef.value
+  if (noAd && film && film.readyState >= 3) finishIntro()
 }
 function finishIntro() {
   if (!introPlaying.value) return
+  // Never before the 5 s minimum, whatever ends the intro (its clip, a refused autoplay, the safety net).
+  const wait = introRemaining(introStartedAt)
+  if (wait > 0) { clearTimeout(introTimer); introTimer = setTimeout(finishIntro, wait); return }
   clearTimeout(introTimer)
+  clearTimeout(introMin); clearInterval(introPoll); introMin = undefined; introPoll = undefined
   introPlaying.value = false
   introFade = setTimeout(() => { introShown.value = false }, DISSOLVE_MS)
   // No ads for this video: the film starts itself; otherwise the ad container starts the pre-roll, then the film.
@@ -53,7 +75,7 @@ function finishIntro() {
 }
 function introStarted(result: string) { if (result === 'blocked') finishIntro() }
 watch(() => props.src, (src) => startIntroFor(src), { immediate: true })
-onBeforeUnmount(() => { clearTimeout(introTimer); clearTimeout(introFade) })
+onBeforeUnmount(() => clearIntroTimers())
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)

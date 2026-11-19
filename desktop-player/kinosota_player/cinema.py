@@ -45,7 +45,7 @@ INTRO_STILL = BUNDLED_STILL
 
 DISSOLVE_MS = 1200          # Cross-dissolve length once the film's first frame is ready.
 SHADOW_DEPTH = 0.18         # Fade-shadow: the intro dims by up to 18 % mid-dissolve.
-MIN_INTRO_MS = 800          # Never flash the intro for a split second on a very fast source.
+MIN_INTRO_MS = 5000         # The intro always runs at least 5 s, however fast the film or the Pre-roll is ready.
 NO_INTRO_MAX_HOLD_MS = 0      # Intro switched off in the admin: the film starts on its first decoded frame.
 PRESTART_CACHE_SECONDS = 2.5  # Buffered film seconds wanted before it is shown...
 PRESTART_MAX_HOLD_MS = 4000   # ...but a decoded first frame never waits longer than this.
@@ -61,7 +61,7 @@ AD_WAIT_MS = 5000           # A ready film waits this long for a Pre-roll that i
 AD_LOAD_TIMEOUT_S = 10.0    # The ad clip must start playing within this time.
 AD_GRACE_S = 15.0           # ...and end within its declared duration plus this (stalls never block the film).
 AD_DEFAULT_MAX_S = 120.0
-INTRO_MAX_S = 65.0          # An intro longer than this (admin limit 60 s) never delays the Pre-roll further.
+# The Pre-roll starts as soon as the intro reached MIN_INTRO_MS; the rest of the intro clip is never waited for.
 
 COMMON_OPTIONS = [
     ('vo', 'libmpv'), ('hwdec', 'auto-safe'), ('terminal', 'no'), ('config', 'no'), ('idle', 'yes'),
@@ -771,9 +771,10 @@ class CinemaSurface(QObject):
         now = time.monotonic()
         core = self.handles.get('intro')
         if ad['state'] == 'queued':
-            intro_running = core is not None and self.intro_choice.enabled and core.get('eof-reached') is not True
-            if intro_running and self.presented_at is not None and now - self.presented_at < INTRO_MAX_S:
-                return  # Intro first, then the Pre-roll.
+            intro_on = core is not None and self.intro_choice.enabled and self.presented_at is not None
+            if intro_on and (now - self.presented_at) * 1000 < MIN_INTRO_MS:
+                return  # The intro always holds its 5 s minimum first...
+            # ...then the Pre-roll takes over at once, without waiting for the end of the intro clip.
             self._start_ad(now)
             return
         if core is None or core is not ad.get('core'):
@@ -808,7 +809,7 @@ class CinemaSurface(QObject):
         self._ad_callback(ad.get('on_start'))
 
     def _end_ad(self, kind, *, notify=True):
-        """The Pre-roll ended (completion / error): the logo still holds until the film dissolves in."""
+        """The Pre-roll ended (completion / error): straight to the film, the intro (or its still) never returns."""
         ad = self._ad
         if ad is None or ad['state'] not in ('pending', 'queued', 'playing'):
             return
@@ -818,16 +819,8 @@ class CinemaSurface(QObject):
             if notify:
                 self._resume_after_ad()
             return
-        core = self.handles.get('intro')
-        if core is not None and core is ad.get('core'):
-            if self.phase == 'warmup' and self.film_frame_at is not None:
-                pass  # The film is ready: it dissolves in over the ad's last frame.
-            else:
-                try:
-                    core.command('loadfile', str(self.intro_choice.still), 'replace')
-                except libmpv.MpvError:
-                    self._close('intro')
-                    self.view.set_poster(self.intro_choice.still)
+        # Intro -> Pre-roll -> film: the film takes over from the ad's last frame. The intro still is
+        # never reloaded here, so the viewer never sees the intro (or its still) a second time.
         if notify:
             self._ad_callback(ad.get('on_end'), kind)
             self._resume_after_ad()

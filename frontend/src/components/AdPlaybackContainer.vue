@@ -21,6 +21,8 @@ const planPath=computed(()=>{
 })
 type Ad={cache_ttl_ms?:number;delivery_id:string;media_url:string;duration_sec:number;skip_after:number|null;cta_url:string;cta_text:string}
 const media=ref<HTMLVideoElement|null>(null), active=ref(false), loading=ref(false), ad=ref<Ad|null>(null), elapsed=ref(0), blocked=ref(false)
+/** While `requested` is false (the intro plays): is a pre-roll prepared ('ready'), or is there none ('none')? */
+const preroll=ref<'pending'|'ready'|'none'>('pending')
 const emit=defineEmits<{settled:[]}>()
 const requested=computed(()=>props.requested!==false)
 let settledSent=false
@@ -64,17 +66,17 @@ async function run(list:Cue[],g:number):Promise<boolean>{
  return true
 }
 async function initialize(){
- const g=++generation;preStarted=false;settledSent=false;clearTimer();finish?.();finish=null;played=new Set();cues=[];token='';prepared=null;ad.value=null;active.value=false
+ const g=++generation;preStarted=false;settledSent=false;clearTimer();finish?.();finish=null;played=new Set();cues=[];token='';prepared=null;ad.value=null;active.value=false;preroll.value='pending'
  const path=planPath.value
- if(!path){loading.value=false;settle(g);return}
+ if(!path){loading.value=false;preroll.value='none';settle(g);return}
  loading.value=requested.value;if(!props.hostStarts)props.main?.pause()
  try{
   const p=await adRequest<{cue_points:Cue[];plan_token:string|null}>(path,{signal:AbortSignal.timeout(5000)})
   if(g!==generation||disposed)return
   cues=p.cue_points;token=p.plan_token||''
   if(requested.value)await startInitial(g)
-  else {const first=cues.find(c=>c.kind==='pre');if(first)await preload(first)}
- }catch{/* Ad service failure must not take down main playback. */settle(g)}
+  else {const first=cues.find(c=>c.kind==='pre');if(first)await preload(first);if(g===generation)preroll.value=ad.value?'ready':'none'}
+ }catch{/* Ad service failure must not take down main playback. */if(g===generation)preroll.value='none';settle(g)}
  if(g===generation&&!disposed){loading.value=false;if(props.source&&requested.value&&!props.hostStarts)props.main?.play()?.catch(()=>{})}
 }
 async function startInitial(g:number){
@@ -108,7 +110,7 @@ watch(()=>[planPath.value,props.hostStarts?null:props.main],()=>{if(props.main||
 watch(()=>props.source,()=>{if(props.source&&requested.value&&!busy.value&&!props.hostStarts)props.main?.play()?.catch(()=>{})},{flush:'post'})
 watch(requested,value=>{if(!value){media.value?.pause();props.main?.pause();return}if(active.value){void media.value?.play().catch(()=>{blocked.value=true});return}if(preStarted&&props.source){if(!props.hostStarts)props.main?.play()?.catch(()=>{});return}void initialReady.then(()=>startInitial(generation))},{flush:'post'})
 onBeforeUnmount(()=>{disposed=true;generation++;clearTimer();finish?.();media.value?.pause()})
-defineExpose({busy,active,tick,end})
+defineExpose({busy,active,preroll,tick,end})
 </script>
 <template>
  <div class="ad-playback-container" :class="{visible:busy}" :aria-hidden="!busy" @click.stop>

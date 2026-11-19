@@ -7,14 +7,18 @@ vi.mock('@/api/torrents',async(orig)=>({...(await orig<typeof import('@/api/torr
 vi.mock('@/api/client',async(orig)=>({...(await orig<typeof import('@/api/client')>()),adRequest:request}))
 import Player from '@/components/TorrentPlayer.vue'
 import {ApiError} from '@/api/client'
+import {introClock,MIN_INTRO_MS} from '@/lib/cinemaIntro'
 
 const ticket={stream_url:'https://media.example/stream/7.mp4',expires_at:'2026-11-20T12:00:00Z'}
 const creative={delivery_id:'d1',media_url:'https://media.example/ads/1.mp4',duration_sec:10,skip_after:5,cta_url:'',cta_text:''}
 const plan=(cues:any[])=>(url:string)=>Promise.resolve(url.includes('/plan/')?{cue_points:cues,plan_token:cues.length?'plan':null}:url.includes('/prepare')?{ad:{...creative}}:{ok:true})
 const options={global:{stubs:{RouterLink:{template:'<a><slot /></a>'}}}}
 const wrappers:any[]=[]
+let clock=0
 beforeEach(()=>{
  api.playbackTicket.mockReset();request.mockReset()
+ // By default every clock read is 5 s later (the intro minimum is over); the min-intro tests drive the clock themselves.
+ vi.spyOn(introClock,'now').mockImplementation(()=>(clock+=MIN_INTRO_MS))
  vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{})
  vi.spyOn(HTMLMediaElement.prototype,'load').mockImplementation(()=>{})
  vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue(undefined)
@@ -64,19 +68,64 @@ describe('Web Torrent pre-roll: Intro → Pre-roll → film',()=>{
   // The film reached its first frames: it waits, paused and silent, while the pre-roll plays.
   expect(pause).toHaveBeenCalled()
   expect(film.muted).toBe(true)
-  expect(overlay(w).classes()).not.toContain('is-hidden')
   const ad=w.get('.ad-playback-container')
   expect(ad.classes()).toContain('visible')
+  // The intro dissolved into the pre-roll (above the ad container) and its layer is done.
+  expect(overlay(w).classes()).toContain('is-handoff')
+  expect(overlay(w).classes()).toContain('is-hidden')
   const media=ad.get('video')
   await media.trigger('playing')
   expect(w.text()).toContain('Реклама')
   expect(play.mock.calls.length).toBe(warmup)
   Object.defineProperty(media.element,'currentTime',{configurable:true,get:()=>10})
   await media.trigger('ended');await flushPromises()
-  // Pre-roll over: the intro gives way to the film and its sound comes in.
+  // Pre-roll over: straight into the film with sound, the intro never comes back.
   expect(play.mock.calls.length).toBeGreaterThan(warmup)
   expect(film.muted).toBe(false)
   expect(overlay(w).classes()).toContain('is-hidden')
+ })
+
+ it('the intro always plays 5 s, even when the film is ready at once (no ad)',async()=>{
+  vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date']})
+  vi.mocked(introClock.now).mockImplementation(()=>Date.now())
+  request.mockImplementation(plan([]))
+  const w=await start();await flushPromises()
+  const {film,pause}=await frames(w)
+  // The film is ready after a moment: it holds, paused and muted, under the intro.
+  expect(pause).toHaveBeenCalled()
+  expect(film.muted).toBe(true)
+  expect(overlay(w).classes()).not.toContain('is-hidden')
+  await vi.advanceTimersByTimeAsync(MIN_INTRO_MS-500);await flushPromises()
+  expect(overlay(w).classes()).not.toContain('is-hidden')
+  await vi.advanceTimersByTimeAsync(600);await flushPromises()
+  // 5 s over: the intro dissolves into the film and its sound comes in.
+  expect(film.muted).toBe(false)
+  expect(overlay(w).classes()).toContain('is-hidden')
+ })
+
+ it('a prepared pre-roll takes over after 5 s, and after it the film starts without a second intro',async()=>{
+  vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date']})
+  vi.mocked(introClock.now).mockImplementation(()=>Date.now())
+  request.mockImplementation(plan([{id:'pre',kind:'pre',at_sec:0}]))
+  const w=await start();await flushPromises()
+  const ad=w.get('.ad-playback-container')
+  // The pre-roll is prepared at once, but the intro runs its 5 s first.
+  expect(ad.classes()).not.toContain('visible')
+  expect(overlay(w).classes()).not.toContain('is-hidden')
+  await vi.advanceTimersByTimeAsync(MIN_INTRO_MS+10);await flushPromises()
+  // The film is still buffering: the ad takes over anyway, the intro dissolves away over it.
+  expect(ad.classes()).toContain('visible')
+  expect(overlay(w).classes()).toContain('is-hidden')
+  const {film,play}=await frames(w)
+  const media=ad.get('video')
+  await media.trigger('playing')
+  Object.defineProperty(media.element,'currentTime',{configurable:true,get:()=>10})
+  await media.trigger('ended');await flushPromises()
+  // Straight into the film with sound: the intro overlay never shows again.
+  expect(play).toHaveBeenCalled()
+  expect(film.muted).toBe(false)
+  expect(overlay(w).classes()).toContain('is-hidden')
+  expect(overlay(w).attributes('aria-hidden')).toBe('true')
  })
 
  it('an empty plan starts the film right after the intro',async()=>{

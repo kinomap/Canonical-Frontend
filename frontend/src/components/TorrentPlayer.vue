@@ -17,10 +17,14 @@
  * into it while the intro sound fades out and the film sound in. A slow torrent never
  * shows black: the intro holds its final picture until the film takes over.
  *
+ * The intro always plays at least MIN_INTRO_MS (5 s), even when the film is ready at once; its maximum
+ * is the clip itself (a slow stream keeps it running naturally).
+ *
  * Ads (Ad Studio «torrent_browser»): the plan is requested and the pre-roll prepared at the click,
- * in parallel with the stream ticket. When the film has its first frames it is paused (still muted)
- * and the pre-roll plays over the intro: Intro → Pre-roll → film. The film starts with sound only
- * after the pre-roll ended / was skipped, or the plan came back empty, failed or took over 5 s.
+ * in parallel with the stream ticket. Once the intro ran its 5 s and the pre-roll is prepared (or the
+ * film has its first frames), the film holds paused and muted and the intro dissolves into the pre-roll:
+ * Intro → Pre-roll → film. The intro layer is then done: after the ad the film starts with sound at
+ * once, never through the intro again. Without an ad the intro dissolves straight into the film.
  * A 403 on the ticket (torrents for PRO only) opens the PRO checkout.
  */
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
@@ -33,7 +37,7 @@ import TorrentPlaybackSubscription from './TorrentPlaybackSubscription.vue'
 import PlaybackCompatibility from './PlaybackCompatibility.vue'
 import { torrentPlaybackApi, type StreamChoice, type TorrentPlaybackStatus } from '@/api/torrents'
 import { codecList, containerRisk, missingPicture, soundWatcher, unsupportedCodecs, type CodecRisk, type CompatibilityIssue } from '@/lib/browserCodecs'
-import { DISSOLVE_MS, fadeInFilm, firstFrameWatcher, introConfig, introEnabledFor } from '@/lib/cinemaIntro'
+import { DISSOLVE_MS, fadeInFilm, firstFrameWatcher, introClock, introConfig, introEnabledFor, introRemaining } from '@/lib/cinemaIntro'
 const props = withDefaults(defineProps<{
   access: boolean | null
   accessError: boolean
@@ -89,6 +93,13 @@ const adKey = ref(0)
 /** The ad service gets this long to start an ad once the film is ready; then the film goes on without it. */
 const AD_WAIT_MS = 5000
 let adWait: ReturnType<typeof setTimeout> | undefined
+/** When the intro of this start began: it gives way no earlier than MIN_INTRO_MS after it. */
+let introStart = 0
+let introHold: ReturnType<typeof setTimeout> | undefined
+/** The film reached its first moving frames (it may be held paused under the intro since). */
+let filmWarm = false
+/** The pre-roll took over the screen: the intro layer is done for this start and never comes back. */
+const introGone = ref(false)
 const router = inject(routerKey, null)
 const isPlayable = computed(() => props.ready !== undefined ? props.ready : props.torrentStatus === 'playable' || props.torrentStatus === 'partial')
 const visible = computed(() => props.access !== true || props.accessError || isPlayable.value)
@@ -139,6 +150,10 @@ async function startPlayback(force = false) {
   introOn = introEnabledFor(introConfig.value, 'browser_torrents')
   launching.value = true
   introKey.value++
+  introStart = introClock.now()
+  clearTimeout(introHold); introHold = undefined
+  filmWarm = false
+  introGone.value = false
   filmMuted.value = true
   soundLocked.value = false
   clearTimeout(soundGuard)
@@ -173,6 +188,9 @@ function stopPlayback() {
   launchId++
   clearTimeout(soundGuard)
   clearTimeout(adWait)
+  clearTimeout(introHold); introHold = undefined
+  filmWarm = false
+  introGone.value = false
   adsRequested.value = false
   soundLocked.value = false
   streamUrl.value = null
@@ -236,6 +254,8 @@ function onMetadata() {
   if (!launching.value) return
   // Silent under the intro until the dissolve brings the sound in; started explicitly next to `autoplay`.
   try { v.volume = 0 } catch { /* read-only volume (iOS) */ }
+  // The pre-roll is on screen: the film stays paused under it (the ad container resumes it).
+  if (adsRef.value?.busy) return
   playFilm(v, () => autoplayRefused(v))
 }
 /**
@@ -244,28 +264,70 @@ function onMetadata() {
  */
 function onProgress() {
   const v = video.value
-  if (!v || !launching.value || adsRequested.value || !frames.check(v)) return
-  if (adsSettled.value) return revealFilm(v)
-  // Intro → Pre-roll → film: the film holds (paused, muted) while the pre-roll plays over the intro.
-  v.pause()
+  if (!v || !launching.value || filmWarm || !frames.check(v)) return
+  filmWarm = true
+  // The pre-roll is already on: the film waits for it, paused and muted.
+  if (adsRequested.value && !adsSettled.value) return v.pause()
+  handoff()
+}
+/**
+ * The intro gives way: never before MIN_INTRO_MS, and only to something ready — the prepared
+ * pre-roll, or the film's first frames. Until then the intro simply plays on.
+ */
+function handoff() {
+  const v = video.value
+  if (!launching.value || introGone.value) return
+  const adReady = !adsRequested.value && adsRef.value?.preroll === 'ready'
+  if (!filmWarm && !adReady) return
+  const wait = introOn ? introRemaining(introStart) : 0
+  if (wait > 0) {
+    // The ready film holds, paused and muted, under the intro until its 5 s are over.
+    if (filmWarm) v?.pause()
+    if (!introHold) introHold = setTimeout(() => { introHold = undefined; handoff() }, wait)
+    return
+  }
+  if (adsSettled.value) {
+    // No pre-roll: Intro (>= 5 s) → film.
+    if (v && filmWarm) {
+      if (v.paused) playFilm(v, () => autoplayRefused(v)) // Held under the intro for its 5 s.
+      revealFilm(v)
+    }
+    return
+  }
+  if (adsRequested.value) return
+  // Intro (>= 5 s) → Pre-roll: the film holds (paused, muted) while the ad container takes over.
+  v?.pause()
   adsRequested.value = true
   clearTimeout(adWait)
   adWait = setTimeout(() => { if (!adsSettled.value && !adsRef.value?.active) onAdsSettled() }, AD_WAIT_MS)
 }
-/** The pre-roll is over (or there is none): the film starts with sound. */
+/** The pre-roll is over (or there is none): the film starts with sound — never through the intro again. */
 function onAdsSettled() {
   clearTimeout(adWait)
   if (adsSettled.value) return
   adsSettled.value = true
   const v = video.value
   if (!v || !launching.value || !adsRequested.value) return
+  // The pre-roll played: straight into the film, no second intro, no overlay animation.
+  if (introGone.value) return startFilmAfterAd(v)
+  // No ad was shown: the intro dissolves into the film (as soon as it has frames).
+  if (!filmWarm) return
   playFilm(v, () => autoplayRefused(v))
   revealFilm(v)
+}
+function startFilmAfterAd(v: HTMLVideoElement) {
+  launching.value = false
+  unmuteFilm(v)
+  playFilm(v)
+  guardSound(v)
 }
 function revealFilm(v: HTMLVideoElement) {
   launching.value = false
   filmMuted.value = false
   fadeInFilm(v, introOn ? DISSOLVE_MS : 0)
+  guardSound(v)
+}
+function guardSound(v: HTMLVideoElement) {
   // WebKit pauses an autoplayed film that turns audible outside a user gesture: keep the picture running muted.
   clearTimeout(soundGuard)
   soundGuard = setTimeout(() => {
@@ -277,6 +339,10 @@ function revealFilm(v: HTMLVideoElement) {
     playFilm(v)
   }, SOUND_GUARD_MS)
 }
+// The intro gives way to a pre-roll that becomes ready after its 5 s.
+watch(() => adsRef.value?.preroll, () => handoff())
+// The pre-roll is on screen: the intro dissolves away over it and its layer is done for this start.
+watch(() => adsRef.value?.active, (on) => { if (on && launching.value && adsRequested.value) introGone.value = true })
 /** «Включить звук»: the tap is a user gesture, so the sound may come in now. */
 function enableSound() {
   const v = video.value
@@ -334,7 +400,7 @@ watch(() => props.audioRisk ?? '', () => {
   if (watching) void startPlayback()
 })
 watch(isPlayable, (ready) => { if (!ready) reset() })
-onBeforeUnmount(() => { clearTimeout(soundGuard); clearTimeout(adWait) })
+onBeforeUnmount(() => { clearTimeout(soundGuard); clearTimeout(adWait); clearTimeout(introHold) })
 defineExpose({ startPlayback, playInBrowser })
 </script>
 <template>
@@ -361,8 +427,8 @@ defineExpose({ startPlayback, playInBrowser })
           @playing="onProgress"
           @timeupdate="onTime"
         />
-        <div class="launch-overlay" :class="{ 'is-hidden': !launching }" role="status" aria-live="polite" :aria-hidden="launching ? undefined : 'true'" data-testid="launch-overlay">
-          <CinemaIntro :key="introKey" :active="launching" :fade-ms="DISSOLVE_MS" target="browser_torrents" class="launch-intro" />
+        <div class="launch-overlay" :class="{ 'is-hidden': !launching || introGone, 'is-handoff': adsRequested }" role="status" aria-live="polite" :aria-hidden="launching && !introGone ? undefined : 'true'" data-testid="launch-overlay">
+          <CinemaIntro :key="introKey" :active="launching && !introGone" :fade-ms="DISSOLVE_MS" target="browser_torrents" class="launch-intro" />
           <div class="launch-caption">
             <p class="launch-title">Запуск воспроизведения…</p>
             <p class="launch-hint">{{ streamUrl ? 'Загружаем первые секунды видео…' : 'Подготовка потока…' }}</p>
@@ -409,6 +475,8 @@ defineExpose({ startPlayback, playInBrowser })
 /* The intro over the film: an opacity cross-dissolve (with a slight fade-shadow) once the film's first frame is decoded. */
 .launch-overlay{position:absolute;inset:0;z-index:2;isolation:isolate;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;box-sizing:border-box;background:#1d2e39;color:#fff;text-align:center;opacity:1;visibility:visible;filter:none;transition:opacity .9s cubic-bezier(.45,0,.55,1),filter .9s ease,visibility 0s linear 0s}
 .launch-overlay.is-hidden{opacity:0;visibility:hidden;pointer-events:none;filter:brightness(.82);transition:opacity .9s cubic-bezier(.45,0,.55,1),filter .9s ease,visibility 0s linear .9s}
+/* Intro → Pre-roll: the intro stays above the ad container while the ad loads, then dissolves away over it. */
+.launch-overlay.is-handoff{z-index:31}
 .launch-caption{position:relative;z-index:1;width:100%;box-sizing:border-box;padding:56px 24px 20px;background:linear-gradient(to bottom,rgba(7,11,14,0),rgba(7,11,14,.82))}
 .launch-title{margin:0;font-size:16px;line-height:24px;font-weight:600;text-shadow:0 1px 8px rgba(0,0,0,.6)}
 .launch-hint{margin:2px 0 0;font-size:13px;line-height:18px;color:#cfd8dc}

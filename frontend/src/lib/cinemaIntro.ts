@@ -19,6 +19,17 @@ export const DISSOLVE_MS = 900
 export const FIRST_FRAME_PROGRESS_S = 0.1
 /** Ambient hold: this close to its end the intro freezes on its final picture while the film still loads. */
 export const HOLD_LEAD_S = 0.25
+/**
+ * The intro always stays on screen at least this long, however fast the film or the pre-roll is ready
+ * (its maximum is the clip itself). Intro (>= 5 s) → Pre-roll → film, or Intro (>= 5 s) → film.
+ */
+export const MIN_INTRO_MS = 5000
+/** Clock of the intro minimum (`Date.now`); a seam for tests. */
+export const introClock = { now: () => Date.now() }
+/** How long the intro started at `startedAt` must still play before it may give way (0: it may now). */
+export function introRemaining(startedAt: number, now = introClock.now()): number {
+  return Math.max(0, MIN_INTRO_MS - (now - startedAt))
+}
 
 /**
  * Dynamic intro (admin «Видео и Реклама» → «Интро престарта»): GET /api/v1/cinema/intro says

@@ -128,7 +128,7 @@ def push(surface, player, event_id, **fields):
 
 def first_film_frame(surface, cached=0.0):
     """playback-restart of the paused film, then the view composites its first frame."""
-    surface.presented_at = time.monotonic() - 5  # Past the minimum intro exposure.
+    surface.presented_at = time.monotonic() - cinema.MIN_INTRO_MS / 1000 - 1  # Past the minimum intro exposure.
     surface.handles['film'].props['demuxer-cache-duration'] = cached
     push(surface, 'film', libmpv.EVENT_PLAYBACK_RESTART)
     assert 'film' in surface.view.armed
