@@ -132,11 +132,13 @@ describe('KINOSOTA web intro', () => {
     time = 7.8
     await clip.trigger('timeupdate')
     expect(wrapper.classes()).toContain('is-holding')
-    expect(pause).toHaveBeenCalledTimes(1)
+    // Ambient hold: the clip is never paused (no freeze, no stutter); it runs out to its last frame.
+    expect(pause).not.toHaveBeenCalled()
+    expect(wrapper.emitted('finished')).toBeTruthy()
     await clip.trigger('ended')
-    expect(pause).toHaveBeenCalledTimes(1) // Holding already: no second freeze.
+    expect(pause).not.toHaveBeenCalled()
     await wrapper.setProps({ active: false })
-    await vi.waitFor(() => expect(pause).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(pause).toHaveBeenCalledTimes(1)) // Only once the dissolve faded its sound.
     wrapper.unmount()
   })
 

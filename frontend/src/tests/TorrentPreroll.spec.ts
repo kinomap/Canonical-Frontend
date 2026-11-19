@@ -70,11 +70,18 @@ describe('Web Torrent pre-roll: Intro → Pre-roll → film',()=>{
   expect(film.muted).toBe(true)
   const ad=w.get('.ad-playback-container')
   expect(ad.classes()).toContain('visible')
-  // The intro dissolved into the pre-roll (above the ad container) and its layer is done.
+  // Zero-Gap: the intro stays above the ad container until the ad picture really moves...
   expect(overlay(w).classes()).toContain('is-handoff')
-  expect(overlay(w).classes()).toContain('is-hidden')
+  expect(overlay(w).classes()).not.toContain('is-hidden')
+  // ...and never shows «Загрузка рекламы…» under it.
+  expect(w.text()).not.toContain('Загрузка рекламы')
   const media=ad.get('video')
+  // The ad plays WITH sound, never inheriting the muted warm-up of the film.
+  expect((media.element as HTMLVideoElement).muted).toBe(false)
+  expect((media.element as HTMLVideoElement).volume).toBe(1)
   await media.trigger('playing')
+  // The ad really plays: the intro dissolves over it and its layer is done.
+  expect(overlay(w).classes()).toContain('is-hidden')
   expect(w.text()).toContain('Реклама')
   expect(play.mock.calls.length).toBe(warmup)
   Object.defineProperty(media.element,'currentTime',{configurable:true,get:()=>10})
@@ -109,16 +116,24 @@ describe('Web Torrent pre-roll: Intro → Pre-roll → film',()=>{
   request.mockImplementation(plan([{id:'pre',kind:'pre',at_sec:0}]))
   const w=await start();await flushPromises()
   const ad=w.get('.ad-playback-container')
-  // The pre-roll is prepared at once, but the intro runs its 5 s first.
+  // The pre-roll is prepared at once and warms up (rendered, never visibility:hidden) under the intro.
+  const media=ad.get('video')
+  expect(media.classes()).toContain('preload')
+  await media.trigger('canplay')
   expect(ad.classes()).not.toContain('visible')
   expect(overlay(w).classes()).not.toContain('is-hidden')
-  await vi.advanceTimersByTimeAsync(MIN_INTRO_MS+10);await flushPromises()
-  // The film is still buffering: the ad takes over anyway, the intro dissolves away over it.
+  await vi.advanceTimersByTimeAsync(MIN_INTRO_MS-500);await flushPromises()
+  // The intro runs exactly its 5 s first.
+  expect(ad.classes()).not.toContain('visible')
+  await vi.advanceTimersByTimeAsync(510);await flushPromises()
+  // 5 s: the film is still buffering, the warmed-up ad starts with sound under the intro.
   expect(ad.classes()).toContain('visible')
+  expect(overlay(w).classes()).not.toContain('is-hidden')
+  expect((media.element as HTMLVideoElement).muted).toBe(false)
+  await media.trigger('playing')
+  // Its picture moves: the intro dissolves over it (900 ms).
   expect(overlay(w).classes()).toContain('is-hidden')
   const {film,play}=await frames(w)
-  const media=ad.get('video')
-  await media.trigger('playing')
   Object.defineProperty(media.element,'currentTime',{configurable:true,get:()=>10})
   await media.trigger('ended');await flushPromises()
   // Straight into the film with sound: the intro overlay never shows again.
@@ -126,6 +141,40 @@ describe('Web Torrent pre-roll: Intro → Pre-roll → film',()=>{
   expect(film.muted).toBe(false)
   expect(overlay(w).classes()).toContain('is-hidden')
   expect(overlay(w).attributes('aria-hidden')).toBe('true')
+ })
+
+ it('without an ad the intro plays on for as long as the film needs, then dissolves into it',async()=>{
+  vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date']})
+  vi.mocked(introClock.now).mockImplementation(()=>Date.now())
+  request.mockImplementation(plan([]))
+  const w=await start();await flushPromises()
+  // 9 s and the torrent is still buffering: the intro never stops, never a black screen.
+  await vi.advanceTimersByTimeAsync(9000);await flushPromises()
+  expect(overlay(w).classes()).not.toContain('is-hidden')
+  expect(w.text()).not.toContain('Загрузка рекламы')
+  const {film}=await frames(w)
+  // First frames decoded: straight into the film with its sound.
+  expect(film.muted).toBe(false)
+  expect(overlay(w).classes()).toContain('is-hidden')
+ })
+
+ it('falls back to a muted ad with «Включить звук» only when the browser refuses its sound',async()=>{
+  request.mockImplementation(plan([{id:'pre',kind:'pre',at_sec:0}]))
+  let calls=0
+  vi.mocked(HTMLMediaElement.prototype.play).mockImplementation(function(this:HTMLMediaElement){
+   if(!this.closest('.ad-playback-container'))return Promise.resolve()
+   return ++calls===1?Promise.reject(new DOMException('','NotAllowedError')):Promise.resolve()
+  })
+  const w=await start();await flushPromises()
+  await frames(w);await flushPromises()
+  const media=w.get('[data-testid="ad-media"]')
+  expect((media.element as HTMLVideoElement).muted).toBe(true)
+  await media.trigger('playing')
+  const button=w.get('[data-testid="ad-sound"]')
+  expect(button.text()).toBe('Включить звук')
+  await button.trigger('click')
+  expect((media.element as HTMLVideoElement).muted).toBe(false)
+  expect(w.find('[data-testid="ad-sound"]').exists()).toBe(false)
  })
 
  it('an empty plan starts the film right after the intro',async()=>{

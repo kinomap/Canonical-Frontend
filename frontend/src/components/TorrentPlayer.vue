@@ -25,6 +25,11 @@
  * film has its first frames), the film holds paused and muted and the intro dissolves into the pre-roll:
  * Intro → Pre-roll → film. The intro layer is then done: after the ad the film starts with sound at
  * once, never through the intro again. Without an ad the intro dissolves straight into the film.
+ *
+ * Zero-Gap: with a pre-roll the intro runs exactly its 5 s, then the warmed-up ad (first frames decoded)
+ * starts WITH sound and the intro dissolves (900 ms) only once the ad picture really moves (`playing`).
+ * Without a pre-roll the intro runs at least 5 s and simply plays on until the film has decoded its first
+ * frames, then dissolves straight into it. No «Загрузка рекламы…» caption under the intro.
  * A 403 on the ticket (torrents for PRO only) opens the PRO checkout.
  */
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
@@ -93,6 +98,9 @@ const adKey = ref(0)
 /** The ad service gets this long to start an ad once the film is ready; then the film goes on without it. */
 const AD_WAIT_MS = 5000
 let adWait: ReturnType<typeof setTimeout> | undefined
+/** An ad that is on but never reports `playing` (a stall) gets the screen after this long anyway. */
+const AD_REVEAL_GRACE_MS = 4000
+let adReveal: ReturnType<typeof setTimeout> | undefined
 /** When the intro of this start began: it gives way no earlier than MIN_INTRO_MS after it. */
 let introStart = 0
 let introHold: ReturnType<typeof setTimeout> | undefined
@@ -158,6 +166,7 @@ async function startPlayback(force = false) {
   soundLocked.value = false
   clearTimeout(soundGuard)
   clearTimeout(adWait)
+  clearTimeout(adReveal)
   adsSettled.value = false
   adsRequested.value = false
   adKey.value++
@@ -188,6 +197,7 @@ function stopPlayback() {
   launchId++
   clearTimeout(soundGuard)
   clearTimeout(adWait)
+  clearTimeout(adReveal)
   clearTimeout(introHold); introHold = undefined
   filmWarm = false
   introGone.value = false
@@ -286,9 +296,11 @@ function handoff() {
     if (!introHold) introHold = setTimeout(() => { introHold = undefined; handoff() }, wait)
     return
   }
-  if (adsSettled.value) {
-    // No pre-roll: Intro (>= 5 s) → film.
+  if (adsSettled.value || (!adsRequested.value && adsRef.value?.preroll === 'none')) {
+    // No pre-roll: Intro (>= 5 s, and on for as long as the film needs) → film, as soon as it has frames.
     if (v && filmWarm) {
+      clearTimeout(adWait)
+      adsSettled.value = true
       if (v.paused) playFilm(v, () => autoplayRefused(v)) // Held under the intro for its 5 s.
       revealFilm(v)
     }
@@ -342,7 +354,16 @@ function guardSound(v: HTMLVideoElement) {
 // The intro gives way to a pre-roll that becomes ready after its 5 s.
 watch(() => adsRef.value?.preroll, () => handoff())
 // The pre-roll is on screen: the intro dissolves away over it and its layer is done for this start.
-watch(() => adsRef.value?.active, (on) => { if (on && launching.value && adsRequested.value) introGone.value = true })
+// Zero-Gap: the intro stays over the ad until the ad picture really moves (`playing`), then dissolves over it.
+function dropIntro() {
+  clearTimeout(adReveal)
+  if (launching.value && adsRequested.value) introGone.value = true
+}
+watch(() => !!(adsRef.value?.playing || adsRef.value?.blocked), (on) => { if (on) dropIntro() })
+watch(() => adsRef.value?.active, (on) => {
+  clearTimeout(adReveal)
+  if (on && launching.value && adsRequested.value && !introGone.value) adReveal = setTimeout(dropIntro, AD_REVEAL_GRACE_MS)
+})
 /** «Включить звук»: the tap is a user gesture, so the sound may come in now. */
 function enableSound() {
   const v = video.value
@@ -400,7 +421,7 @@ watch(() => props.audioRisk ?? '', () => {
   if (watching) void startPlayback()
 })
 watch(isPlayable, (ready) => { if (!ready) reset() })
-onBeforeUnmount(() => { clearTimeout(soundGuard); clearTimeout(adWait); clearTimeout(introHold) })
+onBeforeUnmount(() => { clearTimeout(soundGuard); clearTimeout(adWait); clearTimeout(adReveal); clearTimeout(introHold) })
 defineExpose({ startPlayback, playInBrowser })
 </script>
 <template>
@@ -435,7 +456,7 @@ defineExpose({ startPlayback, playInBrowser })
           </div>
         </div>
         <button v-if="soundLocked && !issue && !launching" type="button" class="sound-btn" @click="enableSound">Включить звук</button>
-        <AdPlaybackContainer v-if="tmdbId" :key="adKey" ref="adsRef" :main="video" :source="streamUrl || ''" :requested="adsRequested || (!launching && !!streamUrl)" host-starts surface="torrent_browser" :torrent-kind="kind" :tmdb-id="tmdbId" :season="adSeason" :episode="adEpisode" @settled="onAdsSettled" />
+        <AdPlaybackContainer v-if="tmdbId" :key="adKey" ref="adsRef" :main="video" :source="streamUrl || ''" :requested="adsRequested || (!launching && !!streamUrl)" :covered="launching && !introGone" host-starts surface="torrent_browser" :torrent-kind="kind" :tmdb-id="tmdbId" :season="adSeason" :episode="adEpisode" @settled="onAdsSettled" />
         <button v-if="!issue" type="button" class="stop-btn" @click="stopPlayback">✕ Закрыть плеер</button>
         <PlaybackCompatibility v-else overlay can-browse :issue="issue.kind" :busy="launchBusy" :status="launchMessage" :error="launchError" @desktop="emit('desktop')" @browser="browseAnyway" @close="closeNotice" />
       </div>

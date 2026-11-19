@@ -4,9 +4,10 @@
  * paints its first frame at once (poster + CSS background, never black) and, when
  * `active` turns false or the layer unmounts, fades its sound out while the parent
  * cross-fades the picture. Reduced motion shows the first frame only.
- * Ambient hold: a film slower than the clip never meets black. Just before its end the clip
- * freezes on its final picture (a custom clip cross-fades to its admin still) and drifts in a
- * slow zoom until the parent dissolves it into the film.
+ * Ambient hold: a film slower than the clip never meets black. Near its end the clip is never
+ * paused (no freeze, no stutter): it plays on to its natural end and rests on its final picture
+ * (a custom clip cross-fades to its admin still), drifting in a slow zoom until the parent
+ * dissolves it into the next stage.
  * The clip comes from the admin-managed config (GET /api/v1/cinema/intro, cached);
  * when the intro is switched off the layer is a plain backdrop and nothing plays.
  */
@@ -47,13 +48,16 @@ function end(): Promise<void> {
   return ending
 }
 
-/** Freeze on the final picture while the film is still loading; the dissolve later takes it from here. */
+/**
+ * Rest on the final picture while the next stage is still loading; the dissolve later takes it from here.
+ * Never `pause()` here: the clip runs out naturally (the browser keeps its last frame), so there is no
+ * visual freeze and no cut in the sound.
+ */
 function hold() {
   const media = video.value
   if (media && !ending) emit('finished')
   if (!media || holding.value || ending || !props.active) return
   holding.value = true
-  if (!media.ended) { try { media.pause() } catch { /* jsdom */ } }
 }
 function onTime() {
   const media = video.value

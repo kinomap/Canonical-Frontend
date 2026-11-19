@@ -55,12 +55,15 @@ INTRO_VOLUME = 100
 FILM_VOLUME = 100
 BACKGROUND = QColor('#070b0e')
 FIRST_FRAME_TIMEOUT = 30
-# Pre-roll (Ad Studio surfaces player_telegram / player_torrents): Intro -> Pre-roll -> film. The ad plays in the
-# intro core (same OpenGL layer), so the film still cross-dissolves in over it.
+# Pre-roll (Ad Studio surfaces player_telegram / player_torrents): Intro -> Pre-roll -> film. The ad plays in its own
+# 'ad' core under the intro layer: it is loaded (paused, first frame decoded) while the intro runs, so the hand-over
+# never re-initialises a demuxer on screen (no `loadfile replace` of the intro). At the hand-over the ad is unpaused
+# WITH sound (INTRO_VOLUME) and the intro cross-fades away over the moving ad; the film later dissolves in over it.
 AD_WAIT_MS = 5000           # A ready film waits this long for a Pre-roll that is still being prepared, never longer.
 AD_LOAD_TIMEOUT_S = 10.0    # The ad clip must start playing within this time.
 AD_GRACE_S = 15.0           # ...and end within its declared duration plus this (stalls never block the film).
 AD_DEFAULT_MAX_S = 120.0
+AD_CROSSFADE_MS = 900       # Intro -> Pre-roll: the intro dissolves over the already moving ad.
 # The Pre-roll starts as soon as the intro reached MIN_INTRO_MS; the rest of the intro clip is never waited for.
 
 COMMON_OPTIONS = [
@@ -89,6 +92,10 @@ MENU_WHEEL_MAX_STEPS = 3
 INTRO_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'always'), ('panscan', '1.0'), ('osd-level', '0'), ('osc', 'no'),
                  ('input-default-bindings', 'no'), ('pause', 'no'), ('volume', str(INTRO_VOLUME)),
                  ('background', '#070b0e'), ('background-color', '#070b0e')]
+# The Pre-roll core: loaded paused under the intro (first frame decoded in advance), letterboxed, with full sound.
+AD_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'always'), ('panscan', '0'), ('osd-level', '0'), ('osc', 'no'),
+              ('input-default-bindings', 'no'), ('pause', 'yes'), ('volume', str(INTRO_VOLUME)), ('mute', 'no'),
+              ('cache', 'yes'), ('background', '#070b0e'), ('background-color', '#070b0e')]
 # The film starts paused and silent; mpv's own key bindings and OSC take over once it plays.
 FILM_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'no'), ('pause', 'yes'), ('volume', '0'), ('osd-level', '0'), ('osc', 'no'),
                 ('input-default-bindings', 'yes'), ('cache', 'yes'), ('demuxer-max-bytes', '150MiB'),
@@ -240,7 +247,7 @@ class CinemaView(QOpenGLWidget):
     menuWheel = Signal(str)       # ...except while the track menu is open: WHEEL_UP / WHEEL_DOWN scroll its list.
     _wake = Signal()
 
-    ORDER = ('intro', 'film')
+    ORDER = ('ad', 'intro', 'film')  # The intro dissolves over the ad, the film over both.
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -593,6 +600,12 @@ class CinemaSurface(QObject):
         self.dissolve.setEasingCurve(QEasingCurve.Type.Linear)  # Timeline applies the easing.
         self.dissolve.valueChanged.connect(self._dissolve_step)
         self.dissolve.finished.connect(self._dissolve_done)
+        self.ad_fade = QVariantAnimation(self)  # Intro -> Pre-roll cross-fade (the ad already plays underneath).
+        self.ad_fade.setStartValue(0.0)
+        self.ad_fade.setEndValue(1.0)
+        self.ad_fade.setDuration(AD_CROSSFADE_MS)
+        self.ad_fade.valueChanged.connect(self._ad_fade_step)
+        self.ad_fade.finished.connect(self._ad_fade_done)
         self.audio_fade = QVariantAnimation(self)
         self.audio_fade.setStartValue(1.0)
         self.audio_fade.setEndValue(0.0)
@@ -726,11 +739,35 @@ class CinemaSurface(QObject):
             duration = float(duration or 0)
         except (TypeError, ValueError):
             duration = 0.0
-        ad.update(state='queued', url=str(url), on_start=on_start, on_end=on_end,
+        ad.update(state='queued', url=str(url), on_start=on_start, on_end=on_end, queued_at=time.monotonic(), warm=False,
                   max_s=duration + AD_GRACE_S if duration > 0 else AD_DEFAULT_MAX_S)
+        if not self._warm_ad(ad):
+            self._end_ad('error')
+            return True
         self.ad_timer.start()
         self._ad_tick()
         return True
+
+    def _warm_ad(self, ad):
+        """Load the ad paused in its own core under the intro: its first frame is decoded before the hand-over."""
+        self._close('ad')
+        try:
+            core = self._open('ad', AD_OPTIONS)
+            core.command('loadfile', ad['url'])
+        except libmpv.MpvError as error:
+            log.info('Pre-roll could not be prepared: %s', error)
+            self._close('ad')
+            return False
+        ad['core'] = core
+        return True
+
+    def _ad_warmed(self, player):
+        ad = self._ad
+        if ad is None or ad.get('core') is not player:
+            return
+        if ad['state'] == 'queued' and not ad.get('warm'):
+            ad['warm'] = True
+            self._ad_tick()
 
     def cancel_preroll(self, token=None):
         """No Pre-roll after all (none planned, PRO, offline): the film no longer waits for one."""
@@ -739,6 +776,7 @@ class CinemaSurface(QObject):
             return
         ad['state'] = 'done'
         self.ad_timer.stop()
+        self._close('ad')
         self._resume_after_ad()
 
     def preroll_state(self):
@@ -769,44 +807,58 @@ class CinemaSurface(QObject):
             self._end_ad('error')
             return
         now = time.monotonic()
-        core = self.handles.get('intro')
-        if ad['state'] == 'queued':
-            intro_on = core is not None and self.intro_choice.enabled and self.presented_at is not None
-            if intro_on and (now - self.presented_at) * 1000 < MIN_INTRO_MS:
-                return  # The intro always holds its 5 s minimum first...
-            # ...then the Pre-roll takes over at once, without waiting for the end of the intro clip.
-            self._start_ad(now)
-            return
+        core = self.handles.get('ad')
         if core is None or core is not ad.get('core'):
             self._end_ad('error')
-        elif not ad.get('loaded'):
-            if now - ad['started_at'] > AD_LOAD_TIMEOUT_S:
-                self._end_ad('error')
-        elif core.get('eof-reached') is True:
+            return
+        if ad['state'] == 'queued':
+            intro = self.handles.get('intro')
+            intro_on = intro is not None and self.intro_choice.enabled and self.presented_at is not None
+            if intro_on and (now - self.presented_at) * 1000 < MIN_INTRO_MS:
+                return  # The intro always holds its 5 s minimum first (the ad warms up meanwhile)...
+            if not ad.get('warm'):
+                if now - ad['queued_at'] > AD_LOAD_TIMEOUT_S:
+                    self._end_ad('error')  # A creative that never decodes never blocks the film.
+                return
+            # ...then the warmed-up Pre-roll takes over at once, without waiting for the end of the intro clip.
+            self._start_ad(now)
+            return
+        if core.get('eof-reached') is True:
             self._end_ad('completion')
         elif now - ad['started_at'] > ad['max_s']:
             self._end_ad('error')
 
     def _start_ad(self, now):
+        """The warmed-up ad starts WITH sound under the intro; the intro then cross-fades away over it."""
         ad = self._ad
+        core = ad.get('core')
         try:
-            core = self.handles.get('intro') or self._open('intro', INTRO_OPTIONS)
-            core.try_set('panscan', '0')  # An ad is letterboxed; only the intro fills the window.
+            core.try_set('mute', False)
             core.try_set('volume', INTRO_VOLUME)
-            core.command('loadfile', ad['url'], 'replace')
+            core.set('pause', False)
         except libmpv.MpvError as error:
             log.info('Pre-roll could not be started: %s', error)
             self._end_ad('error')
             return
-        self.view.set_alpha('intro', 1.0)
-        ad.update(state='playing', core=core, started_at=now, loaded=False)
-
-    def _ad_loaded(self, player):
-        ad = self._ad
-        if ad is None or ad['state'] != 'playing' or ad.get('core') is not player or ad.get('loaded'):
-            return
-        ad['loaded'] = True
+        self.view.set_alpha('ad', 1.0)
+        ad.update(state='playing', started_at=now, loaded=True)
         self._ad_callback(ad.get('on_start'))
+        if 'intro' in self.handles:
+            self.ad_fade.stop()
+            self.ad_fade.start()
+
+    def _ad_fade_step(self, value):
+        intro = self.handles.get('intro')
+        if intro is None:
+            return
+        left = 1.0 - float(value)
+        self.view.set_alpha('intro', left)
+        intro.try_set('volume', round(INTRO_VOLUME * left, 1))
+
+    def _ad_fade_done(self):
+        """The intro is gone for this launch: after the ad the film follows, never the intro again."""
+        if self.phase in ('intro', 'warmup', 'failed') and 'ad' in self.handles:
+            self._close('intro')
 
     def _end_ad(self, kind, *, notify=True):
         """The Pre-roll ended (completion / error): straight to the film, the intro (or its still) never returns."""
@@ -816,6 +868,7 @@ class CinemaSurface(QObject):
         state, ad['state'] = ad['state'], 'done'
         self.ad_timer.stop()
         if state != 'playing':
+            self._close('ad')  # Warmed up but never shown: nothing of it stays on screen.
             if notify:
                 self._resume_after_ad()
             return
@@ -839,8 +892,8 @@ class CinemaSurface(QObject):
             self._check_ready()
 
     def _prestart_on_screen(self):
-        if 'intro' in self.handles:
-            return True
+        if 'intro' in self.handles or 'ad' in self.handles:
+            return True  # The Pre-roll (or its last frame) is on screen: the intro never restarts under it.
         return not self.intro_choice.enabled and self.phase in ('intro', 'warmup', 'failed')
 
     def _intro_unplayable(self, player):
@@ -943,6 +996,7 @@ class CinemaSurface(QObject):
         """The window is hidden: nothing may keep playing."""
         self.dissolve.stop()
         self.audio_fade.stop()
+        self.ad_fade.stop()
         self.ready_timer.stop()
         self.watchdog.stop()
         self.ad_timer.stop()
@@ -1055,8 +1109,15 @@ class CinemaSurface(QObject):
     def _event(self, name, player, event):
         if event.id == libmpv.EVENT_PLAYBACK_RESTART:
             self.view.arm(name)
-            if name == 'intro':
-                self._ad_loaded(player)
+            if name == 'ad':
+                self._ad_warmed(player)
+        elif name == 'ad' and event.id == libmpv.EVENT_SHUTDOWN:
+            self._close('ad')
+            if self._ad is not None and self._ad['state'] in ('queued', 'playing'):
+                self._end_ad('error')
+        elif name == 'ad' and event.id == libmpv.EVENT_END_FILE and event.reason == libmpv.END_ERROR:
+            if self._ad is not None and self._ad['state'] in ('queued', 'playing'):
+                self._end_ad('error')  # A broken creative is skipped; the film is never blocked by it.
         elif event.id == libmpv.EVENT_PROPERTY_CHANGE and event.name == 'fullscreen' and name == 'film':
             if isinstance(event.value, bool) and event.value != self._fullscreen and self.accepts_input():
                 self._fullscreen = event.value
@@ -1075,13 +1136,8 @@ class CinemaSurface(QObject):
                 self._film_finished(0)
         elif name == 'intro' and event.id == libmpv.EVENT_SHUTDOWN:
             self._close('intro')
-            if self._ad is not None and self._ad['state'] == 'playing':
-                self._end_ad('error')
         elif name == 'intro' and event.id == libmpv.EVENT_END_FILE and event.reason == libmpv.END_ERROR:
-            if self._ad is not None and self._ad['state'] == 'playing':
-                self._end_ad('error')  # A broken creative is skipped; the film is never blocked by it.
-            else:
-                self._intro_unplayable(player)
+            self._intro_unplayable(player)
 
     def _client_message(self, args):
         """«script-message kinosota-menu open|closed» from kinosota_tracks.lua."""
@@ -1154,7 +1210,7 @@ class CinemaSurface(QObject):
         film.set('pause', False)
         self.started.set()
         self.filmStarted.emit()
-        if 'intro' in self.handles:
+        if 'intro' in self.handles or 'ad' in self.handles:
             self.dissolve.start()
         else:
             self._dissolve_step(1.0)
@@ -1166,9 +1222,11 @@ class CinemaSurface(QObject):
         self.timeline.set_progress(value)
         self.view.set_alpha('film', self.timeline.film_alpha)
         self.view.set_alpha('intro', self.timeline.intro_alpha)
-        intro, film = self.handles.get('intro'), self.handles.get('film')
+        intro, film, ad = self.handles.get('intro'), self.handles.get('film'), self.handles.get('ad')
         if intro is not None:
             intro.try_set('volume', round(INTRO_VOLUME * self.timeline.intro_volume, 1))
+        if ad is not None:
+            ad.try_set('volume', round(INTRO_VOLUME * self.timeline.intro_volume, 1))
         if film is not None:
             film.try_set('volume', round(FILM_VOLUME * self.timeline.film_volume, 1))
 
@@ -1176,7 +1234,9 @@ class CinemaSurface(QObject):
         if self.phase not in self.PLAYING:
             return
         self._dissolve_step(1.0)
+        self.ad_fade.stop()
         self._close('intro')
+        self._close('ad')
         self.view.set_poster(self.intro_choice.still)
         film = self.handles.get('film')
         if film is not None:
@@ -1189,7 +1249,7 @@ class CinemaSurface(QObject):
 
     def _audio_fade_step(self, value):
         for name, player in self.handles.items():
-            base = INTRO_VOLUME if name == 'intro' else self._film_fade_from
+            base = INTRO_VOLUME if name in ('intro', 'ad') else self._film_fade_from
             if name == 'film' and self.phase == 'dissolve' and self.timeline is not None:
                 base *= self.timeline.film_volume
             player.try_set('volume', round(base * float(value), 1))

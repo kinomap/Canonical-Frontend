@@ -6,7 +6,7 @@ import AdPlaybackContainer from './AdPlaybackContainer.vue'
 import CinemaIntro from './CinemaIntro.vue'
 import { missingPicture, soundWatcher } from '@/lib/browserCodecs'
 import { DISSOLVE_MS, MIN_INTRO_MS, introClock, introConfig, introEnabledFor, introRemaining, prefersReducedMotion } from '@/lib/cinemaIntro'
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
   src: string;
@@ -32,22 +32,32 @@ const adsRef=ref<InstanceType<typeof AdPlaybackContainer>|null>(null)
  * The intro always plays at least MIN_INTRO_MS (5 s). Then it gives way as soon as the pre-roll is
  * prepared, or (no ad) as soon as the film can play; at the latest at the end of the clip. After the
  * pre-roll the film starts at once: the intro never comes back.
+ * Zero-Gap: with a pre-roll the intro gives way at exactly 5 s to the warmed-up ad, which starts WITH
+ * sound; the intro dissolves only once the ad picture really moves (`playing`). Without a pre-roll the
+ * intro plays on (never frozen) for as long as the film needs, then dissolves into it.
  */
 const introPlaying = ref(false), introShown = ref(false), introKey = ref(0)
 let introTimer: ReturnType<typeof setTimeout> | undefined, introFade: ReturnType<typeof setTimeout> | undefined
 let introMin: ReturnType<typeof setTimeout> | undefined, introPoll: ReturnType<typeof setInterval> | undefined
 let introStartedAt = 0
-function clearIntroTimers() { clearTimeout(introTimer); clearTimeout(introFade); clearTimeout(introMin); clearInterval(introPoll); introMin = undefined; introPoll = undefined }
+/** The intro handed over to a pre-roll: it stays opaque until the ad really plays (or this grace runs out). */
+const awaitingAd = ref(false)
+const AD_REVEAL_GRACE_MS = 4000
+/** Safety net only: a film that never gets ready still never keeps the intro forever. */
+const INTRO_SAFETY_MS = 45_000
+let adReveal: ReturnType<typeof setTimeout> | undefined
+const introLeaving = computed(() => !introPlaying.value && !(awaitingAd.value && !adsRef.value?.playing && !adsRef.value?.blocked))
+function clearIntroTimers() { clearTimeout(introTimer); clearTimeout(introFade); clearTimeout(introMin); clearInterval(introPoll); clearTimeout(adReveal); introMin = undefined; introPoll = undefined; introFade = undefined }
 function startIntroFor(src: string) {
   clearIntroTimers()
   const on = !!src && introEnabledFor(introConfig.value, 'browser_telegram')
-  introPlaying.value = on; introShown.value = on
+  introPlaying.value = on; introShown.value = on; awaitingAd.value = false
   if (!on) return
   introKey.value++
   introStartedAt = introClock.now()
   videoRef.value?.pause()
   // Safety net: a clip that never reports its end (reduced motion, refused autoplay) never blocks the film.
-  const limit = prefersReducedMotion() ? MIN_INTRO_MS : Math.max(MIN_INTRO_MS, Math.min(60_000, introConfig.value.duration_ms || 15_000) + 1500)
+  const limit = prefersReducedMotion() ? MIN_INTRO_MS : INTRO_SAFETY_MS
   introTimer = setTimeout(finishIntro, limit)
   // After its 5 s the intro hands over to whatever is ready first (see introHandoff).
   introMin = setTimeout(() => { introMin = undefined; introPoll = setInterval(introHandoff, 250); introHandoff() }, MIN_INTRO_MS)
@@ -68,12 +78,21 @@ function finishIntro() {
   if (wait > 0) { clearTimeout(introTimer); introTimer = setTimeout(finishIntro, wait); return }
   clearTimeout(introTimer)
   clearTimeout(introMin); clearInterval(introPoll); introMin = undefined; introPoll = undefined
+  // A warmed-up pre-roll takes over: the intro stays on until the ad picture moves, then dissolves over it.
+  awaitingAd.value = !!props.targetId && adsRef.value?.preroll === 'ready'
+  if (awaitingAd.value) adReveal = setTimeout(() => { awaitingAd.value = false }, AD_REVEAL_GRACE_MS)
   introPlaying.value = false
-  introFade = setTimeout(() => { introShown.value = false }, DISSOLVE_MS)
   // No ads for this video: the film starts itself; otherwise the ad container starts the pre-roll, then the film.
   if (!props.targetId && props.requested !== false) videoRef.value?.play()?.catch(() => {})
 }
 function introStarted(result: string) { if (result === 'blocked') finishIntro() }
+/** The clip reached its final picture: hand over only to something ready (the intro rests on its last frame meanwhile). */
+function introClipDone() { if (introRemaining(introStartedAt) <= 0) introHandoff() }
+watch(introLeaving, (leaving) => {
+  if (!leaving || !introShown.value) return
+  clearTimeout(adReveal); clearTimeout(introFade)
+  introFade = setTimeout(() => { introShown.value = false; awaitingAd.value = false }, DISSOLVE_MS)
+})
 watch(() => props.src, (src) => startIntroFor(src), { immediate: true })
 onBeforeUnmount(() => clearIntroTimers())
 const isPlaying = ref(false)
@@ -377,9 +396,9 @@ onBeforeUnmount(() => {
         @seeked="handleSeeked"
       ></video>
       
-      <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" :requested="requested && !introPlaying" surface="telegram_browser" />
-      <div v-if="introShown" class="vp-intro" :class="{ 'is-leaving': !introPlaying }" :style="{ transitionDuration: DISSOLVE_MS + 'ms' }" data-testid="telegram-intro" @click.stop>
-        <CinemaIntro :key="introKey" :active="introPlaying" :fade-ms="DISSOLVE_MS" target="browser_telegram" @started="introStarted" @finished="finishIntro" />
+      <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" :requested="requested && !introPlaying" :covered="introShown && !introLeaving" surface="telegram_browser" @settled="awaitingAd = false" />
+      <div v-if="introShown" class="vp-intro" :class="{ 'is-leaving': introLeaving }" :style="{ transitionDuration: DISSOLVE_MS + 'ms' }" data-testid="telegram-intro" @click.stop>
+        <CinemaIntro :key="introKey" :active="introPlaying" :fade-ms="DISSOLVE_MS" target="browser_telegram" @started="introStarted" @finished="introClipDone" />
       </div>
       <slot name="overlay" />
       <!-- Buffering overlay -->
