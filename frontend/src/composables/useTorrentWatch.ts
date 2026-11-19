@@ -24,6 +24,10 @@ import { audioCodecLabel, audioCodecPlayable, codecList, containerRisk, markCode
 export const POLL_MS = PREP_POLL_MS
 /** The server scheduled a retry (nothing found yet / tracker error): look again now and then. */
 export const RETRY_POLL_MS = 30000
+/** The access check never hangs the button: after this the viewer gets a clickable «Повторить». */
+export const ACCESS_TIMEOUT_MS = 5000
+/** Preparation that shows no progress this long offers a forced restart instead of a dead button. */
+export const WAIT_STALL_MS = 60000
 /** Language pill: flag + code; «UND» stands for sources whose audio language is not named. */
 export type LanguagePill = TorrentLanguage | 'und'
 export const LANGUAGE_ORDER: readonly LanguagePill[] = ['ru', 'uk', 'en', 'und']
@@ -79,7 +83,9 @@ export type BrowserPlan = {
 }
 export type WatchAction =
   | 'checking' | 'subscribe' | 'loading' | 'retry' | 'library' | 'discover'
-  | 'prepare' | 'wait' | 'missing' | 'launch'
+  | 'prepare' | 'wait' | 'stalled' | 'missing' | 'launch'
+/** The access check of the page: a failure or a hang becomes a clickable retry, never a dead button. */
+export type WatchAccessOptions = { accessError?: Ref<boolean>; retryAccess?: () => void }
 type Prefs = { quality?: string | null; language?: LanguagePill | null; episode?: TorrentEpisode | null }
 
 /** Titles already re-searched in this tab (the server also enforces a cooldown). */
@@ -264,8 +270,16 @@ function discoverMessage(result: string, scope: 'title' | 'episodes', stage: Pre
   return scope === 'episodes' ? 'Проверяем новые серии…' : 'Ищем раздачи…'
 }
 
-export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boolean | null>) {
+export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boolean | null>, options: WatchAccessOptions = {}) {
   const library = useLibrary()
+  /** The access check took longer than ACCESS_TIMEOUT_MS (or failed): offer «Повторить». */
+  const accessStalled = ref(false)
+  /** Preparation showed no progress for WAIT_STALL_MS: offer a forced restart. */
+  const waitStalled = ref(false)
+  /** The server refused a torrent stream for this account (PRO only): the page opens the PRO checkout. */
+  const proRequired = ref(false)
+  let accessTimer: ReturnType<typeof setTimeout> | undefined
+  let waitTimer: ReturnType<typeof setTimeout> | undefined
   const view = ref<TorrentSourcesView | null>(null)
   const loadError = ref(false)
   const selectedId = ref<string | null | undefined>(undefined)
@@ -512,13 +526,20 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     }
   })
 
-  const action = computed<WatchAction>(() => {
-    if (access.value === null) return 'checking'
+  /** The chosen episode exists in some offered release (ready or not). */
+  const episodeOffered = computed(() => {
+    const e = currentEpisode.value
+    return !e || offered.value.some((s) => hasEpisode(s, e))
+  })
+  const baseAction = computed<WatchAction>(() => {
+    if (access.value === null) return accessStalled.value || options.accessError?.value ? 'retry' : 'checking'
     if (access.value === false) return 'subscribe'
     const v = view.value
     if (!v) return loadError.value ? 'retry' : 'loading'
     if (!v.allowed) return 'subscribe'
     const s = selected.value
+    // A series episode that no release carries: never a dead button, look for releases with it.
+    if (currentEpisode.value && !episodeReady.value && !episodeOffered.value) return 'missing'
     if (s?.state === 'ready') return episodeReady.value ? 'launch' : 'missing'
     if (s && s.source_id && (s.state === 'candidate' || s.state === 'failed')) return 'prepare'
     if (s && (s.state === 'queued' || s.state === 'loading')) return 'wait'
@@ -526,6 +547,38 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (ACTIVE_STAGES.includes(current) || (v.discovering && !settled(current))) return 'wait'
     if (current === 'idle') return v.in_library ? 'discover' : 'library'
     return 'discover'
+  })
+  const action = computed<WatchAction>(() => baseAction.value === 'wait' && waitStalled.value ? 'stalled' : baseAction.value)
+  // «checking» never lasts: after ACCESS_TIMEOUT_MS the button turns into «Повторить».
+  watch(() => access.value, (value) => {
+    clearTimeout(accessTimer)
+    accessStalled.value = false
+    if (value === null) accessTimer = setTimeout(() => { accessStalled.value = true }, ACCESS_TIMEOUT_MS)
+  }, { immediate: true })
+  /** What changes while preparation really moves: stage, progress and the chosen release state. */
+  const waitFingerprint = computed(() => {
+    const v = view.value
+    const s = selected.value
+    return [baseAction.value, v?.status.status, v?.status.progress, s?.source_id, s?.state, s?.progress].join('|')
+  })
+  watch(waitFingerprint, () => {
+    clearTimeout(waitTimer)
+    waitStalled.value = false
+    if (baseAction.value === 'wait') waitTimer = setTimeout(() => { waitStalled.value = true }, WAIT_STALL_MS)
+  }, { immediate: true })
+  /**
+   * Series: the default release lacks the chosen episode — switch to the best offered release that
+   * has it (no request is sent; a release that is not prepared yet offers «Подготовить раздачу»).
+   */
+  watch([currentEpisode, offered], () => {
+    const e = currentEpisode.value
+    const cur = selected.value
+    if (!e || !cur || hasEpisode(cur, e)) return
+    const alt = bestSource(offered.value.filter((s) => hasEpisode(s, e)), { quality: cur.quality, language: language.value, episode: e })
+    if (alt && alt.source_id !== cur.source_id) {
+      selectedId.value = alt.source_id
+      syncVoice(alt)
+    }
   })
   const choice = computed<StreamChoice>(() => ({
     source_id: selected.value?.source_id ?? null,
@@ -557,6 +610,14 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
 
   async function refresh() {
     const target = item.value
+    if (target && access.value !== true && (accessStalled.value || options.accessError?.value)) {
+      // «Повторить» on a hung or failed access check: ask again, a fresh timeout starts.
+      accessStalled.value = false
+      clearTimeout(accessTimer)
+      accessTimer = setTimeout(() => { accessStalled.value = true }, ACCESS_TIMEOUT_MS)
+      options.retryAccess?.()
+      return
+    }
     if (!target || access.value !== true) return
     const version = generation
     clearTimeout(timer)
@@ -697,11 +758,20 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       await torrentPlaybackApi.prepareSource(source.source_id)
       message.value = 'Раздача поставлена в очередь на проверку'
     } catch (e) {
-      error.value = e instanceof ApiError && (e.status === 429 || e.status === 404) ? e.message : 'Не удалось поставить раздачу в очередь. Повторите попытку.'
+      if (e instanceof ApiError && e.status === 403) proRequired.value = true
+      error.value = e instanceof ApiError && (e.status === 429 || e.status === 404 || e.status === 403) ? e.message : 'Не удалось поставить раздачу в очередь. Повторите попытку.'
     } finally {
       busy.value = ''
     }
     await refresh()
+  }
+
+  /** «Запустить подготовку заново»: preparation stopped moving — prepare the release again, or search again. */
+  async function restart() {
+    waitStalled.value = false
+    const source = selected.value
+    if (source?.source_id) await prepare(source)
+    else await discover()
   }
 
   /** «↻ Искать раздачи» / «⟳ Обновить» (new episodes): one more tracker search for this title. */
@@ -790,6 +860,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       }
     } catch (e) {
       hideCinemaPrestart()
+      if (!ctl.signal.aborted && e instanceof ApiError && e.status === 403) proRequired.value = true
       if (!ctl.signal.aborted) error.value = e instanceof ApiError && e.status < 500 ? e.message : 'Не удалось открыть KINOSOTA Player. Повторите попытку.'
     } finally {
       if (launchController === ctl) busy.value = ''
@@ -832,12 +903,16 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     installPrompt.value = false
     selectedVoice.value = null
     voicePicked.value = false
+    proRequired.value = false
+    waitStalled.value = false
     if (item.value && access.value === true) void refresh()
   }, { immediate: true })
   watch(() => library.revision.value, () => { if (item.value && access.value === true) void refresh() })
   onBeforeUnmount(() => {
     generation++
     clearTimeout(timer)
+    clearTimeout(accessTimer)
+    clearTimeout(waitTimer)
     controller?.abort()
     launchController?.abort()
     hideCinemaPrestart()
@@ -847,8 +922,8 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   return reactive({
     view, loadError, selected, sources, stage, audioLanguage, activeLanguage, language, season, episode,
     qualityOptions, languageOptions, voiceOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice, browserPlan, browserChoice,
-    busy, message, error, installPrompt, selectedVoice, audioButtonLabel,
-    refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, addToLibrary, launch, closeInstall, cancelLaunch,
+    busy, message, error, installPrompt, selectedVoice, audioButtonLabel, proRequired,
+    refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, restart, addToLibrary, launch, closeInstall, cancelLaunch,
   })
 }
 

@@ -1,5 +1,5 @@
 """Native catalogue shell; all network work runs outside the UI thread."""
-import sys, time, webbrowser, subprocess
+import sys, time, subprocess
 from html import escape
 from .engine import child_environment, native_loader
 from pathlib import Path
@@ -23,6 +23,7 @@ from .deeplink import parse_launch, parse_mode
 from .direct import BUFFERING, DirectLaunchSplash, DirectPlayer, geometry_text, launch_args, stream_of
 from .cinema import CinemaEngine, create_surface
 from .ads import fetch_preroll, report as report_ad
+from .browser import open_url
 from .intro_source import target_for
 from .suggest import SuggestPopup
 ASSET=Path(__file__).parent/'assets'/'drone.png'
@@ -181,7 +182,7 @@ class Window(QMainWindow):
         page=QWidget();outer=QHBoxLayout(page);outer.setSpacing(28);outer.setContentsMargins(0,0,0,0)
         self.hero_copy=QWidget();copy=QVBoxLayout(self.hero_copy);copy.setContentsMargins(8,0,8,8);copy.addStretch(4);copy.addWidget(self.text('Ваш личный\nкинотеатр.','hero'));copy.addSpacing(8);copy.addWidget(self.text('Каталог KINOSOTA и просмотр через mpv.\nВойдите аккаунтом сайта и выбирайте кино.','muted',True));copy.addSpacing(10);copy.addWidget(label('Windows · macOS · Linux','hint'));copy.addStretch();outer.addWidget(self.hero_copy,1)
         self.login_card=card=QFrame();card.setObjectName('card');card.setMaximumWidth(480);card.setSizePolicy(QSizePolicy.Policy.Preferred,QSizePolicy.Policy.Maximum);v=QVBoxLayout(card);self.login_layout=v;v.setContentsMargins(24,22,24,22);v.setSpacing(8)
-        v.addWidget(self.text('Вход в KINOSOTA','loginTitle'));v.addWidget(self.text('Приложение доступно с платной подпиской.','hint',True));v.addSpacing(4)
+        v.addWidget(self.text('Вход в KINOSOTA','loginTitle'));v.addWidget(self.text('Войдите аккаунтом сайта — подписка не обязательна.','hint',True));v.addSpacing(4)
         self.identity=QLineEdit();self.password=QLineEdit();self.password.setEchoMode(QLineEdit.EchoMode.Password);self.otp=QLineEdit();self.otp.setMaxLength(32)
         for title,field in [('Логин или email',self.identity),('Пароль',self.password),('Код 2FA',self.otp)]:
             l=self.text(title,'fieldLabel');l.setBuddy(field);v.addWidget(l);v.addWidget(field)
@@ -576,7 +577,10 @@ class Window(QMainWindow):
         self.epoch+=1
         self.pair_timer.stop();self.pair=None
         def done(data):
-            self.pair=data['device_code'];self.pair_until=time.monotonic()+data['expires_in'];self.message.setText('Ожидаем подтверждение входа в браузере…');webbrowser.open(data['verification_uri']);self.pair_timer.start()
+            self.pair=data['device_code'];self.pair_until=time.monotonic()+data['expires_in'];self.message.setText('Подтвердите вход во вкладке браузера — приложение откроет каталог само…')
+            # The viewer's own running browser (its signed-in session): one click on the site, no password.
+            if not open_url(data['verification_uri']):self.message.setText('Откройте в браузере: '+data['verification_uri'])
+            self.pair_timer.start()
         self.work(lambda:self.api.request('POST','/desktop/pairing/start',{}),done)
     def poll_pair(self):
         if not self.pair:return
@@ -688,7 +692,7 @@ class Window(QMainWindow):
             elif isinstance(error,ApiError) and error.status==404 and 'недоступен' in str(error):self.message.setText(str(error))
             elif isinstance(error,ApiError) and error.status==404:self.message.setText('Этот запуск создан другим аккаунтом. Войдите в приложение тем же аккаунтом, что и на сайте.')
             elif isinstance(error,ApiError) and error.status==410:self.message.setText('Ссылка устарела. Нажмите «Смотреть» на сайте ещё раз.')
-            elif isinstance(error,ApiError) and error.status==403:self.message.setText('Для просмотра нужна действующая подписка PRO.')
+            elif isinstance(error,ApiError) and error.status==403:self.message.setText('Для просмотра торрентов нужна подписка PRO.')
             elif isinstance(error,ApiError) and error.status==409:self.message.setText('Источник ещё готовится. Попробуйте открыть фильм чуть позже.')
             else:self.show_error(error)
         self.work(lambda:self.api.open_launch(launch),done,fail)

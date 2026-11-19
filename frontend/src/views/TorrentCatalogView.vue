@@ -25,7 +25,7 @@ const loading=ref(true),error=ref(''),data=ref<TorrentPage|null>(null),detail=re
 const auth=useAuthStore()
 let accessGeneration=0
 const playbackAccess=ref<boolean|null>(null),accessError=ref(false)
-const watchState=useTorrentWatch(detail,playbackAccess)
+const watchState=useTorrentWatch(detail,playbackAccess,{accessError,retryAccess:()=>retryAccess()})
 const player=ref<InstanceType<typeof TorrentPlayer>|null>(null)
 function playInBrowser(){void player.value?.playInBrowser()}
 /** The browser played this release silently: its badge never lights again in this tab. */
@@ -94,7 +94,9 @@ function initials(name:string){return name.split(/\s+/).filter(Boolean).slice(0,
 async function loadAccess(version:number,signal:AbortSignal){
  const check=++accessGeneration
  playbackAccess.value=null;accessError.value=false
- try{const result=await torrentsApi.access(signal);if(version===generation&&check===accessGeneration)playbackAccess.value=result.allowed}
+ // A hung check never locks the page: after 5 s it counts as failed and the viewer can retry.
+ const limit=AbortSignal.any?AbortSignal.any([signal,AbortSignal.timeout(5000)]):signal
+ try{const result=await torrentsApi.access(limit);if(version===generation&&check===accessGeneration)playbackAccess.value=result.allowed}
  catch{if(version===generation&&check===accessGeneration&&!signal.aborted)accessError.value=true}
 }
 const rails=ref<{title:string;items:TorrentItem[];query:Record<string,string>}[]>([])

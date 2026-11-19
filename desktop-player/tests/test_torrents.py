@@ -259,7 +259,8 @@ def test_title_outside_library_offers_add_then_discovery_without_infohash():
     locked = FakeApi(view={**empty, 'allowed': False})
     page2, _, _ = page_for(locked)
     page2.open_title({'kind': 'movie', 'tmdb_id': 680, 'title': 'Криминальное чтиво'})
-    assert page2.action_button.text() == 'Нужна подписка PRO' and not page2.action_button.isEnabled()
+    # The PRO button stays clickable: it opens the PRO checkout in the browser.
+    assert page2.action_button.text() == 'Нужна подписка PRO' and page2.action_button.isEnabled()
     page.close()
     page2.close()
 

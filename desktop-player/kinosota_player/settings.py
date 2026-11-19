@@ -1,5 +1,6 @@
 """Responsive in-window settings workspace; no decorative dead navigation."""
-import platform,webbrowser
+import platform
+from .browser import BILLING_URL, SITE, open_url
 from pathlib import Path
 from PySide6.QtCore import Qt,QRect,QPropertyAnimation,QEasingCurve,QEvent,Signal,QSize
 from PySide6.QtGui import QPixmap,QIcon,QPainter
@@ -46,7 +47,7 @@ class SettingsDrawer(QWidget):
             card.addLayout(row)
         self.account_state=QLabel();self.account_state.setWordWrap(True);self.account_state.setObjectName('hint');card.addWidget(self.account_state)
         self.refresh=self.action(card,'Обновить данные аккаунта',self.refreshRequested.emit)
-        self.action(card,'Управлять подпиской на сайте',lambda:webbrowser.open('https://watch.scenrix.com/profile?tab=billing'))
+        self.action(card,'Управлять подпиской на сайте',lambda:open_url(BILLING_URL))
         self.signout=self.action(card,'Выйти из аккаунта',self.signOutRequested.emit,'danger');account.addStretch()
         about=self.page();self.updater=None
         # 0.1.9: updates are installed over this copy from here, without removing the app first.
@@ -58,10 +59,10 @@ class SettingsDrawer(QWidget):
         for b,text in ((self.update_now,''),(self.update_check,'Проверить обновления'),(self.update_cancel,'Отмена'),(self.update_site,'Открыть страницу загрузки')):
             b.setCursor(Qt.CursorShape.PointingHandCursor);row.addWidget(b)
             if text:self.bound.append((b,text))
-        row.addStretch(1);card.addLayout(row);self.update_site.clicked.connect(lambda:webbrowser.open('https://watch.scenrix.com/player'))
+        row.addStretch(1);card.addLayout(row);self.update_site.clicked.connect(lambda:open_url(SITE+'/player'))
         card=self.card(about,'Приложение','Версия и системная информация.');card.addWidget(QLabel('KINOSOTA Player · '+__version__));system=QLabel(platform.system()+' · '+platform.machine());card.addWidget(system)
         self.action(card,'Удалить приложение…',self.uninstall,'danger');card.addWidget(self.text('Удаление потребует подтверждения ОС. Данные аккаунта на сайте останутся.','hint',True));about.addStretch()
-        help_page=self.page();card=self.card(help_page,'Помощь','Установка и безопасность.');card.addWidget(self.text('Windows: запуск после установки включён в мастере. macOS: перенесите приложение в Applications и откройте его. Linux: откройте пакет в менеджере приложений, затем нажмите «Открыть» или запустите KINOSOTA из меню.','hint',True));card.addWidget(self.text('Не отключайте защиту ОС. Подпись Windows и notarization macOS пока не подтверждены.','hint',True));self.action(card,'Открыть руководство на сайте',lambda:webbrowser.open('https://watch.scenrix.com/player'));help_page.addStretch()
+        help_page=self.page();card=self.card(help_page,'Помощь','Установка и безопасность.');card.addWidget(self.text('Windows: запуск после установки включён в мастере. macOS: перенесите приложение в Applications и откройте его. Linux: откройте пакет в менеджере приложений, затем нажмите «Открыть» или запустите KINOSOTA из меню.','hint',True));card.addWidget(self.text('Не отключайте защиту ОС. Подпись Windows и notarization macOS пока не подтверждены.','hint',True));self.action(card,'Открыть руководство на сайте',lambda:open_url(SITE+'/player'));help_page.addStretch()
         self.animation=QPropertyAnimation(self.panel,b'geometry',self);self.animation.setDuration(180);self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.ui_language.currentIndexChanged.connect(lambda:self.languageChanged.emit(self.ui_language.currentData()));self.title_language.currentIndexChanged.connect(lambda:self.titlesChanged.emit(self.title_language.currentData()));self.select_page(0);self.retranslate(self.language);self.hide()
     def text(self,text,name='',wrap=False):

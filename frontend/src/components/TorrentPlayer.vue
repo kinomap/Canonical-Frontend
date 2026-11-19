@@ -16,8 +16,16 @@
  * second click) and, only once it really shows moving frames, the intro cross-dissolves
  * into it while the intro sound fades out and the film sound in. A slow torrent never
  * shows black: the intro holds its final picture until the film takes over.
+ *
+ * Ads (Ad Studio «torrent_browser»): the plan is requested and the pre-roll prepared at the click,
+ * in parallel with the stream ticket. When the film has its first frames it is paused (still muted)
+ * and the pre-roll plays over the intro: Intro → Pre-roll → film. The film starts with sound only
+ * after the pre-roll ended / was skipped, or the plan came back empty, failed or took over 5 s.
+ * A 403 on the ticket (torrents for PRO only) opens the PRO checkout.
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { routerKey } from 'vue-router'
+import { ApiError } from '@/api/client'
 import { Globe } from 'lucide-vue-next'
 import CinemaIntro from './CinemaIntro.vue'
 import AdPlaybackContainer from './AdPlaybackContainer.vue'
@@ -72,6 +80,16 @@ const video = ref<HTMLVideoElement | null>(null)
 const adsRef = ref<InstanceType<typeof AdPlaybackContainer> | null>(null)
 const adSeason = computed(() => props.kind === 'tv' ? props.choice?.season ?? undefined : undefined)
 const adEpisode = computed(() => props.kind === 'tv' ? props.choice?.episode ?? undefined : undefined)
+/** The opening ad phase is over (pre-roll played / skipped, or no ad): the film may start with sound. */
+const adsSettled = ref(false)
+/** The film has frames and waits, paused and muted, for the pre-roll: the ad container may play now. */
+const adsRequested = ref(false)
+/** A fresh plan for every start (a new click is a new viewing). */
+const adKey = ref(0)
+/** The ad service gets this long to start an ad once the film is ready; then the film goes on without it. */
+const AD_WAIT_MS = 5000
+let adWait: ReturnType<typeof setTimeout> | undefined
+const router = inject(routerKey, null)
 const isPlayable = computed(() => props.ready !== undefined ? props.ready : props.torrentStatus === 'playable' || props.torrentStatus === 'partial')
 const visible = computed(() => props.access !== true || props.accessError || isPlayable.value)
 /**
@@ -124,6 +142,10 @@ async function startPlayback(force = false) {
   filmMuted.value = true
   soundLocked.value = false
   clearTimeout(soundGuard)
+  clearTimeout(adWait)
+  adsSettled.value = false
+  adsRequested.value = false
+  adKey.value++
   try {
     const ticket = await torrentPlaybackApi.playbackTicket(props.kind, props.tmdbId, props.choice ?? {})
     // Closed, or another quality / voice / episode was picked meanwhile.
@@ -132,9 +154,15 @@ async function startPlayback(force = false) {
     frames.reset()
     ignoreSilent = false
     streamUrl.value = ticket.stream_url
-  } catch {
+  } catch (e) {
     if (id !== launchId) return
     launching.value = false
+    if (e instanceof ApiError && e.status === 403) {
+      // Torrents for PRO subscribers only: straight to the PRO checkout.
+      streamError.value = 'Просмотр торрентов доступен по подписке PRO.'
+      void router?.push('/profile?tab=billing')
+      return
+    }
     streamError.value = 'Не удалось получить ссылку для воспроизведения. Повторите попытку.'
   } finally {
     if (id === launchId) streamLoading.value = false
@@ -144,6 +172,8 @@ async function startPlayback(force = false) {
 function stopPlayback() {
   launchId++
   clearTimeout(soundGuard)
+  clearTimeout(adWait)
+  adsRequested.value = false
   soundLocked.value = false
   streamUrl.value = null
   streamError.value = ''
@@ -214,7 +244,23 @@ function onMetadata() {
  */
 function onProgress() {
   const v = video.value
-  if (v && launching.value && frames.check(v)) revealFilm(v)
+  if (!v || !launching.value || adsRequested.value || !frames.check(v)) return
+  if (adsSettled.value) return revealFilm(v)
+  // Intro → Pre-roll → film: the film holds (paused, muted) while the pre-roll plays over the intro.
+  v.pause()
+  adsRequested.value = true
+  clearTimeout(adWait)
+  adWait = setTimeout(() => { if (!adsSettled.value && !adsRef.value?.active) onAdsSettled() }, AD_WAIT_MS)
+}
+/** The pre-roll is over (or there is none): the film starts with sound. */
+function onAdsSettled() {
+  clearTimeout(adWait)
+  if (adsSettled.value) return
+  adsSettled.value = true
+  const v = video.value
+  if (!v || !launching.value || !adsRequested.value) return
+  playFilm(v, () => autoplayRefused(v))
+  revealFilm(v)
 }
 function revealFilm(v: HTMLVideoElement) {
   launching.value = false
@@ -288,7 +334,7 @@ watch(() => props.audioRisk ?? '', () => {
   if (watching) void startPlayback()
 })
 watch(isPlayable, (ready) => { if (!ready) reset() })
-onBeforeUnmount(() => clearTimeout(soundGuard))
+onBeforeUnmount(() => { clearTimeout(soundGuard); clearTimeout(adWait) })
 defineExpose({ startPlayback, playInBrowser })
 </script>
 <template>
@@ -323,7 +369,7 @@ defineExpose({ startPlayback, playInBrowser })
           </div>
         </div>
         <button v-if="soundLocked && !issue && !launching" type="button" class="sound-btn" @click="enableSound">Включить звук</button>
-        <AdPlaybackContainer v-if="streamUrl && tmdbId" ref="adsRef" :main="video" :source="streamUrl" :requested="!launching" host-starts surface="torrent_browser" :torrent-kind="kind" :tmdb-id="tmdbId" :season="adSeason" :episode="adEpisode" />
+        <AdPlaybackContainer v-if="tmdbId" :key="adKey" ref="adsRef" :main="video" :source="streamUrl || ''" :requested="adsRequested || (!launching && !!streamUrl)" host-starts surface="torrent_browser" :torrent-kind="kind" :tmdb-id="tmdbId" :season="adSeason" :episode="adEpisode" @settled="onAdsSettled" />
         <button v-if="!issue" type="button" class="stop-btn" @click="stopPlayback">✕ Закрыть плеер</button>
         <PlaybackCompatibility v-else overlay can-browse :issue="issue.kind" :busy="launchBusy" :status="launchMessage" :error="launchError" @desktop="emit('desktop')" @browser="browseAnyway" @close="closeNotice" />
       </div>

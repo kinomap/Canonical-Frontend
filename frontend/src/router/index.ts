@@ -66,6 +66,8 @@ const router = createRouter({
       component: RegisterView
     },
     { path: '/player', name: 'desktop-player', component: () => import('@/views/DesktopPlayerView.vue') },
+    // KINOSOTA Player browser sign-in: one-click approval in the modal (DesktopAuthorizeModal), open to guests.
+    { path: '/auth/desktop', name: 'desktop-auth', redirect: (to) => ({ path: '/', query: { player_code: String(to.query.code ?? '') } }) },
     {
       path: '/profile',
       name: 'profile',
@@ -88,7 +90,9 @@ const router = createRouter({
 router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('tg_stream_access_token')
   if (to.meta.requiresAuth && !token) {
-    next({ path: '/login', query: { redirect: to.fullPath } })
+    // A guest opening the player pairing link signs in inside the approval modal, no detour via /login.
+    if (typeof to.query.player_code === 'string') next({ path: '/', query: { player_code: to.query.player_code } })
+    else next({ path: '/login', query: { redirect: to.fullPath } })
   } else {
     next()
   }

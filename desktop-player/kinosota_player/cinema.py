@@ -57,7 +57,7 @@ BACKGROUND = QColor('#070b0e')
 FIRST_FRAME_TIMEOUT = 30
 # Pre-roll (Ad Studio surfaces player_telegram / player_torrents): Intro -> Pre-roll -> film. The ad plays in the
 # intro core (same OpenGL layer), so the film still cross-dissolves in over it.
-AD_WAIT_MS = 2500           # A ready film waits this long for a Pre-roll that is still being prepared, never longer.
+AD_WAIT_MS = 5000           # A ready film waits this long for a Pre-roll that is still being prepared, never longer.
 AD_LOAD_TIMEOUT_S = 10.0    # The ad clip must start playing within this time.
 AD_GRACE_S = 15.0           # ...and end within its declared duration plus this (stalls never block the film).
 AD_DEFAULT_MAX_S = 120.0

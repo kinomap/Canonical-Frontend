@@ -4,7 +4,7 @@
  * «✓ Выбрано: 1080p WEB-DL · ▲ 173 сида · 71,4 ГБ», then the Quality / Language pickers, Audio modal and season + episode selects.
  * Voice-overs can also be chosen in the player (mpv); the preparation status lives under the poster (TorrentPosterStatus).
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Globe, Monitor, Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
 import LibraryButton from './LibraryButton.vue'
@@ -66,21 +66,32 @@ const label = computed(() => {
   switch (props.state.action) {
     case 'retry': return 'Повторить'
     case 'discover': return 'Искать раздачи'
+    case 'missing': return 'Найти раздачи'
+    case 'stalled': return 'Запустить заново'
+    case 'subscribe': return auth.isAuthenticated.value ? 'Оформить PRO' : 'Смотреть'
     case 'prepare': return 'Подготовить раздачу'
     default: return 'Смотреть'
   }
 })
-const again = computed(() => props.state.busy !== 'launch' && (props.state.action === 'retry' || props.state.action === 'discover'))
-const waiting = computed(() => ['checking', 'loading', 'wait', 'missing'].includes(props.state.action))
-const disabled = computed(() => waiting.value || !!props.state.busy)
+const again = computed(() => props.state.busy !== 'launch' && ['retry', 'discover', 'missing', 'stalled'].includes(props.state.action))
+/** Only short, self-resolving states lock the button; each shows a spinner hint and times out into a clickable action. */
+const waiting = computed(() => ['checking', 'loading', 'wait'].includes(props.state.action))
+/** A release ready in the browser is always playable: only the click that is already running locks it. */
+const disabled = computed(() => props.state.action === 'launch' ? props.state.busy === 'launch' : waiting.value || !!props.state.busy)
+/** The server refused the torrent stream (PRO only): open the PRO checkout instead of an error. */
+watch(() => props.state.proRequired, (needed) => { if (needed && auth.isAuthenticated.value) void router.push('/profile?tab=billing') })
 const hint = computed(() => {
   const state = props.state
   switch (state.action) {
     case 'library': return 'Добавим в кинотеку и сразу начнём поиск раздач'
+    case 'checking': return 'Проверяем доступ к просмотру…'
+    case 'loading': return 'Загружаем раздачи…'
     case 'wait': return 'Готовим раздачу — кнопка станет активной автоматически'
-    case 'missing': return 'Этой серии пока нет в найденных раздачах'
-    // The list itself did not arrive (network / server): never a dead end, it retries by itself.
-    case 'retry': return 'Связь с сервером прервалась — повторяем автоматически'
+    case 'stalled': return 'Подготовка давно не продвигается — можно запустить её заново'
+    case 'missing': return 'Этой серии пока нет в найденных раздачах — поищем ещё'
+    case 'subscribe': return auth.isAuthenticated.value ? 'Торренты доступны по подписке PRO' : 'Войдите, чтобы смотреть'
+    // The list or the access check did not arrive (network / server): never a dead end.
+    case 'retry': return state.view || state.loadError ? 'Связь с сервером прервалась — повторяем автоматически' : 'Не удалось проверить доступ — нажмите «Повторить»'
     case 'discover':
       if (state.stage === 'not_found') return 'Раздачи на трекерах пока не найдены — можно поискать ещё раз'
       if (state.stage === 'failed') return `${state.view?.status.reason_label || 'Подготовка временно не удалась'} — можно повторить поиск`
@@ -99,6 +110,8 @@ async function primary() {
     case 'library': return state.addToLibrary()
     case 'discover': return state.discover()
     case 'prepare': return state.prepare()
+    case 'missing': return state.discover('episodes')
+    case 'stalled': return state.restart()
     case 'launch': return state.launch()
   }
 }
@@ -140,7 +153,7 @@ function browser() {
         <LibraryButton :item="item" />
       </div>
       <p v-if="statusShown" class="watch-status" data-testid="watch-status"><span class="watch-check" aria-hidden="true">✓</span> Выбрано: <span class="watch-facts">{{ statusFacts.join(' · ') }}</span></p>
-      <p v-if="hint" class="watch-hint" data-testid="watch-hint">{{ hint }}</p>
+      <p v-if="hint" class="watch-hint" data-testid="watch-hint"><RefreshCw v-if="waiting" class="watch-hint-spinner spinning" data-testid="watch-hint-spinner" :size="14" aria-hidden="true" />{{ hint }}</p>
       <div v-if="state.view?.allowed && state.sources.length" class="watch-options" data-testid="watch-options">
         <div class="watch-section">
           <span id="watch-quality-label" class="watch-label">Качество</span>
@@ -231,6 +244,7 @@ function browser() {
 .watch-icon{flex:none}
 .watch-status{margin:8px 0 0;color:#ffd24d;font-size:13px;line-height:18px;text-shadow:0 1px 4px rgba(0,0,0,.7);overflow-wrap:anywhere}
 .watch-check{font-weight:700}
+.watch-hint-spinner{flex:none;margin-right:6px;vertical-align:-2px}
 .watch-hint{margin:8px 0 0;color:rgba(255,255,255,.6);font-size:13px;line-height:18px;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 .watch-options{display:flex;flex-direction:column;gap:16px;margin-top:16px;min-width:0}
 .watch-section{display:flex;flex-direction:column;gap:8px;min-width:0}

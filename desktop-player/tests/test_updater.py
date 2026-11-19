@@ -95,7 +95,7 @@ def test_download_streams_the_build_checks_its_checksum_and_never_leaves_a_parti
 
 @pytest.mark.parametrize('status,detail,message', [
     (503, 'PLAYER_BUILD_NOT_PUBLISHED', 'Сборка для этой системы пока не опубликована'),
-    (403, {'code': 'SUBSCRIPTION_REQUIRED'}, 'Для приложения нужна действующая платная подписка.'),
+    (403, {'code': 'SUBSCRIPTION_REQUIRED'}, 'Для просмотра торрентов нужна подписка PRO.'),
     (302, None, 'Не удалось выполнить запрос.'),
 ])
 def test_download_errors_are_explained_and_redirects_are_not_followed(tmp_path, status, detail, message):

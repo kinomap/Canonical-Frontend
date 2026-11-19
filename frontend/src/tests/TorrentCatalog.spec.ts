@@ -187,7 +187,9 @@ describe('torrent watch panel and live preparation',()=>{
   expect(season.text()).toBe('2 сезон');await episode.trigger('click')
   options=series.findAll('[data-testid="episode-select"] [role="option"]');expect(options).toHaveLength(6);expect(options.every(o=>o.attributes('aria-disabled')==='true')).toBe(true)
   await episode.trigger('keydown',{key:'Escape'})
-  expect(w.find('[data-testid="watch-button"]').attributes('disabled')).toBeDefined();expect(w.text()).toContain('Этой серии пока нет в найденных раздачах')
+  // An episode no release carries is never a dead button: «Найти раздачи» stays clickable and searches for it.
+  expect(w.find('[data-testid="watch-button"]').attributes('disabled')).toBeUndefined();expect(w.find('[data-testid="watch-button"]').text()).toContain('Найти раздачи')
+  expect(w.text()).toContain('Этой серии пока нет в найденных раздачах')
   const before=vi.mocked(torrentPlaybackApi.discover).mock.calls.length
   await series.find('[data-testid="episodes-refresh"]').trigger('click');await flushPromises()
   expect(vi.mocked(torrentPlaybackApi.discover).mock.calls.length).toBe(before+1);expect(torrentPlaybackApi.discover).toHaveBeenLastCalledWith('tv',7)

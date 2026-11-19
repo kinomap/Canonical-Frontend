@@ -7,7 +7,10 @@ import { pendingCues, resolvedCues, type Cue } from '@/utils/adTimeline'
  * Torrent streams have no catalogue id: torrentKind + tmdbId (+ season / episode) name the title.
  * requested=false holds the pre-roll (e.g. while the prestart intro plays): Intro → Pre-roll → film.
  * hostStarts: the host player starts the film itself; the container then resumes `main` only after it
- * actually paused it for an ad, and never plays or pauses it on its own otherwise.
+ * actually paused it for an ad, and never plays or pauses it on its own otherwise. A host-started
+ * container fetches the plan as soon as it mounts (at the Play click), before `main` exists.
+ * `settled` fires once the opening phase is over: the pre-roll ended / was skipped, or the plan
+ * is empty, failed or timed out (5 s) — the host may start the film with sound only then.
  */
 type AdSurface='telegram_browser'|'torrent_browser'
 const props=withDefaults(defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string;requested?:boolean;surface?:AdSurface;torrentKind?:'movie'|'tv';tmdbId?:number;season?:number;episode?:number;hostStarts?:boolean}>(),{requested:true,hostStarts:false,surface:'telegram_browser',targetId:undefined,targetType:undefined,torrentKind:undefined,tmdbId:undefined,season:undefined,episode:undefined})
@@ -18,7 +21,10 @@ const planPath=computed(()=>{
 })
 type Ad={cache_ttl_ms?:number;delivery_id:string;media_url:string;duration_sec:number;skip_after:number|null;cta_url:string;cta_text:string}
 const media=ref<HTMLVideoElement|null>(null), active=ref(false), loading=ref(false), ad=ref<Ad|null>(null), elapsed=ref(0), blocked=ref(false)
+const emit=defineEmits<{settled:[]}>()
 const requested=computed(()=>props.requested!==false)
+let settledSent=false
+function settle(g:number){if(g!==generation||disposed||settledSent)return;settledSent=true;emit('settled')}
 const busy=computed(()=>active.value||loading.value)
 const remaining=computed(()=>Math.max(0,Math.ceil((ad.value?.duration_sec||0)-elapsed.value)))
 const canSkip=computed(()=>ad.value?.skip_after!=null&&elapsed.value>=ad.value.skip_after)
@@ -58,9 +64,9 @@ async function run(list:Cue[],g:number):Promise<boolean>{
  return true
 }
 async function initialize(){
- const g=++generation;preStarted=false;clearTimer();finish?.();finish=null;played=new Set();cues=[];token='';prepared=null;ad.value=null;active.value=false
+ const g=++generation;preStarted=false;settledSent=false;clearTimer();finish?.();finish=null;played=new Set();cues=[];token='';prepared=null;ad.value=null;active.value=false
  const path=planPath.value
- if(!path){loading.value=false;return}
+ if(!path){loading.value=false;settle(g);return}
  loading.value=requested.value;if(!props.hostStarts)props.main?.pause()
  try{
   const p=await adRequest<{cue_points:Cue[];plan_token:string|null}>(path,{signal:AbortSignal.timeout(5000)})
@@ -68,7 +74,7 @@ async function initialize(){
   cues=p.cue_points;token=p.plan_token||''
   if(requested.value)await startInitial(g)
   else {const first=cues.find(c=>c.kind==='pre');if(first)await preload(first)}
- }catch{/* Ad service failure must not take down main playback. */}
+ }catch{/* Ad service failure must not take down main playback. */settle(g)}
  if(g===generation&&!disposed){loading.value=false;if(props.source&&requested.value&&!props.hostStarts)props.main?.play()?.catch(()=>{})}
 }
 async function startInitial(g:number){
@@ -77,6 +83,7 @@ async function startInitial(g:number){
  let paused=false
  await (running=run(cues.filter(c=>c.kind==='pre'),g).then(x=>{paused=x}))
  if(g===generation&&!disposed&&requested.value){loading.value=false;if(props.source&&(paused||!props.hostStarts))props.main?.play()?.catch(()=>{})}
+ settle(g)
 }
 function tick(){
  if(!requested.value||!props.main||busy.value)return
@@ -96,11 +103,12 @@ function complete(kind:'completion'|'skip'|'error'){
 }
 function play(){void media.value?.play().catch(()=>{blocked.value=true})}
 // Main URL is resolved independently; changing it must not restart pre-roll.
-watch(()=>[planPath.value,props.main],()=>{if(props.main)initialReady=initialize()},{immediate:true,flush:'post'})
+// A host-started film may mount later than the plan: the plan is requested at once and `main` is read lazily.
+watch(()=>[planPath.value,props.hostStarts?null:props.main],()=>{if(props.main||props.hostStarts)initialReady=initialize()},{immediate:true,flush:'post'})
 watch(()=>props.source,()=>{if(props.source&&requested.value&&!busy.value&&!props.hostStarts)props.main?.play()?.catch(()=>{})},{flush:'post'})
 watch(requested,value=>{if(!value){media.value?.pause();props.main?.pause();return}if(active.value){void media.value?.play().catch(()=>{blocked.value=true});return}if(preStarted&&props.source){if(!props.hostStarts)props.main?.play()?.catch(()=>{});return}void initialReady.then(()=>startInitial(generation))},{flush:'post'})
 onBeforeUnmount(()=>{disposed=true;generation++;clearTimer();finish?.();media.value?.pause()})
-defineExpose({busy,tick,end})
+defineExpose({busy,active,tick,end})
 </script>
 <template>
  <div class="ad-playback-container" :class="{visible:busy}" :aria-hidden="!busy" @click.stop>

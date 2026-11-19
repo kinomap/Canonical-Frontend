@@ -47,7 +47,8 @@ ACTION_TEXT = {'loading': 'Загружаем…', 'retry': 'Повторить'
                'launch': 'Смотреть', 'missing': 'Серия не найдена', 'prepare': 'Подготовить раздачу',
                'wait': 'Готовим раздачу…', 'discover': 'Найти раздачи', 'library': 'Добавить в кинотеку'}
 ACTION_ICONS = {'launch': 'play', 'retry': 'refresh-cw', 'prepare': 'download', 'discover': 'search', 'library': 'plus'}
-ACTIONABLE = ('retry', 'launch', 'prepare', 'discover', 'library')
+# «Нужна подписка PRO» opens the PRO checkout in the browser; «Серия не найдена» looks for releases with it.
+ACTIONABLE = ('retry', 'launch', 'prepare', 'discover', 'library', 'subscribe', 'missing')
 # TMDB production states as the website badge names them; a released film shows none.
 STATUS_LABELS = {'Ended': 'Завершён', 'Canceled': 'Закрыт', 'Returning Series': 'Продолжается',
                  'In Production': 'В производстве', 'Post Production': 'Постпродакшн', 'Planned': 'Запланирован',
@@ -1271,6 +1272,11 @@ class TorrentPage(QWidget):
             self.discover()
         elif action == 'library':
             self.add_library()
+        elif action == 'subscribe':
+            from .browser import open_billing
+            open_billing()
+        elif action == 'missing':
+            self.discover()
 
     def _run(self, name, fn, message):
         generation = self.detail_generation
