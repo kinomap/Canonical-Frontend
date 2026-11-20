@@ -6,7 +6,7 @@ import {markBrowserSilent,releaseBrowserCompatible,releaseName,resetBrowserSilen
 import {torrentsApi,torrentPlaybackApi} from '@/api/torrents'
 import {waitForPlayer} from '@/lib/desktopLaunch'
 import {resetAudioCodecKnowledge} from '@/lib/browserCodecs'
-vi.mock('@/api/torrents',async original=>({...await original<any>(),torrentsApi:{access:vi.fn(),list:vi.fn(),genres:vi.fn(),detail:vi.fn()},torrentPlaybackApi:{sources:vi.fn(),prepareSource:vi.fn(),discover:vi.fn(),desktopLaunch:vi.fn(),launchStatus:vi.fn(),playbackTicket:vi.fn(),preparationStatus:vi.fn()}}))
+vi.mock('@/api/torrents',async original=>({...await original<any>(),torrentsApi:{access:vi.fn(),list:vi.fn(),genres:vi.fn(),detail:vi.fn()},torrentPlaybackApi:{sources:vi.fn(),prepareSource:vi.fn(),discover:vi.fn(),rebuild:vi.fn(),desktopLaunch:vi.fn(),launchStatus:vi.fn(),playbackTicket:vi.fn(),preparationStatus:vi.fn()}}))
 vi.mock('@/lib/desktopLaunch',async original=>({...await original<any>(),openDeepLink:vi.fn(),waitForPlayer:vi.fn()}))
 
 const entry={tmdb_id:1,kind:'movie',title:'Дюна',year:2021,original_title:'Dune',rating:8,overview:'Описание',poster:null,backdrop:null,playback_available:false} as const
@@ -699,5 +699,77 @@ describe('honest prestart sound check for MKV: the first track of a codec this b
   await pick(items.find((el)=>name(el)==='Продубляж')!)
   expect(w.find('[data-testid="watch-status"]').text()).toContain('▲ 6')
   expect(w.find('[data-testid="voice-banner"]').exists()).toBe(false)
+ })
+})
+
+describe('rebuild: the spinner next to «Смотреть» and the dead-source warning',()=>{
+ const healthy=src({source_id:'s-ok',title:'Как Витька Чеснок вёз Лёху Штыря в дом инвалидов 2017 1080p WEB-DL',seeders:30,health:'healthy',warning:null,default:true})
+ const stalled=src({source_id:'s-dead',title:'Как Витька Чеснок вёз Лёху Штыря в дом инвалидов 2017 1080p WEB-DL',seeders:5,health:'degraded',warning:'Мало раздающих или поток медленно отвечает. Можно пересобрать источник',default:true})
+ it('renders a round RefreshCw button right next to «Смотреть» with its tooltip',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-ok',sources:[healthy],health:'healthy',warning:null}) as any)
+  const w=await at()
+  const actions=w.find('.watch-actions')
+  const button=actions.find('[data-testid="rebuild-button"]')
+  expect(button.exists()).toBe(true)
+  expect(button.attributes('title')).toBe('Пересобрать источник (подобрать рабочую раздачу)')
+  expect(button.attributes('aria-label')).toBe('Пересобрать источник (подобрать рабочую раздачу)')
+  expect(button.find('svg').exists()).toBe(true)
+  expect(button.attributes('aria-busy')).toBe('false')
+  expect(actions.find('[data-testid="watch-button"]').exists()).toBe(true)
+  // A healthy release: no warning, green seeders.
+  expect(w.find('[data-testid="source-warning"]').exists()).toBe(false)
+  expect(w.find('[data-testid="watch-seeders"]').classes()).not.toContain('warn')
+ })
+
+ it('a click spins the icon, says «Подбираем рабочий источник…» and swaps in the working release from the answer',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-dead',sources:[stalled],health:'degraded',warning:stalled.warning}) as any)
+  let answer:(v:any)=>void=()=>{}
+  vi.mocked(torrentPlaybackApi.rebuild).mockReturnValue(new Promise(r=>{answer=r}) as any)
+  const w=await at()
+  await w.find('[data-testid="rebuild-button"]').trigger('click');await flushPromises()
+  expect(torrentPlaybackApi.rebuild).toHaveBeenCalledWith('movie',1,'s-dead')
+  const busy=w.find('[data-testid="rebuild-button"]')
+  expect(busy.attributes('aria-busy')).toBe('true')
+  expect(busy.find('svg').classes()).toContain('spinning')
+  expect(w.find('[data-testid="watch-hint"]').text()).toBe('Подбираем рабочий источник…')
+  expect(w.find('[data-testid="watch-hint-spinner"]').exists()).toBe(true)
+  const fresh={...stalled,source_id:'s-new',seeders:42,health:'healthy',warning:null,default:true}
+  answer(view({selected_source_id:'s-new',sources:[fresh,{...stalled,default:false,health:'dead'}],health:'healthy',warning:null,rebuild:'promoted'}))
+  await flushPromises()
+  const done=w.find('[data-testid="rebuild-button"]')
+  expect(done.attributes('aria-busy')).toBe('false')
+  expect(done.find('svg').classes()).not.toContain('spinning')
+  expect(w.find('[data-testid="watch-status"]').text()).toContain('▲ 42')
+  expect(w.find('[data-testid="source-warning"]').exists()).toBe(false)
+  expect(w.text()).toContain('Источник пересобран: подставлена рабочая раздача')
+  expect(torrentPlaybackApi.rebuild).toHaveBeenCalledTimes(1)
+ })
+
+ it.each([['degraded','text-amber'],['dead','text-red']])('a %s release shows the warning badge under «Смотреть» and amber seeders',async(health,tone)=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-dead',sources:[{...stalled,health}],health,warning:stalled.warning}) as any)
+  const w=await at()
+  const badge=w.find('[data-testid="source-warning"]')
+  expect(badge.exists()).toBe(true)
+  expect(badge.classes()).toContain('source-warning-badge')
+  expect(badge.classes()).toContain(tone)
+  expect(badge.find('svg').exists()).toBe(true)
+  expect(badge.text()).toBe('Раздача может не запуститься. Нажмите 🔄 рядом со «Смотреть», чтобы пересобрать')
+  expect(w.find('[data-testid="watch-seeders"]').classes()).toContain('warn')
+ })
+
+ it('few seeders light the seeders amber even before the health check judged the release',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s1',sources:[src({seeders:3})]}) as any)
+  const w=await at()
+  expect(w.find('[data-testid="watch-seeders"]').classes()).toContain('warn')
+  expect(w.find('[data-testid="watch-status"]').text()).toBe('✓ Выбрано: 1080p WEB-DL · ▲ 3 сида · 7,5 ГБ')
+ })
+
+ it('a failed rebuild stops the spinner and says why',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-dead',sources:[stalled],health:'degraded'}) as any)
+  vi.mocked(torrentPlaybackApi.rebuild).mockRejectedValue(new Error('network'))
+  const w=await at()
+  await w.find('[data-testid="rebuild-button"]').trigger('click');await flushPromises()
+  expect(w.find('[data-testid="rebuild-button"]').attributes('aria-busy')).toBe('false')
+  expect(w.text()).toContain('Не удалось пересобрать источник. Повторите попытку.')
  })
 })

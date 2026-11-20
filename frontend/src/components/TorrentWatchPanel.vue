@@ -6,7 +6,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Globe, Monitor, Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
+import { AlertTriangle, Globe, Monitor, Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
 import LibraryButton from './LibraryButton.vue'
 import DesktopPlayerModal from './DesktopPlayerModal.vue'
 import KSelect from './KSelect.vue'
@@ -82,6 +82,7 @@ const disabled = computed(() => props.state.action === 'launch' ? props.state.bu
 watch(() => props.state.proRequired, (needed) => { if (needed && auth.isAuthenticated.value) void router.push('/profile?tab=billing') })
 const hint = computed(() => {
   const state = props.state
+  if (state.busy === 'rebuild') return 'Подбираем рабочий источник…'
   switch (state.action) {
     case 'library': return 'Добавим в кинотеку и сразу начнём поиск раздач'
     case 'checking': return 'Проверяем доступ к просмотру…'
@@ -96,9 +97,18 @@ const hint = computed(() => {
       if (state.stage === 'not_found') return 'Раздачи на трекерах пока не найдены — можно поискать ещё раз'
       if (state.stage === 'failed') return `${state.view?.status.reason_label || 'Подготовка временно не удалась'} — можно повторить поиск`
       return ''
-    default: return ''
+    default: return state.view?.rebuilding ? 'Подбираем рабочий источник…' : ''
   }
 })
+/** The rebuild spinner: our own click, or a rebuild the server is still finishing. */
+const rebuilding = computed(() => props.state.busy === 'rebuild')
+const hintSpinning = computed(() => waiting.value || rebuilding.value || (!!props.state.view?.rebuilding && !props.state.busy))
+/** «🔄» next to «Смотреть»: a PRO viewer with releases to choose from can ask for a working one. */
+const canRebuild = computed(() => !!props.state.view?.allowed && props.state.sources.length > 0)
+/** Health of what a click on «Смотреть» plays: the selected release, else the server's pick. */
+const health = computed(() => props.state.selected?.health ?? props.state.view?.health ?? null)
+const atRisk = computed(() => canRebuild.value && (health.value === 'degraded' || health.value === 'dead'))
+const riskTitle = computed(() => props.state.selected?.warning || props.state.view?.warning || '')
 async function primary() {
   const state = props.state
   switch (state.action) {
@@ -116,15 +126,16 @@ async function primary() {
   }
 }
 
-/** «1080p WEB-DL · ▲ 173 сида · 71,4 ГБ»: what a click on «Смотреть» will play. */
+/** «1080p WEB-DL · ▲ 173 сида · 71,4 ГБ»: what a click on «Смотреть» will play; few seeders or a degraded swarm are amber. */
 const statusFacts = computed(() => {
   const source = props.state.selected
   if (!source) return []
+  const risky = source.seeders < 5 || source.health === 'degraded' || source.health === 'dead'
   return [
-    [source.quality || 'Качество не указано', source.source_type].filter(Boolean).join(' '),
-    source.seeders > 0 ? `▲ ${source.seeders} ${plural(source.seeders, 'сид', 'сида', 'сидов')}` : '',
-    formatSize(source.size_bytes),
-  ].filter(Boolean)
+    { text: [source.quality || 'Качество не указано', source.source_type].filter(Boolean).join(' '), cls: '' },
+    { text: source.seeders > 0 ? `▲ ${source.seeders} ${plural(source.seeders, 'сид', 'сида', 'сидов')}` : '', cls: risky ? 'watch-seeders warn' : 'watch-seeders' },
+    { text: formatSize(source.size_bytes), cls: '' },
+  ].filter((fact) => fact.text)
 })
 const statusShown = computed(() => !!props.state.view?.allowed && statusFacts.value.length > 0)
 
@@ -151,9 +162,11 @@ function browser() {
           <span>{{ label }}</span>
         </button>
         <LibraryButton :item="item" />
+        <button v-if="canRebuild" type="button" class="watch-rebuild" data-testid="rebuild-button" title="Пересобрать источник (подобрать рабочую раздачу)" aria-label="Пересобрать источник (подобрать рабочую раздачу)" :disabled="!!state.busy" :aria-busy="rebuilding" @click="state.rebuild()"><RefreshCw :size="20" :class="{ spinning: rebuilding }" aria-hidden="true" /><span class="watch-rebuild-tooltip" role="tooltip">Пересобрать источник (подобрать рабочую раздачу)</span></button>
       </div>
-      <p v-if="statusShown" class="watch-status" data-testid="watch-status"><span class="watch-check" aria-hidden="true">✓</span> Выбрано: <span class="watch-facts">{{ statusFacts.join(' · ') }}</span></p>
-      <p v-if="hint" class="watch-hint" data-testid="watch-hint"><RefreshCw v-if="waiting" class="watch-hint-spinner spinning" data-testid="watch-hint-spinner" :size="14" aria-hidden="true" />{{ hint }}</p>
+      <div v-if="atRisk && !rebuilding" class="source-warning-badge" :class="health === 'dead' ? 'text-red' : 'text-amber'" data-testid="source-warning" role="status" :title="riskTitle"><AlertTriangle :size="16" aria-hidden="true" /><span>Раздача может не запуститься. Нажмите 🔄 рядом со «Смотреть», чтобы пересобрать</span></div>
+      <p v-if="statusShown" class="watch-status" data-testid="watch-status"><span class="watch-check" aria-hidden="true">✓</span> Выбрано: <span class="watch-facts"><template v-for="(fact, i) in statusFacts" :key="i">{{ i ? ' · ' : '' }}<span :class="fact.cls || undefined" :data-testid="fact.cls ? 'watch-seeders' : undefined">{{ fact.text }}</span></template></span></p>
+      <p v-if="hint" class="watch-hint" data-testid="watch-hint"><RefreshCw v-if="hintSpinning" class="watch-hint-spinner spinning" data-testid="watch-hint-spinner" :size="14" aria-hidden="true" />{{ hint }}</p>
       <div v-if="state.view?.allowed && state.sources.length" class="watch-options" data-testid="watch-options">
         <div class="watch-section">
           <span id="watch-quality-label" class="watch-label">Качество</span>
@@ -244,6 +257,19 @@ function browser() {
 .watch-icon{flex:none}
 .watch-status{margin:8px 0 0;color:#ffd24d;font-size:13px;line-height:18px;text-shadow:0 1px 4px rgba(0,0,0,.7);overflow-wrap:anywhere}
 .watch-check{font-weight:700}
+.watch-seeders{color:#7ee2a0}
+.watch-seeders.warn{color:#ffb020}
+.watch-rebuild{position:relative;display:grid;place-items:center;flex:none;width:56px;height:56px;padding:0;border:1px solid rgba(255,255,255,.12);border-radius:50%;background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);cursor:pointer;transition:background-color .2s,border-color .2s,color .2s}
+.watch-rebuild:hover:not(:disabled){background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);color:#f5f5f5}
+.watch-rebuild:focus-visible{outline:2px solid #ffd24d;outline-offset:3px}
+.watch-rebuild:disabled{cursor:default;opacity:.6}
+.watch-rebuild[aria-busy="true"]{cursor:wait;opacity:1;color:#ffd24d;border-color:rgba(255,194,26,.4)}
+.watch-rebuild-tooltip{position:absolute;bottom:calc(100% + 8px);right:0;z-index:5;width:max-content;max-width:240px;padding:6px 10px;border-radius:6px;background:rgba(18,18,20,.95);color:#f5f5f5;font-size:12px;line-height:16px;font-weight:500;white-space:normal;text-align:left;box-shadow:0 4px 14px rgba(0,0,0,.45);opacity:0;pointer-events:none;transform:translateY(4px);transition:opacity .15s,transform .15s}
+.watch-rebuild:hover .watch-rebuild-tooltip,.watch-rebuild:focus-visible .watch-rebuild-tooltip{opacity:1;transform:none}
+.source-warning-badge{display:flex;align-items:flex-start;gap:8px;margin:10px 0 0;padding:8px 12px;border-radius:8px;font-size:13px;line-height:18px;border:1px solid currentColor;background:rgba(0,0,0,.35)}
+.source-warning-badge svg{flex:none;margin-top:1px}
+.source-warning-badge.text-amber{color:#ffb020;border-color:rgba(255,176,32,.45)}
+.source-warning-badge.text-red{color:#ff8a7a;border-color:rgba(255,138,122,.5)}
 .watch-hint-spinner{flex:none;margin-right:6px;vertical-align:-2px}
 .watch-hint{margin:8px 0 0;color:rgba(255,255,255,.6);font-size:13px;line-height:18px;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 .watch-options{display:flex;flex-direction:column;gap:16px;margin-top:16px;min-width:0}

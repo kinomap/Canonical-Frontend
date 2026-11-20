@@ -11,6 +11,7 @@ import {
   type TorrentEpisode,
   type TorrentItem,
   type TorrentLanguage,
+  type TorrentRebuildOutcome,
   type TorrentSource,
   type TorrentSourcesView,
 } from '@/api/torrents'
@@ -270,6 +271,17 @@ function discoverMessage(result: string, scope: 'title' | 'episodes', stage: Pre
   return scope === 'episodes' ? 'Проверяем новые серии…' : 'Ищем раздачи…'
 }
 
+/** What the viewer reads after «Пересобрать источник», per server outcome. */
+export const REBUILD_MESSAGES: Record<TorrentRebuildOutcome, string> = {
+  promoted: 'Источник пересобран: подставлена рабочая раздача',
+  switched: 'Подставлена другая рабочая раздача',
+  probing: 'Проверяем другую раздачу — переключим автоматически',
+  requeued: 'Ищем рабочую раздачу на трекерах — переключим автоматически',
+  cooldown: 'Пересборка уже запущена — подождите несколько секунд',
+  busy: 'Раздача уже подбирается — подождите немного',
+  no_source: 'Другой рабочей раздачи пока нет — попробуйте позже',
+}
+
 export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boolean | null>, options: WatchAccessOptions = {}) {
   const library = useLibrary()
   /** The access check took longer than ACCESS_TIMEOUT_MS (or failed): offer «Повторить». */
@@ -286,7 +298,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   const language = ref<LanguagePill | null>(null)
   const season = ref<number | null>(null)
   const episode = ref<number | null>(null)
-  const busy = ref<'' | 'prepare' | 'discover' | 'library' | 'launch'>('')
+  const busy = ref<'' | 'prepare' | 'discover' | 'library' | 'launch' | 'rebuild'>('')
   const message = ref('')
   const error = ref('')
   const installPrompt = ref(false)
@@ -596,7 +608,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   function pollDelay(): number | null {
     const v = view.value
     if (!v) return loadError.value ? POLL_MS * 2 : null
-    if (moving(v) || (v.discovering && !settled(stageOf(v.status)))) return loadError.value ? POLL_MS * 2 : POLL_MS
+    if (moving(v) || v.rebuilding || (v.discovering && !settled(stageOf(v.status)))) return loadError.value ? POLL_MS * 2 : POLL_MS
     return v.discovering ? RETRY_POLL_MS : null
   }
 
@@ -793,6 +805,39 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     await refresh()
   }
 
+  /**
+   * «🔄 Пересобрать источник»: the watched release looks dead (endless buffering) — the server strikes it and
+   * switches the title to a working release, or starts picking one. The fresh view comes back at once.
+   */
+  async function rebuild() {
+    const target = item.value
+    if (!target || busy.value) return
+    const version = generation
+    busy.value = 'rebuild'
+    error.value = ''
+    message.value = ''
+    clearTimeout(timer)
+    controller?.abort()
+    try {
+      const { rebuild: outcome, ...fresh } = await torrentPlaybackApi.rebuild(target.kind, target.tmdb_id, selected.value?.source_id ?? null)
+      if (version !== generation) return
+      view.value = fresh as TorrentSourcesView
+      loadError.value = false
+      // Follow the server's new recommendation: the card and the player get the working release.
+      selectedId.value = undefined
+      voicePicked.value = false
+      waitStalled.value = false
+      message.value = REBUILD_MESSAGES[outcome] ?? ''
+    } catch (e) {
+      if (version !== generation) return
+      if (e instanceof ApiError && e.status === 403) proRequired.value = true
+      error.value = e instanceof ApiError && e.status < 500 ? e.message : 'Не удалось пересобрать источник. Повторите попытку.'
+    } finally {
+      if (version === generation) busy.value = ''
+    }
+    if (version === generation) schedule()
+  }
+
   /** «Смотреть» on a title nobody asked for yet: save it, the server starts the search. */
   async function addToLibrary() {
     const target = item.value
@@ -923,7 +968,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     view, loadError, selected, sources, stage, audioLanguage, activeLanguage, language, season, episode,
     qualityOptions, languageOptions, voiceOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice, browserPlan, browserChoice,
     busy, message, error, installPrompt, selectedVoice, audioButtonLabel, proRequired,
-    refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, restart, addToLibrary, launch, closeInstall, cancelLaunch,
+    refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, restart, rebuild, addToLibrary, launch, closeInstall, cancelLaunch,
   })
 }
 

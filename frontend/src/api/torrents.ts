@@ -45,6 +45,10 @@ export type TorrentSeasonFiles = { season: number; episodes: TorrentSeasonEpisod
 export type TorrentLanguage = 'ru' | 'uk' | 'en'
 /** One audio track of the release file; ``codec`` (aac, ac3, eac3, dts…) and ``channels`` come from the container header. */
 export type ContainerAudioTrack = { index: number; language: TorrentLanguage | 'und'; title: string; codec?: string | null; channels?: number | null }
+/** Swarm health of a release: judged by the background check, or reported by a viewer (rebuild). */
+export type TorrentSourceHealth = 'healthy' | 'degraded' | 'dead'
+/** What «Пересобрать источник» did on the server. */
+export type TorrentRebuildOutcome = 'promoted' | 'switched' | 'probing' | 'requeued' | 'cooldown' | 'busy' | 'no_source'
 export type TorrentSource = {
   source_id: string | null; title: string; quality: string | null; source_type: string | null; languages: TorrentLanguage[];
   seeders: number; size_bytes: number; state: TorrentSourceState; progress: number; start_ms: number | null;
@@ -54,6 +58,9 @@ export type TorrentSource = {
   /** Name of the release's video file («Hopeu.2026.1080p.AMZN.WEB-DL.DDP5.1.H.264.mkv»): it names codecs the title omits. */
   file_name?: string | null
   rank?: number
+  health?: TorrentSourceHealth
+  /** A Russian sentence when the release may not start; null when healthy. */
+  warning?: string | null
 }
 export type TorrentSourcesView = {
   allowed: boolean; status: TorrentStatusPayload; discovering: boolean; in_library: boolean; selected_source_id: string | null;
@@ -61,6 +68,11 @@ export type TorrentSourcesView = {
   episodes: TorrentEpisode[]
   voices?: { value: string; available: boolean }[]
   seasons?: TorrentSeasonFiles[]
+  /** Health and warning of the recommended (selected) release. */
+  health?: TorrentSourceHealth | null
+  warning?: string | null
+  /** A rebuild is still picking a working release (search or probe in flight). */
+  rebuilding?: boolean
 }
 export type StreamChoice = { source_id?: string | null; season?: number | null; episode?: number | null; file_index?: number | null }
 export type PlaybackTicket = { stream_url: string; expires_at: string; title: string; source_id?: string | null; season?: number | null; episode?: number | null }
@@ -88,6 +100,10 @@ export const torrentPlaybackApi = {
   },
   discover(kind: TorrentKind, tmdb_id: number): Promise<{result: 'queued' | 'active' | 'cooldown' | 'no_demand'}> {
     return apiClient.postTorrentAction(`sources/${kind}/${tmdb_id}/discover`, {})
+  },
+  /** «Эта раздача зависла»: strike the watched release and move the title to a working one. */
+  rebuild(kind: TorrentKind, tmdb_id: number, source_id?: string | null): Promise<TorrentSourcesView & {rebuild: TorrentRebuildOutcome}> {
+    return apiClient.postTorrentAction(`sources/${kind}/${tmdb_id}/rebuild`, source_id ? {source_id} : {})
   },
   desktopLaunch(request: DesktopLaunchRequest, signal?: AbortSignal): Promise<DesktopLaunch> {
     const {kind, tmdb_id, audio_lang, audio_track, ...choice} = request
