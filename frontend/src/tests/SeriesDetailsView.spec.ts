@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import SeriesDetailsView from '@/views/SeriesDetailsView.vue'
 import { apiClient, ApiError } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 vi.mock('@/api/client', () => ({
@@ -189,5 +190,47 @@ describe('SeriesDetailsView.vue', () => {
 
     expect(wrapper.find('.not-found-state').exists()).toBe(true)
     expect(wrapper.text()).toContain('Series Not Found')
+  })
+
+  it('opens no stream session on page load, season or episode switch; only the Play click does', async () => {
+    const auth = useAuthStore()
+    auth.setToken('session')
+    try {
+      await router.push('/series/series-123')
+      await router.isReady()
+      vi.mocked(apiClient.getSeriesDetail).mockResolvedValueOnce(mockSeries as any)
+      vi.mocked(apiClient.startSeriesPlayback).mockResolvedValue({ media_url: 'https://media.test/ep-201.mp4', traffic_id: 'tr-1' } as any)
+
+      const wrapper = mount(SeriesDetailsView, {
+        global: { plugins: [router], stubs: { VideoPlayer: true, ReactionsBlock: true, CommentsBlock: true } }
+      })
+      await flushPromises()
+
+      const player = () => wrapper.findComponent({ name: 'VideoPlayer' })
+      expect(apiClient.startSeriesPlayback).not.toHaveBeenCalled()
+      expect(player().props('src')).toBe('')
+      expect(player().props('requested')).toBe(false)
+
+      await wrapper.findAll('.season-btn')[1].trigger('click')
+      await wrapper.findAll('.episode-btn')[1].trigger('click')
+      await wrapper.findAll('.episode-btn')[0].trigger('click')
+      await flushPromises()
+      expect(apiClient.startSeriesPlayback).not.toHaveBeenCalled()
+      expect(player().props('src')).toBe('')
+
+      await wrapper.get('.player-container').trigger('click')
+      await flushPromises()
+      expect(apiClient.startSeriesPlayback).toHaveBeenCalledTimes(1)
+      expect(apiClient.startSeriesPlayback).toHaveBeenCalledWith('ep-201')
+      expect(player().props('requested')).toBe(true)
+      expect(player().props('src')).toBe('https://media.test/ep-201.mp4')
+
+      await wrapper.findAll('.episode-btn')[1].trigger('click')
+      await flushPromises()
+      expect(apiClient.startSeriesPlayback).toHaveBeenCalledTimes(2)
+      expect(apiClient.startSeriesPlayback).toHaveBeenLastCalledWith('ep-202')
+    } finally {
+      auth.setToken(null)
+    }
   })
 })

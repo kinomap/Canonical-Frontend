@@ -57,21 +57,6 @@ function isEpisodePlayable(ep: SeriesEpisode): boolean {
   return ep.file_size !== null && ep.file_size > 0
 }
 
-async function preparePlaybackToken(episodeId: string) {
-  try {
-    const res = await apiClient.startSeriesPlayback(episodeId)
-      trafficId.value = res.traffic_id || ''
-    if (res.media_url) {
-      streamUrl.value = res.media_url
-    } else {
-      const base = res.media_endpoint || ''
-      streamUrl.value = `${base}?token=${res.playback_token}`
-    }
-  } catch (err) {
-    console.error('Prefetch series playback failed', err)
-  }
-}
-
 async function fetchData() {
   loading.value = true
   error.value = null
@@ -99,10 +84,6 @@ async function fetchData() {
       selectedEpisode.value = initialEpisode
 
       syncQueryParams()
-
-      if (isAuthenticated.value && initialEpisode && isEpisodePlayable(initialEpisode)) {
-        preparePlaybackToken(initialEpisode.id)
-      }
     }
   } catch (err: any) {
     if (err instanceof ApiError && err.status === 404) {
@@ -129,40 +110,34 @@ async function handlePlay() {
   playError.value = null
   shouldPlay.value = true
 
-  if (!streamUrl.value) {
-    try {
-      const res = await apiClient.startSeriesPlayback(selectedEpisode.value.id)
-      trafficId.value = res.traffic_id || ''
-      if (res.media_url) {
-        streamUrl.value = res.media_url
-      } else {
-        throw new Error('No media_url returned from backend')
-      }
-    } catch (err: any) {
-      if (err?.status !== 401) {
-        playError.value = err?.message || 'Failed to start playback'
-      }
-      shouldPlay.value = false
-    }
+  if (!streamUrl.value && !(await startEpisodePlayback(selectedEpisode.value.id))) {
+    shouldPlay.value = false
   }
 }
 
-async function startEpisodePlayback(episodeId: string) {
+/**
+ * The only place a series stream session is opened: on «Play», or on an episode switch while the
+ * viewer is already watching. Never on page load — that armed the intro in the hidden player.
+ */
+async function startEpisodePlayback(episodeId: string): Promise<boolean> {
   playError.value = null
   // Revalidate the admin intro targets in parallel with the stream request (no extra wait).
   void loadIntroConfig()
   try {
     const res = await apiClient.startSeriesPlayback(episodeId)
-      trafficId.value = res.traffic_id || ''
-    if (res.media_url) {
-      streamUrl.value = res.media_url
-    } else {
+    // The viewer moved on to another episode meanwhile: this answer is stale.
+    if (selectedEpisode.value?.id !== episodeId) return true
+    if (!res.media_url) {
       throw new Error('No media_url returned from backend')
     }
+    trafficId.value = res.traffic_id || ''
+    streamUrl.value = res.media_url
+    return true
   } catch (err: any) {
     if (err?.status !== 401) {
       playError.value = err?.message || 'Failed to start playback'
     }
+    return false
   }
 }
 
@@ -176,12 +151,8 @@ function selectSeason(season: SeriesSeason) {
   syncQueryParams()
   streamUrl.value = null
 
-  if (firstEp && isEpisodePlayable(firstEp)) {
-    if (shouldPlay.value) {
-      startEpisodePlayback(firstEp.id)
-    } else if (isAuthenticated.value) {
-      preparePlaybackToken(firstEp.id)
-    }
+  if (shouldPlay.value && firstEp && isEpisodePlayable(firstEp)) {
+    startEpisodePlayback(firstEp.id)
   }
 }
 
@@ -195,8 +166,6 @@ function selectEpisode(episode: SeriesEpisode) {
 
   if (shouldPlay.value) {
     startEpisodePlayback(episode.id)
-  } else if (isAuthenticated.value) {
-    preparePlaybackToken(episode.id)
   }
 }
 
@@ -287,7 +256,7 @@ onMounted(() => {
 
         <VideoPlayer :traffic-id="trafficId" :target-id="isAuthenticated?selectedEpisode?.id:undefined" target-type="episode"
           v-show="shouldPlay" :requested="shouldPlay"
-          :src="streamUrl||''"
+          :src="shouldPlay ? (streamUrl || '') : ''"
           :poster="series.backdrop_url || series.poster_url || undefined"
           :title="series.title + ' — ' + playingEpisodeTitle"
         />

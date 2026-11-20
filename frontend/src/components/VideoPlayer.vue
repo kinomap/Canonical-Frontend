@@ -67,11 +67,11 @@ function startIntroFor(src: string) {
   void loadIntroConfig().then(() => decideIntro(src, decision), () => decideIntro(src, decision))
 }
 function decideIntro(src: string, decision: number) {
-  if (decision !== introDecision || props.src !== src || !introPlaying.value) return
+  if (decision !== introDecision || props.src !== src || props.requested !== true || !introPlaying.value) return
   if (!introEnabledFor(introConfig.value, 'browser_telegram')) {
     introPlaying.value = false
     // No ads for this video: the film starts itself; otherwise the released ad container starts it.
-    if (!props.targetId && props.requested !== false) videoRef.value?.play()?.catch(() => {})
+    if (!props.targetId) videoRef.value?.play()?.catch(() => {})
     return
   }
   introShown.value = true
@@ -115,7 +115,22 @@ watch(introLeaving, (leaving) => {
   clearTimeout(adReveal); clearTimeout(introFade)
   introFade = setTimeout(() => { introShown.value = false; awaitingAd.value = false }, DISSOLVE_MS)
 })
-watch(() => props.src, (src) => startIntroFor(src), { immediate: true })
+/**
+ * Idle player (no source, or the viewer has not pressed Play yet): nothing may sound. A hidden
+ * (`v-show`) player is still in the DOM and browsers play the audio of hidden media, so the intro
+ * must never be armed by a prefetched source alone — only by an explicit `requested`.
+ */
+function stopIntro() {
+  clearIntroTimers()
+  ++introDecision
+  introPlaying.value = false
+  introShown.value = false
+  awaitingAd.value = false
+}
+watch([() => props.src, () => props.requested], ([src, requested]) => {
+  if (!src || requested !== true) { stopIntro(); videoRef.value?.pause(); return }
+  startIntroFor(src)
+}, { immediate: true })
 onBeforeUnmount(() => clearIntroTimers())
 const isPlaying = ref(false)
 const currentTime = ref(0)
@@ -415,7 +430,7 @@ onBeforeUnmount(() => {
         @pause="handlePause"
         @ended="handleEnded"
         @click="togglePlay"
-        :autoplay="!targetId && !introPlaying"
+        :autoplay="requested && !targetId && !introPlaying"
         @seeking="adsRef?.tick()"
         @seeked="handleSeeked"
       ></video>
