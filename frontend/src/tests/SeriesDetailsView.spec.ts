@@ -229,6 +229,70 @@ describe('SeriesDetailsView.vue', () => {
       await flushPromises()
       expect(apiClient.startSeriesPlayback).toHaveBeenCalledTimes(2)
       expect(apiClient.startSeriesPlayback).toHaveBeenLastCalledWith('ep-202')
+      // The running episode keeps its src until the next stream is ready (no blank → ad flash).
+      expect(player().props('requested')).toBe(true)
+    } finally {
+      auth.setToken(null)
+    }
+  })
+
+  it('keeps the splash until startSeriesPlayback resolves with a media_url, then starts playback', async () => {
+    const auth = useAuthStore()
+    auth.setToken('session')
+    try {
+      await router.push('/series/series-123')
+      await router.isReady()
+      vi.mocked(apiClient.getSeriesDetail).mockResolvedValueOnce(mockSeries as any)
+      let resolveStart!: (value: any) => void
+      vi.mocked(apiClient.startSeriesPlayback).mockImplementationOnce(() => new Promise((resolve) => { resolveStart = resolve }) as any)
+
+      const wrapper = mount(SeriesDetailsView, {
+        global: { plugins: [router], stubs: { VideoPlayer: true, ReactionsBlock: true, CommentsBlock: true } }
+      })
+      await flushPromises()
+      const player = () => wrapper.findComponent({ name: 'VideoPlayer' })
+
+      await wrapper.get('.player-container').trigger('click')
+      await flushPromises()
+      expect(apiClient.startSeriesPlayback).toHaveBeenCalledTimes(1)
+      expect(wrapper.find('.player-container').exists()).toBe(true)
+      expect(wrapper.get('.player-container').attributes('aria-busy')).toBe('true')
+      expect(player().props('requested')).toBe(false)
+      expect(player().props('src')).toBe('')
+
+      // A second click while the request is in flight must not open another session.
+      await wrapper.get('.player-container').trigger('click')
+      expect(apiClient.startSeriesPlayback).toHaveBeenCalledTimes(1)
+
+      resolveStart({ media_url: 'https://media.test/ep-101.mp4', traffic_id: 'tr-1' })
+      await flushPromises()
+      expect(wrapper.find('.player-container').exists()).toBe(false)
+      expect(player().props('requested')).toBe(true)
+      expect(player().props('src')).toBe('https://media.test/ep-101.mp4')
+    } finally {
+      auth.setToken(null)
+    }
+  })
+
+  it('stays on the splash when startSeriesPlayback fails', async () => {
+    const auth = useAuthStore()
+    auth.setToken('session')
+    try {
+      await router.push('/series/series-123')
+      await router.isReady()
+      vi.mocked(apiClient.getSeriesDetail).mockResolvedValueOnce(mockSeries as any)
+      vi.mocked(apiClient.startSeriesPlayback).mockRejectedValueOnce(new Error('boom'))
+
+      const wrapper = mount(SeriesDetailsView, {
+        global: { plugins: [router], stubs: { VideoPlayer: true, ReactionsBlock: true, CommentsBlock: true } }
+      })
+      await flushPromises()
+
+      await wrapper.get('.player-container').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('.player-container').exists()).toBe(true)
+      expect(wrapper.get('.player-container').attributes('aria-busy')).toBe('false')
+      expect(wrapper.findComponent({ name: 'VideoPlayer' }).props('requested')).toBe(false)
     } finally {
       auth.setToken(null)
     }

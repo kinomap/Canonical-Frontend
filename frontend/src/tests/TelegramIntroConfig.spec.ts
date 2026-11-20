@@ -112,4 +112,25 @@ describe('Telegram web player intro (browser_telegram)', () => {
     await flushPromises()
     expect(w.find('[data-testid="telegram-intro"]').exists()).toBe(false)
   })
+
+  it('never requests or uncovers the ad container while the player has no source', async () => {
+    staleTab(true)
+    serve(answer(true), answer(true), answer(true))
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    const AdStub = { name: 'AdPlaybackContainer', props: ['requested', 'covered', 'source'], template: '<div />', methods: { end: async () => {}, tick: () => {} } }
+    const w = mount(VideoPlayer, { props: { src: '', requested: true }, global: { stubs: { ...stubs, AdPlaybackContainer: AdStub } } }); wrappers.push(w)
+    await flushPromises()
+    const ads = () => w.findComponent(AdStub)
+    expect(ads().props('requested')).toBe(false)
+    expect(w.find('[data-testid="telegram-intro"]').exists()).toBe(false)
+
+    await w.setProps({ src: 'https://example.test/episode.mp4' })
+    // While the intro decision is pending the ad must already count as covered and not requested.
+    expect(ads().props('requested')).toBe(false)
+    expect(ads().props('covered')).toBe(true)
+    await flushPromises()
+    expect(w.find('[data-testid="telegram-intro"]').exists()).toBe(true)
+    expect(ads().props('requested')).toBe(false)
+  })
 })

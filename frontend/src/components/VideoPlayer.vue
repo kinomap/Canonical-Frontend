@@ -435,7 +435,7 @@ onBeforeUnmount(() => {
         @seeked="handleSeeked"
       ></video>
       
-      <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" :requested="requested && !introPlaying" :covered="introShown && !introLeaving" surface="telegram_browser" @settled="awaitingAd = false" />
+      <AdPlaybackContainer ref="adsRef" :main="videoRef" :target-id="targetId" :target-type="targetType" :source="src" :requested="requested && Boolean(src) && !introPlaying" :covered="(introPlaying || introShown) && !introLeaving" surface="telegram_browser" @settled="awaitingAd = false" />
       <div v-if="introShown" class="vp-intro" :class="{ 'is-leaving': introLeaving }" :style="{ transitionDuration: DISSOLVE_MS + 'ms' }" data-testid="telegram-intro" @click.stop>
         <CinemaIntro :key="introKey" :active="introPlaying" :fade-ms="DISSOLVE_MS" target="browser_telegram" @started="introStarted" @finished="introClipDone" />
       </div>

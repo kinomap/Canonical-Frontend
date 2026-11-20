@@ -23,6 +23,7 @@ const selectedEpisode = ref<SeriesEpisode | null>(null)
 const streamUrl = ref<string | null>(null)
 const trafficId = ref('')
 const shouldPlay = ref(false)
+const playbackStarting = ref(false)
 
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -97,6 +98,7 @@ async function fetchData() {
 }
 
 async function handlePlay() {
+  if (playbackStarting.value) return
   if (!isAuthenticated.value) {
     router.push('/login')
     return
@@ -108,10 +110,19 @@ async function handlePlay() {
   }
 
   playError.value = null
-  shouldPlay.value = true
+  if (streamUrl.value) {
+    shouldPlay.value = true
+    return
+  }
 
-  if (!streamUrl.value && !(await startEpisodePlayback(selectedEpisode.value.id))) {
-    shouldPlay.value = false
+  // Keep the splash mounted until a usable URL is ready: mounting the player without a source
+  // flashed the ad container («Загрузка рекламы…») before the intro.
+  playbackStarting.value = true
+  try {
+    const started = await startEpisodePlayback(selectedEpisode.value.id)
+    shouldPlay.value = started && Boolean(streamUrl.value)
+  } finally {
+    playbackStarting.value = false
   }
 }
 
@@ -149,11 +160,7 @@ function selectSeason(season: SeriesSeason) {
   selectedEpisode.value = firstEp
 
   syncQueryParams()
-  streamUrl.value = null
-
-  if (shouldPlay.value && firstEp && isEpisodePlayable(firstEp)) {
-    startEpisodePlayback(firstEp.id)
-  }
+  switchPlayingEpisode(firstEp && isEpisodePlayable(firstEp) ? firstEp : null)
 }
 
 function selectEpisode(episode: SeriesEpisode) {
@@ -162,10 +169,27 @@ function selectEpisode(episode: SeriesEpisode) {
 
   selectedEpisode.value = episode
   syncQueryParams()
-  streamUrl.value = null
+  switchPlayingEpisode(episode)
+}
 
-  if (shouldPlay.value) {
-    startEpisodePlayback(episode.id)
+/**
+ * While watching, keep the current src until the next stream is ready (nulling it first blanked
+ * the player and flashed the pre-roll). When idle, just drop the stale URL.
+ */
+async function switchPlayingEpisode(episode: SeriesEpisode | null) {
+  if (!shouldPlay.value) {
+    streamUrl.value = null
+    return
+  }
+  if (!episode) {
+    shouldPlay.value = false
+    streamUrl.value = null
+    return
+  }
+  const started = await startEpisodePlayback(episode.id)
+  if (!started && selectedEpisode.value?.id === episode.id) {
+    shouldPlay.value = false
+    streamUrl.value = null
   }
 }
 
@@ -241,7 +265,7 @@ onMounted(() => {
     <div v-else-if="series" class="yt-layout">
       <!-- Player Section at Top -->
       <div class="player-wrapper">
-        <div v-if="!shouldPlay" class="player-container" @click="handlePlay">
+        <div v-if="!shouldPlay" class="player-container" :aria-busy="playbackStarting" @click="handlePlay">
           <div class="player-splash" :style="{ backgroundImage: `url(${series.backdrop_url || series.poster_url})` }">
             <div class="player-overlay">
               <div class="splash-info" v-if="playingEpisodeTitle">
