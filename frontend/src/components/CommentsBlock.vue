@@ -255,10 +255,10 @@ onBeforeUnmount(() => {
 
 .comment-input:focus,
 .comment-input:focus-visible {
-  outline: none;
+  outline: none !important;
+  outline-offset: 0 !important;
   border-bottom-color: var(--ui-primary);
-  box-shadow: 0 1px 0 0 var(--ui-primary);
-  box-shadow: 0 1px 0 0 color-mix(in srgb, var(--ui-primary) 45%, transparent);
+  box-shadow: none;
 }
 
 .comment-actions {
