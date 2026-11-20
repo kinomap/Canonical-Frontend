@@ -4,14 +4,14 @@
  * «✓ Выбрано: 1080p WEB-DL · ▲ 173 сида · 71,4 ГБ», then the Quality / Language pickers, Audio modal and season + episode selects.
  * Voice-overs can also be chosen in the player (mpv); the preparation status lives under the poster (TorrentPosterStatus).
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertTriangle, Globe, Monitor, Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
+import { AlertTriangle, Check, Globe, Monitor, Play, RefreshCw, RotateCw, Volume2 } from 'lucide-vue-next'
 import LibraryButton from './LibraryButton.vue'
 import DesktopPlayerModal from './DesktopPlayerModal.vue'
 import KSelect from './KSelect.vue'
 import type { TorrentItem } from '@/api/torrents'
-import { LANGUAGE_NAMES, type LanguagePill, type TorrentWatch } from '@/composables/useTorrentWatch'
+import { LANGUAGE_NAMES, REBUILD_PROGRESS, type LanguagePill, type TorrentWatch } from '@/composables/useTorrentWatch'
 import { useAuthStore } from '@/stores/auth'
 import { formatSize, plural } from '@/utils/ruFormat'
 
@@ -82,7 +82,7 @@ const disabled = computed(() => props.state.action === 'launch' ? props.state.bu
 watch(() => props.state.proRequired, (needed) => { if (needed && auth.isAuthenticated.value) void router.push('/profile?tab=billing') })
 const hint = computed(() => {
   const state = props.state
-  if (state.busy === 'rebuild') return 'Подбираем рабочий источник…'
+  if (state.busy === 'rebuild' || state.rebuildPending) return REBUILD_PROGRESS
   switch (state.action) {
     case 'library': return 'Добавим в кинотеку и сразу начнём поиск раздач'
     case 'checking': return 'Проверяем доступ к просмотру…'
@@ -97,11 +97,19 @@ const hint = computed(() => {
       if (state.stage === 'not_found') return 'Раздачи на трекерах пока не найдены — можно поискать ещё раз'
       if (state.stage === 'failed') return `${state.view?.status.reason_label || 'Подготовка временно не удалась'} — можно повторить поиск`
       return ''
-    default: return state.view?.rebuilding ? 'Подбираем рабочий источник…' : ''
+    default: return state.view?.rebuilding ? REBUILD_PROGRESS : ''
   }
 })
-/** The rebuild spinner: our own click, or a rebuild the server is still finishing. */
-const rebuilding = computed(() => props.state.busy === 'rebuild')
+/** The rebuild spinner: our own click, or the rebuild the server is still assembling. */
+const rebuilding = computed(() => props.state.busy === 'rebuild' || props.state.rebuildPending)
+/** «Подобран новый источник: …» stays a few seconds, then leaves by itself. */
+const TOAST_MS = 8000
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+watch(() => props.state.toast, (text) => {
+  clearTimeout(toastTimer)
+  if (text) toastTimer = setTimeout(() => props.state.clearToast(), TOAST_MS)
+})
+onBeforeUnmount(() => clearTimeout(toastTimer))
 const hintSpinning = computed(() => waiting.value || rebuilding.value || (!!props.state.view?.rebuilding && !props.state.busy))
 /** «🔄» next to «Смотреть»: a PRO viewer with releases to choose from can ask for a working one. */
 const canRebuild = computed(() => !!props.state.view?.allowed && props.state.sources.length > 0)
@@ -162,7 +170,7 @@ function browser() {
           <span>{{ label }}</span>
         </button>
         <LibraryButton :item="item" />
-        <button v-if="canRebuild" type="button" class="watch-rebuild" data-testid="rebuild-button" title="Пересобрать источник (подобрать рабочую раздачу)" aria-label="Пересобрать источник (подобрать рабочую раздачу)" :disabled="!!state.busy" :aria-busy="rebuilding" @click="state.rebuild()"><RefreshCw :size="20" :class="{ spinning: rebuilding }" aria-hidden="true" /><span class="watch-rebuild-tooltip" role="tooltip">Пересобрать источник (подобрать рабочую раздачу)</span></button>
+        <button v-if="canRebuild" type="button" class="watch-rebuild" data-testid="rebuild-button" title="Пересобрать источник (подобрать рабочую раздачу)" aria-label="Пересобрать источник (подобрать рабочую раздачу)" :disabled="!!state.busy || state.rebuildPending" :aria-busy="rebuilding" @click="state.rebuild()"><RefreshCw :size="20" :class="{ spinning: rebuilding }" aria-hidden="true" /><span class="watch-rebuild-tooltip" role="tooltip">Пересобрать источник (подобрать рабочую раздачу)</span></button>
       </div>
       <div v-if="atRisk && !rebuilding" class="source-warning-badge" :class="health === 'dead' ? 'text-red' : 'text-amber'" data-testid="source-warning" role="status" :title="riskTitle"><AlertTriangle :size="16" aria-hidden="true" /><span>Раздача может не запуститься. Нажмите 🔄 рядом со «Смотреть», чтобы пересобрать</span></div>
       <p v-if="statusShown" class="watch-status" data-testid="watch-status"><span class="watch-check" aria-hidden="true">✓</span> Выбрано: <span class="watch-facts"><template v-for="(fact, i) in statusFacts" :key="i">{{ i ? ' · ' : '' }}<span :class="fact.cls || undefined" :data-testid="fact.cls ? 'watch-seeders' : undefined">{{ fact.text }}</span></template></span></p>
@@ -200,6 +208,9 @@ function browser() {
     </div>
     <p v-if="state.error" class="watch-error" role="alert">{{ state.error }}</p>
     <p v-else-if="state.message" class="watch-message" role="status">{{ state.message }}</p>
+    <Transition name="watch-toast">
+      <div v-if="state.toast" class="watch-toast" data-testid="rebuild-toast" role="status" aria-live="polite"><Check :size="18" aria-hidden="true" /><span>{{ state.toast }}</span><button type="button" class="watch-toast-close" aria-label="Закрыть уведомление" @click="state.clearToast()">✕</button></div>
+    </Transition>
     <DesktopPlayerModal :show="state.installPrompt" :can-browse="state.action === 'launch'" @close="state.closeInstall()" @browser="browser" />
   </div>
 
@@ -294,6 +305,13 @@ function browser() {
 .spinning{animation:watch-spin .8s linear infinite}
 .watch-error{margin:12px 0 0;color:#ff8a7a;font-size:14px;line-height:20px}
 .watch-message{margin:12px 0 0;color:rgba(255,255,255,.7);font-size:14px;line-height:20px}
+.watch-toast{position:fixed;left:50%;bottom:24px;z-index:9998;display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 32px));padding:12px 16px;box-sizing:border-box;transform:translateX(-50%);border:1px solid rgba(127,216,168,.4);border-radius:12px;background:rgba(18,20,24,.96);color:#f5f5f5;font-size:14px;line-height:20px;box-shadow:0 12px 32px rgba(0,0,0,.55)}
+.watch-toast svg{flex:none;color:#8fdcb4}
+.watch-toast-close{flex:none;margin-left:4px;padding:0 4px;border:0;background:none;color:rgba(255,255,255,.6);font:inherit;cursor:pointer}
+.watch-toast-close:hover{color:#fff}
+.watch-toast-close:focus-visible{outline:2px solid #ffd24d;outline-offset:2px}
+.watch-toast-enter-active,.watch-toast-leave-active{transition:opacity .2s,transform .2s}
+.watch-toast-enter-from,.watch-toast-leave-to{opacity:0;transform:translate(-50%,8px)}
 @keyframes watch-spin{to{transform:rotate(360deg)}}
 
 .audio-modal-backdrop{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
@@ -326,5 +344,5 @@ function browser() {
 .audio-modal-tip{margin:0;padding:16px 24px 20px;font-size:13px;line-height:18px;color:rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.07)}
 
 @media(max-width:640px){.watch-actions{flex-wrap:wrap}.watch-button{flex:1 1 0;min-width:0;padding:0 16px;font-size:14px;white-space:normal}.watch-pill{max-width:none;padding:4px 9px;font-size:11px}.watch-season,.watch-episode{flex:1 1 140px;width:auto}}
-@media(prefers-reduced-motion:reduce){.watch-button,.watch-pill,.watch-refresh{transition:none}.spinning{animation:none}}
+@media(prefers-reduced-motion:reduce){.watch-button,.watch-pill,.watch-refresh,.watch-toast-enter-active,.watch-toast-leave-active{transition:none}.spinning{animation:none}}
 </style>

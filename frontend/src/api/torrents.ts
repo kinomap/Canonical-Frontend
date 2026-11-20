@@ -48,7 +48,7 @@ export type ContainerAudioTrack = { index: number; language: TorrentLanguage | '
 /** Swarm health of a release: judged by the background check, or reported by a viewer (rebuild). */
 export type TorrentSourceHealth = 'healthy' | 'degraded' | 'dead'
 /** What «Пересобрать источник» did on the server. */
-export type TorrentRebuildOutcome = 'promoted' | 'switched' | 'probing' | 'requeued' | 'cooldown' | 'busy' | 'no_source'
+export type TorrentRebuildOutcome = 'rebuilding' | 'cooldown' | 'busy' | 'no_source'
 export type TorrentSource = {
   source_id: string | null; title: string; quality: string | null; source_type: string | null; languages: TorrentLanguage[];
   seeders: number; size_bytes: number; state: TorrentSourceState; progress: number; start_ms: number | null;
@@ -101,7 +101,7 @@ export const torrentPlaybackApi = {
   discover(kind: TorrentKind, tmdb_id: number): Promise<{result: 'queued' | 'active' | 'cooldown' | 'no_demand'}> {
     return apiClient.postTorrentAction(`sources/${kind}/${tmdb_id}/discover`, {})
   },
-  /** «Эта раздача зависла»: strike the watched release and move the title to a working one. */
+  /** «Эта раздача зависла»: bury the watched release and rebuild the title from a fresh tracker search. */
   rebuild(kind: TorrentKind, tmdb_id: number, source_id?: string | null): Promise<TorrentSourcesView & {rebuild: TorrentRebuildOutcome}> {
     return apiClient.postTorrentAction(`sources/${kind}/${tmdb_id}/rebuild`, source_id ? {source_id} : {})
   },

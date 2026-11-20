@@ -271,15 +271,23 @@ function discoverMessage(result: string, scope: 'title' | 'episodes', stage: Pre
   return scope === 'episodes' ? 'Проверяем новые серии…' : 'Ищем раздачи…'
 }
 
+/** Live refresh while a rebuild searches the trackers and assembles the new source. */
+export const REBUILD_POLL_MS = 2000
+export const REBUILD_PROGRESS = 'Ищем и собираем лучший источник…'
 /** What the viewer reads after «Пересобрать источник», per server outcome. */
 export const REBUILD_MESSAGES: Record<TorrentRebuildOutcome, string> = {
-  promoted: 'Источник пересобран: подставлена рабочая раздача',
-  switched: 'Подставлена другая рабочая раздача',
-  probing: 'Проверяем другую раздачу — переключим автоматически',
-  requeued: 'Ищем рабочую раздачу на трекерах — переключим автоматически',
+  rebuilding: REBUILD_PROGRESS,
   cooldown: 'Пересборка уже запущена — подождите несколько секунд',
-  busy: 'Раздача уже подбирается — подождите немного',
-  no_source: 'Другой рабочей раздачи пока нет — попробуйте позже',
+  busy: 'Источник уже собирается — подождите немного',
+  no_source: 'Добавьте запись в кинотеку, чтобы пересобрать источник',
+}
+/** «Подобран новый источник: 2160p WEB-DL, Пифагор, LostFilm, Оригинал» — what the rebuild assembled. */
+export function rebuiltSummary(source: TorrentSource | null): string {
+  if (!source) return 'Подобран новый источник'
+  const quality = [source.quality, source.source_type].filter(Boolean).join(' ')
+  const voices = sourceTracks(source).map((t) => t.value)
+  const shown = voices.slice(0, 4).join(', ') + (voices.length > 4 ? ` и ещё ${voices.length - 4}` : '')
+  return `Подобран новый источник: ${[quality, shown].filter(Boolean).join(', ') || 'готов к просмотру'}`
 }
 
 export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boolean | null>, options: WatchAccessOptions = {}) {
@@ -290,6 +298,10 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   const waitStalled = ref(false)
   /** The server refused a torrent stream for this account (PRO only): the page opens the PRO checkout. */
   const proRequired = ref(false)
+  /** A rebuild the server is still running: poll every REBUILD_POLL_MS until the new source is ready. */
+  const rebuildPending = ref(false)
+  /** One-shot notice when the rebuild finished (the panel shows it as a toast). */
+  const toast = ref('')
   let accessTimer: ReturnType<typeof setTimeout> | undefined
   let waitTimer: ReturnType<typeof setTimeout> | undefined
   const view = ref<TorrentSourcesView | null>(null)
@@ -549,6 +561,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     const v = view.value
     if (!v) return loadError.value ? 'retry' : 'loading'
     if (!v.allowed) return 'subscribe'
+    if (rebuildPending.value) return 'wait'
     const s = selected.value
     // A series episode that no release carries: never a dead button, look for releases with it.
     if (currentEpisode.value && !episodeReady.value && !episodeOffered.value) return 'missing'
@@ -560,7 +573,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     if (current === 'idle') return v.in_library ? 'discover' : 'library'
     return 'discover'
   })
-  const action = computed<WatchAction>(() => baseAction.value === 'wait' && waitStalled.value ? 'stalled' : baseAction.value)
+  const action = computed<WatchAction>(() => baseAction.value === 'wait' && waitStalled.value && !rebuildPending.value ? 'stalled' : baseAction.value)
   // «checking» never lasts: after ACCESS_TIMEOUT_MS the button turns into «Повторить».
   watch(() => access.value, (value) => {
     clearTimeout(accessTimer)
@@ -606,6 +619,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
 
   /** Next live refresh, or null when nothing can change by itself. */
   function pollDelay(): number | null {
+    if (rebuildPending.value) return REBUILD_POLL_MS
     const v = view.value
     if (!v) return loadError.value ? POLL_MS * 2 : null
     if (moving(v) || v.rebuilding || (v.discovering && !settled(stageOf(v.status)))) return loadError.value ? POLL_MS * 2 : POLL_MS
@@ -640,12 +654,43 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       if (version !== generation) return
       view.value = result
       loadError.value = false
+      if (rebuildPending.value) settleRebuild(result)
       autoDiscover(result)
     } catch (e) {
       if (version !== generation || (e instanceof Error && e.name === 'AbortError')) return
       loadError.value = true
     }
     if (version === generation) schedule()
+  }
+
+  /**
+   * The rebuild finished on the server: the new release is ready (the quality pills, the languages
+   * and the «Аудио» list follow the fresh view and a toast names it) or nothing could be assembled.
+   */
+  function settleRebuild(v: TorrentSourcesView) {
+    if (!v.allowed) {
+      rebuildPending.value = false
+      return
+    }
+    const current = stageOf(v.status)
+    if (v.rebuilding || ACTIVE_STAGES.includes(current)) return
+    rebuildPending.value = false
+    message.value = ''
+    if (current === 'ready') {
+      selectedId.value = undefined
+      voicePicked.value = false
+      selectedVoice.value = null
+      const fresh = selected.value
+      if (fresh) syncVoice(fresh)
+      toast.value = rebuiltSummary(fresh)
+    } else {
+      error.value = v.status.reason_label
+        ? `${v.status.reason_label} — новый источник пока не подобран`
+        : 'Не удалось подобрать новый источник. Попробуйте позже.'
+    }
+  }
+  function clearToast() {
+    toast.value = ''
   }
 
   /** A title prepared before alternatives were tracked: look once for other qualities/voices. */
@@ -806,8 +851,9 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   }
 
   /**
-   * «🔄 Пересобрать источник»: the watched release looks dead (endless buffering) — the server strikes it and
-   * switches the title to a working release, or starts picking one. The fresh view comes back at once.
+   * «🔄 Пересобрать источник»: the watched release looks dead (endless buffering) — the server buries it
+   * (tombstone, TorrServer cleanup) and rebuilds the title from a fresh tracker search. The card polls
+   * every REBUILD_POLL_MS until the new source is ready, then names it in a toast.
    */
   async function rebuild() {
     const target = item.value
@@ -823,14 +869,18 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
       if (version !== generation) return
       view.value = fresh as TorrentSourcesView
       loadError.value = false
-      // Follow the server's new recommendation: the card and the player get the working release.
+      // Follow the server's new recommendation: the card and the player get the rebuilt release.
       selectedId.value = undefined
       voicePicked.value = false
       waitStalled.value = false
-      message.value = REBUILD_MESSAGES[outcome] ?? ''
+      toast.value = ''
+      // The worker searches the trackers and assembles the best release: poll until it is ready.
+      rebuildPending.value = !!fresh.rebuilding && !!fresh.allowed
+      message.value = rebuildPending.value ? REBUILD_PROGRESS : (REBUILD_MESSAGES[outcome] ?? '')
     } catch (e) {
       if (version !== generation) return
-      if (e instanceof ApiError && e.status === 403) proRequired.value = true
+      // Never the PRO checkout from here: the viewer already watches (view.allowed). A refused rebuild
+      // only says why; lost access shows up as view.allowed === false on the next refresh.
       error.value = e instanceof ApiError && e.status < 500 ? e.message : 'Не удалось пересобрать источник. Повторите попытку.'
     } finally {
       if (version === generation) busy.value = ''
@@ -950,6 +1000,8 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
     voicePicked.value = false
     proRequired.value = false
     waitStalled.value = false
+    rebuildPending.value = false
+    toast.value = ''
     if (item.value && access.value === true) void refresh()
   }, { immediate: true })
   watch(() => library.revision.value, () => { if (item.value && access.value === true) void refresh() })
@@ -967,7 +1019,7 @@ export function useTorrentWatch(item: Ref<TorrentItem | null>, access: Ref<boole
   return reactive({
     view, loadError, selected, sources, stage, audioLanguage, activeLanguage, language, season, episode,
     qualityOptions, languageOptions, voiceOptions, seasonOptions, episodeOptions, showEpisodes, currentEpisode, progress, action, choice, browserPlan, browserChoice,
-    busy, message, error, installPrompt, selectedVoice, audioButtonLabel, proRequired,
+    busy, message, error, installPrompt, selectedVoice, audioButtonLabel, proRequired, rebuildPending, toast, clearToast,
     refresh, pickQuality, pickLanguage, pickVoice, pickSeason, pickEpisode, prepare, discover, restart, rebuild, addToLibrary, launch, closeInstall, cancelLaunch,
   })
 }

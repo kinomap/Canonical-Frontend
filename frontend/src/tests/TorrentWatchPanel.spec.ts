@@ -6,6 +6,7 @@ import {markBrowserSilent,releaseBrowserCompatible,releaseName,resetBrowserSilen
 import {torrentsApi,torrentPlaybackApi} from '@/api/torrents'
 import {waitForPlayer} from '@/lib/desktopLaunch'
 import {resetAudioCodecKnowledge} from '@/lib/browserCodecs'
+import {ApiError} from '@/api/client'
 vi.mock('@/api/torrents',async original=>({...await original<any>(),torrentsApi:{access:vi.fn(),list:vi.fn(),genres:vi.fn(),detail:vi.fn()},torrentPlaybackApi:{sources:vi.fn(),prepareSource:vi.fn(),discover:vi.fn(),rebuild:vi.fn(),desktopLaunch:vi.fn(),launchStatus:vi.fn(),playbackTicket:vi.fn(),preparationStatus:vi.fn()}}))
 vi.mock('@/lib/desktopLaunch',async original=>({...await original<any>(),openDeepLink:vi.fn(),waitForPlayer:vi.fn()}))
 
@@ -721,28 +722,57 @@ describe('rebuild: the spinner next to «Смотреть» and the dead-source 
   expect(w.find('[data-testid="watch-seeders"]').classes()).not.toContain('warn')
  })
 
- it('a click spins the icon, says «Подбираем рабочий источник…» and swaps in the working release from the answer',async()=>{
+ it('a click starts the full rebuild: spinner and a waiting «Смотреть» until the new source is ready, then a toast',async()=>{
   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-dead',sources:[stalled],health:'degraded',warning:stalled.warning}) as any)
   let answer:(v:any)=>void=()=>{}
   vi.mocked(torrentPlaybackApi.rebuild).mockReturnValue(new Promise(r=>{answer=r}) as any)
   const w=await at()
+  vi.useFakeTimers({toFake:['setTimeout','clearTimeout']})
+  try{
+   await w.find('[data-testid="rebuild-button"]').trigger('click');await flushPromises()
+   expect(torrentPlaybackApi.rebuild).toHaveBeenCalledWith('movie',1,'s-dead')
+   expect(w.find('[data-testid="rebuild-button"]').attributes('aria-busy')).toBe('true')
+   expect(w.find('[data-testid="watch-hint"]').text()).toBe('Ищем и собираем лучший источник…')
+   const loading={status:'loading',playable:false,progress:40,start_ms:null}
+   answer(view({selected_source_id:null,sources:[{...stalled,state:'failed',health:'dead'}],health:'dead',status:loading,rebuilding:true,rebuild:'rebuilding'}))
+   await flushPromises()
+   const spinning=w.find('[data-testid="rebuild-button"]')
+   expect(spinning.attributes('aria-busy')).toBe('true')
+   expect(spinning.attributes('disabled')).toBeDefined()
+   expect(spinning.find('svg').classes()).toContain('spinning')
+   expect(w.find('[data-testid="watch-button"]').attributes('disabled')).toBeDefined()
+   expect(w.find('[data-testid="watch-hint"]').text()).toBe('Ищем и собираем лучший источник…')
+   expect(w.find('[data-testid="watch-hint-spinner"]').exists()).toBe(true)
+   expect(w.find('[data-testid="source-warning"]').exists()).toBe(false)
+   const fresh=src({source_id:'s-new',title:'Как Витька Чеснок вёз Лёху Штыря в дом инвалидов 2017 2160p WEB-DL',quality:'2160p',seeders:42,health:'healthy',warning:null,default:true,languages:['ru','uk','en'],
+    audio_tracks:[{index:1,language:'ru',title:'Пифагор',codec:'aac'},{index:2,language:'ru',title:'LostFilm',codec:'ac3'},{index:3,language:'uk',title:'Українська',codec:'ac3'},{index:4,language:'en',title:'Original',codec:'ac3'}]})
+   vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-new',sources:[fresh],qualities:[{value:'2160p',available:true}],health:'healthy',warning:null,rebuilding:false}) as any)
+   const calls=vi.mocked(torrentPlaybackApi.sources).mock.calls.length
+   await vi.advanceTimersByTimeAsync(2000);await flushPromises()
+   expect(vi.mocked(torrentPlaybackApi.sources).mock.calls.length).toBe(calls+1)
+   const done=w.find('[data-testid="rebuild-button"]')
+   expect(done.attributes('aria-busy')).toBe('false')
+   expect(done.find('svg').classes()).not.toContain('spinning')
+   expect(w.find('[data-testid="watch-hint-spinner"]').exists()).toBe(false)
+   expect(w.find('[data-testid="watch-status"]').text()).toContain('2160p WEB-DL')
+   expect(w.find('[data-testid="watch-status"]').text()).toContain('▲ 42')
+   expect(w.find('[data-testid="rebuild-toast"]').text()).toContain('Подобран новый источник: 2160p WEB-DL, Пифагор, LostFilm, Українська, Original')
+   await w.find('[data-testid="audio-track-button"]').trigger('click');await flushPromises()
+   const names=[...document.body.querySelectorAll('.audio-modal-name')].map(n=>n.textContent)
+   expect(names).toEqual(['Пифагор','LostFilm','Українська','Original'])
+   await vi.advanceTimersByTimeAsync(8000);await flushPromises()
+   expect(w.find('[data-testid="rebuild-toast"]').exists()).toBe(false)
+  }finally{vi.useRealTimers()}
+ })
+
+ it('a refused rebuild (403) never redirects to the profile: the reason is shown in place',async()=>{
+  vi.mocked(torrentPlaybackApi.sources).mockResolvedValue(view({selected_source_id:'s-dead',sources:[stalled],health:'degraded',warning:stalled.warning}) as any)
+  vi.mocked(torrentPlaybackApi.rebuild).mockRejectedValue(new ApiError(403,'Нужна подписка PRO'))
+  const w=await at()
   await w.find('[data-testid="rebuild-button"]').trigger('click');await flushPromises()
-  expect(torrentPlaybackApi.rebuild).toHaveBeenCalledWith('movie',1,'s-dead')
-  const busy=w.find('[data-testid="rebuild-button"]')
-  expect(busy.attributes('aria-busy')).toBe('true')
-  expect(busy.find('svg').classes()).toContain('spinning')
-  expect(w.find('[data-testid="watch-hint"]').text()).toBe('Подбираем рабочий источник…')
-  expect(w.find('[data-testid="watch-hint-spinner"]').exists()).toBe(true)
-  const fresh={...stalled,source_id:'s-new',seeders:42,health:'healthy',warning:null,default:true}
-  answer(view({selected_source_id:'s-new',sources:[fresh,{...stalled,default:false,health:'dead'}],health:'healthy',warning:null,rebuild:'promoted'}))
-  await flushPromises()
-  const done=w.find('[data-testid="rebuild-button"]')
-  expect(done.attributes('aria-busy')).toBe('false')
-  expect(done.find('svg').classes()).not.toContain('spinning')
-  expect(w.find('[data-testid="watch-status"]').text()).toContain('▲ 42')
-  expect(w.find('[data-testid="source-warning"]').exists()).toBe(false)
-  expect(w.text()).toContain('Источник пересобран: подставлена рабочая раздача')
-  expect(torrentPlaybackApi.rebuild).toHaveBeenCalledTimes(1)
+  expect((w.vm as any).$route.fullPath).toBe('/torrents/movie/1')
+  expect(w.find('[data-testid="rebuild-button"]').attributes('aria-busy')).toBe('false')
+  expect(w.text()).toContain('Нужна подписка PRO')
  })
 
  it.each([['degraded','text-amber'],['dead','text-red']])('a %s release shows the warning badge under «Смотреть» and amber seeders',async(health,tone)=>{
