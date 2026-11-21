@@ -8,4 +8,37 @@ describe('torrent mode boundary',()=>{
  it('adds desktop and mobile torrent menu entries without changing Telegram search',async()=>{localStorage.clear();const router=makeRouter();await router.push('/');await router.isReady();const w=mount(Header,{global:{plugins:[router]}});await flushPromises();expect(w.find('.torrent-nav-entry').attributes('href')).toBe('/torrents');expect(w.find('.header-search').exists()).toBe(true);expect(w.find('.torrent-brand-badge').exists()).toBe(false);w.unmount()})
  it.each(['/torrents','/torrents/tv/87739'])('shows persistent mode and prevents Telegram autocomplete on %s',async path=>{localStorage.clear();const router=makeRouter();await router.push(path);await router.isReady();const w=mount(Header,{global:{plugins:[router]}});await flushPromises();expect(w.find('.torrent-brand-badge').exists()).toBe(false);expect(w.text()).toContain('Кинотека');expect(w.find('.main-catalog-link').text()).toBe('Основной каталог');expect(w.find('.header-search').exists()).toBe(true);await w.find('.mobile-hamburger-btn').trigger('click');expect(w.find('.mobile-search-wrapper').exists()).toBe(true);expect(w.get('nav[aria-label="Мобильная торрент навигация"]').text()).toContain('Основной каталог');await router.push('/');await flushPromises();expect(w.find('.torrent-brand-badge').exists()).toBe(false);expect(w.find('.header-search').exists()).toBe(true);w.unmount()})
  it('keeps unplayable torrent previews out of search indexing',()=>{for(const path of ['/torrents','/torrents?kind=tv','/torrents/tv/87739']){const seo=buildSeo(path,'https://watch.scenrix.com');expect(seo.robots).toBe('noindex, nofollow');expect(seo.title).toContain('TMDB');expect(seo.jsonLd).toHaveLength(0)}})
+
+ it('renders cinematic genres mega-menu with movie and series tabs in torrent mode', async () => {
+  localStorage.clear()
+  const router = makeRouter()
+  await router.push('/torrents')
+  await router.isReady()
+  const w = mount(Header, { global: { plugins: [router] } })
+  await flushPromises()
+
+  const mega = w.find('.genres-mega-dropdown')
+  expect(mega.exists()).toBe(true)
+  expect(mega.text()).toContain('Фильмы')
+  expect(mega.text()).toContain('Сериалы')
+
+  // Movie genres default on /torrents
+  const movieCards = mega.findAll('.genre-banner-card')
+  expect(movieCards.length).toBe(19)
+  expect(mega.text()).toContain('Боевик')
+  expect(mega.text()).toContain('Фантастика')
+  expect(mega.find('.mega-all-link').attributes('href')).toBe('/torrents?kind=movie')
+
+  // Switch to TV tab
+  const tabs = mega.findAll('.mega-tab')
+  await tabs[1].trigger('click')
+  await flushPromises()
+
+  const tvCards = mega.findAll('.genre-banner-card')
+  expect(tvCards.length).toBe(16)
+  expect(mega.text()).toContain('Боевик и приключения')
+  expect(mega.find('.mega-all-link').attributes('href')).toBe('/torrents?kind=tv')
+
+  w.unmount()
+ })
 })

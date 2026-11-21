@@ -2,7 +2,12 @@
 import UserAvatar from './UserAvatar.vue'
 import { t } from '@/i18n'
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { Home, Bell } from 'lucide-vue-next'
+import {
+  Home, Bell, ArrowRight, Layers,
+  Swords, Compass, Sparkles, Smile, Footprints, Video,
+  Theater, Users, Wand2, Landmark, Ghost, Music,
+  Search, Heart, Rocket, Zap, Shield, Sun, Tv
+} from 'lucide-vue-next'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import SearchBar from '@/components/SearchBar.vue'
@@ -10,8 +15,75 @@ import BrandLogo from '@/components/CinemaBrand.vue'
 
 const router = useRouter()
 const route = useRoute()
-const torrentMode=computed(()=>route.path==='/torrents'||route.path.startsWith('/torrents/'))
+const torrentMode = computed(() => route.path === '/torrents' || route.path.startsWith('/torrents/'))
 const authStore = useAuthStore()
+
+interface TorrentGenreItem {
+  id: number
+  name: string
+  slug: string
+  icon: any
+}
+
+const TORRENT_MOVIE_GENRES: TorrentGenreItem[] = [
+  { id: 28, name: 'Боевик', slug: 'boevik', icon: Swords },
+  { id: 12, name: 'Приключения', slug: 'prikljuchenija', icon: Compass },
+  { id: 16, name: 'Мультфильм', slug: 'multfilm', icon: Sparkles },
+  { id: 35, name: 'Комедия', slug: 'komedija', icon: Smile },
+  { id: 80, name: 'Криминал', slug: 'kriminal', icon: Footprints },
+  { id: 99, name: 'Документальный', slug: 'dokumentalnyj', icon: Video },
+  { id: 18, name: 'Драма', slug: 'drama', icon: Theater },
+  { id: 10751, name: 'Семейный', slug: 'semejnyj', icon: Users },
+  { id: 14, name: 'Фэнтези', slug: 'fentezi', icon: Wand2 },
+  { id: 36, name: 'История', slug: 'istorija', icon: Landmark },
+  { id: 27, name: 'Ужасы', slug: 'uzhasy', icon: Ghost },
+  { id: 10402, name: 'Музыка', slug: 'muzyka', icon: Music },
+  { id: 9648, name: 'Детектив', slug: 'detektiv', icon: Search },
+  { id: 10749, name: 'Мелодрама', slug: 'melodrama', icon: Heart },
+  { id: 878, name: 'Фантастика', slug: 'fantastika', icon: Rocket },
+  { id: 10770, name: 'Телефильм', slug: 'televizionnyj-fil-m', icon: Tv },
+  { id: 53, name: 'Триллер', slug: 'triller', icon: Zap },
+  { id: 10752, name: 'Военный', slug: 'voennyj', icon: Shield },
+  { id: 37, name: 'Вестерн', slug: 'vestern', icon: Sun },
+]
+
+const TORRENT_TV_GENRES: TorrentGenreItem[] = [
+  { id: 10759, name: 'Боевик и приключения', slug: 'boevik', icon: Swords },
+  { id: 16, name: 'Мультфильм', slug: 'multfilm', icon: Sparkles },
+  { id: 35, name: 'Комедия', slug: 'komedija', icon: Smile },
+  { id: 80, name: 'Криминал', slug: 'kriminal', icon: Footprints },
+  { id: 99, name: 'Документальный', slug: 'dokumentalnyj', icon: Video },
+  { id: 18, name: 'Драма', slug: 'drama', icon: Theater },
+  { id: 10751, name: 'Семейный', slug: 'semejnyj', icon: Users },
+  { id: 10762, name: 'Детский', slug: 'semejnyj', icon: Sparkles },
+  { id: 9648, name: 'Детектив', slug: 'detektiv', icon: Search },
+  { id: 10763, name: 'Новости', slug: 'dokumentalnyj', icon: Video },
+  { id: 10764, name: 'Реалити-шоу', slug: 'televizionnyj-fil-m', icon: Tv },
+  { id: 10765, name: 'НФ и Фэнтези', slug: 'fantastika', icon: Rocket },
+  { id: 10766, name: 'Мыльная опера', slug: 'melodrama', icon: Heart },
+  { id: 10767, name: 'Ток-шоу', slug: 'komedija', icon: Smile },
+  { id: 10768, name: 'Война и политика', slug: 'voennyj', icon: Shield },
+  { id: 37, name: 'Вестерн', slug: 'vestern', icon: Sun },
+]
+
+const selectedGenreTab = ref<'movie' | 'tv'>('movie')
+watch(() => route.query.kind, (val) => {
+  if (val === 'tv') selectedGenreTab.value = 'tv'
+  else if (val === 'movie') selectedGenreTab.value = 'movie'
+}, { immediate: true })
+
+function closeDropdowns() {
+  document.querySelectorAll('.app-header details[open]').forEach(item => item.removeAttribute('open'))
+}
+
+function onDocumentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement | null
+  if (!target?.closest('.header-genres') && !target?.closest('.notification-menu') && !target?.closest('.profile-menu')) {
+    closeDropdowns()
+  }
+}
+
+
 
 const searchQuery = ref(String(route.query.q||''))
 watch(()=>route.query.q,value=>{searchQuery.value=String(value||'')})
@@ -23,8 +95,8 @@ async function focusSearch() {
  else desktopSearch.value?.focus()
 }
 function shortcut(event: KeyboardEvent) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase()==='k' && !event.altKey) {event.preventDefault();focusSearch()} }
-onMounted(()=>{window.addEventListener('keydown',shortcut);window.addEventListener('showcase:search',focusSearch)})
-onUnmounted(()=>{window.removeEventListener('keydown',shortcut);window.removeEventListener('showcase:search',focusSearch)})
+onMounted(()=>{window.addEventListener('keydown',shortcut);window.addEventListener('showcase:search',focusSearch);window.addEventListener('click',onDocumentClick)})
+onUnmounted(()=>{window.removeEventListener('keydown',shortcut);window.removeEventListener('showcase:search',focusSearch);window.removeEventListener('click',onDocumentClick)})
 
 onMounted(() => {
   if (authStore.token.value && !authStore.user.value) {
@@ -79,7 +151,62 @@ watch(route, () => {
           <router-link to="/torrents" class="nav-link" :class="{active:route.path==='/torrents'&&!Object.keys(route.query).length}"><Home :size="16" stroke-width="1.7" /> Главная</router-link>
           <router-link to="/torrents?kind=movie" class="nav-link" :class="{active:route.query.kind==='movie'}">Фильмы</router-link>
           <router-link to="/torrents?kind=tv" class="nav-link" :class="{active:route.query.kind==='tv'}">Сериалы</router-link>
-          <details class="header-genres"><summary class="nav-link">Жанры ▾</summary><div class="genre-dropdown"><router-link v-for="g in [{id:28,name:'Боевик'},{id:35,name:'Комедия'},{id:878,name:'Фантастика'},{id:27,name:'Ужасы'},{id:53,name:'Триллер'}]" :key="g.id" :to="`/torrents?kind=movie&genre=${g.id}`">{{g.name}}</router-link><router-link to="/torrents?kind=movie">Все жанры</router-link></div></details>
+          <details class="header-genres torrent-genres">
+            <summary class="nav-link" :class="{ active: Boolean(route.query.genre) }">
+              <Layers :size="15" stroke-width="2" /> Жанры ▾
+            </summary>
+            <div class="genres-mega-dropdown">
+              <div class="mega-header">
+                <div class="mega-tabs">
+                  <button
+                    type="button"
+                    class="mega-tab"
+                    :class="{ active: selectedGenreTab === 'movie' }"
+                    @click.prevent="selectedGenreTab = 'movie'"
+                  >
+                    Фильмы
+                  </button>
+                  <button
+                    type="button"
+                    class="mega-tab"
+                    :class="{ active: selectedGenreTab === 'tv' }"
+                    @click.prevent="selectedGenreTab = 'tv'"
+                  >
+                    Сериалы
+                  </button>
+                </div>
+                <router-link
+                  :to="selectedGenreTab === 'movie' ? '/torrents?kind=movie' : '/torrents?kind=tv'"
+                  class="mega-all-link"
+                  @click="closeDropdowns"
+                >
+                  <span>Все {{ selectedGenreTab === 'movie' ? 'фильмы' : 'сериалы' }}</span>
+                  <ArrowRight :size="14" />
+                </router-link>
+              </div>
+
+              <div class="mega-grid">
+                <router-link
+                  v-for="g in (selectedGenreTab === 'movie' ? TORRENT_MOVIE_GENRES : TORRENT_TV_GENRES)"
+                  :key="g.id"
+                  :to="`/torrents?kind=${selectedGenreTab}&genre=${g.id}`"
+                  class="genre-banner-card"
+                  :class="{ active: String(route.query.genre) === String(g.id) && (route.query.kind || 'movie') === selectedGenreTab }"
+                  @click="closeDropdowns"
+                >
+                  <div
+                    class="genre-banner-bg"
+                    :style="{ backgroundImage: `url('/genres/v2/${g.slug}.jpg')` }"
+                  ></div>
+                  <div class="genre-banner-overlay"></div>
+                  <div class="genre-banner-content">
+                    <component :is="g.icon" :size="15" class="genre-banner-icon" />
+                    <span class="genre-banner-name">{{ g.name }}</span>
+                  </div>
+                </router-link>
+              </div>
+            </div>
+          </details>
           <router-link to="/torrents/library" class="nav-link" :class="{ active: route.path === '/torrents/library' }">Кинотека</router-link><router-link to="/" class="nav-link main-catalog-link">Основной каталог</router-link>
         </nav>
       </div>
@@ -155,7 +282,68 @@ watch(route, () => {
           <router-link to="/register" class="mobile-nav-link register" @click="closeMobileMenu">{{ t("Create Account") }}</router-link>
         </template>
       </nav>
-      <nav v-else class="mobile-nav" aria-label="Мобильная торрент навигация"><router-link to="/torrents" class="mobile-nav-link">Главная</router-link><router-link to="/torrents?kind=movie" class="mobile-nav-link">Фильмы</router-link><router-link to="/torrents?kind=tv" class="mobile-nav-link">Сериалы</router-link><details class="mobile-genres"><summary class="mobile-nav-link">Жанры</summary><router-link v-for="g in [{id:28,name:'Боевик'},{id:35,name:'Комедия'},{id:878,name:'Фантастика'},{id:27,name:'Ужасы'},{id:53,name:'Триллер'}]" :key="g.id" :to="`/torrents?kind=movie&genre=${g.id}`" class="mobile-nav-link">{{g.name}}</router-link></details><router-link to="/torrents/library" class="mobile-nav-link">Кинотека</router-link><router-link to="/" class="mobile-nav-link">Основной каталог</router-link><template v-if="!authStore.isAuthenticated.value"><router-link to="/login" class="mobile-nav-link">Войти</router-link><router-link to="/register" class="mobile-nav-link">Регистрация</router-link></template></nav>
+      <nav v-else class="mobile-nav" aria-label="Мобильная торрент навигация">
+        <router-link to="/torrents" class="mobile-nav-link" @click="closeMobileMenu">Главная</router-link>
+        <router-link to="/torrents?kind=movie" class="mobile-nav-link" @click="closeMobileMenu">Фильмы</router-link>
+        <router-link to="/torrents?kind=tv" class="mobile-nav-link" @click="closeMobileMenu">Сериалы</router-link>
+        <details class="mobile-genres">
+          <summary class="mobile-nav-link">Жанры ▾</summary>
+          <div class="mobile-genres-panel">
+            <div class="mobile-mega-tabs">
+              <button
+                type="button"
+                class="mobile-mega-tab"
+                :class="{ active: selectedGenreTab === 'movie' }"
+                @click.prevent="selectedGenreTab = 'movie'"
+              >
+                Фильмы
+              </button>
+              <button
+                type="button"
+                class="mobile-mega-tab"
+                :class="{ active: selectedGenreTab === 'tv' }"
+                @click.prevent="selectedGenreTab = 'tv'"
+              >
+                Сериалы
+              </button>
+            </div>
+            <router-link
+              :to="selectedGenreTab === 'movie' ? '/torrents?kind=movie' : '/torrents?kind=tv'"
+              class="mobile-all-link"
+              @click="closeMobileMenu"
+            >
+              <span>Все {{ selectedGenreTab === 'movie' ? 'фильмы' : 'сериалы' }}</span>
+              <ArrowRight :size="14" />
+            </router-link>
+            <div class="mobile-genre-grid">
+              <router-link
+                v-for="g in (selectedGenreTab === 'movie' ? TORRENT_MOVIE_GENRES : TORRENT_TV_GENRES)"
+                :key="g.id"
+                :to="`/torrents?kind=${selectedGenreTab}&genre=${g.id}`"
+                class="mobile-genre-card"
+                :class="{ active: String(route.query.genre) === String(g.id) && (route.query.kind || 'movie') === selectedGenreTab }"
+                @click="closeMobileMenu"
+              >
+                <div
+                  class="genre-banner-bg"
+                  :style="{ backgroundImage: `url('/genres/v2/${g.slug}.jpg')` }"
+                ></div>
+                <div class="genre-banner-overlay"></div>
+                <div class="genre-banner-content">
+                  <component :is="g.icon" :size="13" class="genre-banner-icon" />
+                  <span class="genre-banner-name">{{ g.name }}</span>
+                </div>
+              </router-link>
+            </div>
+          </div>
+        </details>
+        <router-link to="/torrents/library" class="mobile-nav-link" @click="closeMobileMenu">Кинотека</router-link>
+        <router-link to="/" class="mobile-nav-link" @click="closeMobileMenu">Основной каталог</router-link>
+        <template v-if="!authStore.isAuthenticated.value">
+          <router-link to="/login" class="mobile-nav-link" @click="closeMobileMenu">Войти</router-link>
+          <router-link to="/register" class="mobile-nav-link" @click="closeMobileMenu">Регистрация</router-link>
+        </template>
+      </nav>
     </div>
   </header>
 </template>
@@ -452,4 +640,256 @@ watch(route, () => {
 @media(min-width:1280px) and (max-width:1439px){.torrent-header .header-container{gap:12px!important}.torrent-header .header-left{gap:8px!important}.torrent-header .nav-link{font-size:12px;padding:10px 8px!important}.torrent-header .header-right{gap:12px}.torrent-header .register-btn{display:none}}
 @media(max-width:1279px){.torrent-header .desktop-nav,.torrent-header .header-search,.torrent-header .auth-controls,.torrent-header .notification-menu{display:none!important}.torrent-header .mobile-hamburger-btn{display:flex!important}.torrent-header .header-container{justify-content:space-between!important}.torrent-header .header-left{flex:1 1 auto}.torrent-header .header-right{flex:0 0 auto}.torrent-header .mobile-menu-drawer{display:block!important}}
 @media(max-width:767px){.torrent-header .header-left{gap:8px!important}.torrent-brand-badge{padding:6px 4px}.torrent-brand-badge img{width:44px}.torrent-header :deep(.cinema-brand){font-size:18px}}
+
+/* Torrent Genres Mega Dropdown (Option 1: Cinematic Banners) */
+.torrent-header .header-genres.torrent-genres {
+  position: static !important;
+}
+
+.genres-mega-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1200px, calc(100vw - 32px));
+  background: rgba(16, 19, 26, 0.98);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(245, 184, 0, 0.3);
+  border-radius: 18px;
+  padding: 18px 22px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(245, 184, 0, 0.08);
+  z-index: 250;
+  box-sizing: border-box;
+  animation: megaFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes megaFadeIn {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.mega-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.mega-tabs {
+  display: flex;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mega-tab {
+  background: transparent;
+  border: none;
+  color: #a1a1aa;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 6px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mega-tab:hover {
+  color: #ffffff;
+}
+
+.mega-tab.active {
+  background: #f5b800;
+  color: #0b0d12;
+  box-shadow: 0 2px 10px rgba(245, 184, 0, 0.35);
+}
+
+.mega-all-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #f5b800;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(245, 184, 0, 0.08);
+  border: 1px solid rgba(245, 184, 0, 0.25);
+  transition: all 0.2s ease;
+}
+
+.mega-all-link:hover {
+  background: rgba(245, 184, 0, 0.18);
+  border-color: rgba(245, 184, 0, 0.5);
+  color: #ffd24d;
+}
+
+.mega-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  max-height: calc(80vh - 120px);
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.genre-banner-card {
+  position: relative;
+  height: 52px;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.genre-banner-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  transition: transform 0.35s ease;
+}
+
+.genre-banner-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(12, 15, 22, 0.9) 0%, rgba(12, 15, 22, 0.65) 100%);
+  transition: background 0.2s ease;
+}
+
+.genre-banner-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  width: 100%;
+}
+
+.genre-banner-icon {
+  color: #f5b800;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.genre-banner-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+}
+
+.genre-banner-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245, 184, 0, 0.7);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 0 16px rgba(245, 184, 0, 0.25);
+}
+
+.genre-banner-card:hover .genre-banner-bg {
+  transform: scale(1.12);
+}
+
+.genre-banner-card:hover .genre-banner-overlay {
+  background: linear-gradient(90deg, rgba(18, 22, 32, 0.8) 0%, rgba(245, 184, 0, 0.25) 100%);
+}
+
+.genre-banner-card:hover .genre-banner-icon {
+  transform: scale(1.15);
+}
+
+.genre-banner-card:hover .genre-banner-name {
+  color: #ffd24d;
+}
+
+.genre-banner-card.active {
+  border-color: #f5b800;
+  box-shadow: 0 0 14px rgba(245, 184, 0, 0.4);
+  background: rgba(245, 184, 0, 0.15);
+}
+
+/* Mobile Genres Panel */
+.mobile-genres-panel {
+  padding: 10px 0;
+}
+
+.mobile-mega-tabs {
+  display: flex;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.mobile-mega-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #a1a1aa;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mobile-mega-tab.active {
+  background: #f5b800;
+  color: #0b0d12;
+}
+
+.mobile-all-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #f5b800;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(245, 184, 0, 0.08);
+  border: 1px solid rgba(245, 184, 0, 0.2);
+  margin-bottom: 8px;
+}
+
+.mobile-genre-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.mobile-genre-card {
+  position: relative;
+  height: 44px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
+}
+
+.mobile-genre-card.active {
+  border-color: #f5b800;
+}
 </style>
