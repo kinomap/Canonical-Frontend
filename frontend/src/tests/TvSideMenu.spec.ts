@@ -5,7 +5,8 @@ import { defineComponent, h, ref } from 'vue'
 import TvSideMenu from '@/views/tv/TvSideMenu.vue'
 import { TV_MENU_ITEMS, TV_MENU_SECTIONS, tvMenuIdForRoute, tvMenuIndex } from '@/views/tv/tvMenu'
 import { useTvMenu, TV_SEARCH_NOTICE } from '@/views/tv/useTvMenu'
-import { TV_LAUNCHER_URL, tvLauncher } from '@/views/tv/tvLauncher'
+import { TV_EXIT_FALLBACK_MS, TV_LAUNCHER_URL, resetTvLauncherForTests, tvLauncher } from '@/views/tv/tvLauncher'
+import { TV_ICONS, containsEmoji } from '@/views/tv/tvIcons'
 
 describe('TV left menu: sections and routes', () => {
   it('splits the menu into online catalogue, torrent hub, mine & profile and system', () => {
@@ -27,6 +28,13 @@ describe('TV left menu: sections and routes', () => {
       ['system', 'Выход в Launcher', null],
     ])
     expect(TV_MENU_ITEMS.at(-1)?.id).toBe('exit')
+  })
+
+  it('uses vector icons of the TV set, never emoji', () => {
+    for (const item of TV_MENU_ITEMS) {
+      expect(Object.keys(TV_ICONS)).toContain(item.icon)
+      expect(containsEmoji(item.icon + item.label)).toBe(false)
+    }
   })
 
   it('marks the active entry for every TV route', () => {
@@ -66,6 +74,16 @@ describe('TvSideMenu.vue', () => {
     expect(wrapper.get('[data-testid="tv-menu-series"]').classes()).toContain('tv-focused')
     expect(wrapper.get('[data-testid="tv-menu-home"]').classes()).toContain('active')
     expect(wrapper.get('[data-testid="tv-menu-exit"]').text()).toContain('Выход в Launcher')
+  })
+
+  it('renders an inline SVG icon per entry, a glass panel with a scrim and a status card, without emoji', () => {
+    const wrapper = mount(TvSideMenu, { props: { open: true, focusedIndex: -1, activeIndex: -1 } })
+    expect(wrapper.findAll('.tv-menu-item svg.tv-icon')).toHaveLength(TV_MENU_ITEMS.length)
+    expect(wrapper.get('[data-testid="tv-menu-exit"] svg').attributes('data-icon')).toBe('exit')
+    expect(wrapper.find('.tv-menu-glass').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="tv-menu-scrim"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="tv-menu-status"]').text()).toContain('Гость')
+    expect(containsEmoji(wrapper.text())).toBe(false)
   })
 
   it('emits the index of the clicked entry', async () => {
@@ -117,15 +135,54 @@ describe('useTvMenu: menu entries on the remote', () => {
     const wrapper = mount(Harness, { global: { plugins: [router] } })
     ;(wrapper.vm as unknown as { open: (i: number) => boolean }).open(tvMenuIndex('exit'))
     expect(exit).toHaveBeenCalledTimes(1)
-    expect(TV_LAUNCHER_URL).toBe('https://watch.scenrix.com/launcher')
+    expect(TV_LAUNCHER_URL).toBe('https://www.kinosota.devs.surf/')
+  })
+})
+
+describe('tvLauncher.exit: back to MSX / Launcher, never a desktop page', () => {
+  function fakeWindow(overrides: { length?: number; msx?: boolean; navigatesAway?: boolean } = {}) {
+    const location = { href: 'https://watch.scenrix.com/tv', replace: vi.fn() }
+    const win = {
+      location,
+      closed: false,
+      history: { length: overrides.length ?? 1, go: vi.fn(() => { if (overrides.navigatesAway) location.href = 'https://www.kinosota.devs.surf/' }) },
+      close: vi.fn(),
+      TVXInteractionPlugin: overrides.msx ? { executeAction: vi.fn() } : undefined,
+    }
+    return win
+  }
+
+  beforeEach(() => { vi.useFakeTimers(); resetTvLauncherForTests(); sessionStorage.clear() })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('asks MSX to go back, rewinds the history to the entry that opened /tv and closes the window', () => {
+    const win = fakeWindow({ length: 4, msx: true, navigatesAway: true })
+    tvLauncher.exit(win as never)
+    expect(win.TVXInteractionPlugin!.executeAction).toHaveBeenCalledWith('back')
+    expect(win.history.go).toHaveBeenCalledWith(-3)
+    expect(win.close).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(TV_EXIT_FALLBACK_MS)
+    expect(win.location.replace).not.toHaveBeenCalled()
   })
 
-  it('tvLauncher.exit goes to the launcher URL', () => {
-    const assign = vi.fn()
-    const original = window.location
-    Object.defineProperty(window, 'location', { configurable: true, value: { ...original, assign } })
-    tvLauncher.exit()
-    expect(assign).toHaveBeenCalledWith('https://watch.scenrix.com/launcher')
-    Object.defineProperty(window, 'location', { configurable: true, value: original })
+  it('falls back to the launcher root when the host keeps the page open', () => {
+    const win = fakeWindow({ length: 1 })
+    tvLauncher.exit(win as never)
+    expect(win.history.go).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(TV_EXIT_FALLBACK_MS)
+    expect(win.location.replace).toHaveBeenCalledWith('https://www.kinosota.devs.surf/')
+  })
+
+  it('clears the TV focus memory and ignores a second exit while one is running', () => {
+    sessionStorage.setItem('kinosota:tv-focus:home', '{}')
+    sessionStorage.setItem('other', '1')
+    const win = fakeWindow()
+    tvLauncher.exit(win as never)
+    tvLauncher.exit(win as never)
+    expect(win.close).toHaveBeenCalledTimes(1)
+    expect(sessionStorage.getItem('kinosota:tv-focus:home')).toBeNull()
+    expect(sessionStorage.getItem('other')).toBe('1')
+    vi.advanceTimersByTime(TV_EXIT_FALLBACK_MS)
+    expect(win.location.replace).toHaveBeenCalledTimes(1)
   })
 })

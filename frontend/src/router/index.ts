@@ -83,6 +83,8 @@ const router = createRouter({
     { path: '/tv/torrents/series', name: 'tv-torrent-series', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'torrent-series' } },
     { path: '/tv/genres/:source(catalog|torrents)/:slug', name: 'tv-genre', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'genre' } },
     { path: '/tv/library', name: 'tv-library', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'library' } },
+    // Any other /tv/* address stays inside the TV layer (TV 404 with «Вернуться на главную ТВ»), never the desktop 404.
+    { path: '/tv/:pathMatch(.*)*', name: 'tv-not-found', component: () => import('@/views/tv/TvNotFoundView.vue'), meta: { tvLayer: true } },
     // KINOSOTA Player browser sign-in: one-click approval in the modal (DesktopAuthorizeModal), open to guests.
     { path: '/auth/desktop', name: 'desktop-auth', redirect: (to) => ({ path: '/', query: { player_code: String(to.query.code ?? '') } }) },
     {

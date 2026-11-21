@@ -3,6 +3,7 @@
  * (`menu:<index>`), rendered in sections: online catalogue (Telegram), torrent hub, mine, system.
  */
 import type { LocationQuery } from 'vue-router'
+import type { TvIconName } from './tvIcons'
 
 export type TvMenuSection = 'top' | 'catalog' | 'torrents' | 'mine' | 'system'
 export type TvMenuId =
@@ -12,7 +13,8 @@ export type TvMenuId =
   | 'library' | 'profile'
   | 'exit'
 
-export interface TvMenuItem { id: TvMenuId; section: TvMenuSection; icon: string; label: string; to?: string }
+/** `icon` is a vector icon of the TV set (tvIcons.ts), never an emoji. */
+export interface TvMenuItem { id: TvMenuId; section: TvMenuSection; icon: TvIconName; label: string; to?: string }
 
 export const TV_MENU_SECTIONS: { id: TvMenuSection; title: string }[] = [
   { id: 'top', title: '' },
@@ -23,18 +25,18 @@ export const TV_MENU_SECTIONS: { id: TvMenuSection; title: string }[] = [
 ]
 
 export const TV_MENU_ITEMS: TvMenuItem[] = [
-  { id: 'search', section: 'top', icon: '🔍', label: 'Поиск' },
-  { id: 'home', section: 'catalog', icon: '🏠', label: 'Главная', to: '/tv' },
-  { id: 'movies', section: 'catalog', icon: '🎬', label: 'Фильмы онлайн', to: '/tv/movies' },
-  { id: 'series', section: 'catalog', icon: '📺', label: 'Сериалы онлайн', to: '/tv/series' },
-  { id: 'genres', section: 'catalog', icon: '🎭', label: 'Жанры каталога', to: '/tv/genres?source=catalog' },
-  { id: 'torrents', section: 'torrents', icon: '⚡', label: 'Торренты: Главная', to: '/tv/torrents' },
-  { id: 'torrent-movies', section: 'torrents', icon: '💿', label: 'Торрент-фильмы', to: '/tv/torrents/movies' },
-  { id: 'torrent-series', section: 'torrents', icon: '🎞️', label: 'Торрент-сериалы', to: '/tv/torrents/series' },
-  { id: 'torrent-genres', section: 'torrents', icon: '🌟', label: 'Торрент-жанры', to: '/tv/genres?source=torrents' },
-  { id: 'library', section: 'mine', icon: '📁', label: 'Кинотека (История / Закладки)', to: '/tv/library' },
-  { id: 'profile', section: 'mine', icon: '👤', label: 'Профиль', to: '/tv/auth' },
-  { id: 'exit', section: 'system', icon: '🚪', label: 'Выход в Launcher' },
+  { id: 'search', section: 'top', icon: 'search', label: 'Поиск' },
+  { id: 'home', section: 'catalog', icon: 'home', label: 'Главная', to: '/tv' },
+  { id: 'movies', section: 'catalog', icon: 'movies', label: 'Фильмы онлайн', to: '/tv/movies' },
+  { id: 'series', section: 'catalog', icon: 'series', label: 'Сериалы онлайн', to: '/tv/series' },
+  { id: 'genres', section: 'catalog', icon: 'genres', label: 'Жанры каталога', to: '/tv/genres?source=catalog' },
+  { id: 'torrents', section: 'torrents', icon: 'torrents', label: 'Торренты: Главная', to: '/tv/torrents' },
+  { id: 'torrent-movies', section: 'torrents', icon: 'disc', label: 'Торрент-фильмы', to: '/tv/torrents/movies' },
+  { id: 'torrent-series', section: 'torrents', icon: 'reel', label: 'Торрент-сериалы', to: '/tv/torrents/series' },
+  { id: 'torrent-genres', section: 'torrents', icon: 'galaxy', label: 'Торрент-жанры', to: '/tv/genres?source=torrents' },
+  { id: 'library', section: 'mine', icon: 'library', label: 'Кинотека (История / Закладки)', to: '/tv/library' },
+  { id: 'profile', section: 'mine', icon: 'profile', label: 'Профиль', to: '/tv/auth' },
+  { id: 'exit', section: 'system', icon: 'exit', label: 'Выход в Launcher' },
 ]
 
 export function tvMenuIndex(id: TvMenuId): number {

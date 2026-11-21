@@ -12,7 +12,8 @@ vi.mock('@/api/torrents', async (importOriginal) => {
 })
 
 import TvGenresView from '@/views/tv/TvGenresView.vue'
-import { genreIcon } from '@/views/tv/tvGenres'
+import { genreIcon, genreTheme } from '@/views/tv/tvGenres'
+import { containsEmoji } from '@/views/tv/tvIcons'
 
 const NAMES = ['боевик', 'приключения', 'комедия', 'фантастика', 'ужасы', 'триллер', 'детектив', 'драма', 'семейный', 'мультфильм', 'вестерн', 'история']
 const SLUGS = ['action', 'adventure', 'comedy', 'scifi', 'horror', 'thriller', 'detective', 'drama', 'family', 'animation', 'western', 'history']
@@ -60,19 +61,24 @@ describe('TvGenresView.vue', () => {
     expect(api.listGenres).toHaveBeenCalledTimes(1)
     const rows = wrapper!.findAll('.tv-genres-row')
     expect(rows.map(row => row.findAll('.tv-genre-card').length)).toEqual([5, 5, 2])
-    expect(wrapper!.get('[data-testid="tv-genre-action"]').text()).toContain('⚔️')
+    expect(wrapper!.get('[data-testid="tv-genre-action"]').find('svg[data-icon="flame"]').exists()).toBe(true)
     expect(wrapper!.get('[data-testid="tv-genre-action"]').text()).toContain('Боевик')
-    expect(wrapper!.get('[data-testid="tv-genre-family"]').text()).toContain('👨‍👩‍👧')
-    expect(wrapper!.get('[data-testid="tv-genre-animation"]').text()).toContain('✨')
+    expect(wrapper!.get('[data-testid="tv-genre-family"]').find('svg[data-icon="family"]').exists()).toBe(true)
+    expect(wrapper!.get('[data-testid="tv-genre-animation"]').find('svg[data-icon="sparkles"]').exists()).toBe(true)
+    expect(wrapper!.get('[data-testid="tv-genre-action"]').classes()).toContain('theme-fire')
+    expect(containsEmoji(wrapper!.text())).toBe(false)
     expect(wrapper!.get('[data-testid="tv-genres-tab-catalog"]').classes()).toContain('active')
     expect(focused()).toEqual(['tabs:0'])
   })
 
-  it('maps genre names to icons with a fallback', () => {
+  it('maps genre names to vector stickers and gradients with a fallback', () => {
     expect(['боевик', 'приключения', 'комедия', 'фантастика', 'ужасы', 'триллер', 'детектив', 'драма'].map(genreIcon))
-      .toEqual(['⚔️', '🧭', '😄', '🚀', '👻', '⚡', '🔍', '🎭'])
-    expect(genreIcon('мелодрама')).toBe('💞')
-    expect(genreIcon('что-то новое')).toBe('🎬')
+      .toEqual(['flame', 'compass', 'smile', 'rocket', 'ghost', 'pulse', 'search', 'genres'])
+    expect(genreIcon('мелодрама')).toBe('heart')
+    expect(genreIcon('что-то новое')).toBe('movies')
+    expect(genreTheme('ужасы')).toBe('mystic')
+    expect(genreTheme('фантастика')).toBe('indigo')
+    expect(genreTheme('детектив')).toBe('noir')
   })
 
   it('moves freely over the grid with the arrows, keeping the column, with the neon focus', async () => {
