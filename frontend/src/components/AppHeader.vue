@@ -131,7 +131,7 @@ watch(route, () => {
     <div class="header-container">
       <!-- Left: Logo & Brand -->
       <div class="header-left">
-        <router-link :to="torrentMode?'/torrents':'/'" class="brand-link" tabindex="0">
+        <router-link to="/" class="brand-link" tabindex="0">
           <div class="desktop-logo">
             <BrandLogo />
           </div>
@@ -269,7 +269,7 @@ watch(route, () => {
         <router-link to="/series" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Series") }}</router-link>
         <router-link to="/genres" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Genres") }}</router-link>
 
-        <router-link to="/torrents" class="mobile-nav-link" @click="closeMobileMenu">Торренты</router-link>
+        <router-link to="/torrents" class="mobile-nav-link torrent-nav-entry" @click="closeMobileMenu">Торренты</router-link>
 
         <div class="mobile-auth-divider"></div>
 
@@ -338,7 +338,7 @@ watch(route, () => {
           </div>
         </details>
         <router-link to="/torrents/library" class="mobile-nav-link" @click="closeMobileMenu">Кинотека</router-link>
-        <router-link to="/" class="mobile-nav-link" @click="closeMobileMenu">Основной каталог</router-link>
+        <router-link to="/" class="mobile-nav-link main-catalog-link" @click="closeMobileMenu">Основной каталог</router-link>
         <template v-if="!authStore.isAuthenticated.value">
           <router-link to="/login" class="mobile-nav-link" @click="closeMobileMenu">Войти</router-link>
           <router-link to="/register" class="mobile-nav-link" @click="closeMobileMenu">Регистрация</router-link>
@@ -598,8 +598,26 @@ watch(route, () => {
 }
 
 .mobile-nav-link:hover {
-  background: var(--ui-raised);
-  color: var(--ui-text);
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.mobile-nav-link.torrent-nav-entry {
+  color: #2dd4bf !important;
+}
+
+.mobile-nav-link.torrent-nav-entry:hover {
+  color: #5eead4 !important;
+  background: rgba(45, 212, 191, 0.12) !important;
+}
+
+.mobile-nav-link.main-catalog-link {
+  color: #F5B800 !important;
+}
+
+.mobile-nav-link.main-catalog-link:hover {
+  color: #ffd447 !important;
+  background: rgba(245, 184, 0, 0.12) !important;
 }
 
 .mobile-nav-link.register {
@@ -636,7 +654,7 @@ watch(route, () => {
 }
 </style>
 <style scoped>
-.torrent-header{--ui-link:#9ce8d7;--ui-accent:#f4d45e}.torrent-brand-badge{display:flex;align-items:center;flex:none;padding:8px 6px;border:1px solid #527d7355;border-radius:6px}.torrent-brand-badge img{display:block;width:50px;height:auto}.torrent-header .brand-link{flex:0 0 auto}.torrent-header .header-left{flex:0 1 auto;gap:12px!important}.torrent-header .desktop-nav{gap:4px!important;white-space:nowrap}.torrent-header .nav-link{display:inline-flex;align-items:center;font-size:14px;padding:10px 12px!important}.torrent-header .header-right{flex:1 1 360px;gap:16px}.torrent-header .header-search{min-width:200px!important}.torrent-header .main-catalog-link{display:inline-flex;font-size:14px}.torrent-header .nav-link.active{color:#f4d45e!important}.torrent-nav-entry{color:#9ce8d7}
+.torrent-header{--ui-link:#9ce8d7;--ui-accent:#f4d45e}.torrent-brand-badge{display:flex;align-items:center;flex:none;padding:8px 6px;border:1px solid #527d7355;border-radius:6px}.torrent-brand-badge img{display:block;width:50px;height:auto}.torrent-header .brand-link{flex:0 0 auto}.torrent-header .header-left{flex:0 1 auto;gap:12px!important}.torrent-header .desktop-nav{gap:4px!important;white-space:nowrap}.torrent-header .nav-link{display:inline-flex;align-items:center;font-size:14px;padding:10px 12px!important}.torrent-header .header-right{flex:1 1 360px;gap:16px}.torrent-header .header-search{min-width:200px!important}.torrent-header .main-catalog-link{display:inline-flex;font-size:14px}.torrent-header .nav-link.active{color:#f4d45e!important}
 @media(min-width:1280px) and (max-width:1439px){.torrent-header .header-container{gap:12px!important}.torrent-header .header-left{gap:8px!important}.torrent-header .nav-link{font-size:12px;padding:10px 8px!important}.torrent-header .header-right{gap:12px}.torrent-header .register-btn{display:none}}
 @media(max-width:1279px){.torrent-header .desktop-nav,.torrent-header .header-search,.torrent-header .auth-controls,.torrent-header .notification-menu{display:none!important}.torrent-header .mobile-hamburger-btn{display:flex!important}.torrent-header .header-container{justify-content:space-between!important}.torrent-header .header-left{flex:1 1 auto}.torrent-header .header-right{flex:0 0 auto}.torrent-header .mobile-menu-drawer{display:block!important}}
 @media(max-width:767px){.torrent-header .header-left{gap:8px!important}.torrent-brand-badge{padding:6px 4px}.torrent-brand-badge img{width:44px}.torrent-header :deep(.cinema-brand){font-size:18px}}
