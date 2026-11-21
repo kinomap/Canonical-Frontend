@@ -608,7 +608,7 @@ watch(route, () => {
 
 .mobile-nav-link.torrent-nav-entry:hover {
   color: #5eead4 !important;
-  background: rgba(45, 212, 191, 0.12) !important;
+  background: rgba(45, 212, 191, 0.08) !important;
 }
 
 .mobile-nav-link.main-catalog-link {
@@ -617,7 +617,7 @@ watch(route, () => {
 
 .mobile-nav-link.main-catalog-link:hover {
   color: #ffd447 !important;
-  background: rgba(245, 184, 0, 0.12) !important;
+  background: rgba(245, 184, 0, 0.08) !important;
 }
 
 .mobile-nav-link.register {
