@@ -66,6 +66,8 @@ const router = createRouter({
       component: RegisterView
     },
     { path: '/player', name: 'desktop-player', component: () => import('@/views/DesktopPlayerView.vue') },
+    // KINOSOTA TV layer (Media Station X / Smart TV browsers): own lazy chunk, no site header/footer.
+    { path: '/tv', name: 'tv-home', component: () => import('@/views/tv/TvHomeView.vue'), meta: { tvLayer: true } },
     // KINOSOTA Player browser sign-in: one-click approval in the modal (DesktopAuthorizeModal), open to guests.
     { path: '/auth/desktop', name: 'desktop-auth', redirect: (to) => ({ path: '/', query: { player_code: String(to.query.code ?? '') } }) },
     {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { RouterView, useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import CinemaFooter from '@/components/CinemaFooter.vue'
@@ -16,6 +16,8 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const cinemaPrestart = useCinemaPrestart()
+// The TV layer (/tv) draws its own full-screen chrome: no site header, skip link or footer.
+const tvLayer = computed(() => route.meta.tvLayer === true)
 
 // Modal state — shown when auth:expired fires
 const sessionExpiredVisible = ref(false)
@@ -53,13 +55,13 @@ onUnmounted(() => {
 
 <template>
   <div class="app-wrapper" @pointerover="warmCatalogLink" @focusin="warmCatalogLink" @touchstart.passive="warmCatalogLink">
-    <a class="skip-link" href="#main-content">Перейти к содержимому</a>
-    <AppHeader />
+    <a v-if="!tvLayer" class="skip-link" href="#main-content">Перейти к содержимому</a>
+    <AppHeader v-if="!tvLayer" />
     <p v-if="toastMessage" class="global-toast" role="status" aria-live="polite">{{toastMessage}}</p>
     <main id="main-content" tabindex="-1" class="app-main">
       <RouterView />
     </main>
-    <CinemaFooter v-if="!['/profile','/login','/register'].includes(route.path) && !route.path.startsWith('/torrents')" />
+    <CinemaFooter v-if="!tvLayer && !['/profile','/login','/register'].includes(route.path) && !route.path.startsWith('/torrents')" />
 
     <DesktopAuthorizeModal />
     <CinemaPrestartOverlay :show="cinemaPrestart.visible" @cancel="cancelCinemaPrestart" />
