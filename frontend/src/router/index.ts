@@ -68,6 +68,10 @@ const router = createRouter({
     { path: '/player', name: 'desktop-player', component: () => import('@/views/DesktopPlayerView.vue') },
     // KINOSOTA TV layer (Media Station X / Smart TV browsers): own lazy chunk, no site header/footer.
     { path: '/tv', name: 'tv-home', component: () => import('@/views/tv/TvHomeView.vue'), meta: { tvLayer: true } },
+    // TV sign-in by QR code / short code (device flow): no typing with the remote.
+    { path: '/tv/auth', name: 'tv-auth', component: () => import('@/views/tv/TvAuthView.vue'), meta: { tvLayer: true } },
+    // Full-screen remote-controlled player of the TV layer (?src=torrent|catalog&kind=…&id=…).
+    { path: '/tv/player', name: 'tv-player', component: () => import('@/views/tv/TvPlayerView.vue'), meta: { tvLayer: true } },
     // KINOSOTA Player browser sign-in: one-click approval in the modal (DesktopAuthorizeModal), open to guests.
     { path: '/auth/desktop', name: 'desktop-auth', redirect: (to) => ({ path: '/', query: { player_code: String(to.query.code ?? '') } }) },
     {

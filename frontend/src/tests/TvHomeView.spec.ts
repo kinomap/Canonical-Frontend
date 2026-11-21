@@ -82,7 +82,7 @@ describe('TvHomeView.vue', () => {
     expect(document.activeElement).toBe(wrapper!.get('[data-testid="tv-hero-watch"]').element)
   })
 
-  it('walks the shelves with the arrows and opens the focused card with Enter', async () => {
+  it('walks the shelves with the arrows and plays the focused card in the TV player with Enter', async () => {
     await mountHome()
     press('ArrowDown'); press('ArrowRight'); await nextTick()
     expect(focused()).toEqual(['popular:1'])
@@ -91,13 +91,15 @@ describe('TvHomeView.vue', () => {
     press('ArrowUp'); press('ArrowUp'); await nextTick()
     expect(focused()).toEqual(['popular:1'])
     press('Enter'); await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/movies/p2/pop-2')
+    expect(router.currentRoute.value.path).toBe('/tv/player')
+    expect(router.currentRoute.value.query).toEqual({ src: 'catalog', kind: 'movie', id: 'p2' })
   })
 
-  it('«Смотреть» opens the spotlight title', async () => {
+  it('«Смотреть» plays the spotlight title in the TV player', async () => {
     await mountHome()
     press('Enter'); await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/torrents/movie/550')
+    expect(router.currentRoute.value.path).toBe('/tv/player')
+    expect(router.currentRoute.value.query).toEqual({ src: 'torrent', kind: 'movie', id: '550' })
   })
 
   it('opens the left menu with ArrowLeft from the first card and jumps to a section', async () => {
@@ -113,13 +115,13 @@ describe('TvHomeView.vue', () => {
     expect(focused()).toEqual(['torrents:0'])
   })
 
-  it('menu «Поиск» shows a notice and «Профиль» opens the profile', async () => {
+  it('menu «Поиск» shows a notice and «Профиль» opens the TV sign-in', async () => {
     await mountHome()
     press('ArrowLeft'); press('Enter'); await nextTick()
     expect(wrapper!.get('[data-testid="tv-notice"]').text()).toContain('Поиск')
     press('ArrowLeft'); for (let i = 0; i < 5; i++) press('ArrowDown')
     press('Enter'); await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/profile')
+    expect(router.currentRoute.value.path).toBe('/tv/auth')
   })
 
   it('Back on a shelf returns to the banner, Back on the banner is left to the TV', async () => {

@@ -7,7 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { apiClient } from '@/api/client'
-import { torrentsApi, torrentPath } from '@/api/torrents'
+import { torrentsApi } from '@/api/torrents'
 import { useTvNavigation, type TvRow, type TvSelectTarget } from '@/composables/useTvNavigation'
 import { useTvSpotlight } from '@/composables/useTvSpotlight'
 import TvSideMenu from './TvSideMenu.vue'
@@ -15,6 +15,7 @@ import TvSpotlightHero from './TvSpotlightHero.vue'
 import TvShelf from './TvShelf.vue'
 import { TV_MENU_ITEMS } from './tvMenu'
 import { movieCard, seriesCard, torrentCard, type TvCard } from './tvCards'
+import { tvPlayerLocation } from './tvPlayback'
 
 interface TvShelfModel { id: string; title: string; cards: TvCard[] }
 
@@ -49,18 +50,18 @@ function showNotice(text: string) {
 
 function openContent(rowId: string, index: number) {
   if (rowId === 'hero') {
-    if (hero.value) void router.push(torrentPath(hero.value))
+    if (hero.value) void router.push(tvPlayerLocation({ src: 'torrent', kind: hero.value.kind, id: String(hero.value.tmdb_id) }))
     return
   }
   const card = shelves.value.find(shelf => shelf.id === rowId)?.cards[index]
-  if (card) void router.push(card.to)
+  if (card) void router.push(tvPlayerLocation(card.play))
 }
 
 function openMenuItem(index: number) {
   const item = TV_MENU_ITEMS[index]
   if (!item) return
   if (item.id === 'search') { showNotice('Поиск с экранной клавиатурой скоро появится'); return }
-  if (item.id === 'profile') { void router.push('/profile'); return }
+  if (item.id === 'profile') { void router.push('/tv/auth'); return }
   const rowId = MENU_SECTION_ROW[item.id]
   if (rowId) nav.focusRow(rowId)
 }
