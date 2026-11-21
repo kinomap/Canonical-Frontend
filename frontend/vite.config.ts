@@ -9,6 +9,10 @@ const __dirname = path.dirname(__filename)
 
 export default defineConfig({
   plugins: [vue()],
+  build: {
+    target: 'chrome64',
+    cssTarget: 'chrome64'
+  },
   resolve: {
     dedupe: ['vue'],
     alias: {

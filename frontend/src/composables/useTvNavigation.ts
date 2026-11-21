@@ -19,31 +19,34 @@ export type TvAction =
 
 export type TvMediaAction = Extract<TvAction, 'playPause' | 'play' | 'pause' | 'fastForward' | 'rewind'>
 
-/** Hardware "Back" key codes: Samsung Tizen (10009), LG webOS (461). */
-export const TV_BACK_KEYCODES = [10009, 461] as const
+/** Hardware "Back" key codes: Samsung Tizen (10009), LG webOS (461), HbbTV / MSX (196), Netcast (145), Android TV (4), Escape (27), Backspace (8). */
+export const TV_BACK_KEYCODES = [10009, 461, 196, 145, 4, 27, 8] as const
 
 const KEY_ACTIONS: Record<string, TvAction> = {
   ArrowUp: 'up', Up: 'up',
   ArrowDown: 'down', Down: 'down',
   ArrowLeft: 'left', Left: 'left',
   ArrowRight: 'right', Right: 'right',
-  Enter: 'select', NumpadEnter: 'select',
-  Escape: 'back', Esc: 'back', Backspace: 'back', GoBack: 'back', BrowserBack: 'back',
+  Enter: 'select', NumpadEnter: 'select', Select: 'select',
+  Escape: 'back', Esc: 'back', Backspace: 'back', GoBack: 'back', BrowserBack: 'back', Back: 'back',
   MediaPlayPause: 'playPause', MediaPlay: 'play', MediaPause: 'pause',
   MediaFastForward: 'fastForward', MediaRewind: 'rewind',
 }
 
 /** Legacy TV browsers report `key: "Unidentified"`: fall back to the numeric codes. */
 const KEYCODE_ACTIONS: Record<number, TvAction> = {
-  37: 'left', 38: 'up', 39: 'right', 40: 'down', 13: 'select', 27: 'back', 8: 'back',
-  10009: 'back', 461: 'back',
+  37: 'left', 38: 'up', 39: 'right', 40: 'down',
+  13: 'select', 29443: 'select', 195: 'select', 23: 'select', 66: 'select', 32: 'select',
+  27: 'back', 8: 'back', 10009: 'back', 461: 'back', 196: 'back', 145: 'back', 4: 'back',
   179: 'playPause', 10252: 'playPause', 415: 'play', 19: 'pause', 417: 'fastForward', 412: 'rewind',
 }
 
-export function resolveTvKey(event: Pick<KeyboardEvent, 'key' | 'code' | 'keyCode'>): TvAction | null {
+export function resolveTvKey(event: Pick<KeyboardEvent, 'key' | 'code' | 'keyCode'> & { which?: number }): TvAction | null {
   if (event.code === 'NumpadEnter') return 'select'
-  if ((TV_BACK_KEYCODES as readonly number[]).includes(event.keyCode)) return 'back'
-  return KEY_ACTIONS[event.key] ?? KEYCODE_ACTIONS[event.keyCode] ?? null
+  const code = event.keyCode || event.which || 0
+  if ((TV_BACK_KEYCODES as readonly number[]).includes(code as (typeof TV_BACK_KEYCODES)[number])) return 'back'
+  const keyAction = event.key && event.key !== 'Unidentified' ? KEY_ACTIONS[event.key] : null
+  return keyAction ?? KEYCODE_ACTIONS[code] ?? null
 }
 
 export interface TvRow { id: string; size: number }

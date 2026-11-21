@@ -70,11 +70,19 @@ describe('resolveTvKey', () => {
     expect(resolveTvKey({ key: 'MediaRewind', code: '', keyCode: 0 })).toBe('rewind')
   })
 
-  it('recognises the Samsung (10009) and LG (461) Back buttons and legacy key codes', () => {
+  it('recognises the Samsung (10009), LG (461), Android TV (4), HbbTV (196), Netcast (145) Back buttons and legacy key codes', () => {
     expect(resolveTvKey({ key: 'XF86Back', code: '', keyCode: 10009 })).toBe('back')
     expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 461 })).toBe('back')
+    expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 196 })).toBe('back')
+    expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 145 })).toBe('back')
+    expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 4 })).toBe('back')
     expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 39 })).toBe('right')
     expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 13 })).toBe('select')
+    expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 29443 })).toBe('select')
+    expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 195 })).toBe('select')
+    expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 23 })).toBe('select')
+    expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 66 })).toBe('select')
+    expect(resolveTvKey({ key: 'Unidentified', code: '', keyCode: 32 })).toBe('select')
     expect(resolveTvKey({ key: 'a', code: 'KeyA', keyCode: 65 })).toBeNull()
   })
 })

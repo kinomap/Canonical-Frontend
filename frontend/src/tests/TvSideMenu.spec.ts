@@ -135,7 +135,7 @@ describe('useTvMenu: menu entries on the remote', () => {
     const wrapper = mount(Harness, { global: { plugins: [router] } })
     ;(wrapper.vm as unknown as { open: (i: number) => boolean }).open(tvMenuIndex('exit'))
     expect(exit).toHaveBeenCalledTimes(1)
-    expect(TV_LAUNCHER_URL).toBe('https://www.kinosota.devs.surf/')
+    expect(TV_LAUNCHER_URL).toBe('http://www.kinosota.devs.surf/')
   })
 })
 
@@ -145,7 +145,7 @@ describe('tvLauncher.exit: back to MSX / Launcher, never a desktop page', () => 
     const win = {
       location,
       closed: false,
-      history: { length: overrides.length ?? 1, go: vi.fn(() => { if (overrides.navigatesAway) location.href = 'https://www.kinosota.devs.surf/' }) },
+      history: { length: overrides.length ?? 1, go: vi.fn(() => { if (overrides.navigatesAway) location.href = 'http://www.kinosota.devs.surf/' }) },
       close: vi.fn(),
       TVXInteractionPlugin: overrides.msx ? { executeAction: vi.fn() } : undefined,
     }
@@ -170,7 +170,7 @@ describe('tvLauncher.exit: back to MSX / Launcher, never a desktop page', () => 
     tvLauncher.exit(win as never)
     expect(win.history.go).not.toHaveBeenCalled()
     vi.advanceTimersByTime(TV_EXIT_FALLBACK_MS)
-    expect(win.location.replace).toHaveBeenCalledWith('https://www.kinosota.devs.surf/')
+    expect(win.location.replace).toHaveBeenCalledWith('http://www.kinosota.devs.surf/')
   })
 
   it('clears the TV focus memory and ignores a second exit while one is running', () => {

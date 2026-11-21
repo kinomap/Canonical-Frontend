@@ -11,7 +11,7 @@
  */
 
 /** Root of the KINOSOTA launcher (Launcher/CNAME, MSX start parameter). */
-export const TV_LAUNCHER_URL = 'https://www.kinosota.devs.surf/'
+export const TV_LAUNCHER_URL = 'http://www.kinosota.devs.surf/'
 
 /** Time the native exits get before the launcher redirect takes over. */
 export const TV_EXIT_FALLBACK_MS = 600

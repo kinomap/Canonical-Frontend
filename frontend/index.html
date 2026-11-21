@@ -8,6 +8,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="KINOSOTA — фильмы, сериалы и новые истории. Найдите кино по жанру и рейтингу." />
     <title>KINOSOTA — фильмы и сериалы</title>
+    <script>
+      (function() {
+        try {
+          if (window.tizen && window.tizen.tvinputdevice) {
+            window.tizen.tvinputdevice.registerKey('Return');
+            window.tizen.tvinputdevice.registerKey('Exit');
+          }
+        } catch (e) {}
+
+        var BACK_CODES = [4, 10009, 461, 196, 145, 27, 8];
+        window.addEventListener('keydown', function(e) {
+          var code = e.keyCode || e.which || 0;
+          var key = (e.key || '').toLowerCase();
+          var isBack = BACK_CODES.indexOf(code) !== -1 || key === 'back' || key === 'goback' || key === 'browserback' || key === 'escape' || key === 'backspace';
+          if (isBack && window.location.pathname.indexOf('/tv') === 0) {
+            setTimeout(function() {
+              if (!e.defaultPrevented && !document.querySelector('.tv-exit')) {
+                try { if (window.TVXInteractionPlugin && window.TVXInteractionPlugin.executeAction) { window.TVXInteractionPlugin.executeAction('back'); return; } } catch(x) {}
+                try { if (window.history.length > 1) { window.history.back(); return; } } catch(x) {}
+                try { window.location.replace('http://www.kinosota.devs.surf/'); return; } catch(x) {}
+                window.location.href = 'http://www.kinosota.devs.surf/';
+              }
+            }, 120);
+          }
+        }, false);
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
