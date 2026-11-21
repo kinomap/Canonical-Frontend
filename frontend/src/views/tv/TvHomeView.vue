@@ -8,19 +8,21 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { apiClient } from '@/api/client'
 import { torrentsApi } from '@/api/torrents'
-import { useTvNavigation, type TvRow, type TvSelectTarget } from '@/composables/useTvNavigation'
+import { resolveTvKey, useTvNavigation, type TvRow, type TvSelectTarget } from '@/composables/useTvNavigation'
 import { useTvSpotlight } from '@/composables/useTvSpotlight'
 import TvSideMenu from './TvSideMenu.vue'
 import TvSpotlightHero from './TvSpotlightHero.vue'
 import TvShelf from './TvShelf.vue'
+import TvExitModal from './TvExitModal.vue'
 import { TV_MENU_ITEMS } from './tvMenu'
+import { useTvMenu } from './useTvMenu'
+import { exitToLauncher } from './tvLauncher'
 import { movieCard, seriesCard, torrentCard, type TvCard } from './tvCards'
-import { tvPlayerLocation } from './tvPlayback'
+import { tvDetailsLocation } from './tvPlayback'
 
 interface TvShelfModel { id: string; title: string; cards: TvCard[] }
 
 const SHELF_LIMIT = 20
-const MENU_SECTION_ROW: Record<string, string> = { home: 'hero', movies: 'popular', series: 'series', torrents: 'torrents' }
 
 const router = useRouter()
 const root = ref<HTMLElement | null>(null)
@@ -50,20 +52,20 @@ function showNotice(text: string) {
 
 function openContent(rowId: string, index: number) {
   if (rowId === 'hero') {
-    if (hero.value) void router.push(tvPlayerLocation({ src: 'torrent', kind: hero.value.kind, id: String(hero.value.tmdb_id) }))
+    if (hero.value) void router.push(tvDetailsLocation({ src: 'torrent', kind: hero.value.kind, id: String(hero.value.tmdb_id) }))
     return
   }
   const card = shelves.value.find(shelf => shelf.id === rowId)?.cards[index]
-  if (card) void router.push(tvPlayerLocation(card.play))
+  if (card) void router.push(tvDetailsLocation(card.play))
 }
+
+const menu = useTvMenu(showNotice)
 
 function openMenuItem(index: number) {
   const item = TV_MENU_ITEMS[index]
   if (!item) return
-  if (item.id === 'search') { showNotice('Поиск с экранной клавиатурой скоро появится'); return }
-  if (item.id === 'profile') { void router.push('/tv/auth'); return }
-  const rowId = MENU_SECTION_ROW[item.id]
-  if (rowId) nav.focusRow(rowId)
+  if (item.id === 'home') { nav.focusRow(hero.value ? 'hero' : (nav.currentRow.value?.id ?? 'hero')); return }
+  menu.open(index)
 }
 
 function onSelect(target: TvSelectTarget) {
@@ -71,23 +73,50 @@ function onSelect(target: TvSelectTarget) {
   else openContent(target.rowId, target.index)
 }
 
-/** Back on a shelf returns to the banner; on the banner it is left to the TV (exit / previous page). */
+// ── Exit dialog: Back on the top level (banner) asks before leaving to the launcher ──
+const exitOpen = ref(false)
+const exitFocus = ref<'exit' | 'stay'>('stay')
+
+function openExit() {
+  exitFocus.value = 'stay'
+  exitOpen.value = true
+}
+
+function stay() {
+  exitOpen.value = false
+  void nav.syncDom()
+}
+
+function leave() {
+  exitOpen.value = false
+  exitToLauncher()
+}
+
+/** Back on a shelf returns to the banner; on the banner it opens the exit dialog. */
 function onBack(): boolean {
   if (nav.currentRow.value && nav.currentRow.value.id !== 'hero' && hero.value) {
     nav.focusRow('hero')
     return true
   }
-  return false
+  openExit()
+  return true
 }
 
-const nav = useTvNavigation({ rows, menuSize: TV_MENU_ITEMS.length, memoryKey: 'home', onSelect, onBack, root })
+const nav = useTvNavigation({ rows, menuSize: TV_MENU_ITEMS.length, memoryKey: 'home', onSelect, onBack, root, listen: false })
+
+function onKeydown(event: KeyboardEvent) {
+  if (!exitOpen.value) { nav.onKeydown(event); return }
+  const action = resolveTvKey(event)
+  if (!action) return
+  event.preventDefault()
+  if (action === 'left') exitFocus.value = 'exit'
+  else if (action === 'right') exitFocus.value = 'stay'
+  else if (action === 'select') { if (exitFocus.value === 'exit') leave(); else stay() }
+  else if (action === 'back') stay()
+}
 
 const menuFocusedIndex = computed(() => (nav.area.value === 'menu' ? nav.menuIndex.value : -1))
-const activeMenuIndex = computed(() => {
-  const rowId = nav.currentRow.value?.id
-  const id = rowId === 'hero' ? 'home' : rowId === 'popular' || rowId === 'newest' ? 'movies' : rowId
-  return TV_MENU_ITEMS.findIndex(item => item.id === id)
-})
+const activeMenuIndex = menu.activeIndex
 
 function focusedIndexOf(rowId: string): number {
   const row = nav.currentRow.value
@@ -123,11 +152,13 @@ async function loadShelves() {
 
 onMounted(() => {
   document.documentElement.classList.add('tv-mode')
+  window.addEventListener('keydown', onKeydown)
   void refreshHero()
   void loadShelves()
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
   document.documentElement.classList.remove('tv-mode')
   clearTimeout(noticeTimer)
 })
@@ -165,6 +196,8 @@ onBeforeUnmount(() => {
     </div>
 
     <p v-if="notice" class="tv-notice" role="status" aria-live="polite" data-testid="tv-notice">{{ notice }}</p>
+
+    <TvExitModal :open="exitOpen" :focused="exitFocus" @exit="leave" @stay="stay" />
   </div>
 </template>
 

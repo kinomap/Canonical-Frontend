@@ -6,7 +6,7 @@
 import type { LocationQuery } from 'vue-router'
 
 export type TvPlayTarget =
-  | { src: 'torrent'; kind: 'movie' | 'tv'; id: string; season?: number; episode?: number }
+  | { src: 'torrent'; kind: 'movie' | 'tv'; id: string; season?: number; episode?: number; sourceId?: string }
   | { src: 'catalog'; kind: 'movie' | 'series'; id: string; episodeId?: string }
 
 function text(value: unknown): string {
@@ -24,6 +24,7 @@ export function tvPlayerQuery(target: TvPlayTarget): Record<string, string> {
   if (target.src === 'torrent') {
     if (target.season) query.season = String(target.season)
     if (target.episode) query.episode = String(target.episode)
+    if (target.sourceId) query.source = target.sourceId
   } else if (target.episodeId) {
     query.ep = target.episodeId
   }
@@ -34,6 +35,14 @@ export function tvPlayerLocation(target: TvPlayTarget) {
   return { path: '/tv/player', query: tvPlayerQuery(target) }
 }
 
+/** Title card (/tv/details) shown before playback: same query as the player. */
+export function tvDetailsLocation(target: TvPlayTarget) {
+  const query: Record<string, string> = { src: target.src, kind: target.kind, id: target.id }
+  return { path: '/tv/details', query }
+}
+
+const SOURCE_ID = /^[\w.:-]{1,128}$/
+
 /** Parse the player query; null when it does not name a playable title. */
 export function parseTvPlayTarget(query: LocationQuery): TvPlayTarget | null {
   const src = text(query.src)
@@ -42,7 +51,8 @@ export function parseTvPlayTarget(query: LocationQuery): TvPlayTarget | null {
   if (!id || id.length > 64 || !/^[\w-]+$/.test(id)) return null
   if (src === 'torrent' && (kind === 'movie' || kind === 'tv')) {
     if (!/^\d+$/.test(id)) return null
-    return { src, kind, id, season: positive(query.season), episode: positive(query.episode) }
+    const sourceId = text(query.source)
+    return { src, kind, id, season: positive(query.season), episode: positive(query.episode), ...(sourceId && SOURCE_ID.test(sourceId) ? { sourceId } : {}) }
   }
   if (src === 'catalog' && (kind === 'movie' || kind === 'series')) {
     const episodeId = text(query.ep)

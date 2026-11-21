@@ -54,6 +54,25 @@ vi.mock('@/stores/auth', async () => {
 
 import TvPlayerView from '@/views/tv/TvPlayerView.vue'
 
+// The commercial cycle (pre-roll → intro → film) is covered by TvPlayerWithAds.spec.ts; here both stages
+// settle at once so the playback behaviour itself is tested.
+vi.mock('@/components/AdPlaybackContainer.vue', async () => {
+  const { defineComponent, h, onMounted } = await import('vue')
+  return { default: defineComponent({ name: 'AdPlaybackContainer', inheritAttrs: false, emits: ['settled', 'started'], setup(_, { emit, expose }) {
+    expose({ busy: false, tick: () => {}, end: async () => {} })
+    onMounted(() => emit('settled'))
+    return () => h('div', { 'data-testid': 'ad-stub' })
+  } }) }
+})
+vi.mock('@/components/CinemaIntro.vue', async () => {
+  const { defineComponent, h, onMounted } = await import('vue')
+  return { default: defineComponent({ name: 'CinemaIntro', inheritAttrs: false, emits: ['finished', 'started'], setup(_, { emit, expose }) {
+    expose({ enabled: true })
+    onMounted(() => emit('finished'))
+    return () => h('div', { 'data-testid': 'intro-stub' })
+  } }) }
+})
+
 const DURATION = 600
 let playing = false
 let position = 0

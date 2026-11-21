@@ -19,6 +19,8 @@ vi.mock('@/api/torrents', async (importOriginal) => {
 })
 
 import TvHomeView from '@/views/tv/TvHomeView.vue'
+import { tvLauncher } from '@/views/tv/tvLauncher'
+import { tvMenuIndex } from '@/views/tv/tvMenu'
 
 const movie = (id: string, title: string) => ({ id, title, original_title: '', year: 2023, poster: null, rating: 7.5, runtime: 100, quality: null, status: 'ready', genres: [] })
 const torrent = (id: number, title: string, extra: Record<string, unknown> = {}) => ({
@@ -82,7 +84,7 @@ describe('TvHomeView.vue', () => {
     expect(document.activeElement).toBe(wrapper!.get('[data-testid="tv-hero-watch"]').element)
   })
 
-  it('walks the shelves with the arrows and plays the focused card in the TV player with Enter', async () => {
+  it('walks the shelves with the arrows and opens the title card of the focused card with Enter', async () => {
     await mountHome()
     press('ArrowDown'); press('ArrowRight'); await nextTick()
     expect(focused()).toEqual(['popular:1'])
@@ -91,47 +93,77 @@ describe('TvHomeView.vue', () => {
     press('ArrowUp'); press('ArrowUp'); await nextTick()
     expect(focused()).toEqual(['popular:1'])
     press('Enter'); await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/tv/player')
+    expect(router.currentRoute.value.path).toBe('/tv/details')
     expect(router.currentRoute.value.query).toEqual({ src: 'catalog', kind: 'movie', id: 'p2' })
   })
 
-  it('«Смотреть» plays the spotlight title in the TV player', async () => {
+  it('«Смотреть» opens the title card of the spotlight title (never a blind start)', async () => {
     await mountHome()
     press('Enter'); await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/tv/player')
+    expect(router.currentRoute.value.path).toBe('/tv/details')
     expect(router.currentRoute.value.query).toEqual({ src: 'torrent', kind: 'movie', id: '550' })
   })
 
-  it('opens the left menu with ArrowLeft from the first card and jumps to a section', async () => {
+  it('opens the left menu with ArrowLeft from the first card and opens a section screen', async () => {
     await mountHome()
     press('ArrowDown'); press('ArrowLeft'); await nextTick()
     expect(wrapper!.get('[data-testid="tv-menu"]').classes()).toContain('open')
     expect(focused()).toEqual(['menu:0'])
-    for (let i = 0; i < 4; i++) press('ArrowDown')
+    const torrents = tvMenuIndex('torrents')
+    for (let i = 0; i < torrents; i++) press('ArrowDown')
     await nextTick()
-    expect(focused()).toEqual(['menu:4'])
-    press('Enter'); await nextTick()
+    expect(focused()).toEqual([`menu:${torrents}`])
+    press('Enter'); await flushPromises()
     expect(wrapper!.get('[data-testid="tv-menu"]').classes()).not.toContain('open')
-    expect(focused()).toEqual(['torrents:0'])
+    expect(router.currentRoute.value.path).toBe('/tv/torrents')
+  })
+
+  it('menu «Главная» on the home screen returns the focus to the banner', async () => {
+    await mountHome()
+    press('ArrowDown'); press('ArrowDown'); press('ArrowLeft'); await nextTick()
+    for (let i = 0; i < tvMenuIndex('home'); i++) press('ArrowDown')
+    press('Enter'); await nextTick()
+    expect(focused()).toEqual(['hero:0'])
+    expect(router.currentRoute.value.path).toBe('/tv')
   })
 
   it('menu «Поиск» shows a notice and «Профиль» opens the TV sign-in', async () => {
     await mountHome()
     press('ArrowLeft'); press('Enter'); await nextTick()
     expect(wrapper!.get('[data-testid="tv-notice"]').text()).toContain('Поиск')
-    press('ArrowLeft'); for (let i = 0; i < 5; i++) press('ArrowDown')
+    press('ArrowLeft'); for (let i = 0; i < tvMenuIndex('profile'); i++) press('ArrowDown')
     press('Enter'); await flushPromises()
     expect(router.currentRoute.value.path).toBe('/tv/auth')
   })
 
-  it('Back on a shelf returns to the banner, Back on the banner is left to the TV', async () => {
+  it('Back on a shelf returns to the banner, Back on the banner asks before leaving to the launcher', async () => {
+    const exit = vi.spyOn(tvLauncher, 'exit').mockImplementation(() => {})
     await mountHome()
     press('ArrowDown'); press('ArrowDown'); await nextTick()
     expect(focused()).toEqual(['newest:0'])
     expect(press('Escape').defaultPrevented).toBe(true)
     await nextTick()
     expect(focused()).toEqual(['hero:0'])
-    expect(press('Escape').defaultPrevented).toBe(false)
+    expect(wrapper!.find('[data-testid="tv-exit-modal"]').exists()).toBe(false)
+
+    expect(press('Escape').defaultPrevented).toBe(true)
+    await nextTick()
+    expect(wrapper!.get('[data-testid="tv-exit-modal"]').text()).toContain('Выйти в Launcher KINOSOTA?')
+    expect(wrapper!.get('[data-testid="tv-exit-stay"]').classes()).toContain('tv-focused')
+
+    // «Остаться» closes the dialog, the arrows do not move the content behind it
+    press('ArrowDown'); press('Enter'); await nextTick()
+    expect(wrapper!.find('[data-testid="tv-exit-modal"]').exists()).toBe(false)
+    expect(focused()).toEqual(['hero:0'])
+    expect(exit).not.toHaveBeenCalled()
+
+    // «Выйти» returns to the launcher
+    press('Escape'); await nextTick()
+    press('ArrowLeft'); await nextTick()
+    expect(wrapper!.get('[data-testid="tv-exit-confirm"]').classes()).toContain('tv-focused')
+    press('Enter'); await nextTick()
+    expect(exit).toHaveBeenCalledTimes(1)
+    exit.mockRestore()
   })
 
   it('memory return: coming back from a title focuses the same card', async () => {
