@@ -8,6 +8,7 @@
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:unit": "vitest run",
     "test:layout": "node scripts/test-page-frame.mjs"
   },
   "dependencies": {

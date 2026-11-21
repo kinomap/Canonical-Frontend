@@ -12,6 +12,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import SearchBar from '@/components/SearchBar.vue'
 import BrandLogo from '@/components/CinemaBrand.vue'
+import TvConnectModal from '@/components/TvConnectModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -120,6 +121,16 @@ function closeMobileMenu() {
   mobileMenuOpen.value = false
 }
 
+const tvModalOpen = ref(false)
+function openTvModal() {
+  closeDropdowns()
+  closeMobileMenu()
+  tvModalOpen.value = true
+}
+function closeTvModal() {
+  tvModalOpen.value = false
+}
+
 watch(route, () => {
   closeMobileMenu()
   document.querySelectorAll('.app-header details[open]').forEach(item=>item.removeAttribute('open'))
@@ -146,6 +157,7 @@ watch(route, () => {
           <router-link to="/series" class="nav-link" :class="{ active: route.path.startsWith('/series') }">{{ t("Series") }}</router-link>
           <details class="header-genres"><summary class="nav-link" :class="{active:route.path==='/genres'}">Жанры ▾</summary><div class="genre-dropdown"><router-link v-for="genre in [{name:'Боевик',slug:'boevik'},{name:'Комедия',slug:'komedija'},{name:'Фантастика',slug:'fantastika'},{name:'Ужасы',slug:'uzhasy'},{name:'Триллер',slug:'triller'}]" :key="genre.slug" :to="`/genres?genre=${genre.slug}`">{{genre.name}}</router-link><router-link to="/genres">Все жанры</router-link></div></details>
           <router-link to="/torrents" class="nav-link torrent-nav-entry">Торренты</router-link>
+          <button type="button" class="nav-link tv-nav-entry" data-testid="header-tv-desktop" aria-haspopup="dialog" @click="openTvModal"><Tv :size="18" aria-hidden="true" />ТВ</button>
         </nav>
         <nav v-else class="desktop-nav" aria-label="Торрент навигация">
           <router-link to="/torrents" class="nav-link" :class="{active:route.path==='/torrents'&&!Object.keys(route.query).length}"><Home :size="16" stroke-width="1.7" /> Главная</router-link>
@@ -270,6 +282,7 @@ watch(route, () => {
         <router-link to="/genres" class="mobile-nav-link" @click="closeMobileMenu">{{ t("Genres") }}</router-link>
 
         <router-link to="/torrents" class="mobile-nav-link torrent-nav-entry" @click="closeMobileMenu">Торренты</router-link>
+        <button type="button" class="mobile-nav-link tv-nav-entry" data-testid="header-tv-mobile" aria-haspopup="dialog" @click="openTvModal"><Tv :size="18" aria-hidden="true" />ТВ</button>
 
         <div class="mobile-auth-divider"></div>
 
@@ -345,6 +358,7 @@ watch(route, () => {
         </template>
       </nav>
     </div>
+    <TvConnectModal :show="tvModalOpen" @close="closeTvModal" />
   </header>
 </template>
 
@@ -442,6 +456,27 @@ watch(route, () => {
   background: var(--ui-raised);
   color: var(--ui-link);
   font-weight: 600;
+}
+
+.tv-nav-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.nav-link.tv-nav-entry:hover,
+.nav-link.tv-nav-entry:focus-visible {
+  color: #00d2ff;
+}
+
+.mobile-nav-link.tv-nav-entry {
+  width: 100%;
+  text-align: left;
+  color: #00d2ff !important;
 }
 
 .header-right {
