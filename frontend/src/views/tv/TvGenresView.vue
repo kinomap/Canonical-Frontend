@@ -10,6 +10,8 @@ import { apiClient } from '@/api/client'
 import { torrentsApi } from '@/api/torrents'
 import { resolveTvKey, useTvNavigation, type TvRow, type TvSelectTarget } from '@/composables/useTvNavigation'
 import TvSideMenu from './TvSideMenu.vue'
+import TvIcon from './TvIcon.vue'
+import type { TvIconName } from './tvIcons'
 import { TV_MENU_ITEMS } from './tvMenu'
 import { useTvMenu } from './useTvMenu'
 import { catalogGenreCards, torrentGenreCards, tvGenreLocation, type TvGenreCard, type TvGenreSource } from './tvGenres'
@@ -20,9 +22,9 @@ const route = useRoute()
 const router = useRouter()
 const root = ref<HTMLElement | null>(null)
 
-const TABS: { id: TvGenreSource; label: string }[] = [
-  { id: 'catalog', label: '🎬 Жанры каталога KINOSOTA' },
-  { id: 'torrents', label: '⚡ Жанры Торрентов' },
+const TABS: { id: TvGenreSource; label: string; icon: TvIconName }[] = [
+  { id: 'catalog', label: 'Жанры каталога KINOSOTA', icon: 'movies' },
+  { id: 'torrents', label: 'Жанры Торрентов', icon: 'torrents' },
 ]
 
 const source = ref<TvGenreSource>(route.query.source === 'torrents' ? 'torrents' : 'catalog')
@@ -186,7 +188,8 @@ defineExpose({ load })
             :data-testid="`tv-genres-tab-${tab.id}`"
             @click="setSource(tab.id)"
           >
-            {{ tab.label }}
+            <TvIcon :name="tab.icon" size="1.2em" />
+            <span>{{ tab.label }}</span>
           </button>
         </div>
       </header>
@@ -208,13 +211,15 @@ defineExpose({ load })
             type="button"
             role="gridcell"
             class="tv-genre-card"
-            :class="{ 'tv-focused': nav.isFocused(`g${r}`, c) }"
+            :class="[`theme-${card.theme}`, { 'tv-focused': nav.isFocused(`g${r}`, c) }]"
             :data-tv-key="`g${r}:${c}`"
             :data-testid="`tv-genre-${card.slug}`"
             :aria-label="card.title"
             @click="router.push(tvGenreLocation(card))"
           >
-            <span class="tv-genre-icon" aria-hidden="true">{{ card.icon }}</span>
+            <span class="tv-genre-glow" aria-hidden="true" />
+            <span class="tv-genre-sheen" aria-hidden="true" />
+            <span class="tv-genre-icon" aria-hidden="true"><TvIcon :name="card.icon" size="100%" /></span>
             <span class="tv-genre-title">{{ card.title }}</span>
           </button>
         </div>
@@ -260,6 +265,9 @@ defineExpose({ load })
 
 .tv-genres-tab,
 .tv-genres-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
   padding: 1.2vh 1.8vw;
   border: 3px solid transparent;
   border-radius: 999px;
@@ -297,36 +305,111 @@ defineExpose({ load })
 }
 
 .tv-genre-card {
+  --g1: #1f2433;
+  --g2: #0c0f17;
+  --accent: #00d2ff;
+  position: relative;
+  overflow: hidden;
   aspect-ratio: 16 / 9;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1.4vh;
-  border: 3px solid rgba(255, 255, 255, 0.06);
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 1vh;
+  padding: 2.2vh 1.4vw;
+  border: 2px solid rgba(255, 255, 255, 0.08);
   border-radius: 22px;
-  background: linear-gradient(145deg, #1a1f2e 0%, #10131c 100%);
-  color: #e5e7eb;
+  background: linear-gradient(135deg, var(--g1) 0%, var(--g2) 100%);
+  color: #f5f5f7;
   font: inherit;
+  text-align: left;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+  will-change: transform;
+}
+
+.theme-fire { --g1: #8f1d2c; --g2: #2a0a10; --accent: #ff6a3d; }
+.theme-indigo { --g1: #2b2f9e; --g2: #0b0d33; --accent: #7c8bff; }
+.theme-mystic { --g1: #4b1d6b; --g2: #0a0610; --accent: #b46bff; }
+.theme-amber { --g1: #a8620f; --g2: #2b1704; --accent: #ffc247; }
+.theme-noir { --g1: #1d3557; --g2: #070b14; --accent: #7fb3ff; }
+.theme-rose { --g1: #8f2457; --g2: #2a0918; --accent: #ff7ab6; }
+.theme-violet { --g1: #5b2a86; --g2: #140a24; --accent: #c49bff; }
+.theme-emerald { --g1: #0f6b4f; --g2: #04201a; --accent: #4fe3b0; }
+.theme-gold { --g1: #8a6a12; --g2: #231a04; --accent: #f4d45e; }
+.theme-ocean { --g1: #0f5f8a; --g2: #04192a; --accent: #00d2ff; }
+.theme-steel { --g1: #2b3445; --g2: #0b0e15; --accent: #94a3b8; }
+
+/* Soft light of the genre colour behind the sticker. */
+.tv-genre-glow {
+  position: absolute;
+  top: -30%;
+  right: -15%;
+  width: 75%;
+  height: 120%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 65%);
+  opacity: 0.28;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+
+/* Glass sheen sweeping across the card on focus (transform only). */
+.tv-genre-sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.22) 50%, transparent 65%);
+  transform: translate3d(-120%, 0, 0);
+  pointer-events: none;
 }
 
 .tv-genre-icon {
-  font-size: clamp(38px, 3.2vw, 88px);
-  line-height: 1;
+  position: absolute;
+  top: 14%;
+  right: 8%;
+  width: clamp(48px, 3.8vw, 110px);
+  height: clamp(48px, 3.8vw, 110px);
+  color: var(--accent);
+  filter: drop-shadow(0 0 10px var(--accent));
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), color 0.22s ease;
 }
 
 .tv-genre-title {
+  position: relative;
   font-size: clamp(18px, 1.3vw, 34px);
-  font-weight: 800;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
 }
 
 .tv-genre-card.tv-focused {
   color: #fff;
-  border-color: #00d2ff;
-  box-shadow: 0 0 0 4px rgba(0, 210, 255, 0.25), 0 0 40px rgba(0, 210, 255, 0.65), inset 0 0 30px rgba(0, 210, 255, 0.18);
-  transform: scale(1.07);
+  border-color: #fff;
+  box-shadow: 0 0 0 4px rgba(0, 210, 255, 0.35), 0 16px 40px rgba(0, 210, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: scale(1.08);
+}
+
+.tv-genre-card.tv-focused .tv-genre-glow {
+  opacity: 0.5;
+}
+
+.tv-genre-card.tv-focused .tv-genre-icon {
+  color: #fff;
+  transform: scale(1.12) rotate(-4deg);
+}
+
+.tv-genre-card.tv-focused .tv-genre-sheen {
+  transform: translate3d(120%, 0, 0);
+  transition: transform 0.9s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-genre-card,
+  .tv-genre-icon,
+  .tv-genre-card.tv-focused .tv-genre-sheen {
+    transition: none;
+  }
 }
 
 .tv-status {

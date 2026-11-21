@@ -2,6 +2,7 @@
 /** Rotating hero of a category showcase: the current top title, OK opens its title card. */
 import { computed } from 'vue'
 import type { TvCard } from './tvCards'
+import TvIcon from './TvIcon.vue'
 
 const props = defineProps<{ cards: TvCard[]; index: number; focused: boolean; title: string; subtitle: string }>()
 const emit = defineEmits<{ (e: 'open'): void }>()
@@ -32,7 +33,7 @@ const picture = computed(() => card.value?.backdrop || card.value?.poster || '')
           data-testid="tv-showcase-hero-open"
           @click="emit('open')"
         >
-          ▶ Подробнее и смотреть
+          <TvIcon name="play" size="1.1em" style="display: inline-block; vertical-align: -0.15em; margin-right: 0.45em" />Подробнее и смотреть
         </button>
         <div v-if="cards.length > 1" class="tv-sc-hero-dots" aria-hidden="true">
           <span v-for="(item, i) in cards" :key="item.key" :class="{ on: i === index }" />

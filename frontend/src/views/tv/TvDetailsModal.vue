@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Title card of the TV layer (/tv/details, same query as /tv/player): backdrop with a cinema gradient,
- * poster, facts and the actions «▶️ Смотреть» (default focus) / «⭐️ В закладки / Кинотеку» (torrent titles:
+ * poster, facts and the actions «Смотреть» (default focus) / «В закладки / Кинотеку» (torrent titles:
  * the account library API). Series: seasons strip + episodes carousel, OK on an episode plays exactly it.
  * Torrent releases: the list of sources (quality, size, voices, seeders); the chosen one goes to the player.
  * Data: apiClient.getMovie / getSeriesDetail, torrentsApi.detail, torrentPlaybackApi.sources, libraryApi.
@@ -15,9 +15,11 @@ import { libraryApi } from '@/api/library'
 import { posterUrl } from '@/utils/poster'
 import { useTvNavigation, type TvRow, type TvSelectTarget } from '@/composables/useTvNavigation'
 import { parseTvPlayTarget, tvPlayerLocation, type TvPlayTarget } from './tvPlayback'
+import TvIcon from './TvIcon.vue'
+import type { TvIconName } from './tvIcons'
 
 interface DetailsEpisode { key: string; season: number; number: number; title: string; episodeId?: string }
-interface DetailsAction { id: 'watch' | 'bookmark'; label: string }
+interface DetailsAction { id: 'watch' | 'bookmark'; label: string; icon: TvIconName }
 
 const route = useRoute()
 const router = useRouter()
@@ -52,8 +54,10 @@ const activeSeason = computed(() => seasons.value[seasonIndex.value] ?? seasons.
 const seasonEpisodes = computed(() => episodes.value.filter(item => item.season === activeSeason.value))
 
 const actions = computed<DetailsAction[]>(() => [
-  { id: 'watch', label: isSeries.value ? '▶️ Смотреть' : '▶️ Смотреть фильм' },
-  ...(isTorrent.value ? [{ id: 'bookmark' as const, label: saved.value ? '✅ В Кинотеке' : '⭐️ В закладки / Кинотеку' }] : []),
+  { id: 'watch', label: isSeries.value ? 'Смотреть' : 'Смотреть фильм', icon: 'play' },
+  ...(isTorrent.value
+    ? [{ id: 'bookmark' as const, label: saved.value ? 'В Кинотеке' : 'В закладки / Кинотеку', icon: (saved.value ? 'check' : 'bookmark') as TvIconName }]
+    : []),
 ])
 
 function qualityRank(source: TorrentSource): number {
@@ -324,7 +328,8 @@ defineExpose({ load, play })
               :data-testid="`tv-details-${action.id}`"
               @click="onSelect({ area: 'content', rowId: 'actions', index })"
             >
-              {{ action.label }}
+              <TvIcon class="tv-details-btn-icon" :name="action.icon" size="1.2em" />
+              <span>{{ action.label }}</span>
             </button>
           </div>
         </div>
@@ -381,7 +386,7 @@ defineExpose({ load, play })
             <strong class="tv-details-quality">{{ qualityLabel(source) }}</strong>
             <span v-if="sizeLabel(source.size_bytes)">{{ sizeLabel(source.size_bytes) }}</span>
             <span v-if="voicesLabel(source)" class="tv-details-voices">{{ voicesLabel(source) }}</span>
-            <span class="tv-details-seeds">⬆ {{ source.seeders }} сидов</span>
+            <span class="tv-details-seeds"><i class="tv-details-seeds-dot" aria-hidden="true" />{{ source.seeders }} сидов</span>
           </button>
         </div>
       </section>
@@ -475,8 +480,19 @@ defineExpose({ load, play })
 .tv-details-quality { color: #f4d45e; font-size: 1.2em; }
 .tv-details-voices { max-width: 100%; color: #cbd5e1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-details-seeds { color: #4ade80; }
+.tv-details-seeds-dot { display: inline-block; width: 0.55em; height: 0.55em; margin-right: 0.45em; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px rgba(74, 222, 128, 0.8); }
 .tv-details-muted { color: #9ca3af; font-size: clamp(15px, 1vw, 26px); }
 
 .tv-details-notice { position: fixed; z-index: 30; right: 4vw; bottom: 8vh; margin: 0; padding: 1.4vh 1.6vw; border-radius: 14px; background: rgba(17, 19, 26, 0.95); color: #fff; font-size: clamp(16px, 1.1vw, 28px); font-weight: 700; }
 .tv-details-hint { position: fixed; left: 5vw; bottom: 3vh; margin: 0; color: #6b7280; font-size: clamp(13px, 0.85vw, 22px); }
+
+.tv-details-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+}
+
+.tv-details-btn.tv-focused .tv-details-btn-icon {
+  filter: drop-shadow(0 0 6px rgba(0, 210, 255, 0.9));
+}
 </style>
