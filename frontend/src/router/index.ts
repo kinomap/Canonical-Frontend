@@ -72,6 +72,17 @@ const router = createRouter({
     { path: '/tv/auth', name: 'tv-auth', component: () => import('@/views/tv/TvAuthView.vue'), meta: { tvLayer: true } },
     // Full-screen remote-controlled player of the TV layer (?src=torrent|catalog&kind=…&id=…).
     { path: '/tv/player', name: 'tv-player', component: () => import('@/views/tv/TvPlayerView.vue'), meta: { tvLayer: true } },
+    // TV genres grid (?source=catalog|torrents) and the title card before playback: own lazy chunks.
+    { path: '/tv/genres', name: 'tv-genres', component: () => import('@/views/tv/TvGenresView.vue'), meta: { tvLayer: true } },
+    { path: '/tv/details', name: 'tv-details', component: () => import('@/views/tv/TvDetailsModal.vue'), meta: { tvLayer: true } },
+    // Category showcases (hero + shelves): one lazy chunk, the showcase id in meta.
+    { path: '/tv/movies', name: 'tv-movies', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'movies' } },
+    { path: '/tv/series', name: 'tv-series', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'series' } },
+    { path: '/tv/torrents', name: 'tv-torrents', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'torrents' } },
+    { path: '/tv/torrents/movies', name: 'tv-torrent-movies', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'torrent-movies' } },
+    { path: '/tv/torrents/series', name: 'tv-torrent-series', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'torrent-series' } },
+    { path: '/tv/genres/:source(catalog|torrents)/:slug', name: 'tv-genre', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'genre' } },
+    { path: '/tv/library', name: 'tv-library', component: () => import('@/views/tv/TvShowcaseView.vue'), meta: { tvLayer: true, showcase: 'library' } },
     // KINOSOTA Player browser sign-in: one-click approval in the modal (DesktopAuthorizeModal), open to guests.
     { path: '/auth/desktop', name: 'desktop-auth', redirect: (to) => ({ path: '/', query: { player_code: String(to.query.code ?? '') } }) },
     {

@@ -11,6 +11,9 @@ export interface TvCard {
   year: number | null
   rating: number | null
   poster: string | null
+  /** Wide picture for the showcase hero (torrent titles carry one; catalogue lists do not). */
+  backdrop?: string | null
+  overview?: string
   /** Desktop title page of the card (kept for links outside the TV layer). */
   to: string
   /** What Enter / OK plays in the TV player (/tv/player). */
@@ -52,6 +55,8 @@ export function torrentCard(item: TorrentItem): TvCard {
     year: item.year,
     rating: rating(item.rating),
     poster: item.poster,
+    backdrop: item.backdrop,
+    overview: item.overview,
     to: torrentPath(item),
     play: { src: 'torrent', kind: item.kind, id: String(item.tmdb_id) },
   }

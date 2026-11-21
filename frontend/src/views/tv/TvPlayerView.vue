@@ -13,6 +13,9 @@ import { torrentPlaybackApi, torrentsApi } from '@/api/torrents'
 import { createHistoryWriter, getResume } from '@/api/watchHistory'
 import { useAuthStore } from '@/stores/auth'
 import { resolveTvKey, useTvNavigation, type TvAction, type TvRow, type TvSelectTarget } from '@/composables/useTvNavigation'
+import AdPlaybackContainer from '@/components/AdPlaybackContainer.vue'
+import CinemaIntro from '@/components/CinemaIntro.vue'
+import type { IntroTarget } from '@/lib/cinemaIntro'
 import {
   SEEK_COMMIT_MS, SEEK_SERIES_MS, TV_CONTROLS_HIDE_MS,
   formatClock, formatSeekDelta, parseTvPlayTarget, seekStep, tvPlayerQuery, type TvPlayTarget,
@@ -25,6 +28,8 @@ type Mode = 'playback' | 'panel' | 'info'
 
 const HISTORY_SAVE_EVERY_MS = 30_000
 const SEEK_PLAQUE_MS = 1200
+/** The intro never holds the film longer than this (switched-off / reduced-motion / stalled clip). */
+const INTRO_MAX_MS = 15_000
 
 const route = useRoute()
 const router = useRouter()
@@ -74,6 +79,49 @@ const currentEpisode = computed(() => episodes.value[episodeIndex.value] ?? null
 const isSeries = computed(() => target.value?.kind === 'tv' || target.value?.kind === 'series')
 const progress = computed(() => (duration.value > 0 ? Math.min(100, (currentTime.value / duration.value) * 100) : 0))
 const historyEnabled = computed(() => auth.isAuthenticated.value && target.value?.src === 'catalog' && target.value.kind === 'movie')
+
+// ── Commercial cycle: 1) pre-roll (AdPlaybackContainer) → 2) KINOSOTA intro (CinemaIntro) → 3) the film ──
+// The stream URL is requested in parallel with the ad, but the film is attached to <video> only in phase 3.
+type Phase = 'ads' | 'intro' | 'content'
+const phase = ref<Phase>('ads')
+const adsReady = ref(false)
+const introActive = ref(false)
+const adPlayer = ref<InstanceType<typeof AdPlaybackContainer> | null>(null)
+const introPlayer = ref<InstanceType<typeof CinemaIntro> | null>(null)
+let introFallbackTimer: ReturnType<typeof setTimeout> | undefined
+
+const adSurface = computed(() => (target.value?.src === 'torrent' ? 'torrent_browser' : 'telegram_browser'))
+/** The TV plays in the browser: the admin «Интро престарта» browser targets apply to it. */
+const introTarget = computed<IntroTarget>(() => (target.value?.src === 'torrent' ? 'browser_torrents' : 'browser_telegram'))
+const adTarget = computed(() => {
+  const current = target.value
+  if (!current) return null
+  if (current.src === 'torrent') {
+    const episode = current.kind === 'tv' ? currentEpisode.value : null
+    return { torrentKind: current.kind, tmdbId: Number(current.id), season: episode?.season, episode: episode?.episode }
+  }
+  if (current.kind === 'movie') return { targetId: current.id, targetType: 'movie' as const }
+  return { targetId: currentEpisode.value?.episodeId, targetType: 'episode' as const }
+})
+/** An ad is on screen (pre-roll or a mid-roll over the film): the remote cannot seek or skip it. */
+const adBusy = computed(() => Boolean(adPlayer.value?.busy))
+
+function onAdsSettled() {
+  if (phase.value !== 'ads') return
+  phase.value = 'intro'
+  introActive.value = true
+  clearTimeout(introFallbackTimer)
+  introFallbackTimer = setTimeout(startFilm, INTRO_MAX_MS)
+  void nextTick(() => { if (introPlayer.value && introPlayer.value.enabled === false) startFilm() })
+}
+
+function startFilm() {
+  if (phase.value === 'content') return
+  clearTimeout(introFallbackTimer)
+  phase.value = 'content'
+  introActive.value = false
+  showControls()
+}
 
 // ── Bottom sheet (audio / subtitles / episodes), its own D-pad model ─────────
 const tabs = computed<{ id: PanelTab; label: string }[]>(() => [
@@ -254,6 +302,11 @@ function commitSeek() {
 
 // ── Remote ───────────────────────────────────────────────────────────────
 function handle(action: TvAction) {
+  // Pre-roll, intro and mid-rolls are not seekable or skippable from the remote; Back leaves the player.
+  if (phase.value !== 'content' || adBusy.value) {
+    if (action === 'back') void exit()
+    return
+  }
   if (action === 'back' && mode.value === 'playback') { void exit(); return }
 
   if (mode.value === 'panel') {
@@ -306,6 +359,7 @@ function onTimeUpdate() {
   const el = video.value
   if (!el) return
   if (!seekPending) currentTime.value = el.currentTime
+  adPlayer.value?.tick()
   if (Date.now() - lastHistorySave >= HISTORY_SAVE_EVERY_MS) void saveHistory(false, false)
 }
 function onDuration() { const value = video.value?.duration ?? 0; duration.value = Number.isFinite(value) ? value : 0 }
@@ -315,7 +369,7 @@ function onLoadedMetadata() {
   const el = video.value
   if (el && resumeAt > 0) { el.currentTime = resumeAt; currentTime.value = resumeAt; resumeAt = 0 }
 }
-function onEnded() { paused.value = true; showControls(); void saveHistory(true, true) }
+function onEnded() { paused.value = true; showControls(); void saveHistory(true, true); void adPlayer.value?.end() }
 function onMediaError() {
   if (!streamUrl.value) return
   status.value = 'error'
@@ -361,6 +415,7 @@ function release() {
   if (released) return
   released = true
   loadId++
+  clearTimeout(introFallbackTimer)
   clearTimeout(hideTimer)
   clearTimeout(seekCommitTimer)
   clearTimeout(seekPlaqueTimer)
@@ -460,7 +515,7 @@ async function loadStream() {
     if (current.src === 'torrent') {
       if (current.kind === 'tv' && !currentEpisode.value) throw new ApiError(409, 'NO_EPISODES')
       const choice = current.kind === 'tv' ? { season: currentEpisode.value!.season, episode: currentEpisode.value!.episode } : {}
-      const ticket = await torrentPlaybackApi.playbackTicket(current.kind, Number(current.id), choice)
+      const ticket = await torrentPlaybackApi.playbackTicket(current.kind, Number(current.id), current.sourceId ? { ...choice, source_id: current.sourceId } : choice)
       if (id !== loadId) return
       url = ticket.stream_url
       if (!title.value) title.value = ticket.title
@@ -497,10 +552,12 @@ async function start() {
   }
   try { await loadInfo(current) } catch { /* the title card is optional */ }
   if (released) return
+  adsReady.value = true
   await loadStream()
 }
 
-watch(streamUrl, (url) => { if (url) void nextTick(play) })
+const videoSrc = computed(() => (phase.value === 'content' && streamUrl.value ? streamUrl.value : undefined))
+watch(videoSrc, (url) => { if (url) void nextTick(play) })
 
 function onPageHide() {
   void saveHistory(false, true)
@@ -522,7 +579,7 @@ onBeforeUnmount(() => {
   document.documentElement.classList.remove('tv-mode')
 })
 
-defineExpose({ handle })
+defineExpose({ handle, phase, startFilm })
 </script>
 
 <template>
@@ -534,7 +591,7 @@ defineExpose({ handle })
     <video
       ref="video"
       class="tv-video"
-      :src="streamUrl || undefined"
+      :src="videoSrc"
       :poster="backdrop || undefined"
       autoplay
       playsinline
@@ -552,12 +609,29 @@ defineExpose({ handle })
       @error="onMediaError"
     />
 
-    <div v-if="status === 'loading' || (status === 'ready' && buffering && !paused)" class="tv-spinner" role="status" aria-live="polite" data-testid="tv-player-loading">
+    <AdPlaybackContainer
+      v-if="adsReady && adTarget"
+      ref="adPlayer"
+      :main="video"
+      :source="streamUrl"
+      :host-starts="true"
+      :covered="phase === 'intro'"
+      :surface="adSurface"
+      v-bind="adTarget"
+      data-testid="tv-ad-container"
+      @settled="onAdsSettled"
+    />
+
+    <div v-if="phase === 'intro'" class="tv-intro-layer" data-testid="tv-intro-layer">
+      <CinemaIntro ref="introPlayer" :active="introActive" :target="introTarget" @finished="startFilm" />
+    </div>
+
+    <div v-if="phase === 'content' && (status === 'loading' || (status === 'ready' && buffering && !paused))" class="tv-spinner" role="status" aria-live="polite" data-testid="tv-player-loading">
       <span class="tv-spinner-ring" aria-hidden="true" />
       <span>{{ status === 'loading' ? 'Подготовка потока…' : 'Загрузка…' }}</span>
     </div>
 
-    <section v-if="status === 'error'" class="tv-player-error" role="alert" data-testid="tv-player-error">
+    <section v-if="status === 'error' && (phase === 'content' || !target)" class="tv-player-error" role="alert" data-testid="tv-player-error">
       <h2>{{ title || 'Видео недоступно' }}</h2>
       <p>{{ errorText }}</p>
       <p class="tv-hint">OK — повторить · Назад — в каталог</p>
@@ -570,12 +644,12 @@ defineExpose({ handle })
 
     <div v-if="status === 'ready' && paused && mode === 'playback'" class="tv-paused" aria-hidden="true" data-testid="tv-paused">❚❚</div>
 
-    <header class="tv-player-top">
+    <header v-show="phase === 'content'" class="tv-player-top">
       <h1 data-testid="tv-player-title">{{ title || 'KINOSOTA' }}</h1>
       <p v-if="currentEpisode && isSeries">{{ currentEpisode.label }}</p>
     </header>
 
-    <footer class="tv-player-bottom">
+    <footer v-show="phase === 'content'" class="tv-player-bottom">
       <div class="tv-timeline" role="progressbar" :aria-valuenow="Math.round(progress)" aria-valuemin="0" aria-valuemax="100" aria-label="Прогресс просмотра">
         <span class="tv-timeline-fill" :style="{ width: `${progress}%` }" />
         <span v-if="seekDelta !== null && duration" class="tv-timeline-target" :style="{ left: `${Math.min(100, (seekTarget / duration) * 100)}%` }" />
@@ -640,6 +714,13 @@ defineExpose({ handle })
   overflow: hidden;
   background: #000;
   color: #f5f5f7;
+}
+
+.tv-intro-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: #000;
 }
 
 .tv-video {
