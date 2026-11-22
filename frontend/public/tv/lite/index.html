@@ -4,28 +4,139 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<title>KINOSOTA — совместимый режим</title>
+<title>KINOSOTA TV</title>
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <!--
-  KINOSOTA Lite TV portal (/tv/lite) for 2012–2017 Smart TVs (Samsung Orsay, early Tizen, LG Netcast / webOS 1–3,
-  Android 4.4–7 boxes). Plain ES5 script, no ES modules, no backdrop-filter. See TV_MULTI_EPOCH_PORTAL_SPEC.md §4.
+  KINOSOTA Lite TV Portal v2 (TV_MULTI_EPOCH_PORTAL_SPEC.md §4).
+  Lampa-grade Smart TV interface for 2012–2017 Smart TVs (Samsung Orsay WebKit 537, LG Netcast/webOS, Android boxes).
+  Strict ES5, hardware accelerated CSS without backdrop-filter, XHR with Promise polyfill.
 -->
-<link rel="stylesheet" href="/assets/tv-lite.css?v=1">
+<link rel="stylesheet" href="/assets/tv-lite.css?v=2">
 </head>
 <body>
 <div id="lite-app" class="lite-app">
-    <div class="lite-header">
-        <span class="lite-brand">KINOSOTA</span>
-        <span class="lite-badge">Совместимый режим</span>
-    </div>
-    <div id="lite-viewport" class="lite-viewport">
-        <div id="lite-scroll" class="lite-scroll">
-            <div id="lite-hero" class="lite-hero is-hidden"></div>
-            <div id="lite-shelves"></div>
-            <p id="lite-status" class="lite-status">Загружаем подборки…</p>
+
+    <!-- Left Navigation Sidebar (Lampa style) -->
+    <div id="lite-sidebar" class="lite-sidebar">
+        <div class="lite-logo">
+            <span class="lite-logo-icon">★</span>
+            <span class="lite-logo-text">KINOSOTA</span>
+        </div>
+        <div class="lite-menu" id="lite-menu">
+            <div class="lite-menu-item" data-id="search">
+                <span class="lite-menu-icon">🔍</span>
+                <span class="lite-menu-label">Поиск</span>
+            </div>
+            <div class="lite-menu-item is-active" data-id="home">
+                <span class="lite-menu-icon">🏠</span>
+                <span class="lite-menu-label">Главная</span>
+            </div>
+            <div class="lite-menu-item" data-id="movies">
+                <span class="lite-menu-icon">🎬</span>
+                <span class="lite-menu-label">Фильмы</span>
+            </div>
+            <div class="lite-menu-item" data-id="series">
+                <span class="lite-menu-icon">📺</span>
+                <span class="lite-menu-label">Сериалы</span>
+            </div>
+            <div class="lite-menu-item" data-id="torrents">
+                <span class="lite-menu-icon">⚡</span>
+                <span class="lite-menu-label">Торренты</span>
+            </div>
+            <div class="lite-menu-item" data-id="genres">
+                <span class="lite-menu-icon">🎭</span>
+                <span class="lite-menu-label">Жанры</span>
+            </div>
+            <div class="lite-menu-item" data-id="exit">
+                <span class="lite-menu-icon">🚪</span>
+                <span class="lite-menu-label">Выход</span>
+            </div>
         </div>
     </div>
 
+    <!-- Main Content Area -->
+    <div id="lite-content" class="lite-content">
+        <!-- Top header info -->
+        <div id="lite-topbar" class="lite-topbar">
+            <div id="lite-view-title" class="lite-view-title">Главная</div>
+            <div class="lite-topbar-right">
+                <span class="lite-badge">KINOSOTA TV</span>
+            </div>
+        </div>
+
+        <!-- Scrollable view area -->
+        <div id="lite-viewport" class="lite-viewport">
+            <div id="lite-scroll" class="lite-scroll">
+
+                <!-- 1. Home View -->
+                <div id="lite-view-home" class="lite-view">
+                    <div id="lite-hero" class="lite-hero is-hidden"></div>
+                    <div id="lite-shelves"></div>
+                </div>
+
+                <!-- 2. Grid View (Movies / Series / Torrents / Genre content) -->
+                <div id="lite-view-grid" class="lite-view is-hidden">
+                    <div id="lite-grid-title" class="lite-section-title"></div>
+                    <div id="lite-grid-cards" class="lite-grid-cards"></div>
+                </div>
+
+                <!-- 3. Search View with on-screen keyboard -->
+                <div id="lite-view-search" class="lite-view is-hidden">
+                    <div class="lite-search-bar">
+                        <span class="lite-search-icon">🔍</span>
+                        <div id="lite-search-input" class="lite-search-input">Введите название фильма…</div>
+                    </div>
+                    <div id="lite-keyboard" class="lite-keyboard"></div>
+                    <div id="lite-search-results" class="lite-grid-cards"></div>
+                </div>
+
+                <!-- 4. Genres Grid View -->
+                <div id="lite-view-genres" class="lite-view is-hidden">
+                    <div class="lite-section-title">Все жанры</div>
+                    <div id="lite-genres-grid" class="lite-genres-grid"></div>
+                </div>
+
+                <p id="lite-status" class="lite-status is-hidden"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Movie Details Modal (Lampa style full details sheet) -->
+    <div id="lite-details" class="lite-details is-hidden">
+        <div id="lite-details-bg" class="lite-details-backdrop"></div>
+        <div class="lite-details-shade"></div>
+        <div class="lite-details-sheet">
+            <div class="lite-details-poster-box">
+                <img id="lite-details-poster" class="lite-details-poster" src="" alt="">
+            </div>
+            <div class="lite-details-info">
+                <div id="lite-details-title" class="lite-details-title"></div>
+                <div id="lite-details-orig" class="lite-details-orig"></div>
+                <div id="lite-details-meta" class="lite-details-meta"></div>
+                <div id="lite-details-overview" class="lite-details-overview"></div>
+
+                <div class="lite-details-actions" id="lite-details-actions">
+                    <span id="lite-act-play" class="lite-btn is-focused">▶ Смотреть</span>
+                    <span id="lite-act-sources" class="lite-btn">🔊 Выбор озвучки / Торрента</span>
+                    <span id="lite-act-close" class="lite-btn">Назад в каталог</span>
+                </div>
+
+                <!-- Sources / Audio Tracks List -->
+                <div id="lite-sources-wrap" class="lite-sources-wrap is-hidden">
+                    <div class="lite-subhead">Доступные озвучки и раздачи:</div>
+                    <div id="lite-sources-list" class="lite-sources-list"></div>
+                </div>
+
+                <!-- TV Series Seasons & Episodes -->
+                <div id="lite-series-wrap" class="lite-series-wrap is-hidden">
+                    <div id="lite-seasons-row" class="lite-seasons-row"></div>
+                    <div id="lite-episodes-track" class="lite-episodes-track"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Player -->
     <div id="lite-player" class="lite-player is-hidden">
         <video id="lite-video" class="lite-video" preload="auto"></video>
         <div id="lite-player-message" class="lite-player-message"></div>
@@ -40,9 +151,11 @@
         </div>
     </div>
 
+    <!-- Exit confirmation modal -->
     <div id="lite-exit" class="lite-exit is-hidden">
         <div class="lite-exit-box">
             <div class="lite-exit-title">Выйти из KINOSOTA?</div>
+            <div class="lite-exit-text">Вы вернётесь на начальный экран лаунчера</div>
             <div class="lite-exit-buttons">
                 <span id="lite-exit-leave" class="lite-btn">Выйти</span>
                 <span id="lite-exit-stay" class="lite-btn">Остаться</span>
@@ -52,6 +165,6 @@
 
     <div id="lite-toast" class="lite-toast is-hidden"></div>
 </div>
-<script src="/assets/tv-lite.js?v=1"></script>
+<script src="/assets/tv-lite.js?v=2"></script>
 </body>
 </html>

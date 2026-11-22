@@ -139,7 +139,11 @@ describe('Lite TV portal behaviour', () => {
   it('plays a catalogue film in the native player and releases the session on Back', async () => {
     await bootLite()
     press('ArrowDown', 40)
-    press('Enter', 13)
+    press('Enter', 13) // opens details modal
+    await flush()
+    expect(lite().state.mode).toBe('details')
+    expect(document.getElementById('lite-details-title')?.textContent).toBe('Первый')
+    press('Enter', 13) // plays from details
     await flush()
     expect(lite().state.mode).toBe('player')
     const start = sent.find(item => item.url === '/api/v1/playback/start')
@@ -164,7 +168,9 @@ describe('Lite TV portal behaviour', () => {
     routes = routes.map(item => (item.path === '/playback/start' ? { ...item, status: 401, body: { detail: 'auth' } } : item))
     await bootLite()
     press('ArrowDown', 40)
-    press('Enter', 13)
+    press('Enter', 13) // opens details
+    await flush()
+    press('Enter', 13) // starts playback
     await flush()
     expect(document.getElementById('lite-player-message')?.textContent).toContain('нужен вход')
   })
