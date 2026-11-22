@@ -121,6 +121,11 @@ const timeAgo = (iso: string | null) => {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+const accountTitle = (s: Session) =>
+  s.telegram_display_name || s.name || s.telegram_phone || s.account_identifier
+
+const openSession = (s: Session) => router.push(`/media-sessions/${s.id}`)
+
 
 const onWizardSuccess = () => {
   showWizard.value = false
@@ -182,40 +187,71 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 
     <!-- ── Session Cards ── -->
     <div v-else class="ms-cards">
-      <div v-for="s in sessions" :key="s.id" class="ms-card" @click="router.push(`/media-sessions/${s.id}`)">
+      <div
+        v-for="s in sessions"
+        :key="s.id"
+        class="ms-card"
+        role="link"
+        tabindex="0"
+        :aria-label="`Worker Telegram Session ${accountTitle(s)}`"
+        @click="openSession(s)"
+        @keydown.enter.self="openSession(s)"
+      >
         <!-- Row 1: identity + badges -->
         <div class="ms-card-top">
           <div class="ms-card-identity">
-            <div class="ms-session-name">📱 {{ s.telegram_phone || s.name || s.account_identifier }}</div>
-            <div class="ms-session-meta">
-              <span class="ms-session-id">{{ s.session_identifier }}</span>
-              <span v-if="s.telegram_username" class="ms-tg-tag">@{{ s.telegram_username }}</span>
-              <span v-if="s.name && s.telegram_phone" class="ms-tg-tag">{{ s.name }}</span>
-            </div>
+            <div class="ms-card-kicker">Worker Telegram Session</div>
+            <div class="ms-session-name">📱 {{ accountTitle(s) }}</div>
           </div>
           <div class="ms-card-badges">
             <span class="ms-badge" :class="statusClass(s.status)">{{ s.status }}</span>
             <span class="ms-badge" :class="statusClass(s.health_status)">{{ s.health_status }}</span>
           </div>
         </div>
-        <!-- Row 2: metrics -->
-        <div class="ms-card-metrics">
-          <div class="ms-metric">
-            <span class="ms-metric-label">Node</span>
-            <span v-if="s.node_name" class="ms-node-badge">{{ s.node_name }}</span>
-            <span v-else class="ms-badge-unassigned">UNASSIGNED</span>
+        <!-- Row 2: identity + runtime grid (same structure as Master Session) -->
+        <div class="ms-info-grid">
+          <div class="ms-info-row">
+            <span class="ms-label">Session</span>
+            <span class="ms-value ms-mono">{{ s.session_identifier }}</span>
           </div>
-          <div class="ms-metric">
-            <span class="ms-metric-label">Streams</span>
-            <span class="ms-metric-val">{{ s.active_streams }}<span class="ms-metric-dim"> / {{ s.max_streams }}</span></span>
+          <div class="ms-info-row">
+            <span class="ms-label">Telegram</span>
+            <span class="ms-value ms-tg-user">{{ s.telegram_username ? '@' + s.telegram_username : '—' }}</span>
           </div>
-          <div class="ms-metric">
-            <span class="ms-metric-label">Heartbeat</span>
-            <span class="ms-metric-val ms-hb-val">{{ timeAgo(s.last_heartbeat_at) }}</span>
+          <div class="ms-info-row">
+            <span class="ms-label">User ID</span>
+            <span class="ms-value ms-mono">{{ s.telegram_user_id ?? '—' }}</span>
           </div>
-          <div class="ms-metric" v-if="s.error_count > 0">
-            <span class="ms-metric-label">Errors</span>
-            <span class="ms-metric-val ms-err-val">{{ s.error_count }}</span>
+          <div class="ms-info-row">
+            <span class="ms-label">Phone</span>
+            <span class="ms-value ms-mono">{{ s.telegram_phone || '—' }}</span>
+          </div>
+          <div class="ms-info-row">
+            <span class="ms-label">Name</span>
+            <span class="ms-value">{{ s.telegram_display_name || s.name || '—' }}</span>
+          </div>
+          <div class="ms-info-row">
+            <span class="ms-label">Role</span>
+            <span class="ms-value"><span class="ms-role">Data Plane</span></span>
+          </div>
+          <div class="ms-info-row">
+            <span class="ms-label">Node</span>
+            <span class="ms-value">
+              <span v-if="s.node_name" class="ms-node-badge">{{ s.node_name }}</span>
+              <span v-else class="ms-badge-unassigned">UNASSIGNED</span>
+            </span>
+          </div>
+          <div class="ms-info-row">
+            <span class="ms-label">Streams</span>
+            <span class="ms-value">{{ s.active_streams }}<span class="ms-metric-dim"> / {{ s.max_streams }}</span></span>
+          </div>
+          <div class="ms-info-row">
+            <span class="ms-label">Heartbeat</span>
+            <span class="ms-value ms-hb-val">{{ timeAgo(s.last_heartbeat_at) }}</span>
+          </div>
+          <div class="ms-info-row" v-if="s.error_count > 0">
+            <span class="ms-label">Errors</span>
+            <span class="ms-value ms-err-val">{{ s.error_count }}</span>
           </div>
         </div>
         <!-- Row 3: actions -->
@@ -309,19 +345,22 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
   border-radius: var(--ui-radius); padding: 0.8rem 1rem; cursor: pointer; transition: border-color 0.15s;
 }
 .ms-card:hover { border-color: var(--ui-border); }
+.ms-card:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
 
 .ms-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
 .ms-card-identity { min-width: 0; flex: 1; }
-.ms-session-name { font-weight: 600; color: var(--ui-text); font-size: 0.9rem; }
-.ms-session-meta { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.15rem; flex-wrap: wrap; }
-.ms-session-id { font-size: 12px; color: var(--ui-link); font-family:var(--ui-font); }
-.ms-tg-tag { font-size: 12px; color: var(--ui-link); }
+.ms-card-kicker { font-size: 12px; font-weight: 600; color: var(--ui-link); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.2rem; }
+.ms-session-name { font-weight: 600; color: var(--ui-text); font-size: 0.95rem; }
 .ms-card-badges { display: flex; gap: 0.35rem; flex-shrink: 0; }
 
-.ms-card-metrics { display: flex; gap: 1.2rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
-.ms-metric { display: flex; flex-direction: column; gap: 0.1rem; }
-.ms-metric-label { font-size: 12px; color: var(--ui-link); text-transform: uppercase; letter-spacing: 0.03em; }
-.ms-metric-val { font-size: 0.82rem; color: var(--ui-secondary); }
+/* ── Identity grid (mirrors Master Session card) ── */
+.ms-info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 16px; margin: 0.35rem 0 0.75rem; }
+.ms-info-row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.ms-info-row .ms-label { display: block; font-size: 12px; font-weight: 400; color: var(--ui-muted, var(--ui-link)); text-transform: uppercase; letter-spacing: 0.3px; }
+.ms-value { font-size: 13px; color: var(--ui-text); font-weight: 500; max-width: 100%; overflow-wrap: anywhere; }
+.ms-tg-user { color: var(--ui-link); }
+.ms-mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.ms-role { display: inline-block; background: var(--ui-raised); color: var(--ui-link); padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
 .ms-metric-dim { color: var(--ui-link); }
 .ms-hb-val { color: var(--ui-link); }
 
@@ -387,7 +426,6 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 .ms-cards { width: 100%; }
 .ms-card { box-sizing: border-box; max-width: 100%; }
 .ms-session-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.ms-session-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; display: inline-block; vertical-align: bottom; }
 .ms-node-badge { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; display: inline-block; vertical-align: bottom; }
 .ms-counters { width: 100%; box-sizing: border-box; }
 .ms-counter { flex: 1 1 auto; }
@@ -395,7 +433,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 /* ── Responsive: tablet / narrow admin viewport ── */
 @media (max-width: 900px) {
   .ms-page { padding: 1rem 1rem; }
-  .ms-card-metrics { gap: 0.9rem; }
+  .ms-info-grid { gap: 10px 14px; }
 }
 
 /* ── Responsive: mobile — stack badges under identity ── */
@@ -403,8 +441,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
   .ms-page { padding: 0.85rem 0.75rem; }
   .ms-card-top { flex-direction: column; align-items: stretch; }
   .ms-card-badges { align-self: flex-start; }
-  .ms-card-metrics { gap: 0.75rem 1rem; }
-  .ms-metric { flex: 1 1 40%; }
+  .ms-info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
   .ms-card-actions .ms-act { flex: 1 1 auto; text-align: center; }
   .ms-title { font-size: 1.25rem; }
   .ms-header-actions { width: 100%; }

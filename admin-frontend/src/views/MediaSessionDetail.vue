@@ -12,6 +12,7 @@ const sessionId = route.params.id as string
 interface SessionDetail {
   id: string; name: string | null; account_identifier: string; session_identifier: string
   telegram_user_id: number | null; telegram_username: string | null
+  telegram_display_name: string | null
   telegram_phone: string | null; credentials_configured: boolean
   status: string; health_status: string; enabled: boolean
   active_streams: number; max_streams: number; error_count: number
@@ -123,8 +124,9 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
     <template v-else-if="session">
       <div class="sd-header">
         <div>
-          <h1 class="sd-title">📱 {{ session.telegram_phone || session.name || session.account_identifier }}</h1>
-          <div class="sd-subtitle">{{ session.session_identifier }}<span v-if="session.telegram_username" class="sd-tg-user"> · @{{ session.telegram_username }}</span></div>
+          <div class="sd-kicker">Worker Telegram Session · Data Plane</div>
+          <h1 class="sd-title">📱 {{ session.telegram_display_name || session.name || session.telegram_phone || session.account_identifier }}</h1>
+          <div class="sd-subtitle">{{ session.session_identifier }}<span v-if="session.telegram_username" class="sd-tg-user"> · @{{ session.telegram_username }}</span><span v-if="session.telegram_phone" class="sd-tg-user"> · {{ session.telegram_phone }}</span></div>
         </div>
         <div class="sd-badges">
           <span class="sd-badge" :class="statusClass(session.status)">{{ session.status }}</span>
@@ -136,10 +138,11 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
       <section class="sd-section">
         <h2 class="sd-section-title">Identity</h2>
         <div class="sd-grid">
-          <div class="sd-field"><span class="sd-label">Phone</span><span class="sd-val">{{ session.telegram_phone || 'N/A' }}</span></div>
-          <div class="sd-field"><span class="sd-label">Telegram ID</span><span class="sd-val">{{ session.telegram_user_id || 'N/A' }}</span></div>
+          <div class="sd-field"><span class="sd-label">Display Name</span><span class="sd-val">{{ session.telegram_display_name || session.name || 'N/A' }}</span></div>
+          <div class="sd-field"><span class="sd-label">Phone</span><span class="sd-val sd-mono">{{ session.telegram_phone || 'N/A' }}</span></div>
+          <div class="sd-field"><span class="sd-label">Telegram ID</span><span class="sd-val sd-mono">{{ session.telegram_user_id ?? 'N/A' }}</span></div>
           <div class="sd-field"><span class="sd-label">Username</span><span class="sd-val">{{ session.telegram_username ? '@' + session.telegram_username : 'N/A' }}</span></div>
-          <div class="sd-field"><span class="sd-label">Role</span><span class="sd-val sd-role">Media</span></div>
+          <div class="sd-field"><span class="sd-label">Role</span><span class="sd-val sd-role">Data Plane</span></div>
           <div class="sd-field"><span class="sd-label">Session ID</span><span class="sd-val sd-mono">{{ session.id }}</span></div>
           <div class="sd-field"><span class="sd-label">Account</span><span class="sd-val">{{ session.account_identifier }}</span></div>
           <div class="sd-field"><span class="sd-label">Session File</span><span class="sd-val sd-mono">{{ session.session_identifier }}</span></div>
@@ -263,6 +266,7 @@ onUnmounted(() => { if (refreshInterval) clearInterval(refreshInterval) })
 
 .sd-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; }
 .sd-title { font-size: 1.4rem; font-weight: 700; color: var(--ui-text); margin: 0; }
+.sd-kicker { font-size: 12px; font-weight: 600; color: var(--ui-link); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem; }
 .sd-subtitle { font-size: 12px; color: var(--ui-link); font-family:var(--ui-font); }
 .sd-badges { display: flex; gap: 0.4rem; }
 
