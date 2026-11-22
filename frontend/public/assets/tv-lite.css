@@ -1,0 +1,421 @@
+/*
+ * KINOSOTA Lite TV portal styles (TV_MULTI_EPOCH_PORTAL_SPEC.md §4.1.4).
+ * WebKit 537 safe: no backdrop-filter, no clamp()/min()/max(), fixed px sizes, hardware transforms only.
+ * The layout is drawn for a 1280px wide screen; tv-lite.js zooms it to the real screen width.
+ */
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #0a0d14;
+    color: #e2e8f0;
+    font-family: Arial, Helvetica, sans-serif;
+    overflow: hidden;
+}
+
+.is-hidden { display: none !important; }
+
+.lite-app {
+    position: relative;
+    width: 1280px;
+    height: 720px;
+    overflow: hidden;
+    background: #0a0d14;
+}
+
+.lite-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 64px;
+    padding: 18px 48px 0 48px;
+    box-sizing: border-box;
+    z-index: 5;
+    background: rgba(10, 13, 20, 0.94);
+}
+
+.lite-brand {
+    font-size: 26px;
+    font-weight: bold;
+    letter-spacing: 4px;
+    color: #e2e8f0;
+}
+
+.lite-badge {
+    display: inline-block;
+    margin-left: 18px;
+    padding: 3px 12px;
+    border: 1px solid #1e3a5f;
+    border-radius: 12px;
+    font-size: 15px;
+    color: #94a3b8;
+    vertical-align: 4px;
+}
+
+.lite-viewport {
+    position: absolute;
+    top: 64px;
+    left: 0;
+    width: 1280px;
+    height: 656px;
+    overflow: hidden;
+}
+
+.lite-scroll {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+    -webkit-transition: -webkit-transform 0.2s ease-out;
+    transition: transform 0.2s ease-out;
+}
+
+/* ── Spotlight banner ── */
+.lite-hero {
+    position: relative;
+    width: 1184px;
+    height: 360px;
+    margin: 8px 48px 0 48px;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #111827;
+}
+
+.lite-hero-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1184px;
+    height: 360px;
+}
+
+.lite-hero-shade {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1184px;
+    height: 360px;
+    background: rgba(10, 13, 20, 0.55);
+    background: -webkit-linear-gradient(left, rgba(10, 13, 20, 0.94) 0%, rgba(10, 13, 20, 0.7) 45%, rgba(10, 13, 20, 0.1) 100%);
+    background: linear-gradient(to right, rgba(10, 13, 20, 0.94) 0%, rgba(10, 13, 20, 0.7) 45%, rgba(10, 13, 20, 0.1) 100%);
+}
+
+.lite-hero-body {
+    position: absolute;
+    top: 48px;
+    left: 48px;
+    width: 620px;
+}
+
+.lite-hero-kicker {
+    font-size: 16px;
+    letter-spacing: 3px;
+    color: #00d2ff;
+}
+
+.lite-hero-title {
+    margin-top: 10px;
+    font-size: 42px;
+    font-weight: bold;
+    line-height: 48px;
+    color: #ffffff;
+}
+
+.lite-hero-meta {
+    margin-top: 8px;
+    font-size: 18px;
+    color: #94a3b8;
+}
+
+.lite-hero-overview {
+    margin-top: 14px;
+    font-size: 18px;
+    line-height: 26px;
+    color: #cbd5e1;
+    height: 78px;
+    overflow: hidden;
+}
+
+.lite-btn {
+    display: inline-block;
+    margin-top: 22px;
+    padding: 12px 30px;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    background: #112236;
+    color: #e2e8f0;
+    font-size: 20px;
+    font-weight: bold;
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+    -webkit-transition: -webkit-transform 0.12s ease-out;
+    transition: transform 0.12s ease-out;
+}
+
+.lite-btn.is-focused {
+    background: #00d2ff;
+    border-color: #00d2ff;
+    color: #060d16;
+    -webkit-transform: scale(1.06);
+    transform: scale(1.06);
+}
+
+/* ── Shelves ── */
+.lite-shelf {
+    position: relative;
+    width: 1280px;
+    height: 330px;
+    margin-top: 18px;
+}
+
+.lite-shelf-title {
+    margin: 0 0 0 48px;
+    height: 40px;
+    font-size: 24px;
+    font-weight: bold;
+    line-height: 40px;
+    color: #e2e8f0;
+}
+
+.lite-shelf-window {
+    position: relative;
+    width: 1280px;
+    height: 290px;
+    overflow: hidden;
+}
+
+.lite-shelf-track {
+    position: absolute;
+    top: 12px;
+    left: 48px;
+    width: 6000px;
+    height: 278px;
+    white-space: nowrap;
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+    -webkit-transition: -webkit-transform 0.18s ease-out;
+    transition: transform 0.18s ease-out;
+}
+
+.lite-card {
+    display: inline-block;
+    vertical-align: top;
+    width: 160px;
+    margin-right: 20px;
+    white-space: normal;
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+    -webkit-transition: -webkit-transform 0.12s ease-out;
+    transition: transform 0.12s ease-out;
+}
+
+.lite-card-poster {
+    position: relative;
+    width: 154px;
+    height: 231px;
+    overflow: hidden;
+    border: 3px solid #1e3a5f;
+    border-radius: 10px;
+    background: #111827;
+}
+
+.lite-card-poster img {
+    display: block;
+    width: 154px;
+    height: 231px;
+}
+
+.lite-card-fallback {
+    position: absolute;
+    top: 80px;
+    left: 10px;
+    width: 134px;
+    font-size: 16px;
+    line-height: 22px;
+    text-align: center;
+    color: #94a3b8;
+}
+
+.lite-card-rating {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(10, 13, 20, 0.85);
+    font-size: 14px;
+    font-weight: bold;
+    color: #facc15;
+}
+
+.lite-card-title {
+    margin-top: 8px;
+    height: 22px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 17px;
+    color: #cbd5e1;
+}
+
+.lite-card.is-focused {
+    -webkit-transform: scale(1.06);
+    transform: scale(1.06);
+}
+
+.lite-card.is-focused .lite-card-poster {
+    border-color: #00d2ff;
+}
+
+.lite-card.is-focused .lite-card-title {
+    color: #ffffff;
+}
+
+.lite-status {
+    margin: 40px 48px;
+    font-size: 22px;
+    color: #94a3b8;
+}
+
+/* ── Player ── */
+.lite-player {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 720px;
+    z-index: 20;
+    background: #000000;
+}
+
+.lite-video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 720px;
+    background: #000000;
+}
+
+.lite-player-message {
+    position: absolute;
+    top: 300px;
+    left: 140px;
+    width: 1000px;
+    font-size: 26px;
+    line-height: 36px;
+    text-align: center;
+    color: #e2e8f0;
+}
+
+.lite-player-bar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1280px;
+    padding: 22px 48px 26px 48px;
+    box-sizing: border-box;
+    background: rgba(10, 13, 20, 0.94);
+}
+
+.lite-player-bar.is-faded {
+    opacity: 0;
+}
+
+.lite-player-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lite-progress {
+    position: relative;
+    margin-top: 14px;
+    width: 1184px;
+    height: 6px;
+    border-radius: 3px;
+    background: #1e293b;
+    overflow: hidden;
+}
+
+.lite-progress-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 6px;
+    background: #00d2ff;
+}
+
+.lite-player-row {
+    margin-top: 12px;
+    font-size: 18px;
+    color: #94a3b8;
+}
+
+.lite-player-state {
+    display: inline-block;
+    width: 34px;
+    color: #ffffff;
+}
+
+.lite-player-time {
+    display: inline-block;
+    width: 220px;
+    color: #e2e8f0;
+}
+
+/* ── Exit dialog ── */
+.lite-exit {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 720px;
+    z-index: 30;
+    background: rgba(10, 13, 20, 0.94);
+}
+
+.lite-exit-box {
+    position: absolute;
+    top: 250px;
+    left: 390px;
+    width: 500px;
+    padding: 30px 0 34px 0;
+    border: 2px solid #1e3a5f;
+    border-radius: 14px;
+    background: #0d1b2b;
+    text-align: center;
+}
+
+.lite-exit-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.lite-exit-buttons .lite-btn {
+    margin: 26px 12px 0 12px;
+}
+
+.lite-toast {
+    position: absolute;
+    left: 290px;
+    bottom: 36px;
+    width: 700px;
+    padding: 12px 0;
+    border-radius: 24px;
+    z-index: 40;
+    background: rgba(0, 210, 255, 0.95);
+    color: #060d16;
+    font-size: 20px;
+    font-weight: bold;
+    text-align: center;
+}

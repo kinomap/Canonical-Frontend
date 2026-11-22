@@ -17,6 +17,9 @@ server {
     location /api/ { proxy_pass http://control_pool; }
     location /media/ { proxy_pass http://control_pool; }
     location ^~ /assets/ { root /usr/share/nginx/html/public; try_files $uri =404; add_header Cache-Control "public, max-age=31536000, immutable"; add_header X-Content-Type-Options nosniff always; }
+    # Lite TV portal for 2012-2017 Smart TVs (static ES5 page, never the SPA fallback).
+    location = /tv/lite { root /usr/share/nginx/html/public; try_files /tv/lite/index.html =404; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
+    location = /tv/lite/ { root /usr/share/nginx/html/public; try_files /tv/lite/index.html =404; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
     location / { root /usr/share/nginx/html/public; try_files $uri /index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
 }
 server {
@@ -76,5 +79,8 @@ server {
     location ^~ /stream/ { return 404; }
     location ^~ /assets/ { root /usr/share/nginx/html/public; try_files $uri =404; add_header Cache-Control "public, max-age=31536000, immutable"; add_header X-Content-Type-Options nosniff always; }
     location = /index.html { root /usr/share/nginx/html; try_files /seo/index.html /public/index.html =404; add_header Cache-Control "no-cache"; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
+    # Lite TV portal for 2012-2017 Smart TVs (static ES5 page, never the SPA fallback).
+    location = /tv/lite { root /usr/share/nginx/html/public; try_files /tv/lite/index.html =404; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
+    location = /tv/lite/ { root /usr/share/nginx/html/public; try_files /tv/lite/index.html =404; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
     location / { root /usr/share/nginx/html/public; try_files $uri /index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
 }

@@ -1,6 +1,7 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import legacy from '@vitejs/plugin-legacy'
 import fileURLToPath from 'node:url'
 import path from 'node:path'
 
@@ -8,9 +9,17 @@ const __filename = fileURLToPath.fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // Next-Gen TV portal on 2017–2020 TVs (Tizen 3–5, webOS 4–5, older Android TV WebViews):
+    // browsers without ES modules get a nomodule SystemJS bundle with polyfills.
+    // 2012–2016 TVs (Orsay, Netcast) are routed to the ES5 Lite portal (/tv/lite) instead.
+    legacy({
+      targets: ['chrome >= 47', 'safari >= 10'],
+      modernTargets: ['edge >= 79', 'firefox >= 67', 'chrome >= 64', 'safari >= 12', 'chromeAndroid >= 64', 'ios >= 12'],
+    }),
+  ],
   build: {
-    target: 'chrome64',
     cssTarget: 'chrome64'
   },
   resolve: {
