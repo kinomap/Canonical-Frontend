@@ -171,3 +171,33 @@ test('topology component renders nodes with state text and traffic legend', asyn
   assert.match(html, /Direct media/)
   assert.equal(html.split('class="node').length - 1 >= 32, true)
 })
+
+test('disabled optional sources are not treated as degraded and do not show warning banner', async () => {
+  assert.equal(lib.isDegradedSource({ source: 'aws', check_status: 'DISABLED', freshness: 'MISSING', optional: true, enabled: false }), false)
+  assert.equal(lib.isDegradedSource({ source: 'host', check_status: 'OK', freshness: 'FRESH' }), false)
+  assert.equal(lib.isDegradedSource({ source: 'host', check_status: 'ERROR', freshness: 'FRESH' }), true)
+  assert.equal(lib.isDegradedSource({ source: 'host', check_status: 'OK', freshness: 'STALE' }), true)
+  assert.equal(lib.sourceIcon({ source: 'aws', check_status: 'DISABLED', freshness: 'MISSING', optional: true }), '—')
+
+  const healthyRoutes = routes({
+    overview: {
+      generated_at: '2026-11-22T18:22:35Z', policy_version: '2026-10-14.3', run: { running: false, progress: [] },
+      summary: { overall: 'HEALTHY', checks: { PASS: 15, FAIL: 0, UNKNOWN: 0 },
+        findings_by_severity: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, INFO: 1 } },
+      sources: [
+        src({ source: 'inventory' }),
+        src({ source: 'wireguard' }),
+        src({ source: 'host' }),
+        src({ source: 'cloudflare' }),
+        src({ source: 'node_probe' }),
+        src({ source: 'external_observer' }),
+        src({ source: 'aws', check_status: 'DISABLED', freshness: 'MISSING', optional: true, enabled: false, data_age_seconds: null }),
+        src({ source: 'self' }),
+        src({ source: 'node_local' }),
+      ],
+    },
+  })
+  const { text } = await renderView(healthyRoutes)
+  assert.match(text, /Overall: Healthy/)
+  assert.doesNotMatch(text, /Partial evidence/)
+})

@@ -41,6 +41,27 @@ export interface SourceMeta {
   max_age_seconds: number
   freshness: string
   error_reason: string | null
+  optional?: boolean
+  enabled?: boolean
+}
+
+export function isDegradedSource(s: SourceMeta): boolean {
+  if (s.check_status === 'DISABLED' || s.optional === true || s.enabled === false) return false
+  return s.freshness !== 'FRESH' || s.check_status === 'ERROR'
+}
+
+export function sourceIcon(s: SourceMeta): string {
+  if (s.check_status === 'DISABLED' || s.optional === true || s.enabled === false) return '—'
+  if (s.freshness === 'FRESH' && s.check_status !== 'ERROR') return '✓'
+  if (s.freshness === 'STALE') return '⧖'
+  return '?'
+}
+
+export function sourceColor(s: SourceMeta): string {
+  if (s.check_status === 'DISABLED' || s.optional === true || s.enabled === false) return stateMeta('DISABLED').color
+  if (s.freshness === 'FRESH' && s.check_status !== 'ERROR') return stateMeta('HEALTHY').color
+  if (s.freshness === 'STALE') return stateMeta('STALE').color
+  return stateMeta('UNKNOWN').color
 }
 
 export interface StateMeta { label: string; icon: string; color: string; bg: string }

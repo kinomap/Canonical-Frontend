@@ -56,8 +56,8 @@
           <div class="card-label">Evidence sources</div>
           <div class="src-list">
             <span v-for="s in overview.sources" :key="s.source" class="src" :title="s.error_reason || ''"
-                  :style="{ color: srcColor(s), borderColor: srcColor(s) }">
-              {{ s.freshness === 'FRESH' && s.check_status !== 'ERROR' ? '✓' : (s.freshness === 'STALE' ? '⧖' : '?') }}
+                  :style="{ color: sourceColor(s), borderColor: sourceColor(s) }">
+              {{ sourceIcon(s) }}
               {{ s.source }} · {{ s.check_status }} · {{ formatAge(s.data_age_seconds) }}
             </span>
           </div>
@@ -89,7 +89,7 @@
           <p><b>Last verified:</b> {{ fmtTime(selected.item.last_verified) }}</p>
           <div><b>Sources</b>
             <ul class="src-ul">
-              <li v-for="s in selected.item.sources || []" :key="s.source" :style="{ color: srcColor(s) }">
+              <li v-for="s in selected.item.sources || []" :key="s.source" :style="{ color: sourceColor(s) }">
                 {{ s.source }} — {{ s.check_status }}/{{ s.freshness }} ({{ formatAge(s.data_age_seconds) }} old,
                 max {{ formatAge(s.max_age_seconds) }}){{ s.error_reason ? ' — ' + s.error_reason : '' }}
               </li>
@@ -197,7 +197,16 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import axios from 'axios'
 import SecurityTopology from '../components/SecurityTopology.vue'
-import { formatAge, SEVERITY_COLORS, stateMeta, type SourceMeta, type TopoEdge, type TopoNode } from '../lib/securityView'
+import {
+  formatAge,
+  isDegradedSource,
+  SEVERITY_COLORS,
+  sourceColor,
+  sourceIcon,
+  stateMeta,
+  type TopoEdge,
+  type TopoNode,
+} from '../lib/securityView'
 
 const TABS = ['Topology', 'Exposure', 'Findings', 'History'] as const
 const H_LIMIT = 50
@@ -225,15 +234,12 @@ let runTimer: number | null = null
 
 const overall = computed(() => overview.value?.summary?.overall || 'UNKNOWN')
 const running = computed(() => !!run.value?.running)
-const degradedSources = computed(() => (overview.value?.sources || []).filter(
-  (s: SourceMeta) => s.freshness !== 'FRESH' || s.check_status === 'ERROR'))
+const degradedSources = computed(() => (overview.value?.sources || []).filter(isDegradedSource))
 const exposureRows = computed(() => exposure.value.filter(
   (e) => !hideLoopback.value || !(e.listening?.scopes?.length === 1 && e.listening.scopes[0] === 'loopback')))
 
 const fmtTime = (v?: string | null) => (v ? new Date(v).toLocaleString() : '—')
 const tri = (v: unknown) => (v === true ? 'yes' : v === false ? 'no' : '—')
-const srcColor = (s: SourceMeta) => (s.freshness === 'FRESH' && s.check_status !== 'ERROR'
-  ? stateMeta('HEALTHY').color : s.freshness === 'STALE' ? stateMeta('STALE').color : stateMeta('UNKNOWN').color)
 // expected.value: YES = matches policy, NO = violates policy, UNVERIFIED / NOT_IN_POLICY otherwise
 const expClass = (e: any) => (e.expected?.value === 'NO' ? 'row-bad' : e.expected?.value === 'YES' ? 'row-ok' : '')
 const expLabel = (v?: string) => ({ YES: '✓ matches policy', NO: '✕ VIOLATES policy', UNVERIFIED: '? unverified',
