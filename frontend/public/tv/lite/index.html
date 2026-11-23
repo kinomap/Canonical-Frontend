@@ -47,6 +47,10 @@
                 <span class="lite-menu-icon">🎭</span>
                 <span class="lite-menu-label">Жанры</span>
             </div>
+            <div class="lite-menu-item" data-id="auth">
+                <span class="lite-menu-icon">🔑</span>
+                <span class="lite-menu-label" id="lite-menu-auth-label">Войти</span>
+            </div>
             <div class="lite-menu-item" data-id="exit">
                 <span class="lite-menu-icon">🚪</span>
                 <span class="lite-menu-label">Выход</span>
@@ -147,6 +151,30 @@
                 <span id="lite-player-state" class="lite-player-state">▶</span>
                 <span id="lite-player-time" class="lite-player-time">0:00 / 0:00</span>
                 <span class="lite-player-hint">OK — пауза · ◀ ▶ — 30 сек · Назад — выход</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth / Pairing Modal -->
+    <div id="lite-auth" class="lite-auth is-hidden">
+        <div class="lite-auth-box">
+            <div class="lite-auth-title">Вход в аккаунт KINOSOTA</div>
+            <div class="lite-auth-subtitle">Привяжите телевизор для просмотра фильмов и сериалов</div>
+            <div class="lite-auth-body">
+                <div class="lite-auth-qr-wrap">
+                    <img id="lite-auth-qr" class="lite-auth-qr" alt="QR" src="">
+                </div>
+                <div class="lite-auth-info">
+                    <div class="lite-auth-step">1. Откройте в Telegram-боте или на телефоне:</div>
+                    <div id="lite-auth-url" class="lite-auth-url">watch.scenrix.com/profile</div>
+                    <div class="lite-auth-step">2. Введите код подтверждения:</div>
+                    <div id="lite-auth-code" class="lite-auth-code">····-····</div>
+                    <div id="lite-auth-status" class="lite-auth-status">Ожидание подтверждения…</div>
+                </div>
+            </div>
+            <div class="lite-auth-actions" id="lite-auth-actions">
+                <span id="lite-auth-refresh" class="lite-btn">Обновить код</span>
+                <span id="lite-auth-cancel" class="lite-btn is-focused">Назад в каталог</span>
             </div>
         </div>
     </div>

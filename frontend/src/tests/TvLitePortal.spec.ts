@@ -209,6 +209,39 @@ describe('Lite TV portal behaviour', () => {
     expect(resolveKey({ keyCode: 0, key: 'ArrowDown' }, false)).toBe('down')
   })
 
+  it('navigates across hero banner buttons with Right and opens details modal on second button', async () => {
+    await bootLite()
+    expect(lite().state.row).toBe(0)
+    expect(lite().state.rows[0].col).toBe(0)
+    press('ArrowRight', 39)
+    expect(lite().state.rows[0].col).toBe(1)
+    press('Enter', 13) // opens details on 'О фильме'
+    await flush()
+    expect(lite().state.mode).toBe('details')
+    press('Escape', 27)
+    expect(lite().state.mode).toBe('browse')
+  })
+
+  it('opens device pairing modal on 401 in player when OK is pressed', async () => {
+    routes = routes.map(item => (item.path === '/playback/start' ? { ...item, status: 401, body: { detail: 'auth' } } : item))
+    routes.push({ method: 'POST', path: '/desktop/pairing/start', status: 200, body: { device_code: 'd1', user_code: '12345678', verification_uri: 'https://watch.scenrix.com/profile?player_code=12345678' } })
+    await bootLite()
+    press('ArrowDown', 40)
+    press('Enter', 13) // open details
+    await flush()
+    press('Enter', 13) // start playback -> 401
+    await flush()
+    expect(lite().state.mode).toBe('player')
+    expect(document.getElementById('lite-player-message')?.textContent).toContain('нужен вход')
+    press('Enter', 13) // presses OK on player to pair
+    await flush()
+    expect(lite().state.mode).toBe('auth')
+    expect(document.getElementById('lite-auth')?.className).not.toContain('is-hidden')
+    expect(document.getElementById('lite-auth-code')?.textContent).toBe('1234-5678')
+    press('Escape', 27)
+    expect(lite().state.mode).toBe('browse')
+  })
+
   it('ships a working Promise polyfill and time formatting', async () => {
     await bootLite()
     const { LitePromise, formatTime } = lite()

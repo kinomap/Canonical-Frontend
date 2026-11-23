@@ -877,6 +877,102 @@ html, body {
     color: #94a3b8;
 }
 
+/* ── Auth / Pairing Dialog ── */
+.lite-auth {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 720px;
+    z-index: 250;
+    background: rgba(6, 9, 14, 0.92);
+}
+
+.lite-auth-box {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    -webkit-transform: translate3d(-50%, -50%, 0);
+    transform: translate3d(-50%, -50%, 0);
+    width: 720px;
+    padding: 36px 44px;
+    border: 2px solid #1e3a5f;
+    border-radius: 14px;
+    background: rgba(10, 13, 20, 0.94);
+    text-align: center;
+}
+
+.lite-auth-title {
+    font-size: 32px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.lite-auth-subtitle {
+    font-size: 18px;
+    color: #94a3b8;
+    margin-top: 6px;
+}
+
+.lite-auth-body {
+    margin-top: 26px;
+    text-align: left;
+    overflow: hidden;
+}
+
+.lite-auth-qr-wrap {
+    float: left;
+    width: 200px;
+    height: 200px;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 10px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.lite-auth-qr {
+    width: 180px;
+    height: 180px;
+    display: block;
+}
+
+.lite-auth-info {
+    margin-left: 230px;
+}
+
+.lite-auth-step {
+    font-size: 16px;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
+.lite-auth-url {
+    font-size: 20px;
+    font-weight: bold;
+    color: #00d2ff;
+    margin: 6px 0 16px 0;
+}
+
+.lite-auth-code {
+    font-size: 40px;
+    font-weight: bold;
+    letter-spacing: 4px;
+    color: #00ff88;
+    margin: 8px 0 10px 0;
+    font-family: monospace, Courier, sans-serif;
+}
+
+.lite-auth-status {
+    font-size: 15px;
+    color: #cbd5e1;
+}
+
+.lite-auth-actions {
+    margin-top: 32px;
+    clear: both;
+}
+
 /* ── Exit Dialog ── */
 .lite-exit {
     position: absolute;

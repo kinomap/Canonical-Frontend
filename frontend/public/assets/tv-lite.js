@@ -184,24 +184,12 @@
         heartbeat: function (sessionId) { return request('POST', '/playback/heartbeat', { session_id: sessionId }); },
         stopPlayback: function (sessionId) { return request('POST', '/playback/stop', { session_id: sessionId }); },
         startSeriesPlayback: function (episodeId) { return request('POST', '/series_playback/start', { episode_id: episodeId }); },
-        torrentTicket: function (body) { return request('POST', '/torrents/playback-ticket', body); }
+        torrentTicket: function (body) { return request('POST', '/torrents/playback-ticket', body); },
+        startPairing: function () { return request('POST', '/desktop/pairing/start'); },
+        pollPairing: function (deviceCode) { return request('POST', '/desktop/pairing/exchange', { device_code: deviceCode }); }
     };
 
     /* ── Remote control keys ── */
-    var KEYS = {
-        left: [37, 214, 205],
-        right: [39, 213, 206],
-        up: [38, 211, 203],
-        down: [40, 212, 204],
-        select: [13, 29443, 195, 23, 66],
-        back: [27, 8, 10009, 461, 196, 145],
-        playpause: [179, 10252, 463],
-        play: [415, 250],
-        pause: [19],
-        forward: [417, 228],
-        rewind: [412, 227]
-    };
-    var ORSAY_KEYS = { left: [4], right: [5], up: [29460], down: [29461], back: [88, 45], play: [71], pause: [74], forward: [72], rewind: [69] };
     var KEY_NAMES = {
         arrowleft: 'left', left: 'left', arrowright: 'right', right: 'right', arrowup: 'up', up: 'up',
         arrowdown: 'down', down: 'down', enter: 'select', select: 'select', accept: 'select', ok: 'select',
@@ -210,26 +198,38 @@
         mediafastforward: 'forward', mediarewind: 'rewind'
     };
 
-    function inList(list, code) {
-        if (!list) return false;
-        for (var i = 0; i < list.length; i++) if (list[i] === code) return true;
-        return false;
-    }
-
     function resolveKey(event, orsay) {
         var code = event.keyCode || event.which || 0;
         var isOrsay = orsay === undefined ? IS_ORSAY : orsay;
-        var action;
-        if (isOrsay) {
-            for (action in ORSAY_KEYS) {
-                if (ORSAY_KEYS.hasOwnProperty(action) && inList(ORSAY_KEYS[action], code)) return action;
-            }
-        } else if (code === 4) {
+
+        // Hardware back/return keys: Samsung 88, Tizen 10009, LG 461, Netcast 145, MSX 196, Esc 27, Backspace 8, Orsay 45
+        if (code === 88 || code === 10009 || code === 461 || code === 196 || code === 145 || code === 27 || code === 8 || code === 45) {
             return 'back';
         }
-        for (action in KEYS) {
-            if (KEYS.hasOwnProperty(action) && inList(KEYS[action], code)) return action;
+        // Hardware select/enter keys: Enter 13, Samsung 29443, Android Center 23, NumpadEnter 66, Space 32, TV 195
+        if (code === 13 || code === 29443 || code === 195 || code === 23 || code === 66 || code === 32) {
+            return 'select';
         }
+        // Android Back (4) vs Samsung Orsay widget Left (4)
+        if (code === 4) {
+            return isOrsay ? 'left' : 'back';
+        }
+        if (code === 5) {
+            return isOrsay ? 'right' : '';
+        }
+        // D-pad arrows
+        if (code === 37 || code === 214 || code === 205) return 'left';
+        if (code === 39 || code === 213 || code === 206) return 'right';
+        if (code === 38 || code === 211 || code === 203 || code === 29460) return 'up';
+        if (code === 40 || code === 212 || code === 204 || code === 29461) return 'down';
+
+        // Media keys
+        if (code === 179 || code === 10252 || code === 463) return 'playpause';
+        if (code === 415 || code === 250 || code === 71) return 'play';
+        if (code === 19 || code === 74) return 'pause';
+        if (code === 417 || code === 228 || code === 72) return 'forward';
+        if (code === 412 || code === 227 || code === 69) return 'rewind';
+
         var name = event.key && event.key !== 'Unidentified' ? String(event.key).toLowerCase() : '';
         return KEY_NAMES.hasOwnProperty(name) ? KEY_NAMES[name] : '';
     }
@@ -367,7 +367,7 @@
     }
 
     /* ── State ── */
-    var MENU_ITEMS = ['search', 'home', 'movies', 'series', 'torrents', 'genres', 'exit'];
+    var MENU_ITEMS = ['search', 'home', 'movies', 'series', 'torrents', 'genres', 'auth', 'exit'];
     var KB_ROWS = [
         ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '⌫'],
         ['Й', 'Ц', 'У', 'К', 'Е', 'Н', 'Г', 'Ш', 'Щ', 'З', 'Х'],
@@ -376,7 +376,7 @@
     ];
 
     var state = {
-        mode: 'browse',        /* browse | menu | details | search | genres | player | exit */
+        mode: 'browse',        /* browse | menu | details | search | genres | auth | player | exit */
         view: 'home',          /* home | grid | search | genres */
         menuIndex: 1,          /* 1 is 'home' */
         rows: [],              /* [{id, node, items: [node], cards: [card], track, col}] */
@@ -392,11 +392,21 @@
         searchQuery: '',
         kbRow: 0,
         kbCol: 0,
+        authFocus: 'cancel',   /* cancel | refresh */
+        pendingPlayCard: null,
         exitFocus: 'stay'
     };
 
+    function renderAuthMenuLabel() {
+        var label = $('lite-menu-auth-label');
+        if (!label) return;
+        var token = readToken();
+        setText(label, token ? '✓ Профиль' : 'Войти');
+    }
+
     /* ── Sidebar & Menu ── */
     function renderMenu() {
+        renderAuthMenuLabel();
         var sidebar = $('lite-sidebar');
         if (state.mode === 'menu') addClass(sidebar, 'is-expanded'); else removeClass(sidebar, 'is-expanded');
         var items = $('lite-menu').querySelectorAll('.lite-menu-item');
@@ -413,7 +423,7 @@
 
     function switchView(viewName) {
         state.view = viewName;
-        var titles = { home: 'Главная', movies: 'Фильмы', series: 'Сериалы', torrents: 'Торренты', genres: 'Жанры', search: 'Поиск' };
+        var titles = { home: 'Главная', movies: 'Фильмы', series: 'Сериалы', torrents: 'Торренты', genres: 'Жанры', search: 'Поиск', auth: 'Привязка ТВ', exit: 'Выход' };
         setText($('lite-view-title'), titles[viewName] || 'KINOSOTA TV');
         hide($('lite-view-home'));
         hide($('lite-view-grid'));
@@ -435,6 +445,8 @@
             loadGenresView();
         } else if (viewName === 'search') {
             openSearchView();
+        } else if (viewName === 'auth') {
+            openAuthModal();
         } else if (viewName === 'exit') {
             openExit();
         }
@@ -481,11 +493,25 @@
                 return;
             }
         } else if (action === 'right') {
-            if (row.col < row.items.length - 1) row.col += 1;
+            if (row.col < row.items.length - 1) {
+                row.col += 1;
+            } else if (!row.track && state.row < state.rows.length - 1) {
+                /* Multi-row grids (without horizontal track) wrap to the next line */
+                state.row += 1;
+                state.rows[state.row].col = 0;
+            }
         } else if (action === 'up') {
-            if (state.row > 0) state.row -= 1;
+            if (state.row > 0) {
+                state.row -= 1;
+                var prevRow = state.rows[state.row];
+                if (prevRow.col >= prevRow.items.length) prevRow.col = prevRow.items.length - 1;
+            }
         } else if (action === 'down') {
-            if (state.row < state.rows.length - 1) state.row += 1;
+            if (state.row < state.rows.length - 1) {
+                state.row += 1;
+                var nextRow = state.rows[state.row];
+                if (nextRow.col >= nextRow.items.length) nextRow.col = nextRow.items.length - 1;
+            }
         }
         applyFocus();
     }
@@ -534,11 +560,13 @@
 
         var actions = el('div', 'lite-hero-actions');
         var btnPlay = el('span', 'lite-btn is-focused', '▶ Смотреть');
+        var btnDetails = el('span', 'lite-btn', 'ℹ О фильме');
         actions.appendChild(btnPlay);
+        actions.appendChild(btnDetails);
         body.appendChild(actions);
         hero.appendChild(body);
         show(hero);
-        return [btnPlay];
+        return [btnPlay, btnDetails];
     }
 
     function renderShelf(title, cards) {
@@ -565,7 +593,7 @@
         $('lite-shelves').innerHTML = '';
         var heroBtns = renderHero(heroCard);
         if (heroBtns && heroBtns.length) {
-            state.rows.push({ id: 'hero', node: $('lite-hero'), items: heroBtns, cards: [heroCard], track: null, col: 0 });
+            state.rows.push({ id: 'hero', node: $('lite-hero'), items: heroBtns, cards: [heroCard, heroCard], track: null, col: 0 });
         }
         for (var i = 0; i < shelves.length; i++) {
             if (!shelves[i].cards.length) continue;
@@ -614,6 +642,8 @@
         setText($('lite-grid-title'), title);
         var container = $('lite-grid-cards');
         container.innerHTML = '';
+        state.rows = [];
+        state.row = 0;
         var status = $('lite-status');
         setText(status, 'Загрузка каталога…');
         show(status);
@@ -999,6 +1029,7 @@
         endSession();
         detachVideo();
         player.ready = false;
+        player.needsAuth = false;
         playerMessage('Загружаем видео…');
         showBar();
         resolveStream(card.play).then(function (stream) {
@@ -1027,6 +1058,10 @@
         })['catch'](function (error) {
             if (id !== player.loadId) return;
             player.ready = false;
+            var st = error && error.status;
+            if (st === 401 || st === 403) {
+                player.needsAuth = true;
+            }
             playerMessage(failText(error));
             showBar();
         });
@@ -1085,11 +1120,125 @@
 
     function onPlayerKey(action) {
         if (action === 'back') { closePlayer(); return true; }
-        if (action === 'select' || action === 'playpause') { togglePlay(); return true; }
+        if (action === 'select') {
+            if (!player.ready && player.needsAuth) {
+                closePlayer();
+                openAuthModal(player.card);
+                return true;
+            }
+            togglePlay();
+            return true;
+        }
+        if (action === 'playpause') { togglePlay(); return true; }
         if (action === 'play' || action === 'pause') { togglePlay(action); return true; }
         if (action === 'left' || action === 'rewind') { seek(-SEEK_STEP); return true; }
         if (action === 'right' || action === 'forward') { seek(SEEK_STEP); return true; }
         if (action === 'up' || action === 'down') { showBar(); return true; }
+        return false;
+    }
+
+    /* ── Auth / Device Pairing ── */
+    var authPolling = null;
+    var currentDeviceCode = null;
+
+    function openAuthModal(onSuccessPlayCard) {
+        state.mode = 'auth';
+        state.authFocus = 'cancel';
+        state.pendingPlayCard = onSuccessPlayCard || null;
+        renderAuthActions();
+        show($('lite-auth'));
+        fetchPairing();
+    }
+
+    function closeAuthModal() {
+        if (authPolling) { clearInterval(authPolling); authPolling = null; }
+        currentDeviceCode = null;
+        state.pendingPlayCard = null;
+        hide($('lite-auth'));
+        state.mode = 'browse';
+        applyFocus();
+    }
+
+    function renderAuthActions() {
+        var btnRefresh = $('lite-auth-refresh');
+        var btnCancel = $('lite-auth-cancel');
+        removeClass(btnRefresh, 'is-focused');
+        removeClass(btnCancel, 'is-focused');
+        if (state.authFocus === 'refresh') addClass(btnRefresh, 'is-focused');
+        else addClass(btnCancel, 'is-focused');
+    }
+
+    function fetchPairing() {
+        if (authPolling) { clearInterval(authPolling); authPolling = null; }
+        var statusEl = $('lite-auth-status');
+        var codeEl = $('lite-auth-code');
+        var qrEl = $('lite-auth-qr');
+        var urlEl = $('lite-auth-url');
+        setText(statusEl, 'Запрашиваем код привязки…');
+        setText(codeEl, '····-····');
+
+        api.startPairing().then(function (res) {
+            if (!res || !res.device_code) {
+                setText(statusEl, 'Не удалось получить код. Нажмите «Обновить код».');
+                return;
+            }
+            currentDeviceCode = res.device_code;
+            var uCode = res.user_code || '';
+            var formatted = uCode.length === 8 ? uCode.slice(0, 4) + '-' + uCode.slice(4) : uCode;
+            setText(codeEl, formatted);
+            var uri = res.verification_uri || ('https://watch.scenrix.com/profile?player_code=' + encodeURIComponent(uCode));
+            setText(urlEl, uri.replace(/^https?:\/\//, ''));
+            if (qrEl) {
+                qrEl.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(uri);
+            }
+            setText(statusEl, 'Ожидание подтверждения на телефоне…');
+
+            var delay = (res.interval && res.interval >= 3 ? res.interval : 4) * 1000;
+            authPolling = setInterval(function () {
+                if (state.mode !== 'auth' || !currentDeviceCode) {
+                    clearInterval(authPolling);
+                    authPolling = null;
+                    return;
+                }
+                api.pollPairing(currentDeviceCode).then(function (pollRes) {
+                    if (pollRes && pollRes.status === 'authorized' && pollRes.access_token) {
+                        clearInterval(authPolling);
+                        authPolling = null;
+                        try { window.localStorage.setItem(TOKEN_KEY, pollRes.access_token); } catch (e) {}
+                        setText(statusEl, '✓ Вход выполнен успешно!');
+                        toast('Телевизор успешно привязан!');
+                        renderAuthMenuLabel();
+                        var toPlay = state.pendingPlayCard;
+                        setTimeout(function () {
+                            closeAuthModal();
+                            if (toPlay) openPlayer(toPlay);
+                        }, 1000);
+                    }
+                })['catch'](function () {});
+            }, delay);
+        })['catch'](function () {
+            setText(statusEl, 'Ошибка сети. Нажмите «Обновить код».');
+        });
+    }
+
+    function onAuthKey(action) {
+        if (action === 'left' || action === 'right') {
+            state.authFocus = state.authFocus === 'cancel' ? 'refresh' : 'cancel';
+            renderAuthActions();
+            return true;
+        }
+        if (action === 'select') {
+            if (state.authFocus === 'refresh') {
+                fetchPairing();
+            } else {
+                closeAuthModal();
+            }
+            return true;
+        }
+        if (action === 'back') {
+            closeAuthModal();
+            return true;
+        }
         return false;
     }
 
@@ -1263,8 +1412,11 @@
             if (!row || !row.cards || !row.cards[row.col]) return true;
             var chosen = row.cards[row.col];
             if (state.row === 0 && row.id === 'hero') {
-                // Direct play from hero banner
-                openPlayer(chosen);
+                if (row.col === 0) {
+                    openPlayer(chosen);
+                } else {
+                    openDetailsModal(chosen);
+                }
             } else if (chosen.play) {
                 // Open Movie Details Sheet / Modal
                 openDetailsModal(chosen);
@@ -1293,6 +1445,7 @@
         if (!action) return;
         var handled;
         if (state.mode === 'player') handled = onPlayerKey(action);
+        else if (state.mode === 'auth') handled = onAuthKey(action);
         else if (state.mode === 'exit') handled = onExitKey(action);
         else if (state.mode === 'details') handled = onDetailsKey(action);
         else if (state.mode === 'search') handled = onSearchKey(action);
@@ -1323,6 +1476,11 @@
 
     function boot() {
         if (window.KinosotaLite && window.KinosotaLite.destroy) window.KinosotaLite.destroy();
+        var match = (window.location.search || '').match(/[?&]token=([^&]+)/);
+        if (match && match[1]) {
+            try { window.localStorage.setItem(TOKEN_KEY, decodeURIComponent(match[1])); } catch (e) {}
+        }
+        renderAuthMenuLabel();
         registerTvKeys();
         fitScreen();
         bindVideo();
@@ -1334,6 +1492,7 @@
     }
 
     function destroy() {
+        if (authPolling) { clearInterval(authPolling); authPolling = null; }
         document.removeEventListener('keydown', onKeyDown, false);
         window.removeEventListener('resize', fitScreen, false);
         window.removeEventListener('pagehide', endSession, false);
@@ -1350,6 +1509,7 @@
         formatTime: formatTime,
         state: state,
         player: player,
+        openAuth: openAuthModal,
         reload: loadHome,
         destroy: destroy,
         LitePromise: LitePromise
