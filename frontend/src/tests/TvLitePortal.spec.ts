@@ -136,6 +136,31 @@ describe('Lite TV portal behaviour', () => {
     expect(lite().state.row).toBe(0)
   })
 
+  it('opens side menu with ArrowLeft and closes it with ArrowRight or Back returning focus to content', async () => {
+    await bootLite()
+    expect(lite().state.mode).toBe('browse')
+    expect(document.getElementById('lite-sidebar')?.className).not.toContain('is-expanded')
+
+    // At leftmost card (col 0): ArrowLeft opens side menu
+    press('ArrowLeft', 37)
+    expect(lite().state.mode).toBe('menu')
+    expect(document.getElementById('lite-sidebar')?.className).toContain('is-expanded')
+
+    // ArrowRight closes the menu and returns to browse
+    press('ArrowRight', 39)
+    expect(lite().state.mode).toBe('browse')
+    expect(document.getElementById('lite-sidebar')?.className).not.toContain('is-expanded')
+    expect(document.querySelector('.lite-btn.is-focused')?.textContent).toContain('Смотреть')
+
+    // ArrowLeft opens it again; Back also closes the menu without asking exit dialog
+    press('ArrowLeft', 37)
+    expect(lite().state.mode).toBe('menu')
+    press('Escape', 27)
+    expect(lite().state.mode).toBe('browse')
+    expect(document.getElementById('lite-exit')?.className).toContain('is-hidden')
+    expect(document.getElementById('lite-sidebar')?.className).not.toContain('is-expanded')
+  })
+
   it('plays a catalogue film in the native player and releases the session on Back', async () => {
     await bootLite()
     press('ArrowDown', 40)

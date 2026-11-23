@@ -19,8 +19,8 @@ export type TvAction =
 
 export type TvMediaAction = Extract<TvAction, 'playPause' | 'play' | 'pause' | 'fastForward' | 'rewind'>
 
-/** Hardware "Back" key codes: Samsung Tizen (10009), LG webOS (461), HbbTV / MSX (196), Netcast (145), Android TV (4), Escape (27), Backspace (8). */
-export const TV_BACK_KEYCODES = [10009, 461, 196, 145, 4, 27, 8] as const
+/** Hardware "Back" key codes: Samsung Tizen (10009), LG webOS (461), HbbTV / MSX (196), Netcast (145), Samsung Orsay (88, 45), Android TV (4), Escape (27), Backspace (8). */
+export const TV_BACK_KEYCODES = [10009, 461, 196, 145, 88, 45, 4, 27, 8] as const
 
 const KEY_ACTIONS: Record<string, TvAction> = {
   ArrowUp: 'up', Up: 'up',
@@ -36,8 +36,12 @@ const KEY_ACTIONS: Record<string, TvAction> = {
 /** Legacy TV browsers report `key: "Unidentified"`: fall back to the numeric codes. */
 const KEYCODE_ACTIONS: Record<number, TvAction> = {
   37: 'left', 38: 'up', 39: 'right', 40: 'down',
+  5: 'right', 213: 'right', 206: 'right',
+  214: 'left', 205: 'left',
+  211: 'up', 203: 'up', 29460: 'up',
+  212: 'down', 204: 'down', 29461: 'down',
   13: 'select', 29443: 'select', 195: 'select', 23: 'select', 66: 'select', 32: 'select',
-  27: 'back', 8: 'back', 10009: 'back', 461: 'back', 196: 'back', 145: 'back', 4: 'back',
+  27: 'back', 8: 'back', 10009: 'back', 461: 'back', 196: 'back', 145: 'back', 88: 'back', 45: 'back', 4: 'back',
   179: 'playPause', 10252: 'playPause', 415: 'play', 19: 'pause', 417: 'fastForward', 412: 'rewind',
 }
 

@@ -214,12 +214,9 @@
         if (code === 4) {
             return isOrsay ? 'left' : 'back';
         }
-        if (code === 5) {
-            return isOrsay ? 'right' : '';
-        }
         // D-pad arrows
         if (code === 37 || code === 214 || code === 205) return 'left';
-        if (code === 39 || code === 213 || code === 206) return 'right';
+        if (code === 39 || code === 213 || code === 206 || code === 5) return 'right';
         if (code === 38 || code === 211 || code === 203 || code === 29460) return 'up';
         if (code === 40 || code === 212 || code === 204 || code === 29461) return 'down';
 
@@ -436,12 +433,16 @@
             state.mode = 'browse';
             applyFocus();
         } else if (viewName === 'movies') {
+            state.mode = 'browse';
             loadCatalogGrid('movies', 'Каталог фильмов', api.movies, movieCard);
         } else if (viewName === 'series') {
+            state.mode = 'browse';
             loadCatalogGrid('series', 'Каталог сериалов', api.series, seriesCard);
         } else if (viewName === 'torrents') {
+            state.mode = 'browse';
             loadCatalogGrid('torrents', 'Каталог торрент-раздач (FHD / 4K)', api.torrents, torrentCard);
         } else if (viewName === 'genres') {
+            state.mode = 'browse';
             loadGenresView();
         } else if (viewName === 'search') {
             openSearchView();
@@ -1383,18 +1384,18 @@
             renderMenu();
             return true;
         }
-        if (action === 'right') {
-            state.mode = 'browse';
+        if (action === 'right' || action === 'back') {
+            state.mode = state.view === 'search' ? 'search' : 'browse';
             renderMenu();
-            applyFocus();
+            if (state.mode === 'search') {
+                applyKeyboardFocus();
+            } else {
+                applyFocus();
+            }
             return true;
         }
         if (action === 'select') {
             switchView(MENU_ITEMS[state.menuIndex]);
-            return true;
-        }
-        if (action === 'back') {
-            openExit();
             return true;
         }
         return false;
