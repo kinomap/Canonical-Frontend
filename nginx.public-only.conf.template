@@ -77,6 +77,34 @@ server {
     location /media/ { proxy_pass http://control_pool; }
     location = /stream { return 404; }
     location ^~ /stream/ { return 404; }
+    # Smart TV relay: old TV browsers cannot do TLS with the media nodes directly, so the token-authorised
+    # /stream/<source> of a known node (tg-node-N / node-N only, never an arbitrary host) is served from this
+    # origin over HTTP/1.1 with Range passthrough. The node still verifies the playback token on every request.
+    location ~ "^/tv-stream/(?<tvnode>(?:tg-)?node-[0-9]{1,3})/(?<tvsource>[0-9a-fA-F-]{36})$" {
+        limit_except GET HEAD { deny all; }
+        resolver 127.0.0.11 valid=30s ipv6=off;
+        proxy_pass https://$tvnode.scenrix.com/stream/$tvsource$is_args$args;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $tvnode.scenrix.com;
+        proxy_ssl_verify on;
+        proxy_ssl_verify_depth 3;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_set_header Host $tvnode.scenrix.com;
+        proxy_set_header Connection "";
+        proxy_set_header Range $http_range;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_connect_timeout 8s;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        gzip off;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy no-referrer always;
+    }
     location ^~ /assets/ { root /usr/share/nginx/html/public; try_files $uri =404; add_header Cache-Control "public, max-age=31536000, immutable"; add_header X-Content-Type-Options nosniff always; }
     location = /index.html { root /usr/share/nginx/html; try_files /seo/index.html /public/index.html =404; add_header Cache-Control "no-cache"; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
     # Lite TV portal for 2012-2017 Smart TVs (static ES5 page, never the SPA fallback).

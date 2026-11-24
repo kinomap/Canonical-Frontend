@@ -11,7 +11,7 @@
   Lampa-grade Smart TV interface for 2012–2017 Smart TVs (Samsung Orsay WebKit 537, LG Netcast/webOS, Android boxes).
   Strict ES5, hardware accelerated CSS without backdrop-filter, XHR with Promise polyfill.
 -->
-<link rel="stylesheet" href="/assets/tv-lite.css?v=3">
+<link rel="stylesheet" href="/assets/tv-lite.css?v=4">
 </head>
 <body>
 <div id="lite-app" class="lite-app">
@@ -19,8 +19,8 @@
     <!-- Left Navigation Sidebar (Lampa style) -->
     <div id="lite-sidebar" class="lite-sidebar">
         <div class="lite-logo">
-            <span class="lite-logo-icon">★</span>
-            <span class="lite-logo-text">KINOSOTA</span>
+            <img class="lite-logo-icon" src="/brand/kinosota-icon.svg" width="34" height="34" alt="">
+            <span class="wordmark lite-logo-text"><span class="wordmark-highlight">KINO</span><span class="wordmark-honey">SOTA</span></span>
         </div>
         <div class="lite-menu" id="lite-menu">
             <div class="lite-menu-item" data-id="search">
@@ -63,9 +63,6 @@
         <!-- Top header info -->
         <div id="lite-topbar" class="lite-topbar">
             <div id="lite-view-title" class="lite-view-title">Главная</div>
-            <div class="lite-topbar-right">
-                <span class="lite-badge">KINOSOTA TV</span>
-            </div>
         </div>
 
         <!-- Scrollable view area -->
@@ -81,6 +78,7 @@
                 <!-- 2. Grid View (Movies / Series / Torrents / Genre content) -->
                 <div id="lite-view-grid" class="lite-view is-hidden">
                     <div id="lite-grid-title" class="lite-section-title"></div>
+                    <div id="lite-filters" class="lite-filters is-hidden"></div>
                     <div id="lite-grid-cards" class="lite-grid-cards"></div>
                 </div>
 
@@ -105,37 +103,44 @@
         </div>
     </div>
 
-    <!-- Movie Details Modal (Lampa style full details sheet) -->
+    <!-- Movie details screen (full screen: backdrop, poster, watch card) -->
     <div id="lite-details" class="lite-details is-hidden">
         <div id="lite-details-bg" class="lite-details-backdrop"></div>
         <div class="lite-details-shade"></div>
+        <span id="lite-act-back" class="lite-btn lite-back">&#8592; Назад</span>
         <div class="lite-details-sheet">
-            <div class="lite-details-poster-box">
-                <img id="lite-details-poster" class="lite-details-poster" src="" alt="">
+            <div class="lite-details-poster-col">
+                <div class="lite-details-poster-box">
+                    <img id="lite-details-poster" class="lite-details-poster" src="" alt="">
+                </div>
+                <div id="lite-details-ready" class="lite-details-ready"></div>
             </div>
             <div class="lite-details-info">
+                <div id="lite-details-orig" class="lite-details-kicker"></div>
                 <div id="lite-details-title" class="lite-details-title"></div>
-                <div id="lite-details-orig" class="lite-details-orig"></div>
+                <div id="lite-details-tagline" class="lite-details-tagline"></div>
+                <div class="lite-details-ratingrow">
+                    <span id="lite-details-rating" class="lite-details-rating"></span>
+                    <span id="lite-details-ratingsrc" class="lite-details-ratingsrc">TMDB</span>
+                </div>
                 <div id="lite-details-meta" class="lite-details-meta"></div>
+
+                <div class="watch-card lite-watch-card">
+                    <div class="lite-watch-actions">
+                        <span id="lite-act-play" class="lite-btn lite-btn-primary is-focused">&#9654; Смотреть</span>
+                        <span id="lite-act-fav" class="lite-btn lite-btn-icon" title="В избранное">&#128278;</span>
+                        <span id="lite-act-rebuild" class="lite-btn lite-btn-icon" title="Пересобрать раздачу">&#128260;</span>
+                    </div>
+                    <div id="lite-details-selected" class="lite-details-selected"></div>
+                    <div id="lite-quality-row" class="lite-pill-row is-hidden">
+                        <span class="lite-pill-label">КАЧЕСТВО:</span><span id="lite-quality-pills"></span>
+                    </div>
+                    <div id="lite-lang-row" class="lite-pill-row is-hidden">
+                        <span class="lite-pill-label">ЯЗЫК:</span><span id="lite-lang-pills"></span>
+                    </div>
+                    <div id="lite-details-footer" class="lite-details-footer">Открыто в KINOSOTA Player</div>
+                </div>
                 <div id="lite-details-overview" class="lite-details-overview"></div>
-
-                <div class="lite-details-actions" id="lite-details-actions">
-                    <span id="lite-act-play" class="lite-btn is-focused">▶ Смотреть</span>
-                    <span id="lite-act-sources" class="lite-btn">🔊 Выбор озвучки / Торрента</span>
-                    <span id="lite-act-close" class="lite-btn">Назад в каталог</span>
-                </div>
-
-                <!-- Sources / Audio Tracks List -->
-                <div id="lite-sources-wrap" class="lite-sources-wrap is-hidden">
-                    <div class="lite-subhead">Доступные озвучки и раздачи:</div>
-                    <div id="lite-sources-list" class="lite-sources-list"></div>
-                </div>
-
-                <!-- TV Series Seasons & Episodes -->
-                <div id="lite-series-wrap" class="lite-series-wrap is-hidden">
-                    <div id="lite-seasons-row" class="lite-seasons-row"></div>
-                    <div id="lite-episodes-track" class="lite-episodes-track"></div>
-                </div>
             </div>
         </div>
     </div>
@@ -143,7 +148,12 @@
     <!-- Player -->
     <div id="lite-player" class="lite-player is-hidden">
         <video id="lite-video" class="lite-video" preload="auto"></video>
+        <span id="lite-player-back" class="lite-btn lite-back lite-player-back">&#8592; Назад</span>
         <div id="lite-player-message" class="lite-player-message"></div>
+        <div id="lite-player-actions" class="lite-player-actions is-hidden">
+            <span id="lite-player-retry" class="lite-btn lite-btn-primary is-focused">Повторить</span>
+            <span id="lite-player-other" class="lite-btn">Выбрать другой источник</span>
+        </div>
         <div id="lite-player-bar" class="lite-player-bar">
             <div id="lite-player-title" class="lite-player-title"></div>
             <div class="lite-progress"><div id="lite-progress-fill" class="lite-progress-fill"></div></div>
@@ -216,6 +226,6 @@
 
     <div id="lite-toast" class="lite-toast is-hidden"></div>
 </div>
-<script src="/assets/tv-lite.js?v=3"></script>
+<script src="/assets/tv-lite.js?v=4"></script>
 </body>
 </html>

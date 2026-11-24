@@ -167,12 +167,58 @@
         });
     }
 
+    /* ── Catalog filters: rating / year / sort are sent to the backend as query parameters ── */
+    var RATING_OPTS = [{ id: 0, label: 'Все' }, { id: 8, label: '★ 8.0+' }, { id: 7, label: '★ 7.0+' }, { id: 6, label: '★ 6.0+' }];
+    var YEAR_OPTS = [{ id: 'all', label: 'Все' }, { id: '2026', label: '2026' }, { id: '2025', label: '2025' }, { id: '2024', label: '2024' },
+        { id: '2020-2023', label: '2020–2023' }, { id: 'before', label: 'до 2020' }];
+    var SORT_OPTS = [{ id: 'popular', label: 'По популярности' }, { id: 'rating', label: 'По рейтингу' }, { id: 'date', label: 'По дате выхода' }];
+    var SORT_PARAMS = {
+        movies: { popular: 'popular', rating: 'rating_desc', date: 'newest' },
+        series: { popular: 'rating_desc', rating: 'rating_desc', date: 'newest' },
+        torrents: { popular: 'popular', rating: 'rating', date: 'newest' }
+    };
+
+    function defaultFilters() { return { rating: 0, year: 'all', sort: 'popular' }; }
+
+    function filterSort(kind, filters) {
+        return SORT_PARAMS[kind][(filters && filters.sort) || 'popular'] || 'popular';
+    }
+
+    function filterQuery(kind, filters) {
+        if (!filters) return '';
+        var query = '';
+        if (filters.rating) query += (kind === 'torrents' ? '&rating=' : '&min_rating=') + filters.rating;
+        var year = String(filters.year || 'all');
+        if (/^\d{4}$/.test(year)) query += '&year=' + year;
+        else if (year === '2020-2023') query += '&year_from=2020&year_to=2023';
+        else if (year === 'before') query += '&year_to=2019';
+        if (kind !== 'series' && filters.sort && filters.sort !== 'popular') query += '&sort=' + filterSort(kind, filters);
+        return query;
+    }
+
+    /* Safety net on top of the server filter: a card outside the chosen range never shows. */
+    function passesFilters(card, filters) {
+        if (filters.rating && !(card.rating && card.rating >= filters.rating)) return false;
+        var year = String(filters.year || 'all');
+        if (year === 'all') return true;
+        if (!card.year) return false;
+        if (/^\d{4}$/.test(year)) return card.year === parseInt(year, 10);
+        if (year === '2020-2023') return card.year >= 2020 && card.year <= 2023;
+        if (year === 'before') return card.year < 2020;
+        return true;
+    }
+
     var api = {
         spotlight: function () { return request('GET', '/torrents/catalog?kind=movie&page=1&collection=spotlight'); },
         home: function () { return request('GET', '/movies/home'); },
-        movies: function (page) { return request('GET', '/movies?page=' + (page || 1) + '&page_size=24'); },
-        series: function (page) { return request('GET', '/series?sort=rating_desc' + (page ? '&page=' + page : '') + '&page_size=' + SHELF_LIMIT); },
-        torrents: function (page) { return request('GET', '/torrents/catalog?kind=movie&page=' + (page || 1)); },
+        movies: function (page, filters) { return request('GET', '/movies?page=' + (page || 1) + '&page_size=24' + filterQuery('movies', filters)); },
+        series: function (page, filters) { return request('GET', '/series?sort=' + filterSort('series', filters) + (page ? '&page=' + page : '') + '&page_size=' + SHELF_LIMIT + filterQuery('series', filters)); },
+        torrents: function (page, filters) { return request('GET', '/torrents/catalog?kind=movie&page=' + (page || 1) + filterQuery('torrents', filters)); },
+        torrentGenres: function () { return request('GET', '/torrents/genres?kind=movie'); },
+        torrentRebuild: function (kind, id, sourceId) { return request('POST', '/torrents/sources/' + kind + '/' + encodeURIComponent(id) + '/rebuild', sourceId ? { source_id: sourceId } : {}); },
+        favoriteState: function (key) { return request('GET', '/account/library/membership?keys=' + encodeURIComponent(key)); },
+        favoriteAdd: function (kind, id) { return request('PUT', '/account/library/' + kind + '/' + encodeURIComponent(id)); },
+        favoriteRemove: function (kind, id) { return request('DELETE', '/account/library/' + kind + '/' + encodeURIComponent(id)); },
         genres: function () { return request('GET', '/genres'); },
         genreContent: function (slug, page) { return request('GET', '/movies?genre=' + encodeURIComponent(slug) + '&page=' + (page || 1)); },
         search: function (q) { return request('GET', '/search?q=' + encodeURIComponent(q) + '&page=1&page_size=30'); },
@@ -180,10 +226,10 @@
         seriesDetail: function (id) { return request('GET', '/series/' + encodeURIComponent(id)); },
         torrentDetail: function (kind, id) { return request('GET', '/torrents/detail/' + kind + '/' + encodeURIComponent(id)); },
         torrentSources: function (kind, id) { return request('GET', '/torrents/sources/' + kind + '/' + encodeURIComponent(id)); },
-        startPlayback: function (movieId) { return request('POST', '/playback/start', { movie_id: movieId }); },
+        startPlayback: function (movieId) { return request('POST', '/playback/start', { movie_id: movieId, tv: true }); },
         heartbeat: function (sessionId) { return request('POST', '/playback/heartbeat', { session_id: sessionId }); },
         stopPlayback: function (sessionId) { return request('POST', '/playback/stop', { session_id: sessionId }); },
-        startSeriesPlayback: function (episodeId) { return request('POST', '/series_playback/start', { episode_id: episodeId }); },
+        startSeriesPlayback: function (episodeId) { return request('POST', '/series_playback/start', { episode_id: episodeId, tv: true }); },
         torrentTicket: function (body) { return request('POST', '/torrents/playback-ticket', body); },
         startPairing: function () { return request('POST', '/desktop/pairing/start'); },
         pollPairing: function (deviceCode) { return request('POST', '/desktop/pairing/exchange', { device_code: deviceCode }); }
@@ -245,7 +291,7 @@
     /* ── Content model ── */
     /* TMDB images always go through the cached VPS2 proxy /api/v1/poster/{size}/{file}:
        old TVs never open TLS to image.tmdb.org and cards never exceed w185 (~20 KB). */
-    var POSTER_SIZES = { w92: 1, w154: 1, w185: 1, w342: 1, w500: 1, w780: 1 };
+    var POSTER_SIZES = { w92: 1, w154: 1, w185: 1, w342: 1, w500: 1, w780: 1, w1280: 1 };
     var TMDB_RE = /^https?:\/\/image\.tmdb\.org\/t\/p\/(?:original|w\d+)\/([A-Za-z0-9_\-]+\.(?:jpg|jpeg|png|webp))$/;
     function tmdbSize(url, size) {
         if (!url || typeof url !== 'string') return '';
@@ -258,6 +304,12 @@
         return typeof value === 'number' && value > 0 ? value : null;
     }
 
+    function genreNamesFromIds(ids) {
+        var out = [];
+        for (var i = 0; ids && i < ids.length; i++) if (state.genreNames[ids[i]]) out.push(state.genreNames[ids[i]]);
+        return out;
+    }
+
     function movieCard(movie) {
         return {
             key: 'movie-' + movie.id,
@@ -267,6 +319,8 @@
             quality: movie.quality || '1080p',
             lang: '🇷🇺 RU',
             poster: tmdbSize(movie.poster, 'w185'),
+            posterHd: tmdbSize(movie.poster, 'w500'),
+            tmdbId: movie.tmdb_id || null,
             overview: movie.overview || '',
             play: { src: 'catalog', kind: 'movie', id: String(movie.id) }
         };
@@ -281,6 +335,7 @@
             quality: 'FHD',
             lang: '🇷🇺 RU',
             poster: tmdbSize(series.poster_url, 'w185'),
+            posterHd: tmdbSize(series.poster_url, 'w500'),
             overview: series.overview || '',
             play: { src: 'catalog', kind: 'series', id: String(series.id) }
         };
@@ -295,7 +350,11 @@
             quality: '4K',
             lang: '🇷🇺 RU',
             poster: tmdbSize(item.poster, 'w185'),
+            posterHd: tmdbSize(item.poster, 'w500'),
             backdrop: tmdbSize(item.backdrop, 'w780'),
+            backdropHd: tmdbSize(item.backdrop, 'w1280'),
+            genres: genreNamesFromIds(item.genre_ids),
+            runtime: item.runtime || 0,
             overview: item.overview || '',
             play: { src: 'torrent', kind: item.kind === 'tv' ? 'tv' : 'movie', id: String(item.tmdb_id) }
         };
@@ -400,12 +459,12 @@
         row: 0,
         hero: null,
         detailsCard: null,
-        detailsFocus: 'play',  /* play | sources | close | source-list | episode */
-        detailsSources: [],
-        detailsSourceCol: 0,
-        detailsEpisodes: [],
-        detailsEpisodeCol: 0,
-        detailsSeasonCol: 0,
+        detailsOpen: false,
+        genreNames: {},        /* TMDB genre id -> name, for hero and torrent cards */
+        filters: { rating: 0, year: 'all', sort: 'popular' },
+        hasFilters: false,
+        filterRowCount: 0,
+        grid: null,            /* last catalog grid request, replayed when a filter changes */
         searchQuery: '',
         kbRow: 0,
         kbCol: 0,
@@ -448,6 +507,8 @@
             return;
         }
         state.view = viewName;
+        state.hasFilters = false;
+        state.filterRowCount = 0;
         var titles = { home: 'Главная', movies: 'Фильмы', series: 'Сериалы', torrents: 'Торренты', genres: 'Жанры', search: 'Поиск' };
         setText($('lite-view-title'), titles[viewName] || 'KINOSOTA TV');
         hide($('lite-view-home'));
@@ -462,13 +523,16 @@
             applyFocus();
         } else if (viewName === 'movies') {
             state.mode = 'browse';
-            loadCatalogGrid('movies', 'Каталог фильмов', api.movies, movieCard);
+            state.filters = defaultFilters();
+            loadCatalogGrid('movies', 'Каталог фильмов', api.movies, movieCard, true);
         } else if (viewName === 'series') {
             state.mode = 'browse';
-            loadCatalogGrid('series', 'Каталог сериалов', api.series, seriesCard);
+            state.filters = defaultFilters();
+            loadCatalogGrid('series', 'Каталог сериалов', api.series, seriesCard, true);
         } else if (viewName === 'torrents') {
             state.mode = 'browse';
-            loadCatalogGrid('torrents', 'Каталог торрент-раздач (FHD / 4K)', api.torrents, torrentCard);
+            state.filters = defaultFilters();
+            loadCatalogGrid('torrents', 'Каталог торрент-раздач (FHD / 4K)', api.torrents, torrentCard, true);
         } else if (viewName === 'genres') {
             state.mode = 'browse';
             loadGenresView();
@@ -479,7 +543,7 @@
     }
 
     /* ── Focus Management ── */
-    function applyFocus() {
+    function applyFocus(skipScroll) {
         if (state.mode === 'menu') {
             renderMenu();
             return;
@@ -495,6 +559,8 @@
         var currentItem = row.items[row.col];
         addClass(currentItem, 'is-focused');
 
+        /* Pointer hover only moves the highlight: scrolling under a resting cursor would make the focus jump. */
+        if (skipScroll) { scheduleLazy(); return; }
         if (row.track) {
             var maxStart = Math.max(0, row.items.length - 5);
             var start = Math.min(Math.max(0, row.col - 1), maxStart);
@@ -510,6 +576,11 @@
         } else if (state.view === 'genres') {
             if (state.row <= 4) top = 0;
             else top = (state.row - 4) * 84;
+        } else if (state.hasFilters) {
+            /* two filter rows, then card rows: the first card row shows the whole header, later ones scroll under it */
+            var cardRow = state.row - state.filterRowCount;
+            top = cardRow <= 0 ? 0 : 142 + (cardRow - 1) * 273;
+            if (cardRow > 0 && cardRow === 1) top = 142;
         } else {
             if (state.row <= 1) {
                 top = 0;
@@ -523,6 +594,11 @@
 
     /* Where focus goes back after a modal/menu closes (search keeps its own focus model). */
     function restoreFocus() {
+        if (state.detailsOpen) {
+            state.mode = 'details';
+            applyDetailsFocus();
+            return;
+        }
         state.mode = state.view === 'search' ? 'search' : 'browse';
         renderMenu();
         if (state.mode === 'search') {
@@ -549,7 +625,7 @@
         } else if (action === 'right') {
             if (row.col < row.items.length - 1) {
                 row.col += 1;
-            } else if (row.id !== 'hero' && state.row < state.rows.length - 1) {
+            } else if (row.id !== 'hero' && !row.noWrap && state.row < state.rows.length - 1) {
                 /* Last card of a shelf or grid line wraps to the first card of the next row;
                    the hero buttons keep focus on «Подробнее» instead of jumping away. */
                 state.row += 1;
@@ -626,32 +702,47 @@
         return box;
     }
 
+    /* Cover-fit by hand: old WebKit has no object-fit, and a stretched backdrop is exactly what looked cheap. */
+    function fitCover(img, width, height) {
+        var nw = img.naturalWidth;
+        var nh = img.naturalHeight;
+        if (!nw || !nh) return;
+        var scale = Math.max(width / nw, height / nh);
+        var w = Math.round(nw * scale);
+        var h = Math.round(nh * scale);
+        img.style.width = w + 'px';
+        img.style.height = h + 'px';
+        img.style.left = Math.round((width - w) / 2) + 'px';
+        img.style.top = -Math.round((h - height) * 0.25) + 'px';
+    }
+
     function renderHero(card) {
         var hero = $('lite-hero');
         while (hero.firstChild) hero.removeChild(hero.firstChild);
         if (!card) { hide(hero); return null; }
-        if (card.backdrop) {
+        var backdrop = card.backdropHd || card.backdrop;
+        if (backdrop) {
             var img = document.createElement('img');
             img.className = 'lite-hero-image';
             img.alt = '';
+            img.onload = function () { fitCover(img, 1208, 344); };
             img.onerror = function () { img.style.display = 'none'; };
-            img.src = card.backdrop;
+            img.src = backdrop;
             hero.appendChild(img);
         }
         hero.appendChild(el('div', 'lite-hero-shade'));
         var body = el('div', 'lite-hero-body');
-        body.appendChild(el('div', 'lite-hero-kicker', 'В ЦЕНТРЕ ВНИМАНИЯ'));
         body.appendChild(el('div', 'lite-hero-title', clip(card.title, 60)));
         var meta = [];
         if (card.year) meta.push(card.year);
         if (card.rating) meta.push('★ ' + card.rating.toFixed(1));
-        if (card.quality) meta.push(card.quality);
+        if (card.genres && card.genres.length) meta.push(card.genres.slice(0, 3).join(', '));
         if (meta.length) body.appendChild(el('div', 'lite-hero-meta', meta.join(' · ')));
-        if (card.overview) body.appendChild(el('div', 'lite-hero-overview', clip(card.overview, 220)));
+        if (card.overview) body.appendChild(el('div', 'lite-hero-overview', clip(card.overview, 260)));
 
         var actions = el('div', 'lite-hero-actions');
-        var btnPlay = el('span', 'lite-btn is-focused', '▶ Смотреть');
-        var btnDetails = el('span', 'lite-btn', 'ℹ О фильме');
+        var btnPlay = el('span', 'lite-btn lite-btn-primary is-focused', '▶ Смотреть');
+        var btnDetails = el('span', 'lite-btn', 'О фильме');
         actions.appendChild(btnPlay);
         actions.appendChild(btnDetails);
         body.appendChild(actions);
@@ -710,8 +801,10 @@
         setText(status, 'Загружаем подборки…');
         show(status);
 
-        return settleAll([api.spotlight(), api.home(), api.series(), api.torrents()]).then(function (results) {
+        return settleAll([api.spotlight(), api.home(), api.series(), api.torrents(), api.torrentGenres()]).then(function (results) {
             loadingHome = false;
+            var genreList = results[4] && results[4].ok && results[4].value && results[4].value.items ? results[4].value.items : [];
+            for (var g = 0; g < genreList.length; g++) state.genreNames[genreList[g].id] = genreList[g].name;
             var spotlight = results[0].ok && results[0].value && results[0].value.items ? results[0].value.items[0] : null;
             var home = results[1].ok && results[1].value ? results[1].value : {};
             var series = results[2].ok && results[2].value ? results[2].value.items : [];
@@ -728,27 +821,89 @@
     }
 
     /* ── Catalog Grid View ── */
-    function loadCatalogGrid(viewId, title, fetchFn, mapper) {
+    var gridLoadId = 0;
+
+    function filterPill(group, option, active) {
+        return { node: el('span', 'lite-pill' + (active ? ' is-active' : ''), option.label), card: { filter: group, value: option.id } };
+    }
+
+    function buildFilterRows(box) {
+        box.innerHTML = '';
+        var f = state.filters;
+        var first = el('div', 'lite-filter-line');
+        var second = el('div', 'lite-filter-line');
+        var rowA = { id: 'filters-0', node: first, items: [], cards: [], track: null, col: 0, noWrap: true };
+        var rowB = { id: 'filters-1', node: second, items: [], cards: [], track: null, col: 0, noWrap: true };
+        function fill(line, row, group, options, current) {
+            for (var i = 0; i < options.length; i++) {
+                var pill = filterPill(group, options[i], options[i].id === current);
+                line.appendChild(pill.node);
+                row.items.push(pill.node);
+                row.cards.push(pill.card);
+            }
+        }
+        first.appendChild(el('span', 'lite-filter-label', 'РЕЙТИНГ'));
+        fill(first, rowA, 'rating', RATING_OPTS, f.rating);
+        first.appendChild(el('span', 'lite-filter-gap'));
+        first.appendChild(el('span', 'lite-filter-label', 'ГОД'));
+        fill(first, rowA, 'year', YEAR_OPTS, f.year);
+        second.appendChild(el('span', 'lite-filter-label', 'СОРТИРОВКА'));
+        fill(second, rowB, 'sort', SORT_OPTS, f.sort);
+        box.appendChild(first);
+        box.appendChild(second);
+        return [rowA, rowB];
+    }
+
+    function applyFilterChoice(choice) {
+        if (!state.grid) return;
+        var keepRow = state.row;
+        var keepCol = state.rows[state.row] ? state.rows[state.row].col : 0;
+        state.filters[choice.filter] = choice.value;
+        var g = state.grid;
+        loadCatalogGrid(g.viewId, g.title, g.fetchFn, g.mapper, g.filterable, { row: keepRow, col: keepCol });
+    }
+
+    function loadCatalogGrid(viewId, title, fetchFn, mapper, filterable, keep) {
+        var myLoad = ++gridLoadId;
+        state.grid = { viewId: viewId, title: title, fetchFn: fetchFn, mapper: mapper, filterable: !!filterable };
         show($('lite-view-grid'));
         setText($('lite-grid-title'), title);
         var container = $('lite-grid-cards');
         container.innerHTML = '';
-        state.rows = [];
-        state.row = 0;
+        var filterBox = $('lite-filters');
+        var filterRows = [];
+        if (filterable) {
+            filterRows = buildFilterRows(filterBox);
+            show(filterBox);
+        } else {
+            filterBox.innerHTML = '';
+            hide(filterBox);
+        }
+        state.hasFilters = !!filterable;
+        state.filterRowCount = filterRows.length;
+        state.rows = filterRows.slice(0);
+        state.row = keep && keep.row < filterRows.length ? keep.row : 0;
+        if (keep && state.rows[state.row]) state.rows[state.row].col = keep.col;
         var status = $('lite-status');
         setText(status, 'Загрузка каталога…');
         show(status);
+        if (filterRows.length) applyFocus();
 
-        fetchFn().then(function (res) {
+        fetchFn(1, state.filters).then(function (res) {
+            if (myLoad !== gridLoadId) return;
             hide(status);
             var list = res && res.items ? res.items : (Array.isArray(res) ? res : []);
             var cards = mapList(list, mapper);
+            if (filterable) {
+                var kept = [];
+                for (var k = 0; k < cards.length; k++) if (passesFilters(cards[k], state.filters)) kept.push(cards[k]);
+                cards = kept;
+            }
             if (!cards.length) {
-                setText(status, 'Ничего не найдено.');
+                setText(status, 'Ничего не найдено. Измените фильтры.');
                 show(status);
                 return;
             }
-            state.rows = [];
             var items = [];
             var COLS = 6;
             for (var i = 0; i < cards.length; i++) {
@@ -763,10 +918,11 @@
                 var rowCards = cards.slice(r * COLS, (r + 1) * COLS);
                 state.rows.push({ id: viewId + '-' + r, node: rowItems[0], items: rowItems, cards: rowCards, track: null, col: 0 });
             }
-            state.row = 0;
+            if (!keep) state.row = filterRows.length;
             state.mode = 'browse';
             applyFocus();
         })['catch'](function () {
+            if (myLoad !== gridLoadId) return;
             setText(status, 'Ошибка загрузки. Нажмите OK, чтобы повторить.');
             show(status);
         });
@@ -963,119 +1119,458 @@
         return true;
     }
 
-    /* ── Movie Details Modal (Lampa style) ── */
-    function openDetailsModal(card) {
+    /* ── Movie details screen (poster, backdrop, watch card) ── */
+    var LANGS = [
+        { code: 'ru', api: 'ru', flag: '🇷🇺', label: 'RU', name: 'русский' },
+        { code: 'ua', api: 'uk', flag: '🇺🇦', label: 'UA', name: 'украинский' },
+        { code: 'en', api: 'en', flag: '🇬🇧', label: 'EN', name: 'английский' }
+    ];
+    var det = {
+        card: null, token: 0, tmdb: null, tmdbKind: null, info: null, view: null, sources: [],
+        selected: null, quality: null, lang: null, saved: false, busy: false,
+        rows: [], row: 1, col: 0
+    };
+
+    function genreNamesOf(list) {
+        var out = [];
+        for (var i = 0; list && i < list.length; i++) {
+            var name = typeof list[i] === 'string' ? list[i] : (list[i] && list[i].name);
+            if (name) out.push(name);
+        }
+        return out;
+    }
+
+    function formatRuntime(minutes) {
+        if (!minutes || minutes < 1) return '';
+        var h = Math.floor(minutes / 60);
+        var m = minutes % 60;
+        return (h < 10 ? '0' + h : String(h)) + ':' + (m < 10 ? '0' + m : String(m));
+    }
+
+    function formatSize(bytes) {
+        if (!bytes || bytes < 1) return '';
+        var gb = bytes / 1073741824;
+        if (gb >= 1) return (Math.round(gb * 10) / 10) + ' ГБ';
+        return Math.round(bytes / 1048576) + ' МБ';
+    }
+
+    function qualityLabel(source) {
+        var parts = [];
+        if (source.quality) parts.push(source.quality);
+        if (source.source_type) parts.push(source.source_type);
+        return parts.length ? parts.join(' ') : 'Источник';
+    }
+
+    function resolutionOf(label) {
+        var m = String(label || '').match(/(\d{3,4})p/i);
+        if (m) return parseInt(m[1], 10);
+        if (/4k|uhd/i.test(label)) return 2160;
+        return 0;
+    }
+
+    function langCodeOf(source) {
+        var langs = source && source.languages ? source.languages : [];
+        for (var i = 0; i < LANGS.length; i++) {
+            for (var j = 0; j < langs.length; j++) if (langs[j] === LANGS[i].api) return LANGS[i].code;
+        }
+        return null;
+    }
+
+    function hasLang(source, code) {
+        for (var i = 0; i < LANGS.length; i++) {
+            if (LANGS[i].code !== code) continue;
+            var langs = source.languages || [];
+            for (var j = 0; j < langs.length; j++) if (langs[j] === LANGS[i].api) return true;
+        }
+        return false;
+    }
+
+    function isTorrentCard(card) { return !!(card && card.play && card.play.src === 'torrent'); }
+
+    function qualityOptions() {
+        var seen = {};
+        var out = [];
+        for (var i = 0; i < det.sources.length; i++) {
+            var label = qualityLabel(det.sources[i]);
+            if (!seen[label]) { seen[label] = true; out.push(label); }
+        }
+        out.sort(function (a, b) { return resolutionOf(b) - resolutionOf(a); });
+        return out;
+    }
+
+    function anySourceWithLang(code) {
+        for (var i = 0; i < det.sources.length; i++) if (hasLang(det.sources[i], code)) return true;
+        return false;
+    }
+
+    /* Best release for the chosen quality (and language when one release has both). */
+    function pickSource(quality, lang) {
+        var byQuality = null;
+        for (var i = 0; i < det.sources.length; i++) {
+            var s = det.sources[i];
+            if (quality && qualityLabel(s) !== quality) continue;
+            if (!byQuality) byQuality = s;
+            if (!lang || hasLang(s, lang)) return s;
+        }
+        return byQuality;
+    }
+
+    function applySources(view) {
+        det.view = view || null;
+        det.sources = [];
+        var list = view && view.sources ? view.sources : [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] && list[i].state !== 'failed' && list[i].health !== 'dead') det.sources.push(list[i]);
+        }
+        var sel = null;
+        for (var j = 0; j < det.sources.length && !sel; j++) {
+            if (view && view.selected_source_id && det.sources[j].source_id === view.selected_source_id) sel = det.sources[j];
+        }
+        for (var k = 0; k < det.sources.length && !sel; k++) if (det.sources[k]['default']) sel = det.sources[k];
+        if (!sel && det.sources.length) sel = det.sources[0];
+        det.selected = sel;
+        det.quality = sel ? qualityLabel(sel) : null;
+        det.lang = sel ? langCodeOf(sel) : null;
+        renderWatchCard();
+    }
+
+    function selectQuality(label) {
+        det.quality = label;
+        var next = pickSource(label, det.lang);
+        if (next && det.lang && !hasLang(next, det.lang)) det.lang = langCodeOf(next);
+        det.selected = next;
+        renderWatchCard('q:' + label);
+    }
+
+    function selectLang(code) {
+        if (!anySourceWithLang(code)) { toast('Озвучка на этом языке не найдена'); return; }
+        var next = pickSource(det.quality, code);
+        if (!next || !hasLang(next, code)) next = pickSource(null, code);
+        if (next) { det.selected = next; det.quality = qualityLabel(next); }
+        det.lang = code;
+        renderWatchCard('l:' + code);
+    }
+
+    function voiceNameOf(source) {
+        if (source.voices && source.voices.length) return source.voices[0];
+        var tracks = source.audio_tracks || [];
+        for (var i = 0; i < tracks.length; i++) if (tracks[i].title) return tracks[i].title;
+        var code = langCodeOf(source);
+        for (var j = 0; j < LANGS.length; j++) if (LANGS[j].code === code) return LANGS[j].name;
+        return 'оригинал';
+    }
+
+    /* The «Аудио» pill walks through the other releases of the chosen quality, one voice-over at a time. */
+    function cycleAudio() {
+        var pool = [];
+        for (var i = 0; i < det.sources.length; i++) {
+            if (!det.quality || qualityLabel(det.sources[i]) === det.quality) pool.push(det.sources[i]);
+        }
+        if (pool.length < 2) { toast('Других звуковых дорожек нет'); return; }
+        var at = 0;
+        for (var j = 0; j < pool.length; j++) if (pool[j] === det.selected) at = j;
+        det.selected = pool[(at + 1) % pool.length];
+        det.lang = langCodeOf(det.selected);
+        renderWatchCard('audio');
+        toast('Озвучка: ' + voiceNameOf(det.selected));
+    }
+
+    function pillNode(label, active, disabled) {
+        var node = el('span', 'lite-pill' + (active ? ' is-active' : '') + (disabled ? ' is-disabled' : ''), label);
+        return node;
+    }
+
+    function renderWatchCard(focusId) {
+        var card = det.card;
         if (!card) return;
-        state.detailsCard = card;
-        state.mode = 'details';
-        state.detailsFocus = 'play';
-        state.detailsSources = [];
-        state.detailsEpisodes = [];
+        var torrent = isTorrentCard(card);
+        var sel = det.selected;
+        var fav = $('lite-act-fav');
+        var rebuild = $('lite-act-rebuild');
+        if (det.tmdb) show(fav); else hide(fav);
+        if (torrent && det.tmdbKind) show(rebuild); else hide(rebuild);
+        if (det.saved) addClass(fav, 'is-on'); else removeClass(fav, 'is-on');
 
-        setText($('lite-details-title'), card.title);
-        setText($('lite-details-orig'), card.year ? String(card.year) : '');
-        var meta = [];
-        if (card.year) meta.push(card.year);
-        if (card.rating) meta.push('★ ' + card.rating.toFixed(1));
-        if (card.quality) meta.push(card.quality);
-        if (card.lang) meta.push(card.lang);
-        setText($('lite-details-meta'), meta.join(' · '));
-        setText($('lite-details-overview'), card.overview || 'Описание фильма загружается…');
-
-        var posterImg = $('lite-details-poster');
-        posterImg.src = card.poster || '';
-
-        var bg = $('lite-details-bg');
-        if (card.backdrop) bg.style.backgroundImage = 'url(' + card.backdrop + ')'; else bg.style.backgroundImage = '';
-
-        hide($('lite-sources-wrap'));
-        hide($('lite-series-wrap'));
-        show($('lite-details'));
-        renderDetailsActions();
-
-        // Background fetch extra sources/details
-        if (card.play && card.play.src === 'torrent') {
-            api.torrentSources('movie', card.play.id).then(function (res) {
-                if (res && res.sources && res.sources.length) {
-                    state.detailsSources = res.sources;
-                    renderDetailsSources();
+        var line = $('lite-details-selected');
+        line.innerHTML = '';
+        var ready = $('lite-details-ready');
+        removeClass(ready, 'is-ok');
+        if (torrent) {
+            if (sel) {
+                line.appendChild(document.createTextNode('✓ Выбрано: ' + qualityLabel(sel)));
+                line.appendChild(document.createTextNode(' • '));
+                line.appendChild(el('span', 'is-seeds', '▲ ' + (sel.seeders || 0) + ' сидов'));
+                var size = formatSize(sel.size_bytes);
+                if (size) line.appendChild(document.createTextNode(' • ' + size));
+                if (sel.warning) line.appendChild(el('span', 'is-warn', '  ' + clip(sel.warning, 90)));
+                if (typeof sel.start_ms === 'number') {
+                    setText(ready, 'Готово: старт ' + sel.start_ms + ' мс');
+                    addClass(ready, 'is-ok');
+                } else if (sel.state === 'ready') {
+                    setText(ready, 'Готово к просмотру');
+                    addClass(ready, 'is-ok');
+                } else if (sel.state === 'loading') {
+                    setText(ready, 'Готовится: ' + Math.round((sel.progress || 0) * (sel.progress > 1 ? 1 : 100)) + '%');
+                } else {
+                    setText(ready, 'Источник найден');
                 }
-            })['catch'](function () {});
-        } else if (card.play && card.play.kind === 'series') {
-            api.seriesDetail(card.play.id).then(function (res) {
-                if (res && res.seasons && res.seasons.length) {
-                    state.detailsEpisodes = res.seasons;
-                    renderSeriesSeasons();
-                }
-            })['catch'](function () {});
+            } else if (det.view) {
+                line.appendChild(document.createTextNode((det.view.discovering || det.view.rebuilding) ? 'Подбираем раздачу…' : 'Раздача пока не найдена. Нажмите 🔄, чтобы подобрать заново.'));
+                setText(ready, (det.view.discovering || det.view.rebuilding) ? 'Подбираем раздачу…' : 'Раздача не найдена');
+            } else {
+                line.appendChild(document.createTextNode('Проверяем раздачи…'));
+                setText(ready, 'Проверяем доступность…');
+            }
+        } else {
+            line.appendChild(document.createTextNode('✓ Источник: каталог KINOSOTA' + (card.quality ? ' • ' + card.quality : '')));
+            setText(ready, 'Доступно в каталоге');
+            addClass(ready, 'is-ok');
+        }
+
+        /* quality and language pills (torrent releases only) */
+        var qWrap = $('lite-quality-pills');
+        var lWrap = $('lite-lang-pills');
+        qWrap.innerHTML = '';
+        lWrap.innerHTML = '';
+        var qNodes = [];
+        var lNodes = [];
+        var qLabels = torrent ? qualityOptions() : [];
+        var q;
+        for (q = 0; q < qLabels.length; q++) {
+            var qNode = pillNode(qLabels[q], qLabels[q] === det.quality, false);
+            qWrap.appendChild(qNode);
+            qNodes.push({ node: qNode, id: 'q:' + qLabels[q] });
+        }
+        if (qNodes.length) show($('lite-quality-row')); else hide($('lite-quality-row'));
+        if (torrent && det.sources.length) {
+            for (var l = 0; l < LANGS.length; l++) {
+                var lNode = pillNode(LANGS[l].flag + ' ' + LANGS[l].label, det.lang === LANGS[l].code, !anySourceWithLang(LANGS[l].code));
+                lWrap.appendChild(lNode);
+                lNodes.push({ node: lNode, id: 'l:' + LANGS[l].code });
+            }
+            var audioNode = pillNode('🔊 Аудио', false, false);
+            lWrap.appendChild(audioNode);
+            lNodes.push({ node: audioNode, id: 'audio' });
+            show($('lite-lang-row'));
+        } else {
+            hide($('lite-lang-row'));
+        }
+
+        var rows = [[{ node: $('lite-act-back'), id: 'back' }]];
+        var actions = [{ node: $('lite-act-play'), id: 'play' }];
+        if (det.tmdb) actions.push({ node: fav, id: 'fav' });
+        if (torrent && det.tmdbKind) actions.push({ node: rebuild, id: 'rebuild' });
+        rows.push(actions);
+        if (qNodes.length) rows.push(qNodes);
+        if (lNodes.length) rows.push(lNodes);
+        det.rows = rows;
+        if (focusId) {
+            for (var r = 0; r < rows.length; r++) {
+                for (var c = 0; c < rows[r].length; c++) if (rows[r][c].id === focusId) { det.row = r; det.col = c; }
+            }
+        }
+        if (det.row >= rows.length) det.row = rows.length - 1;
+        if (det.col >= rows[det.row].length) det.col = rows[det.row].length - 1;
+        applyDetailsFocus();
+    }
+
+    function applyDetailsFocus() {
+        var all = det.rows;
+        for (var r = 0; r < all.length; r++) {
+            for (var c = 0; c < all[r].length; c++) {
+                if (state.mode === 'details' && r === det.row && c === det.col) addClass(all[r][c].node, 'is-focused');
+                else removeClass(all[r][c].node, 'is-focused');
+            }
         }
     }
 
+    function renderDetails() {
+        var card = det.card;
+        var info = det.info;
+        var kicker = [];
+        if (info.year) kicker.push(String(info.year));
+        if (info.countries.length) kicker.push(info.countries.slice(0, 2).join(', '));
+        setText($('lite-details-orig'), kicker.join(', '));
+        setText($('lite-details-title'), card.title);
+        setText($('lite-details-tagline'), info.tagline ? '«' + info.tagline + '»' : '');
+        var rating = $('lite-details-rating');
+        var ratingSrc = $('lite-details-ratingsrc');
+        if (info.rating) { setText(rating, info.rating.toFixed(1)); show(ratingSrc); } else { setText(rating, ''); hide(ratingSrc); }
+        var meta = [];
+        var runtime = formatRuntime(info.runtime);
+        if (runtime) meta.push(runtime);
+        if (info.seasons) meta.push(info.seasons + ' сез.');
+        if (info.genres.length) meta.push(info.genres.slice(0, 3).join(' | '));
+        setText($('lite-details-meta'), meta.join(' • '));
+        setText($('lite-details-overview'), info.overview || '');
+        var poster = $('lite-details-poster');
+        var posterUrl = card.posterHd || card.poster || '';
+        if (poster.getAttribute('src') !== posterUrl) poster.setAttribute('src', posterUrl);
+        $('lite-details-bg').style.backgroundImage = info.backdrop ? 'url(' + info.backdrop + ')' : '';
+    }
+
+    function mergeInfo(patch) {
+        var info = det.info;
+        if (!patch) return;
+        if (patch.year) info.year = patch.year;
+        if (patch.tagline) info.tagline = patch.tagline;
+        if (patch.countries && patch.countries.length) info.countries = patch.countries;
+        if (patch.genres && patch.genres.length) info.genres = patch.genres;
+        if (patch.runtime) info.runtime = patch.runtime;
+        if (patch.seasons) info.seasons = patch.seasons;
+        if (patch.overview) info.overview = patch.overview;
+        if (patch.backdrop) info.backdrop = patch.backdrop;
+        if (patch.rating) info.rating = patch.rating;
+        if (patch.mime) det.card.mime = patch.mime;
+        renderDetails();
+    }
+
+    function torrentInfo(res) {
+        return {
+            tagline: res.tagline || '', countries: res.countries || [], genres: genreNamesOf(res.genres),
+            runtime: res.runtime || 0, seasons: res.seasons || 0, overview: res.overview || '',
+            backdrop: tmdbSize(res.backdrop, 'w1280'), rating: ratingOf(res.rating), year: res.year || null
+        };
+    }
+
+    function openDetailsModal(card) {
+        if (!card) return;
+        det.token += 1;
+        var token = det.token;
+        det.card = card;
+        state.detailsCard = card;
+        state.detailsOpen = true;
+        state.mode = 'details';
+        var torrent = isTorrentCard(card);
+        det.tmdb = card.tmdbId || (torrent ? Number(card.play.id) : null) || null;
+        det.tmdbKind = torrent ? card.play.kind : (det.tmdb ? 'movie' : null);
+        det.info = {
+            year: card.year || null, countries: [], genres: (card.genres || []).slice(0), tagline: '', runtime: card.runtime || 0,
+            seasons: 0, overview: card.overview || '', backdrop: card.backdropHd || card.backdrop || '', rating: card.rating || null
+        };
+        det.view = null;
+        det.sources = [];
+        det.selected = null;
+        det.quality = null;
+        det.lang = null;
+        det.saved = false;
+        det.busy = false;
+        det.row = 1;
+        det.col = 0;
+        renderDetails();
+        show($('lite-details'));
+        renderWatchCard('play');
+
+        if (torrent) {
+            api.torrentDetail(card.play.kind, card.play.id).then(function (res) {
+                if (token === det.token && res) mergeInfo(torrentInfo(res));
+            })['catch'](function () {});
+            api.torrentSources(card.play.kind, card.play.id).then(function (view) {
+                if (token === det.token) applySources(view);
+            })['catch'](function () {
+                if (token === det.token) { det.view = { sources: [], discovering: false }; renderWatchCard(); }
+            });
+        } else if (card.play && card.play.kind === 'series') {
+            api.seriesDetail(card.play.id).then(function (res) {
+                if (token !== det.token || !res) return;
+                mergeInfo({ overview: res.overview || '', backdrop: tmdbSize(res.backdrop_url, 'w1280'), genres: genreNamesOf(res.genres), seasons: res.seasons ? res.seasons.length : 0 });
+            })['catch'](function () {});
+        } else {
+            api.movieDetail(card.play.id).then(function (res) {
+                if (token !== det.token || !res) return;
+                if (res.tmdb_id && !det.tmdb) { det.tmdb = res.tmdb_id; det.tmdbKind = 'movie'; loadFavoriteState(token); renderWatchCard(); }
+                mergeInfo({ overview: res.overview || '', backdrop: tmdbSize(res.backdrop, 'w1280'), runtime: res.runtime || 0, genres: genreNamesOf(res.genres), mime: res.mime_type || '' });
+                if (res.tmdb_id) {
+                    api.torrentDetail('movie', res.tmdb_id).then(function (extra) {
+                        if (token === det.token && extra) mergeInfo({ tagline: extra.tagline || '', countries: extra.countries || [], rating: ratingOf(extra.rating) });
+                    })['catch'](function () {});
+                }
+            })['catch'](function () {});
+        }
+        loadFavoriteState(token);
+    }
+
+    function loadFavoriteState(token) {
+        if (!det.tmdb || !readToken()) return;
+        api.favoriteState(det.tmdbKind + ':' + det.tmdb).then(function (res) {
+            if (token !== det.token) return;
+            var saved = res && res.saved ? res.saved : [];
+            det.saved = saved.indexOf(det.tmdbKind + ':' + det.tmdb) !== -1;
+            renderWatchCard();
+        })['catch'](function () {});
+    }
+
     function closeDetailsModal() {
+        det.token += 1;
+        state.detailsOpen = false;
         hide($('lite-details'));
         restoreFocus();
     }
 
-    function renderDetailsActions() {
-        var actPlay = $('lite-act-play');
-        var actSources = $('lite-act-sources');
-        var actClose = $('lite-act-close');
-        removeClass(actPlay, 'is-focused');
-        removeClass(actSources, 'is-focused');
-        removeClass(actClose, 'is-focused');
-
-        if (state.detailsFocus === 'play') addClass(actPlay, 'is-focused');
-        else if (state.detailsFocus === 'sources') addClass(actSources, 'is-focused');
-        else if (state.detailsFocus === 'close') addClass(actClose, 'is-focused');
+    function toggleFavorite() {
+        if (!det.tmdb || det.busy) return;
+        if (!readToken()) { toast('Войдите в аккаунт KINOSOTA, чтобы сохранять в избранное'); return; }
+        det.busy = true;
+        var token = det.token;
+        var adding = !det.saved;
+        var call = adding ? api.favoriteAdd(det.tmdbKind, det.tmdb) : api.favoriteRemove(det.tmdbKind, det.tmdb);
+        call.then(function () {
+            det.busy = false;
+            if (token !== det.token) return;
+            det.saved = adding;
+            renderWatchCard('fav');
+            toast(adding ? 'Добавлено в избранное' : 'Убрано из избранного');
+        })['catch'](function (error) {
+            det.busy = false;
+            toast(error && (error.status === 401 || error.status === 403) ? 'Войдите в аккаунт KINOSOTA' : 'Не удалось изменить избранное');
+        });
     }
 
-    function renderDetailsSources() {
-        var list = state.detailsSources;
-        var container = $('lite-sources-list');
-        container.innerHTML = '';
-        if (!list || !list.length) return;
-        for (var i = 0; i < list.length && i < 10; i++) {
-            var s = list[i];
-            var item = el('div', 'lite-source-item');
-            var qBadge = el('span', 'lite-source-quality', s.quality || 'HD');
-            item.appendChild(qBadge);
-            item.appendChild(document.createTextNode(s.title || 'Релиз'));
-            if (s.voices && s.voices.length) {
-                item.appendChild(el('span', 'lite-source-voices', s.voices.slice(0, 2).join(', ')));
-            }
-            if (s.size_bytes) {
-                var gb = s.size_bytes / 1073741824;
-                item.appendChild(el('span', 'lite-source-size', gb >= 1 ? gb.toFixed(1) + ' ГБ' : Math.round(s.size_bytes / 1048576) + ' МБ'));
-            }
-            container.appendChild(item);
-        }
-        show($('lite-sources-wrap'));
+    var REBUILD_TEXT = {
+        rebuilding: 'Раздача пересобирается, это займёт около минуты',
+        cooldown: 'Раздачу уже недавно пересобирали, подождите немного',
+        busy: 'Подбор раздачи уже идёт',
+        no_source: 'Нет раздачи, которую можно пересобрать'
+    };
+
+    function rebuildSelected() {
+        if (!det.tmdb || !det.tmdbKind || det.busy) return;
+        det.busy = true;
+        var token = det.token;
+        toast('Пересобираем раздачу…');
+        api.torrentRebuild(det.tmdbKind, det.tmdb, det.selected && det.selected.source_id).then(function (res) {
+            det.busy = false;
+            if (token !== det.token) return;
+            toast(REBUILD_TEXT[res && res.rebuild] || 'Готово');
+            if (res && res.sources) applySources(res);
+        })['catch'](function (error) {
+            det.busy = false;
+            toast(error && (error.status === 401 || error.status === 403) ? 'Войдите в аккаунт KINOSOTA' : 'Не удалось пересобрать раздачу');
+        });
     }
 
-    function renderSeriesSeasons() {
-        var seasons = state.detailsEpisodes;
-        if (!seasons || !seasons.length) return;
-        var sRow = $('lite-seasons-row');
-        sRow.innerHTML = '';
-        for (var i = 0; i < seasons.length; i++) {
-            var sBtn = el('span', 'lite-season-btn' + (i === 0 ? ' is-active' : ''), 'Сезон ' + seasons[i].season_number);
-            sRow.appendChild(sBtn);
-        }
-        var epTrack = $('lite-episodes-track');
-        epTrack.innerHTML = '';
-        var episodes = seasons[0].episodes || [];
-        for (var j = 0; j < episodes.length; j++) {
-            var ep = episodes[j];
-            var epCard = el('div', 'lite-episode-card');
-            epCard.appendChild(el('div', 'lite-ep-num', ep.episode_number + ' серия'));
-            epCard.appendChild(el('div', 'lite-ep-title', ep.title || 'Эпизод ' + ep.episode_number));
-            epTrack.appendChild(epCard);
-        }
-        show($('lite-series-wrap'));
+    function playSelected() {
+        var card = det.card;
+        if (!card) return;
+        var copy = {};
+        for (var key in card) if (Object.prototype.hasOwnProperty.call(card, key)) copy[key] = card[key];
+        copy.play = { src: card.play.src, kind: card.play.kind, id: card.play.id, sourceId: det.selected && det.selected.source_id ? det.selected.source_id : null };
+        copy.release = det.selected || null;
+        openPlayer(copy);
+    }
+
+    function activateDetails(id) {
+        if (id === 'back') closeDetailsModal();
+        else if (id === 'play') playSelected();
+        else if (id === 'fav') toggleFavorite();
+        else if (id === 'rebuild') rebuildSelected();
+        else if (id === 'audio') cycleAudio();
+        else if (id.indexOf('q:') === 0) selectQuality(id.slice(2));
+        else if (id.indexOf('l:') === 0) selectLang(id.slice(2));
     }
 
     /* ── Player ── */
-    var player = { card: null, sessionId: null, heartbeat: null, barTimer: null, loadId: 0, ready: false };
+    var player = { card: null, sessionId: null, heartbeat: null, barTimer: null, loadId: 0, ready: false, stallTimer: null, firstFrame: false, problem: false, focusAct: 0 };
 
     function formatTime(seconds) {
         if (!seconds || seconds < 0 || seconds !== seconds || seconds === Infinity) seconds = 0;
@@ -1148,7 +1643,9 @@
                     return api.torrentTicket({ kind: 'tv', tmdb_id: tmdbId, season: episode.season, episode: episode.episode });
                 }).then(function (ticket) { return { url: ticket && ticket.stream_url }; });
             }
-            return api.torrentTicket({ kind: 'movie', tmdb_id: tmdbId }).then(function (ticket) { return { url: ticket && ticket.stream_url }; });
+            var movieChoice = { kind: 'movie', tmdb_id: tmdbId };
+            if (play.sourceId) movieChoice.source_id = play.sourceId;
+            return api.torrentTicket(movieChoice).then(function (ticket) { return { url: ticket && ticket.stream_url }; });
         }
         if (play.kind === 'series') {
             return api.seriesDetail(play.id).then(function (detail) {
@@ -1178,12 +1675,91 @@
         try { video.removeAttribute('src'); video.load(); } catch (e2) {}
     }
 
+    /* A TV that never reaches the first frame must not spin forever: after STALL_MS the spinner turns into
+       a diagnosis with «Повторить» / «Выбрать другой источник». */
+    var STALL_MS = 10000;
+
+    function clearStall() {
+        clearTimeout(player.stallTimer);
+        player.stallTimer = null;
+    }
+
+    function armStall(ms) {
+        clearStall();
+        player.stallTimer = setTimeout(function () {
+            if (player.card && !player.firstFrame) playerProblem('stall');
+        }, ms || STALL_MS);
+    }
+
+    function markFrame() {
+        player.firstFrame = true;
+        player.problem = false;
+        clearStall();
+        playerMessage('');
+        hide($('lite-player-actions'));
+    }
+
+    function codecHint(card) {
+        var video = $('lite-video');
+        var mime = card && card.mime ? String(card.mime).toLowerCase() : '';
+        var release = card && card.release ? card.release : null;
+        var name = release && release.file_name ? String(release.file_name).toLowerCase() : '';
+        var mkv = mime.indexOf('matroska') !== -1 || /\.mkv$/.test(name);
+        var mkvOk = false;
+        try { mkvOk = !!(video.canPlayType && video.canPlayType('video/x-matroska')); } catch (e) { mkvOk = false; }
+        if (mkv && !mkvOk) return 'Файл в контейнере MKV, который этот телевизор не открывает. Выберите другой источник или версию в MP4.';
+        var tracks = release && release.audio_tracks ? release.audio_tracks : [];
+        for (var i = 0; i < tracks.length; i++) {
+            var codec = String(tracks[i].codec || '').toLowerCase();
+            if (codec === 'ac3' || codec === 'eac3' || codec === 'dts' || codec === 'truehd') {
+                return 'В раздаче звук ' + codec.toUpperCase() + ', телевизор может его не воспроизвести. Выберите другую озвучку или дорожку.';
+            }
+        }
+        return '';
+    }
+
+    function renderPlayerActions() {
+        var retry = $('lite-player-retry');
+        var other = $('lite-player-other');
+        if (player.focusAct === 0) { addClass(retry, 'is-focused'); removeClass(other, 'is-focused'); }
+        else { addClass(other, 'is-focused'); removeClass(retry, 'is-focused'); }
+    }
+
+    function playerProblem(kind) {
+        clearStall();
+        var card = player.card;
+        player.problem = true;
+        player.ready = false;
+        player.focusAct = 0;
+        detachVideo();
+        var hint = codecHint(card);
+        var head = kind === 'error' ? 'Телевизор не смог воспроизвести это видео.' : 'Видео не запустилось за 10 секунд.';
+        playerMessage(head + ' ' + (hint || 'Проверьте сеть или выберите другой источник.'));
+        show($('lite-player-actions'));
+        renderPlayerActions();
+        showBar();
+    }
+
+    function playerChooseOther() {
+        var card = player.card;
+        var wasOpen = state.detailsOpen;
+        closePlayer();
+        if (!wasOpen && card) openDetailsModal(card);
+        toast('Выберите другое качество, озвучку или раздачу');
+        for (var r = 2; r < det.rows.length; r++) { det.row = r; det.col = 0; break; }
+        applyDetailsFocus();
+    }
+
     function startStream() {
         var card = player.card;
         if (!card) return;
         var id = ++player.loadId;
         endSession();
         detachVideo();
+        clearStall();
+        hide($('lite-player-actions'));
+        player.problem = false;
+        player.firstFrame = false;
         player.ready = false;
         player.needsAuth = false;
         playerMessage('Загружаем видео…');
@@ -1209,10 +1785,12 @@
                 if (started && typeof started.then === 'function') started.then(null, function () {});
             } catch (e2) {}
             player.ready = true;
-            playerMessage('');
+            playerMessage('Запускаем поток…');
+            armStall();
             showBar();
         })['catch'](function (error) {
             if (id !== player.loadId) return;
+            clearStall();
             player.ready = false;
             var st = error && error.status;
             if (st === 403) {
@@ -1248,11 +1826,19 @@
         endSession();
         detachVideo();
         clearTimeout(player.barTimer);
+        clearStall();
         player.card = null;
         player.ready = false;
+        player.problem = false;
+        hide($('lite-player-actions'));
         hide($('lite-player'));
-        state.mode = 'browse';
-        applyFocus();
+        if (state.detailsOpen) {
+            state.mode = 'details';
+            applyDetailsFocus();
+        } else {
+            state.mode = 'browse';
+            applyFocus();
+        }
     }
 
     function seek(delta) {
@@ -1285,6 +1871,14 @@
 
     function onPlayerKey(action) {
         if (action === 'back') { closePlayer(); return true; }
+        if (player.problem) {
+            if (action === 'left' || action === 'right') { player.focusAct = player.focusAct ? 0 : 1; renderPlayerActions(); return true; }
+            if (action === 'select') {
+                if (player.focusAct === 0) startStream(); else playerChooseOther();
+                return true;
+            }
+            return true;
+        }
         if (action === 'select') {
             if (!player.ready && player.needsAuth) {
                 closePlayer();
@@ -1537,37 +2131,29 @@
         return false;
     }
 
-    /* ── Details Modal Key Handling ── */
+    /* ── Details Screen Key Handling ── */
     function onDetailsKey(action) {
+        var rows = det.rows;
+        if (action === 'back') { closeDetailsModal(); return true; }
+        if (!rows.length) return false;
         if (action === 'left') {
-            if (state.detailsFocus === 'close') state.detailsFocus = 'sources';
-            else if (state.detailsFocus === 'sources') state.detailsFocus = 'play';
-            renderDetailsActions();
+            if (det.col > 0) det.col -= 1;
+        } else if (action === 'right') {
+            if (det.col < rows[det.row].length - 1) det.col += 1;
+        } else if (action === 'up') {
+            if (det.row > 0) det.row -= 1;
+            if (det.col >= rows[det.row].length) det.col = rows[det.row].length - 1;
+        } else if (action === 'down') {
+            if (det.row < rows.length - 1) det.row += 1;
+            if (det.col >= rows[det.row].length) det.col = rows[det.row].length - 1;
+        } else if (action === 'select') {
+            activateDetails(rows[det.row][det.col].id);
             return true;
+        } else {
+            return false;
         }
-        if (action === 'right') {
-            if (state.detailsFocus === 'play') state.detailsFocus = 'sources';
-            else if (state.detailsFocus === 'sources') state.detailsFocus = 'close';
-            renderDetailsActions();
-            return true;
-        }
-        if (action === 'select') {
-            if (state.detailsFocus === 'play') {
-                hide($('lite-details'));
-                openPlayer(state.detailsCard);
-            } else if (state.detailsFocus === 'sources') {
-                show($('lite-sources-wrap'));
-                toast('Выбор озвучки');
-            } else if (state.detailsFocus === 'close') {
-                closeDetailsModal();
-            }
-            return true;
-        }
-        if (action === 'back') {
-            closeDetailsModal();
-            return true;
-        }
-        return false;
+        applyDetailsFocus();
+        return true;
     }
 
     /* ── Side Menu Key Handling ── */
@@ -1613,7 +2199,9 @@
             var row = state.rows[state.row];
             if (!row || !row.cards || !row.cards[row.col]) return true;
             var chosen = row.cards[row.col];
-            if (state.row === 0 && row.id === 'hero') {
+            if (chosen.filter) {
+                applyFilterChoice(chosen);
+            } else if (state.row === 0 && row.id === 'hero') {
                 if (row.col === 0) {
                     openPlayer(chosen);
                 } else {
@@ -1642,9 +2230,163 @@
         return false;
     }
 
-    function onKeyDown(event) {
-        var action = resolveKey(event);
-        if (!action) return;
+    /* ── Mouse / pointer remotes (LG Magic Remote, Samsung Smart Remote pointer, air mouse) ──
+       Hover moves the same amber focus the D-pad uses; a click runs the same «select» action.
+       Only mousemove + click are used: every pointer remote fires them, and pointer events would
+       fire a second click on the engines that map both. */
+    var pointer = { x: -1, y: -1, wheelAt: 0, keyAt: 0 };
+
+    function isInteractive(node) {
+        return hasClass(node, 'lite-card') || hasClass(node, 'lite-menu-item') || hasClass(node, 'lite-btn') ||
+            hasClass(node, 'lite-pill') || hasClass(node, 'lite-back') || hasClass(node, 'lite-kb-key') ||
+            hasClass(node, 'lite-genre-tile');
+    }
+
+    function interactiveOf(node) {
+        while (node && node !== document.body && node.nodeType === 1) {
+            if (typeof node.className === 'string' && isInteractive(node)) return node;
+            node = node.parentNode;
+        }
+        return null;
+    }
+
+    function indexIn(list, node) {
+        for (var i = 0; list && i < list.length; i++) if (list[i] === node) return i;
+        return -1;
+    }
+
+    function dialogTarget(node) {
+        var id = node.id;
+        if (state.mode === 'player') {
+            if (id === 'lite-player-back' || id === 'lite-player-retry' || id === 'lite-player-other') return { kind: 'player', id: id };
+            return null;
+        }
+        if (state.mode === 'auth') {
+            if (id === 'lite-auth-refresh') return { kind: 'auth', id: 'refresh' };
+            if (id === 'lite-auth-cancel') return { kind: 'auth', id: 'cancel' };
+            return null;
+        }
+        if (state.mode === 'exit') {
+            if (id === 'lite-exit-leave') return { kind: 'exit', id: 'exit' };
+            if (id === 'lite-exit-stay') return { kind: 'exit', id: 'stay' };
+            return null;
+        }
+        if (state.mode === 'pro-modal') return id === 'lite-pro-close' ? { kind: 'pro' } : null;
+        return null;
+    }
+
+    function locateTarget(node) {
+        var overlay = state.mode === 'player' || state.mode === 'auth' || state.mode === 'exit' || state.mode === 'pro-modal';
+        if (overlay) return dialogTarget(node);
+        if (state.mode === 'details') {
+            for (var dr = 0; dr < det.rows.length; dr++) {
+                for (var dc = 0; dc < det.rows[dr].length; dc++) if (det.rows[dr][dc].node === node) return { kind: 'details', row: dr, col: dc };
+            }
+            return null;
+        }
+        if (hasClass(node, 'lite-menu-item')) {
+            var items = $('lite-menu').querySelectorAll('.lite-menu-item');
+            var mi = indexIn(items, node);
+            return mi < 0 ? null : { kind: 'menu', index: mi };
+        }
+        if (hasClass(node, 'lite-kb-key')) {
+            var rows = $('lite-keyboard').querySelectorAll('.lite-kb-row');
+            for (var kr = 0; kr < rows.length; kr++) {
+                var kc = indexIn(rows[kr].querySelectorAll('.lite-kb-key'), node);
+                if (kc >= 0) return { kind: 'kb', row: kr, col: kc };
+            }
+            return null;
+        }
+        if (state.view === 'search') {
+            var ri = indexIn(state.searchNodes, node);
+            return ri < 0 ? null : { kind: 'result', index: ri };
+        }
+        for (var r = 0; r < state.rows.length; r++) {
+            var c = indexIn(state.rows[r].items, node);
+            if (c >= 0) return { kind: 'row', row: r, col: c };
+        }
+        return null;
+    }
+
+    function focusTarget(t) {
+        if (t.kind === 'details') {
+            det.row = t.row;
+            det.col = t.col;
+            applyDetailsFocus();
+        } else if (t.kind === 'menu') {
+            state.menuIndex = t.index;
+            state.mode = 'menu';
+            renderMenu();
+        } else if (t.kind === 'kb') {
+            state.kbRow = t.row;
+            state.kbCol = t.col;
+            state.searchFocus = 'kb';
+            if (state.mode !== 'search') { state.mode = 'search'; renderMenu(); }
+            applySearchResultFocus();
+            applyKeyboardFocus();
+        } else if (t.kind === 'result') {
+            state.searchFocus = 'results';
+            state.resIndex = t.index;
+            if (state.mode !== 'search') { state.mode = 'search'; renderMenu(); }
+            applySearchResultFocus();
+        } else if (t.kind === 'row') {
+            state.row = t.row;
+            state.rows[t.row].col = t.col;
+            state.mode = 'browse';
+            applyFocus(true);
+        } else if (t.kind === 'auth') {
+            state.authFocus = t.id;
+            renderAuthActions();
+        } else if (t.kind === 'exit') {
+            state.exitFocus = t.id;
+            renderExit();
+        } else if (t.kind === 'player') {
+            if (t.id === 'lite-player-retry') player.focusAct = 0;
+            else if (t.id === 'lite-player-other') player.focusAct = 1;
+            renderPlayerActions();
+        }
+    }
+
+    function onPointerMove(event) {
+        var x = event.clientX;
+        var y = event.clientY;
+        if (x === pointer.x && y === pointer.y) return;
+        pointer.x = x;
+        pointer.y = y;
+        var node = interactiveOf(event.target || event.srcElement);
+        if (!node) return;
+        var t = locateTarget(node);
+        if (t) focusTarget(t);
+    }
+
+    function onPointerClick(event) {
+        /* Some TVs follow OK on the D-pad with a synthetic click at the last pointer position: the key already acted. */
+        if (new Date().getTime() - pointer.keyAt < 400) return;
+        var node = interactiveOf(event.target || event.srcElement);
+        var t = node ? locateTarget(node) : null;
+        if (!t) {
+            /* a click on the picture itself pauses / resumes, like OK on the D-pad */
+            if (state.mode === 'player' && !player.problem) { onPlayerKey('select'); }
+            return;
+        }
+        focusTarget(t);
+        if (t.kind === 'player' && t.id === 'lite-player-back') { closePlayer(); return; }
+        if (t.kind === 'pro') { onProKey('select'); return; }
+        dispatchKey('select');
+    }
+
+    function onPointerWheel(event) {
+        if (state.mode === 'player' || state.mode === 'auth' || state.mode === 'exit' || state.mode === 'pro-modal') return;
+        var delta = event.deltaY || (event.wheelDelta ? -event.wheelDelta : 0);
+        if (!delta) return;
+        var now = new Date().getTime();
+        if (now - pointer.wheelAt < 160) return;
+        pointer.wheelAt = now;
+        dispatchKey(delta > 0 ? 'down' : 'up');
+        if (event.preventDefault) event.preventDefault();
+    }
+
+    function dispatchKey(action) {
         var handled;
         if (state.mode === 'player') handled = onPlayerKey(action);
         else if (state.mode === 'auth') handled = onAuthKey(action);
@@ -1654,7 +2396,14 @@
         else if (state.mode === 'search') handled = onSearchKey(action);
         else if (state.mode === 'menu') handled = onMenuKey(action);
         else handled = onBrowseKey(action);
+        return handled;
+    }
 
+    function onKeyDown(event) {
+        var action = resolveKey(event);
+        if (!action) return;
+        pointer.keyAt = new Date().getTime();
+        var handled = dispatchKey(action);
         if (handled) {
             if (event.preventDefault) event.preventDefault();
             if (event.stopPropagation) event.stopPropagation();
@@ -1666,14 +2415,14 @@
         video.addEventListener('timeupdate', updateProgress, false);
         video.addEventListener('play', function () { updateProgress(); showBar(); }, false);
         video.addEventListener('pause', function () { updateProgress(); showBar(); }, false);
-        video.addEventListener('waiting', function () { if (player.ready) playerMessage('Буферизация…'); }, false);
-        video.addEventListener('playing', function () { playerMessage(''); }, false);
+        video.addEventListener('waiting', function () { if (player.ready) { playerMessage('Буферизация…'); if (!player.stallTimer && !player.problem) armStall(STALL_MS + 5000); } }, false);
+        video.addEventListener('playing', markFrame, false);
+        video.addEventListener('canplay', function () { if (player.card && video.getAttribute('src')) markFrame(); }, false);
+        video.addEventListener('loadeddata', function () { if (player.card && video.getAttribute('src')) markFrame(); }, false);
         video.addEventListener('ended', function () { closePlayer(); toast('Просмотр завершён'); }, false);
         video.addEventListener('error', function () {
             if (!player.card || !video.getAttribute('src')) return;
-            player.ready = false;
-            playerMessage('Телевизор не смог воспроизвести это видео. Нажмите OK, чтобы повторить.');
-            showBar();
+            playerProblem('error');
         }, false);
     }
 
@@ -1688,6 +2437,10 @@
         fitScreen();
         bindVideo();
         document.addEventListener('keydown', onKeyDown, false);
+        document.addEventListener('mousemove', onPointerMove, false);
+        document.addEventListener('click', onPointerClick, false);
+        document.addEventListener('mousewheel', onPointerWheel, false);
+        document.addEventListener('wheel', onPointerWheel, false);
         window.addEventListener('resize', fitScreen, false);
         window.addEventListener('pagehide', endSession, false);
         window.addEventListener('beforeunload', endSession, false);
@@ -1697,6 +2450,11 @@
     function destroy() {
         if (authPolling) { clearInterval(authPolling); authPolling = null; }
         document.removeEventListener('keydown', onKeyDown, false);
+        document.removeEventListener('mousemove', onPointerMove, false);
+        document.removeEventListener('click', onPointerClick, false);
+        document.removeEventListener('mousewheel', onPointerWheel, false);
+        document.removeEventListener('wheel', onPointerWheel, false);
+        clearTimeout(player.stallTimer);
         window.removeEventListener('resize', fitScreen, false);
         window.removeEventListener('pagehide', endSession, false);
         window.removeEventListener('beforeunload', endSession, false);
@@ -1715,6 +2473,12 @@
         formatTime: formatTime,
         state: state,
         player: player,
+        details: det,
+        playerProblem: playerProblem,
+        pointer: pointer,
+        filterQuery: filterQuery,
+        passesFilters: passesFilters,
+        dispatchKey: dispatchKey,
         openAuth: openAuthModal,
         reload: loadHome,
         destroy: destroy,

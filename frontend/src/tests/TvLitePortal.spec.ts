@@ -76,9 +76,11 @@ class FakeXhr {
 }
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 20))
+const hover = (node: Element, at = 5) => node.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: at, clientY: at }))
+const click = (node: Element) => node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 const press = (key: string, keyCode: number) => document.dispatchEvent(new KeyboardEvent('keydown', { key, keyCode, bubbles: true, cancelable: true }))
 
-type LiteHook = { state: { row: number; mode: string; rows: { id: string; col: number }[] }; resolveKey: (e: { keyCode: number; key?: string }, orsay?: boolean) => string; tmdbSize: (u: string, s: string) => string; formatTime: (s: number) => string; LitePromise: new (fn: (res: (v: unknown) => void) => void) => Promise<unknown> }
+type LiteHook = { pointer: { keyAt: number }; playerProblem: (kind: string) => void; filterQuery: (kind: string, f: Record<string, unknown>) => string; state: { row: number; mode: string; rows: { id: string; col: number }[] }; resolveKey: (e: { keyCode: number; key?: string }, orsay?: boolean) => string; tmdbSize: (u: string, s: string) => string; formatTime: (s: number) => string; LitePromise: new (fn: (res: (v: unknown) => void) => void) => Promise<unknown> }
 const lite = () => (window as unknown as { KinosotaLite: LiteHook }).KinosotaLite
 
 async function bootLite() {
@@ -119,7 +121,7 @@ describe('Lite TV portal behaviour', () => {
     expect(document.querySelectorAll('.lite-card')).toHaveLength(5)
     expect(document.querySelector('.lite-btn.is-focused')?.textContent).toContain('Смотреть')
     // Heavy TMDB originals are resized and served by the cached same-origin poster proxy.
-    expect((document.querySelector('.lite-hero-image') as HTMLImageElement).getAttribute('src')).toBe('/api/v1/poster/w780/b.jpg')
+    expect((document.querySelector('.lite-hero-image') as HTMLImageElement).getAttribute('src')).toBe('/api/v1/poster/w1280/b.jpg')
     const poster = document.querySelector('.lite-card-poster img') as HTMLImageElement
     expect(poster.getAttribute('src') || poster.getAttribute('data-src')).toBe('/api/v1/poster/w185/a.jpg')
     expect(document.body.innerHTML).not.toContain('image.tmdb.org')
@@ -190,10 +192,12 @@ describe('Lite TV portal behaviour', () => {
     await flush()
     expect(lite().state.mode).toBe('player')
     const start = sent.find(item => item.url === '/api/v1/playback/start')
-    expect(JSON.parse(start!.body!)).toEqual({ movie_id: 'm1' })
+    expect(JSON.parse(start!.body!)).toEqual({ movie_id: 'm1', tv: true })
     expect((document.getElementById('lite-video') as HTMLVideoElement).getAttribute('src')).toBe('/media/m1.mp4')
     press('', 10009) // Samsung Tizen Return
     await flush()
+    expect(lite().state.mode).toBe('details') // back from the player lands on the film card again
+    press('', 10009)
     expect(lite().state.mode).toBe('browse')
     expect(sent.some(item => item.url === '/api/v1/playback/stop' && JSON.parse(item.body!).session_id === 'sess-1')).toBe(true)
   })
@@ -282,6 +286,9 @@ describe('Lite TV portal behaviour', () => {
     expect(document.getElementById('lite-auth')?.className).not.toContain('is-hidden')
     expect(document.getElementById('lite-auth-code')?.textContent).toBe('1234-5678')
     press('Escape', 27)
+    // the details screen the film was started from is still open underneath
+    expect(lite().state.mode).toBe('details')
+    press('Escape', 27)
     expect(lite().state.mode).toBe('browse')
   })
 
@@ -316,6 +323,162 @@ describe('Lite TV portal behaviour', () => {
     press('Enter', 13)
     expect(lite().state.mode).toBe('browse')
     expect(document.getElementById('lite-pro-modal')?.className).toContain('is-hidden')
+  })
+
+  it('carries the KINOSOTA wordmark and no corner badge', () => {
+    expect(HTML).not.toContain('lite-badge')
+    expect(HTML).toContain('<span class="wordmark-highlight">KINO</span><span class="wordmark-honey">SOTA</span>')
+    expect(HTML).toContain('/brand/kinosota-icon.svg')
+  })
+
+  it('sends rating, year and sort to the backend as query parameters', async () => {
+    await bootLite()
+    const q = lite().filterQuery
+    expect(q('movies', { rating: 8, year: '2025', sort: 'popular' })).toBe('&min_rating=8&year=2025')
+    expect(q('movies', { rating: 0, year: '2020-2023', sort: 'rating' })).toBe('&year_from=2020&year_to=2023&sort=rating_desc')
+    expect(q('movies', { rating: 7, year: 'before', sort: 'date' })).toBe('&min_rating=7&year_to=2019&sort=newest')
+    expect(q('torrents', { rating: 6, year: 'all', sort: 'rating' })).toBe('&rating=6&sort=rating')
+    expect(q('series', { rating: 0, year: '2024', sort: 'date' })).toBe('&year=2024')
+  })
+
+  it('filters the movies catalogue and moves focus between the filter bar and the cards', async () => {
+    const m1 = { id: 'm1', title: 'Первый', year: 2020, rating: 7.5, poster: null }
+    const m9 = { id: 'm9', title: 'Девятый', year: 2025, rating: 8.4, poster: null }
+    routes.push({ method: 'GET', path: '/movies?page=1&page_size=24', body: { items: [m1, m9] } })
+    routes.push({ method: 'GET', path: '/movies?page=1&page_size=24&min_rating=8', body: { items: [m9] } })
+    routes.push({ method: 'GET', path: '/movies?page=1&page_size=24&min_rating=8&year=2025', body: { items: [m9] } })
+    await bootLite()
+    click(document.querySelector('.lite-menu-item[data-id="movies"]')!)
+    await flush()
+    expect(document.querySelectorAll('.lite-filters .lite-pill').length).toBe(13)
+    expect(document.querySelectorAll('#lite-grid-cards .lite-card').length).toBe(2)
+    expect(lite().state.row).toBe(2) // first card row, filters sit above it
+    press('ArrowUp', 38)
+    press('ArrowUp', 38)
+    expect(lite().state.row).toBe(0) // top filter row: rating + year
+    press('ArrowRight', 39) // ★ 8.0+
+    press('Enter', 13)
+    await flush()
+    expect(sent.some(item => item.url === '/api/v1/movies?page=1&page_size=24&min_rating=8')).toBe(true)
+    expect(document.querySelectorAll('#lite-grid-cards .lite-card').length).toBe(1)
+    expect(document.querySelectorAll('.lite-filters .lite-pill.is-active').length).toBe(3) // rating, year and sort each show their choice
+    expect(lite().state.row).toBe(0) // focus stays on the filter that was just used
+    for (let i = 0; i < 5; i++) press('ArrowRight', 39) // 2025
+    press('Enter', 13)
+    await flush()
+    expect(sent.some(item => item.url === '/api/v1/movies?page=1&page_size=24&min_rating=8&year=2025')).toBe(true)
+    press('ArrowDown', 40) // sort row
+    press('ArrowDown', 40) // first card of the filtered list
+    expect(lite().state.row).toBe(2)
+    press('Enter', 13)
+    await flush()
+    expect(lite().state.mode).toBe('details')
+    expect(document.getElementById('lite-details-title')?.textContent).toBe('Девятый')
+  })
+
+  it('opens the reference details screen for a torrent and plays the chosen release', async () => {
+    routes.push({ method: 'GET', path: '/torrents/detail/movie/55', body: { tagline: 'Выживание зависит от их связи', countries: ['США'], genres: [{ id: 1, name: 'Приключения' }, { id: 2, name: 'Триллер' }], runtime: 101, year: 2025, rating: 7.9, overview: 'Описание' } })
+    routes.push({ method: 'GET', path: '/torrents/sources/movie/55', body: { selected_source_id: 'a', sources: [
+      { source_id: 'a', quality: '1080p', source_type: 'WEB-DL', seeders: 989, size_bytes: 8053063680, start_ms: 1693, languages: ['ru'], state: 'ready', health: 'ok' },
+      { source_id: 'b', quality: '720p', source_type: 'WEB-DL', seeders: 12, size_bytes: 2147483648, languages: ['uk', 'en'], state: 'ready', health: 'ok' },
+    ] } })
+    await bootLite()
+    press('ArrowRight', 39) // «О фильме» next to «Смотреть»
+    press('Enter', 13)
+    await flush()
+    expect(lite().state.mode).toBe('details')
+    const text = (id: string) => document.getElementById(id)?.textContent
+    expect(text('lite-details-title')).toBe('Герой')
+    expect(text('lite-details-orig')).toBe('2025, США')
+    expect(text('lite-details-tagline')).toBe('«Выживание зависит от их связи»')
+    expect(text('lite-details-rating')).toBe('7.9')
+    expect(text('lite-details-ratingsrc')).toBe('TMDB')
+    expect(text('lite-details-meta')).toBe('01:41 • Приключения | Триллер')
+    expect(document.querySelector('.watch-card')).not.toBeNull()
+    expect(document.querySelector('.lite-btn-primary.is-focused')?.textContent).toContain('Смотреть')
+    expect(text('lite-details-selected')).toContain('✓ Выбрано: 1080p WEB-DL')
+    expect(text('lite-details-selected')).toContain('▲ 989 сидов')
+    expect(text('lite-details-selected')).toContain('7.5 ГБ')
+    expect(text('lite-details-ready')).toBe('Готово: старт 1693 мс')
+    expect(text('lite-details-footer')).toBe('Открыто в KINOSOTA Player')
+    expect(Array.from(document.querySelectorAll('#lite-quality-pills .lite-pill')).map(n => n.textContent)).toEqual(['1080p WEB-DL', '720p WEB-DL'])
+    expect(Array.from(document.querySelectorAll('#lite-lang-pills .lite-pill')).map(n => n.textContent)).toEqual(['🇷🇺 RU', '🇺🇦 UA', '🇬🇧 EN', '🔊 Аудио'])
+    press('ArrowDown', 40) // quality row
+    press('ArrowRight', 39) // 720p
+    press('Enter', 13)
+    expect(text('lite-details-selected')).toContain('✓ Выбрано: 720p WEB-DL')
+    expect(document.querySelector('#lite-quality-pills .is-active')?.textContent).toBe('720p WEB-DL')
+    press('ArrowUp', 38)
+    press('ArrowLeft', 37)
+    press('Enter', 13) // ▶ Смотреть with the 720p release
+    await flush()
+    expect(lite().state.mode).toBe('player')
+    const ticket = sent.find(item => item.url === '/api/v1/torrents/playback-ticket')
+    expect(JSON.parse(ticket!.body!)).toEqual({ kind: 'movie', tmdb_id: 55, source_id: 'b' })
+    press('Escape', 27) // back from the player lands on the details screen again
+    await flush()
+    expect(lite().state.mode).toBe('details')
+    press('Escape', 27) // and back from details returns to the banner button it came from
+    expect(lite().state.mode).toBe('browse')
+    expect(document.getElementById('lite-details')?.className).toContain('is-hidden')
+    expect(lite().state.rows[0].col).toBe(1)
+  })
+
+  it('follows a pointer remote: hover moves the focus, click opens, Watch plays, Back closes', async () => {
+    await bootLite()
+    const cards = document.querySelectorAll('.lite-card')
+    const target = cards[1]
+    hover(cards[0], 11)
+    expect(cards[0].className).toContain('is-focused')
+    expect(document.querySelectorAll('.lite-card.is-focused').length).toBe(1)
+    expect(lite().state.rows[lite().state.row].col).toBe(0)
+    press('ArrowRight', 39) // the D-pad continues from where the pointer is
+    expect(lite().state.rows[lite().state.row].col).toBe(1)
+    expect(target.className).toContain('is-focused')
+    hover(target, 22)
+    click(target) // right after a key press this is the TV's synthetic click: the key already acted, so it is ignored
+    await flush()
+    expect(lite().state.mode).toBe('browse')
+    lite().pointer.keyAt = 0 // a deliberate click later on
+    click(target)
+    await flush()
+    expect(lite().state.mode).toBe('details')
+    expect(document.getElementById('lite-details-title')?.textContent).toBe(target.querySelector('.lite-card-title')?.textContent)
+    const back = document.getElementById('lite-act-back')!
+    hover(back, 33)
+    expect(back.className).toContain('is-focused')
+    click(back)
+    expect(lite().state.mode).toBe('browse')
+    expect(document.getElementById('lite-details')?.className).toContain('is-hidden')
+    click(document.querySelector('.lite-hero .lite-btn-primary')!) // ▶ Смотреть on the banner
+    await flush()
+    expect(lite().state.mode).toBe('player')
+    click(document.getElementById('lite-player-back')!)
+    expect(lite().state.mode).toBe('browse')
+  })
+
+  it('turns an endless spinner into a diagnosis with retry and another-source actions', async () => {
+    routes.push({ method: 'GET', path: '/movies/m1', body: { overview: 'x', mime_type: 'video/x-matroska', genres: [] } })
+    await bootLite()
+    press('ArrowDown', 40)
+    press('Enter', 13)
+    await flush()
+    press('Enter', 13)
+    await flush()
+    expect(lite().state.mode).toBe('player')
+    lite().playerProblem('stall') // what the 10 s first-frame timer calls
+    expect(document.getElementById('lite-player-message')?.textContent).toContain('не запустилось')
+    expect(document.getElementById('lite-player-message')?.textContent).toContain('MKV')
+    expect(document.getElementById('lite-player-actions')?.className).not.toContain('is-hidden')
+    press('Enter', 13) // «Повторить» asks the backend again
+    await flush()
+    expect(sent.filter(item => item.url === '/api/v1/playback/start').length).toBe(2)
+    lite().playerProblem('stall')
+    press('ArrowRight', 39) // «Выбрать другой источник»
+    press('Enter', 13)
+    await flush()
+    expect(lite().state.mode).toBe('details')
+    expect(document.getElementById('lite-player')?.className).toContain('is-hidden')
   })
 
   it('ships a working Promise polyfill and time formatting', async () => {
