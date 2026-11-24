@@ -118,9 +118,19 @@ describe('Lite TV portal behaviour', () => {
     expect(titles).toEqual(['Популярное', 'Новинки', 'Сериалы', 'Торренты'])
     expect(document.querySelectorAll('.lite-card')).toHaveLength(5)
     expect(document.querySelector('.lite-btn.is-focused')?.textContent).toContain('Смотреть')
-    // Heavy TMDB originals are resized for 512 MB TVs.
-    expect((document.querySelector('.lite-hero-image') as HTMLImageElement).src).toContain('/t/p/w1280/b.jpg')
-    expect((document.querySelector('.lite-card-poster img') as HTMLImageElement).src).toContain('/t/p/w342/a.jpg')
+    // Heavy TMDB originals are resized and served by the cached same-origin poster proxy.
+    expect((document.querySelector('.lite-hero-image') as HTMLImageElement).getAttribute('src')).toBe('/api/v1/poster/w780/b.jpg')
+    const poster = document.querySelector('.lite-card-poster img') as HTMLImageElement
+    expect(poster.getAttribute('src') || poster.getAttribute('data-src')).toBe('/api/v1/poster/w185/a.jpg')
+    expect(document.body.innerHTML).not.toContain('image.tmdb.org')
+  })
+
+  it('uses inline SVG menu icons and names the Telegram pairing bot', async () => {
+    await bootLite()
+    expect(document.querySelectorAll('.lite-menu-icon svg')).toHaveLength(8)
+    expect(document.getElementById('lite-sidebar')?.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u)
+    expect(document.getElementById('lite-auth-url')?.textContent).toBe('@kino_publisher_bot')
+    expect(JS).not.toContain('qrserver')
   })
 
   it('moves the focus frame with the D-pad', async () => {
@@ -131,9 +141,17 @@ describe('Lite TV portal behaviour', () => {
     expect(lite().state.rows[1].col).toBe(1)
     expect(document.querySelectorAll('.lite-card')[1].className).toContain('is-focused')
     press('ArrowRight', 39)
-    expect(lite().state.rows[1].col).toBe(1)
+    // Right on the last card wraps to the first card of the next row.
+    expect(lite().state.row).toBe(2)
+    expect(lite().state.rows[2].col).toBe(0)
     press('ArrowUp', 38)
+    expect(lite().state.row).toBe(1)
+    press('ArrowUp', 38)
+    press('ArrowRight', 39)
+    press('ArrowRight', 39)
+    // Hero «Смотреть» → «Подробнее», then focus stays on «Подробнее».
     expect(lite().state.row).toBe(0)
+    expect(lite().state.rows[0].col).toBe(1)
   })
 
   it('opens side menu with ArrowLeft and closes it with ArrowRight or Back returning focus to content', async () => {

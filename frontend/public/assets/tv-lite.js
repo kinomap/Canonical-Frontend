@@ -243,10 +243,15 @@
     }
 
     /* ── Content model ── */
+    /* TMDB images always go through the cached VPS2 proxy /api/v1/poster/{size}/{file}:
+       old TVs never open TLS to image.tmdb.org and cards never exceed w185 (~20 KB). */
+    var POSTER_SIZES = { w92: 1, w154: 1, w185: 1, w342: 1, w500: 1, w780: 1 };
+    var TMDB_RE = /^https?:\/\/image\.tmdb\.org\/t\/p\/(?:original|w\d+)\/([A-Za-z0-9_\-]+\.(?:jpg|jpeg|png|webp))$/;
     function tmdbSize(url, size) {
         if (!url || typeof url !== 'string') return '';
-        if (url.indexOf('image.tmdb.org/t/p/') === -1 || url.indexOf('?') !== -1) return url;
-        return url.replace(/\/t\/p\/(original|w\d+)\//, '/t/p/' + size + '/');
+        var m = url.match(TMDB_RE);
+        if (!m) return url.indexOf('image.tmdb.org') !== -1 ? '' : url;
+        return '/api/v1/poster/' + (POSTER_SIZES[size] ? size : 'w185') + '/' + m[1];
     }
 
     function ratingOf(value) {
@@ -261,7 +266,7 @@
             rating: ratingOf(movie.rating),
             quality: movie.quality || '1080p',
             lang: '🇷🇺 RU',
-            poster: tmdbSize(movie.poster, 'w342'),
+            poster: tmdbSize(movie.poster, 'w185'),
             overview: movie.overview || '',
             play: { src: 'catalog', kind: 'movie', id: String(movie.id) }
         };
@@ -275,7 +280,7 @@
             rating: ratingOf(series.rating),
             quality: 'FHD',
             lang: '🇷🇺 RU',
-            poster: tmdbSize(series.poster_url, 'w342'),
+            poster: tmdbSize(series.poster_url, 'w185'),
             overview: series.overview || '',
             play: { src: 'catalog', kind: 'series', id: String(series.id) }
         };
@@ -289,8 +294,8 @@
             rating: ratingOf(item.rating),
             quality: '4K',
             lang: '🇷🇺 RU',
-            poster: tmdbSize(item.poster, 'w342'),
-            backdrop: tmdbSize(item.backdrop, 'w1280'),
+            poster: tmdbSize(item.poster, 'w185'),
+            backdrop: tmdbSize(item.backdrop, 'w780'),
             overview: item.overview || '',
             play: { src: 'torrent', kind: item.kind === 'tv' ? 'tv' : 'movie', id: String(item.tmdb_id) }
         };
@@ -365,12 +370,27 @@
 
     /* ── State ── */
     var MENU_ITEMS = ['search', 'home', 'movies', 'series', 'torrents', 'genres', 'auth', 'exit'];
-    var KB_ROWS = [
-        ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '⌫'],
-        ['Й', 'Ц', 'У', 'К', 'Е', 'Н', 'Г', 'Ш', 'Щ', 'З', 'Х'],
-        ['Ф', 'Ы', 'В', 'А', 'П', 'Р', 'О', 'Л', 'Д', 'Ж', 'Э'],
-        ['Я', 'Ч', 'С', 'М', 'И', 'Т', 'Ь', 'Б', 'Ю', 'EN', '␣']
-    ];
+    var KB_LAYOUTS = {
+        ru: [
+            ['Й', 'Ц', 'У', 'К', 'Е', 'Н', 'Г', 'Ш', 'Щ', 'З', 'Х'],
+            ['Ф', 'Ы', 'В', 'А', 'П', 'Р', 'О', 'Л', 'Д', 'Ж', 'Э'],
+            ['Я', 'Ч', 'С', 'М', 'И', 'Т', 'Ь', 'Б', 'Ю', 'Ъ', 'Ё']
+        ],
+        en: [
+            ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '-'],
+            ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', "'"],
+            ['Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.', '!', '?']
+        ]
+    };
+    var KB_CLEAR = 'Очистить';
+    function buildKeyboard(layout) {
+        return [['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '⌫']]
+            .concat(KB_LAYOUTS[layout])
+            .concat([[layout === 'ru' ? 'EN' : 'RU', '␣', KB_CLEAR]]);
+    }
+    var KB_ROWS = buildKeyboard('ru');
+    var SEARCH_COLS = 6;
+    var SEARCH_DEBOUNCE = 400;
 
     var state = {
         mode: 'browse',        /* browse | menu | details | search | genres | auth | player | exit */
@@ -478,6 +498,19 @@
         }
         var top = state.row === 0 ? 0 : Math.max(0, row.node.offsetTop - 14);
         setTransform($('lite-scroll'), 0, -top);
+        scheduleLazy();
+    }
+
+    /* Where focus goes back after a modal/menu closes (search keeps its own focus model). */
+    function restoreFocus() {
+        state.mode = state.view === 'search' ? 'search' : 'browse';
+        renderMenu();
+        if (state.mode === 'search') {
+            if (state.searchFocus === 'results') applySearchResultFocus();
+            else applyKeyboardFocus();
+        } else {
+            applyFocus();
+        }
     }
 
     function moveFocus(action) {
@@ -496,8 +529,9 @@
         } else if (action === 'right') {
             if (row.col < row.items.length - 1) {
                 row.col += 1;
-            } else if (!row.track && state.row < state.rows.length - 1) {
-                /* Multi-row grids (without horizontal track) wrap to the next line */
+            } else if (row.id !== 'hero' && state.row < state.rows.length - 1) {
+                /* Last card of a shelf or grid line wraps to the first card of the next row;
+                   the hero buttons keep focus on «Подробнее» instead of jumping away. */
                 state.row += 1;
                 state.rows[state.row].col = 0;
             }
@@ -518,6 +552,40 @@
     }
 
     /* ── Cards & Shelves Rendering ── */
+    /* Lazy posters: an <img> gets its src only when its card is on screen (+2 cards to the
+       right/left, a quarter card vertically). Until then a dark gradient placeholder with the
+       title keeps the 2:3 box, so the grid never jumps and offscreen cards make no requests. */
+    var lazyImages = [];
+    var lazyTimer = null;
+
+    function loadVisiblePosters() {
+        var vw = window.innerWidth || 1920;
+        var vh = window.innerHeight || 1080;
+        var keep = [];
+        for (var i = 0; i < lazyImages.length; i++) {
+            var img = lazyImages[i];
+            var box = img.parentNode;
+            if (!box || !document.body.contains(box)) continue;
+            var r = box.getBoundingClientRect();
+            var mx = (r.width || 0) * 2 + 40;
+            var my = (r.height || 0) * 0.25;
+            if (r.width > 0 && r.right >= -mx && r.left <= vw + mx && r.bottom >= -my && r.top <= vh + my) {
+                img.src = img.getAttribute('data-src');
+                img.removeAttribute('data-src');
+            } else {
+                keep.push(img);
+            }
+        }
+        lazyImages = keep;
+    }
+
+    function scheduleLazy() {
+        if (lazyTimer) clearTimeout(lazyTimer);
+        loadVisiblePosters();
+        /* again after the 300 ms track/scroll transition has settled */
+        lazyTimer = setTimeout(loadVisiblePosters, 350);
+    }
+
     function posterNode(card) {
         var box = el('div', 'lite-card-poster');
         var fallback = el('div', 'lite-card-fallback', clip(card.title, 40));
@@ -525,10 +593,12 @@
         if (card.poster) {
             var img = document.createElement('img');
             img.alt = '';
-            img.onload = function () { fallback.style.display = 'none'; };
+            img.className = 'lite-lazy';
+            img.onload = function () { addClass(img, 'is-loaded'); fallback.style.display = 'none'; };
             img.onerror = function () { img.style.display = 'none'; fallback.style.display = 'block'; };
-            img.src = card.poster;
+            img.setAttribute('data-src', card.poster);
             box.appendChild(img);
+            lazyImages.push(img);
         }
         if (card.rating) box.appendChild(el('span', 'lite-badge-rating', '★ ' + card.rating.toFixed(1)));
         if (card.quality) box.appendChild(el('span', 'lite-badge-quality', card.quality));
@@ -723,6 +793,12 @@
     function openSearchView() {
         show($('lite-view-search'));
         state.searchQuery = '';
+        state.searchFocus = 'kb';
+        state.searchCards = [];
+        state.searchNodes = [];
+        state.resIndex = 0;
+        state.kbLayout = 'ru';
+        KB_ROWS = buildKeyboard('ru');
         updateSearchInput();
         renderKeyboard();
         $('lite-search-results').innerHTML = '';
@@ -745,7 +821,8 @@
             for (var c = 0; c < KB_ROWS[r].length; c++) {
                 var keyChar = KB_ROWS[r][c];
                 var keyEl = el('span', 'lite-kb-key', keyChar);
-                if (keyChar === '␣' || keyChar === '⌫' || keyChar === 'EN') addClass(keyEl, 'is-wide');
+                if (keyChar === '␣' || keyChar === KB_CLEAR || keyChar === 'EN' || keyChar === 'RU') addClass(keyEl, 'is-wide');
+                if (keyChar === '␣') addClass(keyEl, 'is-space');
                 rowEl.appendChild(keyEl);
             }
             kb.appendChild(rowEl);
@@ -769,9 +846,15 @@
             if (state.searchQuery.length > 0) state.searchQuery = state.searchQuery.slice(0, -1);
         } else if (char === '␣') {
             state.searchQuery += ' ';
+        } else if (char === KB_CLEAR) {
+            state.searchQuery = '';
         } else if (char === 'EN' || char === 'RU') {
-            // toggle layout
-            toast('Язык переключён');
+            state.kbLayout = char === 'EN' ? 'en' : 'ru';
+            KB_ROWS = buildKeyboard(state.kbLayout);
+            renderKeyboard();
+            state.kbCol = Math.min(state.kbCol, KB_ROWS[state.kbRow].length - 1);
+            applyKeyboardFocus();
+            return;
         } else {
             state.searchQuery += char;
         }
@@ -785,14 +868,20 @@
         var q = state.searchQuery.trim();
         if (!q) {
             $('lite-search-results').innerHTML = '';
+            state.searchCards = [];
+            state.searchNodes = [];
             return;
         }
         searchTimer = setTimeout(function () {
             api.search(q).then(function (res) {
+                if (q !== state.searchQuery.trim()) return; /* a newer query is pending */
                 var list = res && res.items ? res.items : [];
-                var cards = mapList(list, movieCard);
+                var cards = mapList(list, function (x) { return x && x.type === 'series' ? seriesCard(x) : movieCard(x); });
                 var container = $('lite-search-results');
                 container.innerHTML = '';
+                state.searchCards = cards;
+                state.searchNodes = [];
+                state.resIndex = 0;
                 if (!cards.length) {
                     container.appendChild(el('p', 'lite-status', 'По запросу «' + q + '» ничего не найдено.'));
                     return;
@@ -802,9 +891,56 @@
                     cardNode.appendChild(posterNode(cards[i]));
                     cardNode.appendChild(el('div', 'lite-card-title', cards[i].title));
                     container.appendChild(cardNode);
+                    state.searchNodes.push(cardNode);
                 }
+                scheduleLazy();
             })['catch'](function () {});
-        }, 300);
+        }, SEARCH_DEBOUNCE);
+    }
+
+    function applySearchResultFocus() {
+        var nodes = state.searchNodes || [];
+        for (var i = 0; i < nodes.length; i++) {
+            if (state.searchFocus === 'results' && i === state.resIndex) addClass(nodes[i], 'is-focused');
+            else removeClass(nodes[i], 'is-focused');
+        }
+        if (state.searchFocus === 'results') {
+            var kbKeys = $('lite-keyboard').querySelectorAll('.lite-kb-key');
+            for (var k = 0; k < kbKeys.length; k++) removeClass(kbKeys[k], 'is-focused');
+            var node = nodes[state.resIndex];
+            var results = $('lite-search-results');
+            if (node && results) results.scrollTop = Math.max(0, node.offsetTop - results.offsetTop - 20);
+        }
+        scheduleLazy();
+    }
+
+    function onSearchResultsKey(action) {
+        var n = (state.searchCards || []).length;
+        var i = state.resIndex;
+        if (action === 'left') {
+            if (i % SEARCH_COLS > 0) state.resIndex = i - 1;
+            else { state.mode = 'menu'; renderMenu(); return true; }
+        } else if (action === 'right') {
+            if (i < n - 1) state.resIndex = i + 1; /* last column wraps to the next row */
+        } else if (action === 'up') {
+            if (i >= SEARCH_COLS) state.resIndex = i - SEARCH_COLS;
+            else { state.searchFocus = 'kb'; applySearchResultFocus(); applyKeyboardFocus(); return true; }
+        } else if (action === 'down') {
+            if (i + SEARCH_COLS < n) state.resIndex = i + SEARCH_COLS;
+            else if (Math.floor(i / SEARCH_COLS) < Math.floor((n - 1) / SEARCH_COLS)) state.resIndex = n - 1;
+        } else if (action === 'select') {
+            if (state.searchCards[i]) openDetailsModal(state.searchCards[i]);
+            return true;
+        } else if (action === 'back') {
+            state.searchFocus = 'kb';
+            applySearchResultFocus();
+            applyKeyboardFocus();
+            return true;
+        } else {
+            return false;
+        }
+        applySearchResultFocus();
+        return true;
     }
 
     /* ── Movie Details Modal (Lampa style) ── */
@@ -857,8 +993,7 @@
 
     function closeDetailsModal() {
         hide($('lite-details'));
-        state.mode = 'browse';
-        applyFocus();
+        restoreFocus();
     }
 
     function renderDetailsActions() {
@@ -1142,6 +1277,12 @@
     var authPolling = null;
     var currentDeviceCode = null;
 
+    var PAIRING_BOT = 'kino_publisher_bot';
+    var PAIRING_POLL_MS = 3000;
+    function pairingQrUrl(userCode) {
+        return API_BASE + '/desktop/pairing/qr?code=' + encodeURIComponent(String(userCode || '').replace(/-/g, ''));
+    }
+
     function openAuthModal(onSuccessPlayCard) {
         state.mode = 'auth';
         state.authFocus = 'cancel';
@@ -1156,8 +1297,7 @@
         currentDeviceCode = null;
         state.pendingPlayCard = null;
         hide($('lite-auth'));
-        state.mode = 'browse';
-        applyFocus();
+        restoreFocus();
     }
 
     function renderAuthActions() {
@@ -1187,14 +1327,14 @@
             var uCode = res.user_code || '';
             var formatted = uCode.length === 8 ? uCode.slice(0, 4) + '-' + uCode.slice(4) : uCode;
             setText(codeEl, formatted);
-            var uri = res.verification_uri || ('https://watch.scenrix.com/profile?player_code=' + encodeURIComponent(uCode));
-            setText(urlEl, uri.replace(/^https?:\/\//, ''));
+            setText(urlEl, '@' + PAIRING_BOT);
             if (qrEl) {
-                qrEl.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(uri);
+                /* QR is rendered locally by the backend: https://t.me/<bot>?start=pair_<CODE> */
+                qrEl.src = pairingQrUrl(uCode);
             }
-            setText(statusEl, 'Ожидание подтверждения на телефоне…');
+            setText(statusEl, 'Ожидаем подтверждение в Telegram…');
 
-            var delay = (res.interval && res.interval >= 3 ? res.interval : 4) * 1000;
+            var delay = PAIRING_POLL_MS;
             authPolling = setInterval(function () {
                 if (state.mode !== 'auth' || !currentDeviceCode) {
                     clearInterval(authPolling);
@@ -1202,7 +1342,7 @@
                     return;
                 }
                 api.pollPairing(currentDeviceCode).then(function (pollRes) {
-                    if (pollRes && pollRes.status === 'authorized' && pollRes.access_token) {
+                    if (pollRes && pollRes.access_token) {
                         clearInterval(authPolling);
                         authPolling = null;
                         try { window.localStorage.setItem(TOKEN_KEY, pollRes.access_token); } catch (e) {}
@@ -1295,6 +1435,7 @@
 
     /* ── Keyboard / Search Key Handling ── */
     function onSearchKey(action) {
+        if (state.searchFocus === 'results') return onSearchResultsKey(action);
         if (action === 'left') {
             if (state.kbCol > 0) {
                 state.kbCol -= 1;
@@ -1325,6 +1466,11 @@
                 state.kbRow += 1;
                 state.kbCol = Math.min(state.kbCol, KB_ROWS[state.kbRow].length - 1);
                 applyKeyboardFocus();
+            } else if (state.searchCards && state.searchCards.length) {
+                /* Down from the last keyboard row jumps straight to the first result */
+                state.searchFocus = 'results';
+                state.resIndex = 0;
+                applySearchResultFocus();
             }
             return true;
         }
@@ -1385,13 +1531,7 @@
             return true;
         }
         if (action === 'right' || action === 'back') {
-            state.mode = state.view === 'search' ? 'search' : 'browse';
-            renderMenu();
-            if (state.mode === 'search') {
-                applyKeyboardFocus();
-            } else {
-                applyFocus();
-            }
+            restoreFocus();
             return true;
         }
         if (action === 'select') {
@@ -1507,6 +1647,9 @@
     var hook = {
         resolveKey: resolveKey,
         tmdbSize: tmdbSize,
+        pairingQrUrl: pairingQrUrl,
+        loadVisiblePosters: loadVisiblePosters,
+        buildKeyboard: buildKeyboard,
         formatTime: formatTime,
         state: state,
         player: player,
