@@ -219,3 +219,17 @@ def secondary_title(movie, language='ru'):
     keys = (('original_title', 'title_ru', 'title') if language == 'en'
             else ('original_title', 'title_en', 'title', 'title_ru'))
     return next((value for value in _titles(movie, keys) if value.casefold() != shown), '')
+# 0.2.3: KINOSOTA Telegram series page, the year drum and series playback.
+TEXT.update({
+ 'Сезонов':'Seasons','О сериале':'About the series','недоступна':'unavailable','Не удалось загрузить сериал.':'Could not load the series.',
+ 'Серии этого сериала ещё загружаются. Загляните позже.':'Episodes of this series are still being added. Check back later.',
+ 'Эта серия пока недоступна.':'This episode is not available yet.','Запускаем…':'Starting…',
+ 'KINOSOTA — сериалы из Telegram, Торренты — из раздач':'KINOSOTA: series from Telegram; Torrents: series from torrent releases',
+ 'Открываем серию…':'Opening the episode…','Подготовка серии…':'Preparing the episode…','Переподключаем медиапоток…':'Reconnecting the media stream…',
+ 'Новее':'Newer','Старше':'Older',
+ 'Серия не найдена. Обновите страницу сериала.':'Episode not found. Refresh the series page.',
+ 'Для этой серии пока нет доступного источника.':'There is no available source for this episode yet.',
+ 'Медиасервер временно недоступен. Попробуйте открыть серию чуть позже.':'The media server is temporarily unavailable. Try opening the episode a bit later.',
+ 'Эта серия пока недоступна для воспроизведения.':'This episode cannot be played yet.',
+ 'Сервер вернул неверную ссылку на серию. Попробуйте позже.':'The server returned an invalid episode link. Try again later.',
+})

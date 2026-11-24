@@ -64,20 +64,54 @@ def bookmark_rect(cell,list_mode=False):
 
 def meta_text(movie,language='ru'):
     parts=[str(movie.get('year'))] if movie.get('year') else []
-    if movie.get('_source')=='tmdb':parts.append(translate('Сериал' if movie.get('kind')=='tv' else 'Торрент',language))
+    if movie.get('_series'):parts.append(translate('Сериал',language))  # 0.2.3: KINOSOTA Telegram series.
+    elif movie.get('_source')=='tmdb':parts.append(translate('Сериал' if movie.get('kind')=='tv' else 'Торрент',language))
     elif movie.get('quality'):parts.append(str(movie.get('quality')))
     return ' · '.join(parts)
 
+def device_ratio(p):
+    """Physical pixels per logical pixel of the painted surface (1.25, 1.5, 2 … on HiDPI screens)."""
+    device=p.device() if p is not None else None
+    try:ratio=float(device.devicePixelRatioF()) if device is not None else 1.0
+    except (AttributeError,RuntimeError):ratio=1.0
+    return ratio if ratio>0 else 1.0
+
+def crisp(rect,width):
+    """Inset a rectangle by half the pen width: a 1 px line then covers whole device pixels instead of
+    being smeared half-transparent over two rows (the «dirty» outline)."""
+    half=width/2;return QRectF(rect).adjusted(half,half,-half,-half)
+
+def render_hints(p):
+    p.setRenderHint(QPainter.RenderHint.Antialiasing,True)
+    p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform,True)
+    p.setRenderHint(QPainter.RenderHint.TextAntialiasing,True)
+
 class TileDelegate(QStyledItemDelegate):
+    # 0.2.3: posters are scaled once per physical size (devicePixelRatioF) and reused while repainting.
+    SCALED_LIMIT=192
+    def __init__(self,parent=None):
+        super().__init__(parent);self.scaled=OrderedDict()
+    def cover(self,image,width,height,ratio):
+        """``image`` cover-fit to width × height logical px at ``ratio``: crisp on 125–200 % screens."""
+        target_w=max(1,int(round(width*ratio)));target_h=max(1,int(round(height*ratio)))
+        key=(image.cacheKey(),target_w,target_h)
+        scaled=self.scaled.get(key)
+        if scaled is None:
+            scaled=image.scaled(target_w,target_h,Qt.AspectRatioMode.KeepAspectRatioByExpanding,Qt.TransformationMode.SmoothTransformation)
+            scaled.setDevicePixelRatio(ratio);self.scaled[key]=scaled
+            while len(self.scaled)>self.SCALED_LIMIT:self.scaled.popitem(last=False)
+        else:self.scaled.move_to_end(key)
+        return scaled,target_w,target_h
     def sizeHint(self,option,index):
         # Text-based native hints vary by Qt/OS and collapse short-title posters.
         return self.parent().gridSize()
     def artwork(self,p,poster,movie,title_size=15):
         image=self.parent().posters.get(movie.get('poster') or movie.get('poster_url'))
         if image and not image.isNull():
-            scaled=image.scaled(int(poster.width()),int(poster.height()),Qt.AspectRatioMode.KeepAspectRatioByExpanding,Qt.TransformationMode.SmoothTransformation)
-            x=(scaled.width()-poster.width())/2;y=(scaled.height()-poster.height())/2
-            p.drawPixmap(poster,scaled,QRectF(x,y,poster.width(),poster.height()))
+            ratio=device_ratio(p);scaled,target_w,target_h=self.cover(image,poster.width(),poster.height(),ratio)
+            # Source rectangle in the pixmap's physical pixels: centred crop, no second resampling.
+            x=(scaled.width()-target_w)/2;y=(scaled.height()-target_h)/2
+            p.drawPixmap(poster,scaled,QRectF(x,y,target_w,target_h))
         else:
             gradient=QLinearGradient(poster.topLeft(),poster.bottomRight());gradient.setColorAt(0,QColor('#262344'));gradient.setColorAt(.55,QColor('#101c2a'));gradient.setColorAt(1,QColor('#080e12'));p.fillRect(poster,gradient)
             if title_size:
@@ -90,14 +124,14 @@ class TileDelegate(QStyledItemDelegate):
         p.setPen(QPen(QColor('#3d3209') if saved else QColor('#dfe4e8'),1.2));p.setBrush(QColor('#ffd400') if saved else QColor(9,14,18,185));p.drawPath(path)
     @staticmethod
     def badge(p,rect,rating,size=10):
-        p.setPen(QPen(QColor('#806624'),1));p.setBrush(QColor('#10151e'));p.drawRoundedRect(rect,6,6);p.setPen(QColor('#ffdc6c'));p.setFont(QFont('Manrope',size,QFont.Weight.Bold));p.drawText(rect,Qt.AlignmentFlag.AlignCenter,f'{float(rating):.1f}')
+        p.setPen(QPen(QColor('#806624'),1));p.setBrush(QColor('#10151e'));p.drawRoundedRect(crisp(rect,1),6,6);p.setPen(QColor('#ffdc6c'));p.setFont(QFont('Manrope',size,QFont.Weight.Bold));p.drawText(rect,Qt.AlignmentFlag.AlignCenter,f'{float(rating):.1f}')
     def paint(self,p,option,index):
         movie=index.data(Qt.ItemDataRole.UserRole) or {}
         if getattr(self.parent(),'list_mode',False):return self.paint_row(p,option,movie)
         r=QRectF(option.rect).adjusted(9,8,-9,-8)
-        width=r.width();poster=QRectF(r.left(),r.top(),width,width*1.5)
+        width=r.width();poster=QRectF(r.left(),r.top(),width,round(width*1.5))  # Whole pixels: a sharp bottom edge.
         selected=bool(option.state & (QStyle.StateFlag.State_Selected|QStyle.StateFlag.State_MouseOver|QStyle.StateFlag.State_HasFocus))
-        p.save();p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.save();render_hints(p)
         clip=QPainterPath();clip.addRoundedRect(poster,10,10);p.setClipPath(clip)
         self.artwork(p,poster,movie)
         if selected:
@@ -108,7 +142,8 @@ class TileDelegate(QStyledItemDelegate):
             small=width<120  # Smallest windows: the badge must not hide the artwork.
             self.badge(p,QRectF(poster.right()-(36 if small else 46),poster.top()+(6 if small else 8),30 if small else 38,20 if small else 26),rating,8 if small else 10)
         if bookmarkable(movie):self.ribbon(p,bookmark_rect(option.rect),bool(movie.get('_saved')))
-        p.setClipping(False);p.setPen(QPen(QColor('#ffd34d' if selected else '#303943'),2 if selected else 1));p.setBrush(Qt.BrushStyle.NoBrush);p.drawRoundedRect(poster,10,10)
+        line=2 if selected else 1
+        p.setClipping(False);p.setPen(QPen(QColor('#ffd34d' if selected else '#303943'),line));p.setBrush(Qt.BrushStyle.NoBrush);p.drawRoundedRect(crisp(poster,line),10-line/2,10-line/2)
         p.setPen(QColor('#f3f5f7'));font=QFont('Manrope',9,QFont.Weight.DemiBold);p.setFont(font)
         title=movie_title(movie,getattr(self.parent(),'title_language','ru'));metrics=p.fontMetrics();maxw=int(width);words=title.split();lines=[];line=''
         for word in words:
@@ -124,8 +159,9 @@ class TileDelegate(QStyledItemDelegate):
         """List view: thumbnail, title, year · quality, rating on the right."""
         r=QRectF(option.rect).adjusted(8,5,-8,-5);thumb=QRectF(r.left(),r.top(),r.height()/1.5,r.height())
         selected=bool(option.state & (QStyle.StateFlag.State_Selected|QStyle.StateFlag.State_MouseOver|QStyle.StateFlag.State_HasFocus))
-        p.save();p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        row=QRectF(option.rect).adjusted(2,2,-2,-2);p.setPen(QPen(QColor('#ffd34d') if selected else QColor('#1d262e'),1.5 if selected else 1));p.setBrush(QColor('#0d151b') if selected else QColor('#0a1116'));p.drawRoundedRect(row,10,10)
+        p.save();render_hints(p)
+        line=2 if selected else 1
+        row=crisp(QRectF(option.rect).adjusted(2,2,-2,-2),line);p.setPen(QPen(QColor('#ffd34d') if selected else QColor('#1d262e'),line));p.setBrush(QColor('#0d151b') if selected else QColor('#0a1116'));p.drawRoundedRect(row,10,10)
         clip=QPainterPath();clip.addRoundedRect(thumb,6,6);p.setClipPath(clip);self.artwork(p,thumb,movie,0);p.setClipping(False)
         if bookmarkable(movie):self.ribbon(p,bookmark_rect(option.rect,True),bool(movie.get('_saved')))
         text_left=thumb.right()+16;right=r.right()-(64 if movie.get('rating') else 8)

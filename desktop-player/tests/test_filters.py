@@ -74,6 +74,13 @@ class CatalogApi:
                            'rating': '7.1', 'tmdb_id': 1000 + first + i if i % 2 == 0 else None} for i in range(count)],
                 'total': self.site_total, 'total_pages': -(-self.site_total // page_size)}
 
+    def series(self, page=1, query='', genres=(), year_from=None, year_to=None, min_rating=None, sort='popularity', page_size=30):
+        """0.2.3: KINOSOTA Telegram series: 2 cards."""
+        self.calls.append(('series', page, query, tuple(genres), year_from, year_to, min_rating, sort))
+        items = [{'id': f'00000000-0000-4000-8000-00000000000{i}', 'title': f'Сериал {i}', 'year': 2024, 'rating': 8.1,
+                  'poster_url': None, 'genres': [{'slug': 'boevik', 'name': 'боевик'}]} for i in (1, 2)] if page == 1 else []
+        return {'items': items, 'total': 2, 'total_pages': 1}
+
     def torrent_catalog(self, kind='movie', query='', page=1, genres=(), year_from=None, year_to=None, rating=None, sort='popularity'):
         self.calls.append(('catalog', kind, query, page, tuple(genres), year_from, year_to, rating, sort))
         first = (page - 1) * 20
@@ -187,8 +194,9 @@ def test_sources_series_and_genres_missing_on_one_side():
     fetch_page(api, Genres(SITE, MOVIE, TV), state(source='site'))
     assert not any(c[0] == 'catalog' for c in api.calls)
     api.calls.clear()
-    data = fetch_page(api, Genres(SITE, MOVIE, TV), state(kind='tv', source='site'))  # Series: torrents only.
-    assert not any(c[0] == 'movies' for c in api.calls) and data['items'][0]['kind'] == 'tv'
+    data = fetch_page(api, Genres(SITE, MOVIE, TV), state(kind='tv', source='site'))  # 0.2.3: KINOSOTA Telegram series.
+    assert [c[0] for c in api.calls] == ['access', 'series'] and data['items'][0]['kind'] == 'tv'
+    assert all(row['_series'] and row['_source'] == 'site' for row in data['items'])
     api.calls.clear()
     fetch_page(api, Genres(SITE, MOVIE, TV), state(genres=['фантастика']))  # No such website genre.
     assert [c[0] for c in api.calls] == ['access', 'catalog', 'membership']
@@ -222,7 +230,7 @@ def test_page_numbers_match_the_screen():
 
 def test_signature_ignores_page_only():
     assert signature(state(page=1)) == signature(state(page=9))
-    assert signature(state(kind='tv', source='site')) == signature(state(kind='tv', source='all'))
+    assert signature(state(kind='tv', source='site')) != signature(state(kind='tv', source='all'))  # 0.2.3
     assert signature(state(rating=6.0)) != signature(state())
 
 
@@ -238,8 +246,8 @@ def test_filter_bar_state_reset_years_and_series_source():
     assert not seen and bar.genre_timer.isActive()  # Several genres → one request.
     bar.genre_timer.timeout.emit()
     assert seen[-1]['genres'] == ['боевик', 'детектив'] and bar.chip_box.isVisibleTo(bar)
-    bar.from_combo.setCurrentIndex(bar.from_combo.findData(2026))
-    bar.to_combo.setCurrentIndex(bar.to_combo.findData(2020))
+    bar.from_year.set_year(2026)
+    bar.to_year.set_year(2020)
     bar._years_picked('to')
     assert (bar.year_from, bar.year_to) == (2020, 2020)
     bar._rating_picked(bar.rating_combo.findData(6.0))
@@ -250,9 +258,10 @@ def test_filter_bar_state_reset_years_and_series_source():
     assert not bar.reset_button.isEnabled()
     bar.toggle_genre('боевик')
     bar.set_kind('tv')
-    assert bar.genres == [] and bar.state()['source'] == 'tmdb' and not bar.source_combo.isEnabled()
+    # 0.2.3: series keep the chosen source (KINOSOTA Telegram series / torrents / both).
+    assert bar.genres == [] and bar.state()['source'] == 'site' and bar.source_combo.isEnabled()
     bar.set_collapsed(True, user=True)
-    assert bar.user_toggled and not bar.body.isVisibleTo(bar) and 'Торренты' in bar.summary.text()
+    assert bar.user_toggled and not bar.body.isVisibleTo(bar) and 'KINOSOTA' in bar.summary.text()
     bar.retranslate('en')
     assert bar.toggle.text() == 'Filters' and bar.sort_combo.itemText(0) == 'Most popular'
 
@@ -309,7 +318,11 @@ def test_filter_change_reloads_first_page_and_source_follows_header():
     w.filters._source_picked(w.filters.source_combo.currentIndex())
     assert w.section == 'torrents' and w.nav['torrents'].isChecked()
     w.show_section('series')
-    assert w.filters.kind == 'tv' and w.nav['series'].isChecked() and api.calls[-2][1] == 'tv'
+    assert w.filters.kind == 'tv' and w.nav['series'].isChecked() and w.filters.state()['source'] == 'all'
+    assert any(c[0] == 'series' for c in api.calls) and [c for c in api.calls if c[0] == 'catalog'][-1][1] == 'tv'
+    w.filters.source_combo.setCurrentIndex(w.filters.source_combo.findData('tmdb'))
+    w.filters._source_picked(w.filters.source_combo.currentIndex())
+    assert w.section == 'series' and w.nav['series'].isChecked()  # A series source stays in «Сериалы».
     w.show_section('movies')
     assert w.filters.kind == 'movie' and w.filters.state()['source'] == 'site'
     w.show_section('library')
@@ -445,5 +458,5 @@ def test_catalogue_requests_follow_the_server_contract():
     assert seen[-1].method == 'DELETE' and seen[-1].url.path == '/api/v1/account/library/tv/1399'
     api.torrent_genres('tv')
     assert seen[-1].url.path == '/api/v1/torrents/genres' and seen[-1].url.params['kind'] == 'tv'
-    assert seen[-1].headers['User-Agent'] == 'KINOSOTA-Player/' + __version__ == 'KINOSOTA-Player/0.2.2'
+    assert seen[-1].headers['User-Agent'] == 'KINOSOTA-Player/' + __version__ == 'KINOSOTA-Player/0.2.3'
     api.close()

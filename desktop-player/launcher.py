@@ -1,5 +1,10 @@
 import sys
 
+from kinosota_player.hidpi import configure_high_dpi
+
+# 0.2.3: strictly before any QApplication: the exact fractional scale factor keeps lines and posters crisp.
+configure_high_dpi()
+
 
 def _fast_direct_launch():
     """Fast-Path for kinosota://watch?... links without importing heavy catalogue modules."""

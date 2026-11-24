@@ -23,6 +23,10 @@ TICKET_ERRORS={403:'Для просмотра торрентов нужна по
     409:'Раздача ещё готовится. Попробуйте через минуту.',422:'Такой серии нет в выбранной раздаче.',
     503:'Медиасервер временно недоступен. Попробуйте открыть фильм чуть позже.'}
 KINDS=('movie','tv')
+# 0.2.3: /series_playback/start reasons in the app's words (the server answers in English).
+SERIES_ERRORS={404:'Серия не найдена. Обновите страницу сериала.',409:'Для этой серии пока нет доступного источника.',
+    503:'Медиасервер временно недоступен. Попробуйте открыть серию чуть позже.',
+    'BROWSER_MEDIA_UNSUPPORTED':'Эта серия пока недоступна для воспроизведения.'}
 # 0.1.9 in-app updates: the website's published build of each OS, at most 512 MiB, checked by SHA-256.
 RELEASE_FILES={'windows':'KINOSOTA-Player-Setup.exe','macos':'KINOSOTA-Player.dmg','linux':'kinosota-player.deb'}
 RELEASE_LIMIT=512*1024*1024
@@ -53,6 +57,8 @@ def _sorted_years(year_from,year_to):
 # Player sort keys → KINOSOTA /movies and TMDB /torrents/catalog orders.
 MOVIE_SORTS={'popularity':'popularity','rating':'rating_desc','newest':'newest','title':'title_asc'}
 TMDB_SORTS={'popularity':'popular','rating':'rating','newest':'newest','title':'title'}
+# 0.2.3: Telegram series (/series), the same order names as the website series catalogue.
+SERIES_SORTS={'popularity':'popular','rating':'rating_desc','newest':'newest','title':'title_asc'}
 SLUG=re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
 
 class Api:
@@ -84,6 +90,9 @@ class Api:
                 if r.status_code==401 and self.token==request_token:self.token=''
                 if r.status_code==503 and path.startswith('/desktop/playback/'):
                     raise ApiError(503,code,'Медиасервер временно недоступен. Приложение продолжает работать — попробуйте открыть фильм чуть позже.')
+                if path.startswith('/series_playback/'):
+                    message=SERIES_ERRORS.get(code) or SERIES_ERRORS.get(r.status_code)
+                    if message:raise ApiError(r.status_code,code,message)
                 if code=='MEDIA_UNAVAILABLE':raise ApiError(r.status_code,code,'Фильм больше недоступен на сайте. Попробуйте позднее — возможно, он появится снова.')
                 if code=='MFA_REQUIRED':raise ApiError(403,code,'Введите код из приложения-аутентификатора.')
                 if path.startswith('/torrents/playback-ticket'):
@@ -143,6 +152,28 @@ class Api:
         if rating is not None:params['rating']=rating
         if sort!='popularity':params['sort']=TMDB_SORTS[sort]
         return self.request('GET','/torrents/catalog?'+str(httpx.QueryParams(params)))
+    # 0.2.3: KINOSOTA series from the Telegram streams, as on the website (/series, /series_playback/start).
+    def series(self,page=1,query='',genres=(),year_from=None,year_to=None,min_rating=None,sort='popularity',page_size=30):
+        """KINOSOTA series catalogue (/series): one genre slug (server rule), inclusive years, minimum rating."""
+        if sort not in SERIES_SORTS:raise ValueError('Unsupported sort')
+        slugs=list(dict.fromkeys(genres))[:10]
+        if any(not isinstance(g,str) or not SLUG.match(g) for g in slugs):raise ValueError('Invalid genre')
+        year_from,year_to=_sorted_years(year_from,year_to)
+        params={'page':max(1,int(page)),'page_size':max(1,min(100,int(page_size))),'sort':SERIES_SORTS[sort]}
+        if query:params['q']=str(query)[:100]
+        if slugs:params['genre']=slugs[0]
+        if year_from is not None:params['year_from']=year_from
+        if year_to is not None:params['year_to']=year_to
+        if _rating(min_rating) is not None:params['min_rating']=_rating(min_rating)
+        return self.request('GET','/series?'+str(httpx.QueryParams(params)))
+    def series_detail(self,series_id):return self.request('GET',f'/series/{_uuid(series_id)}')
+    def start_series_playback(self,episode_id):
+        """{media_url, playback_token}: a signed Media Worker URL for mpv; the series flow has no lease."""
+        data=self.request('POST','/series_playback/start',{'episode_id':_uuid(episode_id)})
+        url=data.get('media_url') if isinstance(data,dict) else None
+        if not isinstance(url,str) or urlsplit(url).scheme not in ('https','http') or not urlsplit(url).hostname:
+            raise ApiError(502,'BAD_MEDIA_URL','Сервер вернул неверную ссылку на серию. Попробуйте позже.')
+        return data
     def genres(self):return self.request('GET','/genres')
     def torrent_genres(self,kind):return self.request('GET','/torrents/genres?'+str(httpx.QueryParams({'kind':_kind(kind)})))
     def library_membership(self,pairs):

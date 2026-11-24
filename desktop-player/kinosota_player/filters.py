@@ -1,18 +1,50 @@
-"""«Фильтры» panel of «Главная»: genres (any of), rating, years, source and order."""
+"""«Фильтры» panel of «Главная»: genres (any of), rating, years, source and order.
+
+0.2.3: drop-down lists and the genre checklist open as rounded dark glass without the platform's
+white window corners; the years are picked on a compact four-row drum (YearWheelPopup) instead of
+a screen-high list; the source is a choice for series too (KINOSOTA Telegram series / torrents).
+"""
 from datetime import date
-from PySide6.QtCore import Qt, QPoint, QPointF, QRect, QSize, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen
+from PySide6.QtCore import QEasingCurve, Qt, QPoint, QPointF, QRect, QRectF, QSize, QTimer, QVariantAnimation, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLayout, QMenu, QPushButton,
     QSizePolicy, QStyledItemDelegate, QVBoxLayout, QWidget)
 from .browse import Genres
 from .preferences import translate
-from .theme import icon, paint_glass
+from .theme import icon, paint_glass, shadow_pixmap
 
 RATINGS = (None, 5.0, 6.0, 7.0, 8.0)
 SOURCE_TEXT = {'all': 'Все источники', 'site': 'KINOSOTA', 'tmdb': 'Торренты'}
 SORT_TEXT = {'popularity': 'По популярности', 'rating': 'По рейтингу', 'newest': 'Новинки', 'title': 'По названию'}
 FIRST_YEAR = 1920
 MAX_CHIPS = 3
+# Year drum: exactly four rows of 34 px are visible.
+DRUM_ROWS = 4
+DRUM_ROW = 34
+POPUP_GLASS = QColor('#11171d')
+POPUP_LINE = QColor(255, 255, 255, 38)
+GOLD = QColor('#ffd400')
+
+
+def year_values(today=None):
+    """[None («Любой»), next year, this year, …, FIRST_YEAR]: newest first, as the old list."""
+    latest = (today or date.today()).year + 1
+    return [None, *range(latest, FIRST_YEAR - 1, -1)]
+
+
+def frameless_popup(window):
+    """A top-level popup without the platform frame and with a transparent backing store: only the
+    rounded glass painted by the style sheet (or paintEvent) is visible, never white square corners."""
+    if window is None or window.property('kinosotaPopup'):
+        return window
+    visible = window.isVisible()
+    window.setWindowFlags(window.windowFlags() | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
+    window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+    window.setAutoFillBackground(False)
+    window.setProperty('kinosotaPopup', True)
+    if visible:
+        window.show()
+    return window
 
 
 class FlowLayout(QLayout):
@@ -87,6 +119,11 @@ class FlowLayout(QLayout):
 class StickyMenu(QMenu):
     """Genre checklist that stays open while several genres are picked."""
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName('stickyMenu')
+        frameless_popup(self)  # 0.2.3: rounded dark glass (theme QMenu), no white frame around it.
+
     def mouseReleaseEvent(self, event):
         action = self.activeAction()
         if action is not None and action.isEnabled() and action.isCheckable():
@@ -96,7 +133,327 @@ class StickyMenu(QMenu):
 
 
 class FilterCombo(QComboBox):
-    """Combo box with a drawn chevron: no platform arrow or icon font is needed."""
+    """Combo box with a drawn chevron: no platform arrow or icon font is needed.
+
+    0.2.3: the list opens in a frameless, translucent container, so the theme's 10 px rounded list
+    (QComboBox QAbstractItemView) is all that shows, without the white rectangle behind it."""
+
+    def popup_window(self):
+        view = self.view()
+        window = view.window() if view is not None else None
+        if window is None or window is self.window():
+            return None
+        if not window.property('kinosotaPopup'):
+            window.setObjectName('comboPopup')
+            frameless_popup(window)
+            view.setFrameShape(QFrame.Shape.NoFrame)
+            view.viewport().setAutoFillBackground(False)
+        return window
+
+    def showPopup(self):
+        self.popup_window()
+        super().showPopup()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor('#c9d1d9' if self.isEnabled() else '#5f6870'), 1.6)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        x, y = self.width() - 15.5, self.height() / 2
+        p.drawPolyline([QPointF(x - 4, y - 2), QPointF(x, y + 2), QPointF(x + 4, y - 2)])
+        p.end()
+
+
+class YearDrumWidget(QWidget):
+    """Four visible rows of years; the wheel and the ▲ / ▼ arrows turn it one row at a time (snapped),
+    a click picks the year under the pointer. The chosen year sits on a soft golden plate."""
+    yearSelected = Signal(object)
+
+    def __init__(self, values=None, parent=None):
+        super().__init__(parent)
+        self.setObjectName('yearDrum')
+        self.values = list(values) if values is not None else year_values()
+        self.index, self.top, self.shown, self.hover = 0, 0, 0.0, -1
+        self.placeholder = 'Любой'
+        self.wheel_rest = 0
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFixedHeight(DRUM_ROWS * DRUM_ROW)
+        self.setMinimumWidth(116)
+        self.motion = QVariantAnimation(self)
+        self.motion.setDuration(160)
+        self.motion.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.motion.valueChanged.connect(self._moved)
+
+    def max_top(self):
+        return max(0, len(self.values) - DRUM_ROWS)
+
+    def set_year(self, year):
+        """Select ``year`` (None = «Любой») and bring it into view: one row above it when possible."""
+        self.index = self.values.index(year) if year in self.values else 0
+        self.scroll_to(self.index - 1, animate=False)
+        self.update()
+
+    def year(self):
+        return self.values[self.index] if self.values else None
+
+    def scroll_to(self, top, animate=True):
+        top = max(0, min(self.max_top(), int(top)))
+        self.top = top
+        self.motion.stop()
+        if animate and self.isVisible() and abs(self.shown - top) < 12:
+            self.motion.setStartValue(float(self.shown))
+            self.motion.setEndValue(float(top))
+            self.motion.start()
+        else:
+            self.shown = float(top)
+            self.update()
+
+    def step(self, rows):
+        self.scroll_to(self.top + rows)
+
+    def visible_years(self):
+        return self.values[self.top:self.top + DRUM_ROWS]
+
+    def row_at(self, y):
+        row = int(y // DRUM_ROW)
+        index = self.top + row
+        return index if 0 <= row < DRUM_ROWS and index < len(self.values) else -1
+
+    def pick(self, index):
+        if 0 <= index < len(self.values):
+            self.index = index
+            self.update()
+            self.yearSelected.emit(self.values[index])
+
+    def text(self, value):
+        return self.placeholder if value is None else str(value)
+
+    def _moved(self, value):
+        self.shown = float(value)
+        self.update()
+
+    def wheelEvent(self, event):
+        angle, pixels = event.angleDelta().y(), event.pixelDelta().y()
+        if angle:
+            self.wheel_rest += angle
+        elif pixels:  # Touchpads report pixels: one row per row height.
+            self.wheel_rest += pixels * 120 / DRUM_ROW
+        else:
+            event.ignore()
+            return
+        rows = int(self.wheel_rest / 120)
+        self.wheel_rest -= rows * 120
+        if rows:
+            self.step(-rows)  # Wheel up shows the newer years above.
+        event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.pick(self.row_at(event.position().y()))
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        hover = self.row_at(event.position().y())
+        if hover != self.hover:
+            self.hover = hover
+            self.update()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        self.hover = -1
+        self.update()
+        super().leaveEvent(event)
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        moves = {Qt.Key.Key_Up: -1, Qt.Key.Key_Down: 1, Qt.Key.Key_PageUp: -DRUM_ROWS, Qt.Key.Key_PageDown: DRUM_ROWS}
+        if key in moves or key in (Qt.Key.Key_Home, Qt.Key.Key_End):
+            if key == Qt.Key.Key_Home:
+                self.index = 0
+            elif key == Qt.Key.Key_End:
+                self.index = len(self.values) - 1
+            else:
+                self.index = max(0, min(len(self.values) - 1, self.index + moves[key]))
+            if not self.top <= self.index < self.top + DRUM_ROWS:
+                self.scroll_to(self.index if self.index < self.top else self.index - DRUM_ROWS + 1)
+            self.update()
+            event.accept()
+            return
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.pick(self.index)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+        clip = QPainterPath()
+        clip.addRoundedRect(QRectF(self.rect()), 8, 8)
+        p.setClipPath(clip)
+        first = int(self.shown)
+        offset = (self.shown - first) * DRUM_ROW
+        font = QFont(self.font())
+        for row in range(DRUM_ROWS + 1):
+            index = first + row
+            if index >= len(self.values):
+                break
+            rect = QRectF(0, row * DRUM_ROW - offset, self.width(), DRUM_ROW)
+            plate = rect.adjusted(2.5, 2.5, -2.5, -2.5)  # Half-pixel inset: the 1 px line sits on the grid.
+            chosen = index == self.index
+            if chosen:
+                p.setPen(QPen(QColor(255, 212, 0, 120), 1))
+                p.setBrush(QColor(255, 212, 0, 51))
+                p.drawRoundedRect(plate, 7, 7)
+            elif index == self.top + self.hover and abs(self.shown - self.top) < .01:
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(QColor(255, 255, 255, 20))
+                p.drawRoundedRect(plate, 7, 7)
+            font.setWeight(QFont.Weight.Bold if chosen else QFont.Weight.Medium)
+            font.setPixelSize(15 if chosen else 14)
+            p.setFont(font)
+            p.setPen(GOLD if chosen else QColor('#e6ebf0') if self.values[index] is not None else QColor('#aab5bf'))
+            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text(self.values[index]))
+        p.end()
+
+
+class YearWheelPopup(QFrame):
+    """Floating glass card under a year button: ▲, the four-row drum, ▼. Escape or a click outside
+    closes it; a picked year is emitted as ``yearSelected`` and closes it as well."""
+    yearSelected = Signal(object)
+    SHADOW = 14
+
+    def __init__(self, parent=None, values=None):
+        super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
+        self.setObjectName('yearPopup')
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.radius = 14
+        column = QVBoxLayout(self)
+        m = self.SHADOW
+        column.setContentsMargins(m + 8, m + 6, m + 8, m + 6)
+        column.setSpacing(2)
+        self.up = self._arrow('up')
+        self.drum = YearDrumWidget(values, self)
+        self.down = self._arrow('down')
+        self.up.clicked.connect(lambda: self.drum.step(-1))
+        self.down.clicked.connect(lambda: self.drum.step(1))
+        self.up.clicked.connect(self.sync_arrows)
+        self.down.clicked.connect(self.sync_arrows)
+        self.drum.yearSelected.connect(self._picked)
+        column.addWidget(self.up)
+        column.addWidget(self.drum)
+        column.addWidget(self.down)
+
+    def _arrow(self, direction):
+        button = QPushButton('▲' if direction == 'up' else '▼')
+        button.setObjectName('yearArrow')
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setAutoRepeat(True)
+        button.setAutoRepeatDelay(320)
+        button.setAutoRepeatInterval(70)
+        button.setFixedHeight(22)
+        button.setAccessibleName('Новее' if direction == 'up' else 'Старше')
+        return button
+
+    def sync_arrows(self):
+        self.up.setEnabled(self.drum.top > 0)
+        self.down.setEnabled(self.drum.top < self.drum.max_top())
+
+    def open(self, anchor, year, placeholder):
+        """Show under ``anchor`` (kept on its screen) with ``year`` selected."""
+        self.drum.placeholder = placeholder
+        self.drum.set_year(year)
+        self.sync_arrows()
+        width = max(anchor.width(), 150) + 2 * self.SHADOW
+        self.resize(width, self.sizeHint().height())
+        spot = anchor.mapToGlobal(QPoint((anchor.width() - width) // 2, anchor.height() - self.SHADOW + 4))
+        screen = anchor.screen().availableGeometry() if anchor.screen() is not None else None
+        if screen is not None:
+            x = max(screen.left(), min(spot.x(), screen.right() - width + 1))
+            y = spot.y()
+            if y + self.height() > screen.bottom():  # No room below: open above the button.
+                y = anchor.mapToGlobal(QPoint(0, 0)).y() - self.height() + self.SHADOW - 4
+            spot = QPoint(x, max(screen.top(), y))
+        self.move(spot)
+        self.show()
+        self.drum.setFocus(Qt.FocusReason.PopupFocusReason)
+
+    def _picked(self, year):
+        self.yearSelected.emit(year)
+        self.close()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def wheelEvent(self, event):
+        self.drum.wheelEvent(event)  # The wheel turns the drum anywhere over the card, also over ▲ / ▼.
+        self.sync_arrows()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        m = self.SHADOW
+        card = QRectF(self.rect()).adjusted(m, m, -m, -m)
+        shadow, pad = shadow_pixmap(int(card.width()), int(card.height()), self.radius, .55, m)
+        p.drawPixmap(int(card.left()) - pad, int(card.top()) - pad + 6, shadow)
+        p.setPen(QPen(POPUP_LINE, 1))
+        p.setBrush(POPUP_GLASS)
+        p.drawRoundedRect(card.adjusted(.5, .5, -.5, -.5), self.radius, self.radius)
+        p.end()
+
+
+class FilterYearButton(QPushButton):
+    """«С любого» / «По любой»: looks like the other filter combos; a click opens YearWheelPopup."""
+    yearPicked = Signal(object)
+
+    def __init__(self, placeholder, parent=None):
+        super().__init__(parent)
+        self.setObjectName('filterYear')
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.year, self.placeholder, self.popup = None, placeholder, None
+        self.clicked.connect(self.open_popup)
+        self.refresh()
+
+    def set_year(self, year):
+        self.year = year if type(year) is int else None
+        self.refresh()
+
+    def set_placeholder(self, text):
+        self.placeholder = text
+        self.refresh()
+
+    def refresh(self):
+        self.setText(self.placeholder if self.year is None else str(self.year))
+        self.updateGeometry()
+
+    def open_popup(self):
+        if self.popup is None:
+            self.popup = YearWheelPopup(self)
+            self.popup.yearSelected.connect(self._picked)
+        self.popup.open(self, self.year, self.placeholder)
+        return self.popup
+
+    def _picked(self, year):
+        self.set_year(year)
+        self.yearPicked.emit(self.year)
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        width = max(self.fontMetrics().horizontalAdvance(t) for t in (self.placeholder, '2026')) + 40
+        return QSize(max(hint.width(), width), hint.height())
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -171,18 +528,13 @@ class FilterBar(QFrame):
             self.rating_combo.addItem('', value)
         self.rating_combo.activated.connect(self._rating_picked)
         self._group('rating', 'Рейтинг', self.rating_combo)
-        self.from_combo, self.to_combo = _combo('filterCombo'), _combo('filterCombo')
-        latest = date.today().year + 1
-        for combo in (self.from_combo, self.to_combo):
-            combo.addItem('', None)
-            for year in range(latest, FIRST_YEAR - 1, -1):
-                combo.addItem(str(year), year)
-            combo.setMaxVisibleItems(14)
-        self.from_combo.activated.connect(lambda _: self._years_picked('from'))
-        self.to_combo.activated.connect(lambda _: self._years_picked('to'))
+        # 0.2.3: a four-row drum in a floating card instead of a screen-high list of 100 years.
+        self.from_year, self.to_year = FilterYearButton('С любого'), FilterYearButton('По любой')
+        self.from_year.yearPicked.connect(lambda _: self._years_picked('from'))
+        self.to_year.yearPicked.connect(lambda _: self._years_picked('to'))
         dash = QLabel('–')
         dash.setObjectName('hint')
-        self._group('years', 'Год выпуска', self.from_combo, dash, self.to_combo)
+        self._group('years', 'Год выпуска', self.from_year, dash, self.to_year)
         self.source_combo = _combo('filterCombo')
         for value in SOURCE_TEXT:
             self.source_combo.addItem('', value)
@@ -234,7 +586,7 @@ class FilterBar(QFrame):
     # ---------- state ----------
     def state(self):
         return {'genres': list(self.genres), 'rating': self.rating, 'year_from': self.year_from,
-                'year_to': self.year_to, 'source': self.source if self.kind == 'movie' else 'tmdb', 'sort': self.sort}
+                'year_to': self.year_to, 'source': self.source, 'sort': self.sort}  # 0.2.3: series pick a source too.
 
     def active(self):
         return bool(self.genres or self.rating is not None or self.year_from is not None
@@ -267,7 +619,7 @@ class FilterBar(QFrame):
         self.changed.emit()
 
     def _years_picked(self, which):
-        self.year_from, self.year_to = self.from_combo.currentData(), self.to_combo.currentData()
+        self.year_from, self.year_to = self.from_year.year, self.to_year.year
         if self.year_from is not None and self.year_to is not None and self.year_from > self.year_to:
             if which == 'from':
                 self.year_to = self.year_from
@@ -324,13 +676,13 @@ class FilterBar(QFrame):
 
     # ---------- presentation ----------
     def sync(self):
-        for combo, value in ((self.rating_combo, self.rating), (self.from_combo, self.year_from),
-                             (self.to_combo, self.year_to), (self.sort_combo, self.sort)):
+        for combo, value in ((self.rating_combo, self.rating), (self.sort_combo, self.sort),
+                             (self.source_combo, self.source)):
             combo.setCurrentIndex(max(0, combo.findData(value)))
-        tv = self.kind == 'tv'
-        self.source_combo.setCurrentIndex(max(0, self.source_combo.findData('tmdb' if tv else self.source)))
-        self.source_combo.setEnabled(not tv)
-        self.source_combo.setToolTip(self.t('Сериалы доступны только из торрентов') if tv else '')
+        self.from_year.set_year(self.year_from)
+        self.to_year.set_year(self.year_to)
+        self.source_combo.setEnabled(True)
+        self.source_combo.setToolTip(self.t('KINOSOTA — сериалы из Telegram, Торренты — из раздач') if self.kind == 'tv' else '')
         while self.chip_row.count():
             widget = self.chip_row.takeAt(0).widget()
             if widget is not None:
@@ -352,6 +704,8 @@ class FilterBar(QFrame):
         self.chip_box.setVisible(bool(self.genres))
         height = self.rating_combo.sizeHint().height()  # Captions line up across the groups.
         self.genre_button.setFixedHeight(height)
+        self.from_year.setFixedHeight(height)
+        self.to_year.setFixedHeight(height)
         for i in range(self.chip_row.count()):
             self.chip_row.itemAt(i).widget().setFixedHeight(height)
         self.genre_button.setText('+' if self.genres else self.t('Все жанры'))
@@ -369,7 +723,7 @@ class FilterBar(QFrame):
             parts.append(f'★ {self.t("от")} {self.rating:.1f}')
         if self.year_from is not None or self.year_to is not None:
             parts.append(f'{self.year_from or "…"} – {self.year_to or "…"}')
-        parts.append(self.t(SOURCE_TEXT['tmdb' if self.kind == 'tv' else self.source]))
+        parts.append(self.t(SOURCE_TEXT[self.source]))
         parts.append(self.t(SORT_TEXT[self.sort]))
         return '  ·  '.join(parts)
 
@@ -403,8 +757,8 @@ class FilterBar(QFrame):
         self.rating_combo.setItemText(0, '★ ' + self.t('Любой'))
         for i, value in enumerate(RATINGS[1:], 1):
             self.rating_combo.setItemText(i, f'★ {self.t("от")} {value:.1f}')
-        for combo, text in ((self.from_combo, 'С любого'), (self.to_combo, 'По любой')):
-            combo.setItemText(0, self.t(text))
+        self.from_year.set_placeholder(self.t('С любого'))
+        self.to_year.set_placeholder(self.t('По любой'))
         for i, value in enumerate(SOURCE_TEXT):
             self.source_combo.setItemText(i, self.t(SOURCE_TEXT[value]))
         for i, value in enumerate(SORT_TEXT):

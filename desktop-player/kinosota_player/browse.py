@@ -1,4 +1,4 @@
-"""«Главная» catalogue: KINOSOTA films first, then TMDB titles with torrent sources.
+"""«Главная» catalogue: KINOSOTA films (or Telegram series) first, then TMDB titles with torrent sources.
 
 One request plan per filter state; every network call of one page load runs in a
 single background job. Genres are merged by name: the website and TMDB name the
@@ -61,9 +61,8 @@ class Genres:
         entry = self.entries.get(key)
         if not entry:
             return False
-        if kind == 'tv':
-            return bool(entry['tv'])
-        return bool((entry['slugs'] if source in ('all', 'site') else []) or (entry['movie'] if source in ('all', 'tmdb') else []))
+        # 0.2.3: series come from KINOSOTA (Telegram, site slugs) and from torrents (TMDB tv ids).
+        return bool((entry['slugs'] if source in ('all', 'site') else []) or (entry[kind] if source in ('all', 'tmdb') else []))
 
     def options(self, kind, source, language='ru'):
         keys = [k for k in self.entries if self.available(k, kind, source)]
@@ -109,7 +108,20 @@ def signature(state):
 
 
 def effective_source(state):
-    return 'tmdb' if state['kind'] == 'tv' else state['source']
+    return state['source'] if state['source'] in SOURCES else 'all'
+
+
+def site_rows(kind, data):
+    """KINOSOTA cards of one page: films (/movies) or Telegram series (/series) marked for the window."""
+    rows = []
+    for row in (data.get('items') if isinstance(data, dict) else None) or []:
+        if isinstance(row, dict) and row.get('id'):
+            row = {**row, '_source': 'site'}
+            if kind == 'tv':
+                row.update(kind='tv', _series=True)
+                row.pop('tmdb_id', None)  # Library entries are TMDB titles; a Telegram series is not one.
+            rows.append(row)
+    return rows
 
 
 def filtered(state):
@@ -151,7 +163,7 @@ def fetch_page(api, genres, state, known=None):
         api.access()  # Paid access is rechecked before each catalogue page.
     kind, source, page, query = state['kind'], effective_source(state), max(1, int(state['page'])), state['query']
     keys = list(state['genres'])
-    use_site = kind == 'movie' and source in ('all', 'site')
+    use_site = source in ('all', 'site')
     use_tmdb = source in ('all', 'tmdb')
     slugs = genres.slugs(keys) if genres else []
     ids = genres.ids(kind, keys) if genres else []
@@ -164,12 +176,14 @@ def fetch_page(api, genres, state, known=None):
     if not use_site:
         site_total, site_pages = 0, 0
     elif site_pages is None or page <= site_pages:
-        data = api.movies(page=page, query=query, genres=slugs, year_from=state['year_from'], year_to=state['year_to'],
-                          min_rating=state['rating'], sort=state['sort'], page_size=SITE_PAGE)
+        # 0.2.3: «Сериалы» lists the KINOSOTA Telegram series first, as the website does.
+        load = api.series if kind == 'tv' else api.movies
+        data = load(page=page, query=query, genres=slugs, year_from=state['year_from'], year_to=state['year_to'],
+                    min_rating=state['rating'], sort=state['sort'], page_size=SITE_PAGE)
         site_total = max(0, int(data.get('total') or 0))
         site_pages = math.ceil(site_total / SITE_PAGE)
         if page <= site_pages:
-            items = [{**row, '_source': 'site'} for row in data.get('items') or [] if isinstance(row, dict) and row.get('id')]
+            items = site_rows(kind, data)
     tmdb_total, tmdb_pages = known.get('tmdb', (None, None))
     if not use_tmdb:
         tmdb_total, tmdb_pages = 0, 0

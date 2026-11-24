@@ -398,3 +398,34 @@ QPushButton#audioTrack:focus{border:1px solid #fff1b8;}
 QFrame#audioTip{background:rgba(255,194,26,14);border:1px solid rgba(255,194,26,60);border-radius:12px;}
 QLabel#audioTipText{font-size:13px;color:rgba(255,255,255,204);}
 """
+# 0.2.3: drop-down lists and the genre checklist as one deep, rounded glass list: the container window
+# is frameless and translucent (filters.frameless_popup), so nothing white shows outside the 10 px corners.
+# «combobox-popup: 0» opens the list under the field instead of the platform's overlapping menu.
+PREMIUM_STYLE += """
+QComboBox{combobox-popup:0;}
+QComboBoxPrivateContainer{background:transparent;border:0;padding:0;margin:0;}
+QComboBox QAbstractItemView{background:#11171d;border:1px solid rgba(255,255,255,36);border-radius:10px;padding:6px;outline:0;
+    color:#e6ebf0;selection-background-color:transparent;selection-color:#ffd400;}
+QComboBox QAbstractItemView::item{min-height:32px;padding:0 12px;border-radius:6px;color:#e6ebf0;font-size:14px;border:0;}
+QComboBox QAbstractItemView::item:hover{background:rgba(255,255,255,20);color:#ffffff;}
+QComboBox QAbstractItemView::item:selected{background:rgba(255,212,0,46);color:#ffd400;font-weight:600;}
+QComboBox QAbstractItemView QScrollBar:vertical{background:transparent;width:8px;margin:4px 0;}
+QComboBox QAbstractItemView QScrollBar::handle:vertical{background:rgba(255,255,255,46);border-radius:4px;min-height:24px;}
+QComboBox QAbstractItemView QScrollBar::add-line,QComboBox QAbstractItemView QScrollBar::sub-line{height:0;border:0;}
+QComboBox QAbstractItemView QScrollBar::add-page,QComboBox QAbstractItemView QScrollBar::sub-page{background:transparent;}
+QMenu{background:#11171d;border:1px solid rgba(255,255,255,36);border-radius:12px;padding:6px;color:#e6ebf0;}
+QMenu::item{padding:6px 14px 6px 30px;border-radius:6px;color:#e6ebf0;min-height:24px;background:transparent;}
+QMenu::item:selected{background:rgba(255,212,0,41);color:#ffd400;}
+QMenu::item:disabled{color:#7d8790;background:transparent;}
+QMenu::separator{height:1px;background:rgba(255,255,255,26);margin:5px 8px;}
+QMenu::indicator{width:14px;height:14px;left:9px;border-radius:4px;border:1px solid rgba(255,255,255,70);background:transparent;}
+QMenu::indicator:checked{background:#ffd400;border-color:#ffd400;image:none;}
+QPushButton#filterYear{text-align:left;padding:5px 26px 5px 10px;border-radius:8px;min-height:20px;font-weight:400;
+    background:rgba(255,255,255,10);border:1px solid rgba(255,255,255,26);color:#f5f6f7;}
+QPushButton#filterYear:hover{background:rgba(255,255,255,18);border-color:rgba(255,255,255,41);}
+QPushButton#filterYear:focus{border:1px solid rgba(255,194,26,160);}
+QFrame#yearPopup{background:transparent;border:0;}
+QPushButton#yearArrow{background:transparent;border:0;border-radius:6px;padding:0;min-height:0;color:#aab5bf;font-size:10px;}
+QPushButton#yearArrow:hover{background:rgba(255,255,255,15);color:#ffd400;}
+QPushButton#yearArrow:disabled{color:rgba(255,255,255,40);}
+"""
