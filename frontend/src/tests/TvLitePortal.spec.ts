@@ -285,6 +285,39 @@ describe('Lite TV portal behaviour', () => {
     expect(lite().state.mode).toBe('browse')
   })
 
+  it('closing auth modal opened from side menu keeps home view visible without blank screen', async () => {
+    routes.push({ method: 'POST', path: '/desktop/pairing/start', status: 200, body: { device_code: 'd2', user_code: '87654321', verification_uri: 'https://watch.scenrix.com' } })
+    await bootLite()
+    press('ArrowLeft', 37)
+    expect(lite().state.mode).toBe('menu')
+    for (let i = 0; i < 5; i++) press('ArrowDown', 40)
+    expect(document.querySelectorAll('.lite-menu-item')[6].className).toContain('is-focused')
+    press('Enter', 13)
+    await flush()
+    expect(lite().state.mode).toBe('auth')
+    expect(document.getElementById('lite-auth')?.className).not.toContain('is-hidden')
+
+    press('Escape', 27)
+    expect(lite().state.mode).toBe('browse')
+    expect(document.getElementById('lite-auth')?.className).toContain('is-hidden')
+    expect(document.getElementById('lite-view-home')?.className).not.toContain('is-hidden')
+    expect(document.querySelectorAll('.lite-card').length).toBeGreaterThan(0)
+  })
+
+  it('shows PRO modal when torrent playback returns 403 PRO required', async () => {
+    routes = routes.map(item => (item.path === '/torrents/playback-ticket' ? { ...item, status: 403, body: { detail: 'Нужна подписка PRO' } } : item))
+    await bootLite()
+    press('', 29443) // Play spotlight torrent title
+    await flush()
+    expect(lite().state.mode).toBe('pro-modal')
+    expect(document.getElementById('lite-pro-modal')?.className).not.toContain('is-hidden')
+    expect(document.getElementById('lite-pro-qr')?.getAttribute('src')).toBe('/api/v1/billing/qr?format=png')
+
+    press('Enter', 13)
+    expect(lite().state.mode).toBe('browse')
+    expect(document.getElementById('lite-pro-modal')?.className).toContain('is-hidden')
+  })
+
   it('ships a working Promise polyfill and time formatting', async () => {
     await bootLite()
     const { LitePromise, formatTime } = lite()

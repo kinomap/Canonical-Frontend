@@ -439,8 +439,16 @@
     }
 
     function switchView(viewName) {
+        if (viewName === 'auth') {
+            openAuthModal();
+            return;
+        }
+        if (viewName === 'exit') {
+            openExit();
+            return;
+        }
         state.view = viewName;
-        var titles = { home: 'Главная', movies: 'Фильмы', series: 'Сериалы', torrents: 'Торренты', genres: 'Жанры', search: 'Поиск', auth: 'Привязка ТВ', exit: 'Выход' };
+        var titles = { home: 'Главная', movies: 'Фильмы', series: 'Сериалы', torrents: 'Торренты', genres: 'Жанры', search: 'Поиск' };
         setText($('lite-view-title'), titles[viewName] || 'KINOSOTA TV');
         hide($('lite-view-home'));
         hide($('lite-view-grid'));
@@ -466,10 +474,6 @@
             loadGenresView();
         } else if (viewName === 'search') {
             openSearchView();
-        } else if (viewName === 'auth') {
-            openAuthModal();
-        } else if (viewName === 'exit') {
-            openExit();
         }
         renderMenu();
     }
@@ -496,7 +500,23 @@
             var start = Math.min(Math.max(0, row.col - 1), maxStart);
             setTransform(row.track, -start * CARD_STEP, 0);
         }
-        var top = state.row === 0 ? 0 : Math.max(0, row.node.offsetTop - 14);
+        var top = 0;
+        if (state.view === 'home') {
+            if (state.row <= 1) {
+                top = 0;
+            } else {
+                top = 344 + (state.row - 2) * 324;
+            }
+        } else if (state.view === 'genres') {
+            if (state.row <= 4) top = 0;
+            else top = (state.row - 4) * 84;
+        } else {
+            if (state.row <= 1) {
+                top = 0;
+            } else {
+                top = (state.row - 1) * 273;
+            }
+        }
         setTransform($('lite-scroll'), 0, -top);
         scheduleLazy();
     }
@@ -1195,7 +1215,16 @@
             if (id !== player.loadId) return;
             player.ready = false;
             var st = error && error.status;
-            if (st === 401 || st === 403) {
+            if (st === 403) {
+                var isProError = error && error.data && (error.data.detail === 'Нужна подписка PRO' || String(error.data.detail).indexOf('подписк') !== -1);
+                var hasToken = !!readToken();
+                if (card && card.play && card.play.src === 'torrent' && (isProError || hasToken)) {
+                    closePlayer();
+                    openProModal();
+                    return;
+                }
+                player.needsAuth = true;
+            } else if (st === 401) {
                 player.needsAuth = true;
             }
             playerMessage(failText(error));
@@ -1383,6 +1412,29 @@
         return false;
     }
 
+    /* ── PRO Subscription Modal ── */
+    function openProModal() {
+        state.mode = 'pro-modal';
+        var qr = $('lite-pro-qr');
+        if (qr) qr.src = API_BASE + '/billing/qr?format=png';
+        var btn = $('lite-pro-close');
+        if (btn) addClass(btn, 'is-focused');
+        show($('lite-pro-modal'));
+    }
+
+    function closeProModal() {
+        hide($('lite-pro-modal'));
+        restoreFocus();
+    }
+
+    function onProKey(action) {
+        if (action === 'select' || action === 'back') {
+            closeProModal();
+            return true;
+        }
+        return false;
+    }
+
     /* ── Exit Dialog ── */
     var exiting = false;
     function exitToLauncher() {
@@ -1535,7 +1587,16 @@
             return true;
         }
         if (action === 'select') {
-            switchView(MENU_ITEMS[state.menuIndex]);
+            var item = MENU_ITEMS[state.menuIndex];
+            if (item === 'auth') {
+                openAuthModal();
+                return true;
+            }
+            if (item === 'exit') {
+                openExit();
+                return true;
+            }
+            switchView(item);
             return true;
         }
         return false;
@@ -1587,6 +1648,7 @@
         var handled;
         if (state.mode === 'player') handled = onPlayerKey(action);
         else if (state.mode === 'auth') handled = onAuthKey(action);
+        else if (state.mode === 'pro-modal') handled = onProKey(action);
         else if (state.mode === 'exit') handled = onExitKey(action);
         else if (state.mode === 'details') handled = onDetailsKey(action);
         else if (state.mode === 'search') handled = onSearchKey(action);
