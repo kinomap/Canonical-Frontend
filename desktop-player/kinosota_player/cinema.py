@@ -20,6 +20,7 @@ import ctypes
 import logging
 import math
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -74,10 +75,17 @@ AD_DEFAULT_MAX_S = 120.0
 AD_CROSSFADE_MS = 900       # Intro -> Pre-roll: the intro dissolves over the already moving ad.
 # The Pre-roll starts as soon as the intro reached MIN_INTRO_MS; the rest of the intro clip is never waited for.
 
+def default_audio_options(platform_name=None):
+    """0.2.4: skip ao=sdl on Linux so concurrent libmpv cores never hit SDL2's non-reentrant ALSA/audio init."""
+    if (platform_name or sys.platform).startswith('linux'):
+        return [('ao', 'pipewire,pulse,alsa,jack,null')]
+    return []
+
+
 COMMON_OPTIONS = [
     ('vo', 'libmpv'), ('hwdec', 'auto-safe'), ('terminal', 'no'), ('config', 'no'), ('idle', 'yes'),
     ('ytdl', 'no'), ('load-scripts', 'no'), ('input-vo-keyboard', 'no'), ('audio-client-name', 'KINOSOTA Player'),
-    ('sub-auto', 'no'), ('audio-display', 'no'),
+    ('sub-auto', 'no'), ('audio-display', 'no'), *default_audio_options(),
 ]
 # The film core's OSC and track menu are mpv scripts drawn by mpv's own OSD (no widget over the film). The bundled
 # libmpv 0.35 has no select.lua and its OSC cannot rebind the track buttons, so the film core runs a copy of the

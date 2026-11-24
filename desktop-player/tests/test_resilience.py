@@ -66,10 +66,21 @@ def test_restart_environment_keeps_user_certificates_outside_the_bundle(monkeypa
 
 def test_child_environment_contract_for_mpv_and_dpkg_is_unchanged(monkeypatch):
     frozen(monkeypatch)
+    monkeypatch.setattr(engine.sys, 'platform', 'linux')
     monkeypatch.setattr(os, 'environ', {**USER, **INJECTED})
     env = child_environment()
     assert env['LD_LIBRARY_PATH'] == '/usr/local/lib' and 'LD_LIBRARY_PATH_ORIG' not in env
     assert env['QT_PLUGIN_PATH'] == INJECTED['QT_PLUGIN_PATH']  # Only the loader path is child_environment's job.
+
+
+def test_linux_cinema_options_avoid_multi_core_sdl_audio_deadlock():
+    linux_opts = dict(cinema.default_audio_options('linux'))
+    backends = linux_opts['ao'].split(',')
+    assert 'pipewire' in backends and 'pulse' in backends and 'alsa' in backends and 'null' in backends
+    assert 'sdl' not in backends
+    assert dict(cinema.COMMON_OPTIONS)['ao'] == linux_opts['ao'] if sys.platform.startswith('linux') else True
+    assert cinema.default_audio_options('darwin') == []
+    assert cinema.default_audio_options('win32') == []
 
 
 def test_updater_restart_process_gets_the_clean_environment(monkeypatch):

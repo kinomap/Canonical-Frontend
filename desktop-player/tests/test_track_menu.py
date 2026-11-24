@@ -31,6 +31,16 @@ def focus_moves(log):
             if marker in line]
 
 
+def wait_log(log, needle, timeout=3):
+    """mpv flushes --log-file asynchronously from the script thread; wait briefly before asserting."""
+    deadline = time.monotonic() + timeout
+    while True:
+        text = log.read_text(encoding='utf-8', errors='replace')
+        if needle in text or time.monotonic() >= deadline:
+            return text
+        time.sleep(0.02)
+
+
 def make_film(tmp_path):
     subs = tmp_path / 'full.srt'
     subs.write_text('1\n00:00:00,000 --> 00:00:09,000\nПривет\n', encoding='utf-8')
@@ -162,7 +172,7 @@ def test_audio_menu_lists_every_track_like_select_lua_and_wheel_enter_switch_in_
     assert ipc.menu_state() == ['closed']
     assert ipc.wait('aid', lambda aid: aid == 2) == 2
     assert ipc.command('get_property', 'pause') is True  # Nothing else happened to the film.
-    text = log.read_text(encoding='utf-8', errors='replace')
+    text = wait_log(log, 'row ○ Оригинал (eng ac3 6ch 48 kHz)')
     assert 'menu Select an audio track:' in text
     assert 'row ● Дубляж (rus ac3 6ch 48 kHz) [default]' in text
     assert 'row ○ Авторский одноголосый (А. Гаврилов) (rus ac3 6ch 48 kHz)' in text
@@ -201,7 +211,7 @@ def test_subtitle_menu_starts_with_subtitles_off_and_sets_sid(mpv):
     ipc.command('keypress', 'UP')
     ipc.command('keypress', 'ENTER')
     assert ipc.menu_state() == ['closed'] and ipc.wait('sid', lambda sid: sid is False) is False
-    text = log.read_text(encoding='utf-8', errors='replace')
+    text = wait_log(log, 'row ○ Full (rus subrip)')
     assert 'menu Select a subtitle track:' in text
     assert 'row ● Выключить субтитры' in text and 'row ○ Full (rus subrip)' in text
 
