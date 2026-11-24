@@ -13,6 +13,44 @@ def child_environment():
         env.pop('LD_LIBRARY_PATH_ORIG',None)
     return env
 
+# PyInstaller's bootloader and runtime hooks (pyi_rth_pyside6, pyi_rth_pkgutil, ssl, tk ...) write these into
+# os.environ of the frozen process. They point inside the old bundle (_MEIPASS); inherited by the restarted player
+# they make the new build load Qt plugins / QML / OpenGL glue of the package that apt has just replaced.
+RUNTIME_INJECTED=('QT_PLUGIN_PATH','QT_QPA_PLATFORM_PLUGIN_PATH','QML2_IMPORT_PATH','QML_IMPORT_PATH','QT_DATA_DIRS',
+                  'QTWEBENGINEPROCESS_PATH','QTWEBENGINE_RESOURCES_PATH','TCL_LIBRARY','TK_LIBRARY','GIO_MODULE_DIR',
+                  'GDK_PIXBUF_MODULE_FILE','GI_TYPELIB_PATH','GST_PLUGIN_SYSTEM_PATH','_MEIPASS','_MEIPASS2',
+                  '_PYI_ARCHIVE_FILE','_PYI_LINUX_PROCESS_NAME','_PYI_PARENT_PROCESS_LEVEL','_PYI_APPLICATION_HOME_DIR',
+                  '_PYI_SPLASH_IPC')
+# Set by the hooks only when the bundle ships them; kept when they point outside the old bundle (user settings).
+BUNDLE_PATHS=('SSL_CERT_FILE','SSL_CERT_DIR','REQUESTS_CA_BUNDLE','FONTCONFIG_FILE','FONTCONFIG_PATH')
+
+def _bundle_dirs(env):
+    dirs=[getattr(sys,'_MEIPASS',None),env.get('_MEIPASS'),env.get('_MEIPASS2')]
+    if getattr(sys,'frozen',False):dirs.append(str(Path(sys.executable).resolve().parent))
+    return [os.path.normpath(d) for d in dirs if isinstance(d,str) and d]
+
+def _inside(value,dirs):
+    path=os.path.normpath(str(value))
+    return any(path==d or path.startswith(d+os.sep) for d in dirs)
+
+def restart_environment(base=None):
+    """Environment for a fresh KINOSOTA Player process (the auto-restart after an update).
+
+    child_environment() only repairs the loader path of a foreign binary (mpv, dpkg) and keeps its contract.
+    A restarted player must start exactly like a desktop launch: LD_LIBRARY_PATH restored from
+    LD_LIBRARY_PATH_ORIG (or removed), no PyInstaller bootloader state, no Qt plugin / QML paths of the old bundle."""
+    env=dict(os.environ if base is None else base)
+    dirs=_bundle_dirs(env)
+    original=env.pop('LD_LIBRARY_PATH_ORIG',None)
+    if original:env['LD_LIBRARY_PATH']=original
+    elif getattr(sys,'frozen',False) or ('LD_LIBRARY_PATH' in env and dirs and _inside(env['LD_LIBRARY_PATH'].split(os.pathsep)[0],dirs)):
+        env.pop('LD_LIBRARY_PATH',None)
+    for key in RUNTIME_INJECTED:env.pop(key,None)
+    for key in [k for k in env if k.startswith('_PYI_')]:env.pop(key,None)
+    for key in BUNDLE_PATHS:
+        if key in env and dirs and _inside(env[key],dirs):env.pop(key,None)
+    return env
+
 _spawn_lock=threading.RLock()
 # The launch splash waits this long for the first video frame before it hands the screen to mpv anyway.
 FIRST_FRAME_TIMEOUT=30

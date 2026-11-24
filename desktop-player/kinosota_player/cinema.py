@@ -50,7 +50,15 @@ NO_INTRO_MAX_HOLD_MS = 0      # Intro switched off in the admin: the film starts
 PRESTART_CACHE_SECONDS = 2.5  # Buffered film seconds wanted before it is shown...
 PRESTART_MAX_HOLD_MS = 4000   # ...but a decoded first frame never waits longer than this.
 READY_POLL_MS = 100
-GL_WATCHDOG_MS = 2000       # A shown surface without an OpenGL context falls back to the external player.
+# 0.2.4: a shown surface without an OpenGL context falls back to the external player only after this long. 2 s was
+# shorter than a cold Wayland (GNOME Mutter) map of a fullscreen frameless window right after an auto-restart.
+GL_WATCHDOG_MS = 5000
+# A window the compositor has not exposed yet is waited for (re-armed watchdog) up to this long after present().
+GL_EXPOSE_LIMIT_MS = 15000
+# Window / DirectPlayer rebuild a failed surface before the next launch; after this many failures in a row without
+# a single composited frame (a really broken driver) only once per CINEMA_REBUILD_COOLDOWN_S.
+CINEMA_REBUILD_LIMIT = 3
+CINEMA_REBUILD_COOLDOWN_S = 300.0
 INTRO_VOLUME = 100
 FILM_VOLUME = 100
 BACKGROUND = QColor('#070b0e')
@@ -106,6 +114,8 @@ FILM_OPTIONS = [*COMMON_OPTIONS, ('keep-open', 'no'), ('pause', 'yes'), ('volume
 WINDOW_OPTIONS = {'geometry', 'fullscreen', 'fs', 'native-fs', 'autofit', 'autofit-larger', 'force-window', 'title',
                   'input-ipc-server', 'idle', 'keep-open', 'vo', 'no-config', 'config', 'terminal', 'osd-level', 'osc'}
 
+_GL_ORPHANS = []  # See CinemaView._orphan_gl.
+
 GL_FRAMEBUFFER, GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA = 0x8D40, 0x0BE2, 0x0302, 0x0303
 GL_COLOR_BUFFER_BIT, GL_SCISSOR_TEST, GL_DEPTH_TEST, GL_STENCIL_TEST, GL_CULL_FACE = 0x4000, 0x0C11, 0x0B71, 0x0B90, 0x0B44
 GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER, GL_PIXEL_PACK_BUFFER, GL_PIXEL_UNPACK_BUFFER = 0x8892, 0x8893, 0x88EB, 0x88EC
@@ -129,13 +139,71 @@ def unavailable_reason():
     return libmpv.load_error()
 
 
-def create_surface(parent=None, intro=None):
-    """A CinemaSurface, or None (logged) when libmpv / OpenGL cannot be used."""
+def create_surface(parent=None, intro=None, *, bundled_only=False):
+    """A CinemaSurface, or None (logged) when libmpv / OpenGL cannot be used.
+
+    bundled_only: the shipped intro only, no admin intro from the server (packaged-app QA)."""
     reason = unavailable_reason()
     if reason:
         log.info('Cinema prestart unavailable, using the external mpv window: %s', reason)
         return None
+    if bundled_only:
+        return CinemaSurface(parent, intro=None)
     return CinemaSurface(parent, intro=intro if intro is not None else intro_source.shared())
+
+
+class CinemaRecovery:
+    """0.2.4: when a failed CinemaSurface may be rebuilt.
+
+    A transient OpenGL / libmpv failure (a slow Wayland map after an auto-restart, a driver hiccup) must never cost
+    the intro and the Pre-roll for the rest of the session: the next launch gets a fresh surface. Only a surface that
+    keeps failing without ever compositing a frame is retried less often (CINEMA_REBUILD_LIMIT / _COOLDOWN_S)."""
+
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.failures = 0          # In a row, without a composited frame in between.
+        self.pending = False       # The current surface failed: rebuild before the next launch.
+        self.last_failure = None
+        self.last_reason = ''
+        self.rebuilds = 0
+
+    def failed(self, reason=''):
+        self.failures += 1
+        self.pending = True
+        self.last_failure = self.clock()
+        self.last_reason = str(reason or 'unknown')
+
+    def healthy(self):
+        """The surface composited a real frame: the driver works."""
+        self.failures = 0
+
+    def may_rebuild(self):
+        if not self.pending:
+            return False
+        if self.failures < CINEMA_REBUILD_LIMIT:
+            return True
+        return self.last_failure is None or self.clock() - self.last_failure >= CINEMA_REBUILD_COOLDOWN_S
+
+    def rebuilt(self):
+        self.pending = False
+        self.rebuilds += 1
+
+
+def retire_surface(surface):
+    """Free a failed surface for good (GL objects with a current context, cores, the view) once nothing uses it."""
+    if surface is None:
+        return
+    try:
+        surface.shutdown()
+    except Exception as error:  # Never let a broken surface stop the next launch.
+        log.warning('Retired cinema surface did not shut down cleanly: %s', error)
+    for obj in (surface.view, surface):
+        try:
+            if obj is surface.view:
+                obj.hide()
+            obj.deleteLater()
+        except (RuntimeError, AttributeError):
+            pass
 
 
 # Timeline -------------------------------------------------------------------------------------------------------
@@ -296,6 +364,8 @@ class CinemaView(QOpenGLWidget):
                 layer.fbo = None
             finally:
                 self.doneCurrent()
+        elif layer.fbo is not None:
+            self._orphan_gl(layer.fbo)
         layer.fbo = None
         self.update()
         return layer.player
@@ -334,11 +404,22 @@ class CinemaView(QOpenGLWidget):
 
     # GL -----------------------------------------------------------------------------------------------------
     def _make_current(self):
+        """True only when our context really is current: GL objects are never freed without it."""
         context = self.context()
         if not self.initialized or context is None or not context.isValid():
             return False
         self.makeCurrent()
+        if QOpenGLContext.currentContext() is not context:
+            log.warning('Cinema OpenGL context could not be made current')
+            return False
         return True
+
+    def _orphan_gl(self, *objects):
+        """GL objects whose context cannot be made current: never destroy them without it (Wayland segfault 139,
+        «QOpenGLTexturePrivate::destroy() called without a current context»). They go with the context."""
+        for obj in objects:
+            if obj is not None:
+                _GL_ORPHANS.append(obj)
 
     @staticmethod
     def _proc(name):
@@ -379,21 +460,33 @@ class CinemaView(QOpenGLWidget):
         """The native window is being recreated: free GL objects; initializeGL rebuilds them."""
         if not self.initialized:
             return
-        self.makeCurrent()
+        context = self.context()
+        current = False
+        if context is not None and context.isValid():
+            self.makeCurrent()
+            current = QOpenGLContext.currentContext() is context
         try:
             for layer in self.layers.values():
-                layer.player.free_render_context()
+                layer.player.free_render_context()  # libmpv needs it before the core is destroyed.
+                if not current:
+                    self._orphan_gl(layer.fbo)
                 layer.fbo = None
                 layer.has_frame = False
-            if self._poster_texture is not None:
-                self._poster_texture.destroy()
-                self._poster_texture = None
-            if self._blitter is not None:
-                self._blitter.destroy()
-                self._blitter = None
+            if current:
+                if self._poster_texture is not None:
+                    self._poster_texture.destroy()
+                if self._blitter is not None:
+                    self._blitter.destroy()
+            else:
+                log.warning('Cinema OpenGL objects released without a current context; leaving them to the driver')
+                self._orphan_gl(self._poster_texture, self._blitter)
+            self._poster_texture = None
+            self._blitter = None
+            self._poster_dirty = True
         finally:
             self.initialized = False
-            self.doneCurrent()
+            if current:
+                self.doneCurrent()
 
     def release(self):
         """Free every GL object while the context still exists (application shutdown)."""
@@ -961,6 +1054,8 @@ class CinemaSurface(QObject):
         self.ready_timer.stop()
         if 'intro' not in self.handles and self.phase not in self.PLAYING:
             self.present()
+            if self.phase == 'unavailable':  # present() failed (libmpv): never load a film on a dead surface.
+                raise RuntimeError(self.failure or 'Видеоповерхность недоступна')
         film = self.handles.get('film') or self._open('film', FILM_OPTIONS)
         reloaded = self._loaded_core is film  # This core played (or tried) a film before: a reconnect.
         self.view.disarm('film')
@@ -1288,14 +1383,35 @@ class CinemaSurface(QObject):
                 pass
 
     # Failure ------------------------------------------------------------------------------------------------
+    def _exposed(self):
+        """Has the compositor really mapped the window (Wayland configures it well after show())?"""
+        try:
+            window = self.view.window()
+            handle = window.windowHandle() if window is not None else None
+            return bool(handle is not None and handle.isExposed())
+        except RuntimeError:
+            return False
+
     def _check_gl(self):
-        if self.phase != 'idle' and self.view.isVisible() and not self.view.initialized:
-            self._fail(self.view.failure or 'OpenGL context was not created')
+        if self.phase in ('idle', 'unavailable') or self.view.initialized:
+            return
+        if not self.view.isVisible():
+            log.info('Cinema GL watchdog: the window was hidden before OpenGL started; nothing to fall back from')
+            return
+        waited = (time.monotonic() - self.presented_at) * 1000 if self.presented_at is not None else GL_EXPOSE_LIMIT_MS
+        exposed = self._exposed()
+        if not self.view.failure and not exposed and waited < GL_EXPOSE_LIMIT_MS:
+            log.info('Cinema GL watchdog: window not exposed by the compositor after %.0f ms, waiting', waited)
+            self.watchdog.start()
+            return
+        platform = QGuiApplication.platformName() if QGuiApplication.instance() else ''
+        self._fail(self.view.failure or f'OpenGL context was not created after {waited:.0f} ms '
+                                        f'(platform {platform or "unknown"}, exposed {exposed})')
 
     def _fail(self, reason):
         if self.phase == 'unavailable':
             return
-        log.warning('Cinema prestart disabled: %s', reason)
+        log.warning('Cinema prestart disabled for this surface (phase %s): %s', self.phase, reason)
         self.failure = str(reason)
         film_was_loading = self._film_alive
         self.reset()
@@ -1339,8 +1455,13 @@ class CinemaEngine:
 
     def __init__(self, surface):
         self.surface = surface
+        self.fallback = None    # 0.2.4: the external engine.Mpv that replaces a failed surface (set by the owner).
+        self._external = None   # ...once a start was handed to it: every later call goes there too.
         self._dispatcher = _Dispatcher()
         self._dispatcher.moveToThread(surface.thread())
+
+    def _surface_failed(self):
+        return getattr(self.surface, 'phase', None) == 'unavailable'
 
     def _ui(self, fn):
         """Run fn on the surface's (UI) thread and return its result; workers block until it ran."""
@@ -1371,25 +1492,47 @@ class CinemaEngine:
         if parts.scheme != 'https' or not parts.netloc or parts.username or parts.password:
             raise ValueError('Only HTTPS media URLs are supported')
         options = options_from_args(extra_args)
+        if self.fallback is not None and self._surface_failed():
+            return self._start_external(url, extra_args, self.surface.failure)
         try:
             self._ui(lambda: self.surface.load_film(url, options))
         except libmpv.MpvError as error:
             raise RuntimeError(f'Не удалось запустить воспроизведение ({error}).') from error
+        except RuntimeError as error:
+            # The surface broke while this start was on its way: the launch continues in the external window.
+            if self.fallback is not None and self._surface_failed():
+                return self._start_external(url, extra_args, error)
+            raise
+        self._external = None
+
+    def _start_external(self, url, extra_args, reason):
+        log.warning('Cinema surface unavailable (%s): this launch continues in the external mpv window', reason)
+        self._external = self.fallback
+        return self._external.start(url, extra_args=extra_args)
 
     def stop(self):
+        if self._external is not None:
+            self._external.stop()
+            return
         try:
             self._ui(self.surface.stop_film)
         except TimeoutError:
             pass
 
     def alive(self):
+        if self._external is not None:
+            return self._external.alive()
         return self.surface.film_alive()
 
     def exit_code(self):
+        if self._external is not None:
+            return self._external.exit_code()
         return self.surface.film_exit_code()
 
     def command(self, command):
         """The JSON-IPC style command list of engine.Mpv, applied to the film core."""
+        if self._external is not None:
+            return self._external.command(command)
         if not command:
             return None
         verb = command[0]
@@ -1410,15 +1553,22 @@ class CinemaEngine:
         return None
 
     def property(self, name):
+        if self._external is not None:
+            return self._external.property(name)
         player = self.surface.film_player()
         return player.get(name) if player is not None else None
 
     def enable_osc(self):
         """The surface shows the OSC itself when the dissolve ends."""
+        if self._external is not None:
+            self._external.enable_osc()
 
     def wait_playback_started(self, timeout=FIRST_FRAME_TIMEOUT, *, cancelled=lambda: False, interval=0.1,
                               sleep=time.sleep, clock=time.monotonic):
         """'playing' once the dissolve starts; 'eof', 'exited', 'cancelled' or 'timeout' like engine.Mpv."""
+        if self._external is not None:
+            return self._external.wait_playback_started(timeout, cancelled=cancelled, interval=interval, sleep=sleep,
+                                                        clock=clock)
         deadline = clock() + max(float(timeout), 0.0)
         while True:
             if cancelled():

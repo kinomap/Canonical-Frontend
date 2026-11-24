@@ -1,6 +1,7 @@
 """Minimal, no-login redemption and playback for website watch links."""
 from __future__ import annotations
 
+import logging
 import sys
 import time
 import uuid
@@ -13,12 +14,21 @@ from PySide6.QtWidgets import (QApplication, QGraphicsOpacityEffect, QHBoxLayout
                                QVBoxLayout, QWidget)
 
 from .api import Api, ApiError
-from .cinema import CHROME_HIDE_MS, INTRO_STILL, CinemaEngine, create_surface, mpv_key_name
+from . import cinema as cinema_module
+from .cinema import CHROME_HIDE_MS, INTRO_STILL, CinemaEngine, CinemaRecovery, create_surface, mpv_key_name, retire_surface
 from .deeplink import parse_launch, parse_mode
 from .engine import FIRST_FRAME_TIMEOUT, Mpv
 from .torrents import audio_args, media_title_args
 from .ads import fetch_preroll, report as report_ad
 from .intro_source import target_for
+
+log = logging.getLogger('kinosota.direct')
+
+
+def window_opacity_supported():
+    """Qt Wayland cannot set a toplevel window's opacity; every other platform (xcb, Windows, macOS, offscreen) can."""
+    return not (QGuiApplication.instance() is not None and QGuiApplication.platformName().lower().startswith('wayland'))
+
 
 BACKGROUND, BACKGROUND_DEEP = '#070b0e', '#070b0e'  # Unified CinemaPrestartOverlay.vue palette.
 ACCENT, ACCENT_DEEP = '#ffd400', '#ffb800'
@@ -285,6 +295,13 @@ class DirectLaunchSplash(QWidget):
         self.backdrop.show()
         self._refresh_chrome()
 
+    def set_cinema(self, cinema):
+        """0.2.4: adopt a rebuilt CinemaSurface after an earlier one failed (Window / DirectPlayer recovery)."""
+        if cinema is self.cinema:
+            return
+        self.film_mode = False
+        self._install_backdrop(cinema)
+
     def use_still_backdrop(self, _reason=''):
         """libmpv / OpenGL failed: the launch continues over the logo still and the external mpv window."""
         if self.cinema is None:
@@ -343,7 +360,8 @@ class DirectLaunchSplash(QWidget):
                 handle = self.windowHandle()
             if handle is not None:
                 handle.setScreen(self.target_screen)
-        self.setWindowOpacity(1.0)
+        if window_opacity_supported():
+            self.setWindowOpacity(1.0)
         self.setGeometry(self.target_geometry())
         self._show_in_mode()
         self.raise_()
@@ -550,7 +568,9 @@ class DirectLaunchSplash(QWidget):
         self._close_after_fade = bool(close) or (self._fading and self._close_after_fade)
         if self._fading:
             return
-        if not self.isVisible():
+        if not self.isVisible() or not window_opacity_supported():
+            # Wayland: Qt cannot change a toplevel's opacity («This plugin does not support setting window
+            # opacity»); an animation would only spam that warning for FADE_MS and then hide anyway.
             self._fade_finished()
             return
         self._fading = True
@@ -575,12 +595,13 @@ class DirectLaunchSplash(QWidget):
         self._fading = False
         self.text_fade.stop()
         self.geometry_animation.stop()
+        self._stop_media()  # 0.2.4: cores and GL layers go while the window (and its GL context) is still mapped.
         self.hide()
-        self._stop_media()
         if self._close_after_fade:
             self._close_after_fade = False
             self.dismiss()
-        self.setWindowOpacity(1.0)  # Ready for the next launch.
+        if window_opacity_supported():
+            self.setWindowOpacity(1.0)  # Ready for the next launch.
         self.faded.emit()
 
     def hide_now(self):
@@ -590,9 +611,10 @@ class DirectLaunchSplash(QWidget):
         self.geometry_animation.stop()
         self._fading = False
         self._close_after_fade = False
+        self._stop_media()  # 0.2.4: before hide(), see _fade_finished.
         self.hide()
-        self._stop_media()
-        self.setWindowOpacity(1.0)
+        if window_opacity_supported():
+            self.setWindowOpacity(1.0)
 
     def dismiss(self):
         """Close without asking the user (programmatic close, no cancel signal)."""
@@ -711,6 +733,10 @@ class DirectPlayer(QObject):
             cinema = create_surface()  # None without libmpv / OpenGL: the external mpv window is used.
         self.cinema = cinema
         self.engine = engine or (CinemaEngine(cinema) if cinema is not None else Mpv())
+        # 0.2.4: a failed surface is rebuilt for the next link instead of losing the intro for the session.
+        self._cinema_enabled = engine is None and show_splash
+        self.cinema_recovery = CinemaRecovery()
+        self._retired_cinemas = []
         self.cancel_code = 1
         self._worker = worker
         self._jobs = set()
@@ -738,7 +764,37 @@ class DirectPlayer(QObject):
         self.lease_timer.timeout.connect(self._heartbeat)
         self.splash = self._make_splash() if show_splash else None
         if cinema is not None:
-            cinema.failed.connect(self._cinema_failed)
+            self._watch_cinema(cinema)
+
+    def _watch_cinema(self, cinema):
+        cinema.failed.connect(lambda reason='', cinema=cinema: self._cinema_failed(reason, cinema))
+        frame_ready = getattr(getattr(cinema, 'view', None), 'frameReady', None)
+        if frame_ready is not None:
+            frame_ready.connect(lambda _name='': self.cinema_recovery.healthy())
+
+    def _ensure_cinema(self):
+        """0.2.4: rebuild a surface that failed on an earlier link (same policy as the catalogue window)."""
+        if not self._cinema_enabled or self.retired or self.cinema is not None or self.splash is None:
+            return False
+        if not self.cinema_recovery.may_rebuild():
+            return False
+        reason = cinema_module.unavailable_reason()
+        if reason:
+            log.warning('Cinema surface cannot be rebuilt: %s', reason)
+            return False
+        surface = create_surface()
+        if surface is None:
+            return False
+        retired, self._retired_cinemas = self._retired_cinemas, []
+        for old in retired:
+            retire_surface(old)
+        self.cinema = surface
+        self.engine = CinemaEngine(surface)
+        self.splash.set_cinema(surface)
+        self._watch_cinema(surface)
+        self.cinema_recovery.rebuilt()
+        log.warning('Cinema surface rebuilt after an earlier failure (%s)', self.cinema_recovery.last_reason)
+        return True
 
     def _make_splash(self):
         splash = DirectLaunchSplash(cinema=self.cinema)
@@ -803,6 +859,7 @@ class DirectPlayer(QObject):
         self._release_lease()
         self._close_api()
         self.meta, self.url, self.attempt, self.playing = None, '', 0, False
+        self._ensure_cinema()
         self._refresh_intro()
         self._status(STARTING)
         api = self.api_factory()
@@ -1157,8 +1214,15 @@ class DirectPlayer(QObject):
         self._stop_everything()
         self._hide_splash()
 
-    def _cinema_failed(self, reason):
+    def _cinema_failed(self, reason, cinema=None):
         """libmpv / OpenGL broke: continue this launch in the external mpv window over the logo still."""
+        if cinema is not None and cinema is not self.cinema:
+            return  # A retired surface.
+        log.warning('Cinema surface failed: %s. This launch continues in the external mpv window; '
+                    'the next link rebuilds the surface.', reason or 'unknown')
+        if self.cinema is not None:
+            self.cinema_recovery.failed(reason)
+            self._retired_cinemas.append(self.cinema)
         self.cinema = None
         self.engine = Mpv()
         if self.meta and self.url and self.api is not None and not self.retired and not self.cancelling:
@@ -1171,3 +1235,6 @@ class DirectPlayer(QObject):
             self.splash.dismiss()
         if self.cinema is not None:
             self.cinema.shutdown()
+        retired, self._retired_cinemas = self._retired_cinemas, []
+        for old in retired:
+            retire_surface(old)

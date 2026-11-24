@@ -6,6 +6,7 @@ the file to the system installer: apt through pkexec for the Linux package (then
 itself), the Inno Setup wizard in silent mode on Windows (it closes and restarts the player),
 the disk image on macOS. Source and portable previews only link to the download page.
 """
+import logging
 import os
 import platform
 import re
@@ -15,10 +16,11 @@ import threading
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QRunnable, QThreadPool, QTimer, Signal
 from . import __version__
 from .api import RELEASE_FILES, ApiError
-from .engine import child_environment, native_loader
+from .engine import child_environment, native_loader, restart_environment
 from .installation import install_command, restart_command
 from .preferences import translate
 
+log = logging.getLogger('kinosota.updater')
 OS_KEYS = {'Windows': 'windows', 'Darwin': 'macos', 'Linux': 'linux'}
 DOWNLOAD_PAGE = 'https://watch.scenrix.com/player'
 SHA256 = re.compile(r'[0-9a-f]{64}')
@@ -258,15 +260,19 @@ class Updater(QObject):
         self.generation += 1
         self.ticker.stop()
 
-    def _process(self, command):
+    def _process(self, command, environment=None):
         process = QProcess(self)
-        environment = QProcessEnvironment()
-        for key, value in child_environment().items():
-            environment.insert(key, value)
-        process.setProcessEnvironment(environment)
+        env = QProcessEnvironment()
+        for key, value in (child_environment() if environment is None else environment).items():
+            env.insert(key, value)
+        process.setProcessEnvironment(env)
         process.setProgram(command[0])
         process.setArguments(command[1:])
         return process
+
+    def _restart_process(self, command):
+        """0.2.4: the next player starts like a desktop launch, without PyInstaller / Qt state of this replaced build."""
+        return self._process(command, restart_environment())
 
     def install(self, path, folder=None):
         command = install_command(path, self.system)
@@ -295,7 +301,8 @@ class Updater(QObject):
                 process.start()
             process.closeWriteChannel()  # apt never waits for an answer on stdin.
             return
-        process = self._process(command)
+        # Inno Setup restarts the player it closed (RestartApplications): it inherits the installer's environment.
+        process = self._restart_process(command) if self.system == 'Windows' else self._process(command)
         with native_loader():
             started = process.startDetached()
             started = started[0] if isinstance(started, tuple) else bool(started)
@@ -310,10 +317,15 @@ class Updater(QObject):
 
     def installed(self, code):
         if code == 0:
-            restart = restart_command(self.system)
+            try:
+                restart = restart_command(self.system, wait_pid=os.getpid())
+            except ValueError as error:
+                log.warning('Player restart after the update is not possible: %s', error)
+                restart = None
             if restart:
+                log.warning('Update installed; the new player starts once process %s has exited', os.getpid())
                 with native_loader():
-                    self._process(restart).startDetached()
+                    self._restart_process(restart).startDetached()
             self._set('installing', 'Устанавливаем обновление…')
             self.quitRequested.emit()
             return

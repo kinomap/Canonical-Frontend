@@ -49,10 +49,19 @@ def install_command(path,system=None):
         return ['/usr/bin/open',path_str] if p.suffix=='.dmg' and Path('/usr/bin/open').is_file() else None
     return None
 
-def restart_command(system=None):
-    """Start the freshly installed Linux package once this process has exited."""
+# 0.2.4: wait (kill -0 every 0.2 s, at most RESTART_WAIT_STEPS times) until the updating process has exited, then
+# replace the shell with the installed binary. The script is a constant: the path and the PID only ever arrive as
+# positional parameters "$1" / "$2", never by string substitution into the code.
+RESTART_WAIT_STEPS=100  # 100 x 0.2 s = 20 s: Window.closeEvent may wait for workers and the cinema shutdown.
+RESTART_SCRIPT=('i=0; while [ "$i" -lt '+str(RESTART_WAIT_STEPS)+' ] && kill -0 "$2" 2>/dev/null; do sleep 0.2; i=$((i+1)); done; '
+                'exec "$1"')
+
+def restart_command(system=None,wait_pid=None):
+    """Start the freshly installed Linux package once this process (wait_pid, default: ours) has exited."""
     if (system or platform.system())=='Linux' and getattr(sys,'frozen',False):
-        return ['/bin/sh','-c','sleep 1; exec "$0"',INSTALLED_LINUX]
+        pid=os.getpid() if wait_pid is None else wait_pid
+        if isinstance(pid,bool) or not isinstance(pid,int) or pid<1:raise ValueError('restart_command needs a process id')
+        return ['/bin/sh','-c',RESTART_SCRIPT,'kinosota-player-restart',INSTALLED_LINUX,str(int(pid))]
     return None
 
 def show_uninstall(parent=None,language='ru'):

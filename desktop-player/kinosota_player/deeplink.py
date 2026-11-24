@@ -114,7 +114,11 @@ class Instance(QObject):
         return self.server.listen(name)
 
     def close(self):
-        self.server.close()
+        """Stop receiving links and remove the socket now (quit, update restart), not when the OS reaps us.
+
+        Idempotent: aboutToQuit, the update restart and main()'s finally may all call it."""
+        if self.server.isListening():
+            self.server.close()  # QLocalServer removes its Unix socket file here.
 
     def _accept(self):
         while self.server.hasPendingConnections():

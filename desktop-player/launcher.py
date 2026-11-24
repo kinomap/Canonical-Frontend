@@ -8,7 +8,7 @@ configure_high_dpi()
 
 def _fast_direct_launch():
     """Fast-Path for kinosota://watch?... links without importing heavy catalogue modules."""
-    flags = {'--version', '--uninstall', '--smoke-test', '--playback-smoke-fixture'}
+    flags = {'--version', '--uninstall', '--smoke-test', '--playback-smoke-fixture', '--cinema-smoke-test'}
     if any(arg in flags for arg in sys.argv[1:]):
         return None
     if not any(isinstance(arg, str) and arg.lower().startswith('kinosota://') for arg in sys.argv[1:]):
@@ -29,6 +29,7 @@ def _fast_direct_launch():
         return 0
     instance = Instance(app)
     instance.listen()
+    app.aboutToQuit.connect(instance.close)  # 0.2.4: free the single-instance socket at quit, not at reaping.
     app.setQuitOnLastWindowClosed(False)
     direct = DirectPlayer()
 
@@ -37,6 +38,7 @@ def _fast_direct_launch():
         direct.retire()
         app.setQuitOnLastWindowClosed(True)
         window = Window(restore=True)
+        window.updater.quitRequested.connect(instance.close)  # 0.2.4: the post-update restart needs the socket.
         window.show()
         window.launch_opened(meta)
 

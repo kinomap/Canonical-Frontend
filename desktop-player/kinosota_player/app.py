@@ -1,5 +1,5 @@
 """Native catalogue shell; all network work runs outside the UI thread."""
-import sys, time, subprocess
+import sys, time, subprocess, logging, os
 from html import escape
 from .engine import child_environment, native_loader
 from pathlib import Path
@@ -23,11 +23,13 @@ from .updater import Updater
 from .torrents import TorrentPage, audio_args, media_title_args
 from .deeplink import parse_launch, parse_mode
 from .direct import BUFFERING, DirectLaunchSplash, DirectPlayer, geometry_text, launch_args, stream_of
-from .cinema import CinemaEngine, create_surface
+from . import cinema as cinema_module
+from .cinema import CinemaEngine, CinemaRecovery, create_surface, retire_surface
 from .ads import fetch_preroll, report as report_ad
 from .browser import open_url
 from .intro_source import target_for
 from .suggest import SuggestPopup
+log=logging.getLogger('kinosota.app')
 ASSET=Path(__file__).parent/'assets'/'drone.png'
 STYLE=PREMIUM_STYLE
 # Header sections. «Кинотека» is the personal library; the others are one filtered catalogue.
@@ -110,9 +112,12 @@ class Window(QMainWindow):
         self.drawer=SettingsDrawer(root,self.preferences);self.drawer.languageChanged.connect(self.set_language);self.drawer.titlesChanged.connect(self.set_title_language);self.drawer.rememberChanged.connect(self.set_remember_session);self.drawer.refreshRequested.connect(self.refresh_account);self.drawer.signOutRequested.connect(self.logout)
         # The launch window plays the KINOSOTA intro and dissolves into the film (libmpv); without libmpv
         # it shows the logo still over the external mpv window. Injected engines (tests) keep the latter.
+        # 0.2.4: a surface that fails (slow Wayland map after an auto-restart, driver hiccup) is rebuilt before the
+        # next launch (_ensure_cinema) instead of costing the intro and the Pre-roll for the whole session.
+        self._cinema_enabled=engine is None;self.cinema_recovery=CinemaRecovery();self._retired_cinemas=[];self._cinema_relaunch=False;self.movie_choice=None
         self.cinema=create_surface() if engine is None else None
         self.splash=DirectLaunchSplash(cinema=self.cinema)
-        if self.cinema is not None:self.engine=CinemaEngine(self.cinema);self.cinema.failed.connect(self.cinema_failed)
+        if self.cinema is not None:self._adopt_cinema(self.cinema)
         self.splash.cancelRequested.connect(self.cancel_splash_playback)
         self.splash.modeChanged.connect(self.sync_splash_window)
         # 0.1.9: Settings → «О приложении» installs a newer published build over this one.
@@ -431,8 +436,8 @@ class Window(QMainWindow):
         self.selected_title.setText(movie_title(item.data(Qt.ItemDataRole.UserRole),self.title_language) if item else translate('Выберите фильм',self.language))
     def _present_playback_splash(self,status_text):
         self.splash.set_status(status_text)
-        if not self.splash.isVisible() or self.splash.fading():
-            self.splash.present()
+        if not self.splash.isVisible() or self.splash.fading() or (self.cinema is not None and self.cinema.phase=='idle'):
+            self.splash.present()  # 0.2.4: also a surface rebuilt behind an already visible splash.
         return self.splash.mpv_args()
     def _target_intro(self,meta):
         """Admin «Интро престарта» per environment: player_telegram (catalogue film) / player_torrents (tmdb_id)."""
@@ -472,9 +477,64 @@ class Window(QMainWindow):
         self.stop()
         if hasattr(self,'torrents'):self.torrents.render()
         self.message.setText('Запуск отменён.')
-    def cinema_failed(self,_reason=''):
-        """libmpv / OpenGL broke: later starts use the external mpv window."""
-        self.cinema=None;self.engine=Mpv()
+    def _adopt_cinema(self,surface):
+        self.engine=CinemaEngine(surface)
+        surface.failed.connect(lambda reason='',surface=surface:self.cinema_failed(reason,surface))
+        surface.view.frameReady.connect(self._cinema_healthy)
+    def _cinema_healthy(self,_name=''):
+        self.cinema_recovery.healthy()
+    def cinema_failed(self,_reason='',surface=None):
+        """libmpv / OpenGL broke: this launch continues in the external mpv window; the next one rebuilds the surface."""
+        failed=self.cinema
+        if surface is not None and surface is not failed:return  # A retired surface: already replaced.
+        reason=str(_reason or getattr(failed,'failure','') or 'unknown')
+        film_was_loading=failed is not None and failed.film_exit_code()==2
+        log.warning('Cinema surface failed: %s. This launch continues in the external mpv window; '
+                    'the next launch rebuilds the surface (intro and pre-roll).',reason)
+        external=Mpv();old=self.engine
+        if isinstance(old,CinemaEngine):old.fallback=external  # A start already on its way goes there too.
+        self.cinema=None;self.engine=external
+        if failed is not None:
+            self.cinema_recovery.failed(reason);self._retired_cinemas.append(failed)
+            # The film was already loading in the surface: check_process replays this launch externally.
+            self._cinema_relaunch=film_was_loading and (self.torrent_playing or bool(self.session) or self.busy)
+    def _dispose_retired_cinemas(self):
+        retired,self._retired_cinemas=self._retired_cinemas,[]
+        for surface in retired:retire_surface(surface)
+    def _ensure_cinema(self):
+        """0.2.4: before a new launch, replace a surface that failed earlier in this session. True when rebuilt."""
+        if not self._cinema_enabled or self.closed:return False
+        current=self.cinema
+        if current is not None:
+            if current.phase!='unavailable':return False
+            self.cinema_failed(current.failure,current)  # Failed without a delivered signal: same bookkeeping.
+        if not self.cinema_recovery.may_rebuild():
+            if self.cinema_recovery.pending:
+                log.warning('Cinema surface failed %d times in a row (%s); external mpv window until the cool-down ends',
+                            self.cinema_recovery.failures,self.cinema_recovery.last_reason)
+            return False
+        reason=cinema_module.unavailable_reason()
+        if reason:
+            log.warning('Cinema surface cannot be rebuilt: %s',reason);return False
+        surface=create_surface()
+        if surface is None:return False
+        self._dispose_retired_cinemas()
+        self.cinema=surface;self.splash.set_cinema(surface);self._adopt_cinema(surface)
+        self.cinema_recovery.rebuilt()
+        log.warning('Cinema surface rebuilt after an earlier failure (%s): intro and pre-roll are back',
+                    self.cinema_recovery.last_reason)
+        return True
+    def _relaunch_externally(self):
+        """0.2.4: the surface broke while this film was loading in it: the same launch replays in external mpv."""
+        meta,episode,choice,attempt=self.direct_meta,self.episode_choice,self.torrent_choice,self.torrent_attempt
+        movie=dict(self.movie_choice or {}) if self.session else None
+        log.warning('Replaying the current launch in the external mpv window after the cinema surface failure')
+        self.stop(keep_splash=True)
+        if movie and movie.get('id'):self.start_movie(movie,force=True,recover_cinema=False)
+        elif meta:self.play_stream(meta,attempt+1)
+        elif episode:self.play_episode(episode,attempt=attempt+1)
+        elif choice:self.play_torrent(choice,force=True,attempt=attempt+1)
+        else:self.splash.hide_now();self.message.setText('Не удалось воспроизвести видео. Проверьте соединение и повторите позднее.')
     def sync_splash_window(self,mode):
         command=getattr(self.engine,'command',None)
         if not self.splash.isVisible() or not callable(command) or not self.engine.alive():return
@@ -491,10 +551,11 @@ class Window(QMainWindow):
         item=args[0] if args and isinstance(args[0],QListWidgetItem) else self.results.currentItem()
         if not item or self.busy:return
         self.results.setCurrentItem(item);self.start_movie(item.data(Qt.ItemDataRole.UserRole))
-    def start_movie(self,movie,force=False):
+    def start_movie(self,movie,force=False,recover_cinema=True):
         """KINOSOTA film (catalogue card or website launch): lease → mpv → heartbeat."""
         if self.busy and not force:return
         self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False);self.message.setText('Открываем фильм…')
+        if recover_cinema:self._ensure_cinema()
         ad_meta={'kind':'movie','movie_id':movie.get('id')}  # A KINOSOTA catalogue film is a Telegram stream.
         self._target_intro(ad_meta)
         win_args=self._present_playback_splash('Подготовка фильма…')
@@ -518,7 +579,7 @@ class Window(QMainWindow):
         def done(data):
             if generation!=self.play_generation:
                 self.work(lambda:self.api.stop(data['session_id']),fail=lambda e:None);return
-            self.busy=False;self.play_button.setEnabled(True);self.session=data['session_id'];self.playing_movie=movie['id'];self.lease_timer.start(max(5,data.get('heartbeat_interval_seconds',20))*1000);self.message.setText('Воспроизводится: '+movie_title(movie,self.title_language))
+            self.busy=False;self.play_button.setEnabled(True);self.session=data['session_id'];self.playing_movie=movie['id'];self.movie_choice=dict(movie);self.lease_timer.start(max(5,data.get('heartbeat_interval_seconds',20))*1000);self.message.setText('Воспроизводится: '+movie_title(movie,self.title_language))
             self._await_splash_first_frame(generation)
         def fail(e):
             if generation==self.play_generation:self.busy=False;self.play_button.setEnabled(True);self.splash.hide_now();self.show_error(e)
@@ -533,7 +594,7 @@ class Window(QMainWindow):
                 if sid in self.pending_stops:self.pending_stops.remove(sid)
     def stop(self,release=True,keep_splash=False):
         if hasattr(self,'series'):self.series.set_busy(False)
-        self.play_generation+=1;self.busy=False;self.torrent_playing=False;self.torrent_starting=False;self.direct_meta=None;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.pending_beat=False
+        self.play_generation+=1;self._cinema_relaunch=False;self.busy=False;self.torrent_playing=False;self.torrent_starting=False;self.direct_meta=None;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.pending_beat=False
         self.lease_timer.stop();sid=self.session;self.session='';self.playing_movie='';self.engine.stop()
         if not keep_splash and hasattr(self,'splash') and self.splash.isVisible() and not self.splash.fading():self.splash.hide_now()
         if sid:self.pending_stops.append(sid)
@@ -549,6 +610,8 @@ class Window(QMainWindow):
             if self.session==sid:self.stop();self.show_error(e)
         self.work(lambda:self.api.heartbeat(sid),done,fail)
     def check_process(self):
+        if self._cinema_relaunch and (self.torrent_playing or self.session) and not self.engine.alive():
+            self._cinema_relaunch=False;self._relaunch_externally();return
         if self.torrent_playing and not self.session and not self.engine.alive():
             code=self.engine.exit_code();choice,attempt,started=self.torrent_choice,self.torrent_attempt,self.torrent_started;meta=self.direct_meta;episode=self.episode_choice;self.stop()
             # Cold streams may drop mpv's first connection; reuse the same scoped URL at most twice.
@@ -615,6 +678,7 @@ class Window(QMainWindow):
         if self.busy and not force:return
         self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False)
         title=str(choice.get('title') or 'KINOSOTA');self.message.setText('Переподключаемся…' if attempt else 'Открываем фильм…')
+        if not attempt:self._ensure_cinema()  # A reconnect keeps the window it has.
         self._target_intro(choice)
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка фильма…')
         if not attempt:self._prepare_preroll(choice)  # A reconnect never replays the ad.
@@ -655,6 +719,7 @@ class Window(QMainWindow):
         mark=f" · S{season:02d}E{number:02d}" if type(season) is int and type(number) is int else ''
         title=name+mark;label=episode_label(episode,lambda text:translate(text,self.language))
         self.message.setText('Переподключаемся…' if attempt else 'Открываем серию…')
+        if not attempt:self._ensure_cinema()
         ad_meta={'kind':'episode','id':episode['id']}  # A Telegram episode: player_telegram intro and ad plan.
         self._target_intro(ad_meta)
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка серии…')
@@ -691,6 +756,7 @@ class Window(QMainWindow):
         self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False)
         title=str(meta.get('title') or 'KINOSOTA')
         self.message.setText('Переподключаемся…' if attempt else 'Открываем фильм…')
+        if not attempt:self._ensure_cinema()
         self._target_intro(meta)
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка фильма…')
         if not attempt:self._prepare_preroll(meta)
@@ -733,6 +799,7 @@ class Window(QMainWindow):
         launch=self.pending_launch;self.pending_launch=''
         if not launch:return
         self.stop(release=False,keep_splash=True)
+        self._ensure_cinema()
         self._present_playback_splash('Открываем фильм с сайта…')
         self.message.setText('Открываем фильм с сайта…')
         generation=self.play_generation
@@ -788,6 +855,7 @@ class Window(QMainWindow):
         self.updater.shutdown();self.search.removeEventFilter(self);self.suggest.dismiss();self.drawer.dismiss();self.torrents.shutdown();self.series.shutdown();self.filters.genre_timer.stop()
         self.search_timer.stop();self.results.posters.clear();self.closed=True;self.pair_timer.stop();self.process_timer.stop();self.stop();self.pool.waitForDone(25000);self.engine.stop();self.api.close()
         if self.cinema is not None:self.splash.dismiss();self.cinema.shutdown()
+        self._dispose_retired_cinemas()
         event.accept()
 
 def run(app,instance,link):
@@ -800,7 +868,12 @@ def run(app,instance,link):
         nonlocal window
         if window is not None or direct is not None:return
         app.setQuitOnLastWindowClosed(True)
-        window=Window(restore=True);window.show()
+        window=Window(restore=True);release_on_update(window);window.show()
+
+    def release_on_update(win):
+        # 0.2.4: the post-update restart must find the single-instance socket free, not wait for our shutdown.
+        updater=getattr(win,'updater',None)
+        if updater is not None:updater.quitRequested.connect(instance.close)
 
     def ensure_direct():
         nonlocal direct
@@ -817,7 +890,7 @@ def run(app,instance,link):
         if window is not None:return
         if direct is not None:direct.retire()
         app.setQuitOnLastWindowClosed(True)
-        window=Window(restore=True);window.show();window.launch_opened(meta)
+        window=Window(restore=True);release_on_update(window);window.show();window.launch_opened(meta)
 
     def receive_link(value):
         if window is not None:
@@ -841,6 +914,13 @@ def run(app,instance,link):
     return app.exec()
 
 
+def configure_logging():
+    """Warnings (cinema fallback / rebuild, update restart) always reach stderr → journalctl; KINOSOTA_DEBUG=1: info."""
+    root=logging.getLogger()
+    if not root.handlers:
+        logging.basicConfig(level=logging.WARNING,format='kinosota-player %(levelname)s %(name)s: %(message)s')
+    if os.environ.get('KINOSOTA_DEBUG'):logging.getLogger('kinosota').setLevel(logging.INFO)
+
 def main():
     if '--version' in sys.argv:
         print(f'KINOSOTA Player {__version__}');return 0
@@ -849,6 +929,11 @@ def main():
     if '--uninstall' in sys.argv:
         from .installation import show_uninstall
         show_uninstall(language=Preferences().get('interface_language'));return 0
+    configure_logging()
+    if '--cinema-smoke-test' in sys.argv:
+        # 0.2.4: the real in-window path (CinemaSurface + libmpv + bundled intro + Pre-roll), no network, no session.
+        from . import cinema_smoke
+        return cinema_smoke.run(*cinema_smoke.main_args(sys.argv))
     smoke='--smoke-test' in sys.argv or '--playback-smoke-fixture' in sys.argv
     if smoke:
         # Packaged-app QA drives the external mpv binary; the in-window libmpv is probed separately below.
@@ -892,6 +977,11 @@ def main():
     from .deeplink import Instance, find_link, forward
     link=find_link(sys.argv)
     if link and forward(link):return 0
-    instance=Instance(app);instance.listen()
-    return run(app,instance,link)
+    instance=Instance(app)
+    if not instance.listen():log.warning('Another KINOSOTA Player owns the single-instance socket; links stay with it')
+    app.aboutToQuit.connect(instance.close)  # 0.2.4: free the socket at quit, before the process is reaped.
+    try:
+        return run(app,instance,link)
+    finally:
+        instance.close()
 if __name__=='__main__':raise SystemExit(main())

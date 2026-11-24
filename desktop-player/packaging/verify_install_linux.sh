@@ -26,8 +26,22 @@ if [ "$result" != 0 ]; then
   exit "$result"
 fi
 python3 -c "import json; assert json.load(open('$qa/playback-smoke.json'))['status']=='PASS'"
+# 0.2.4: the embedded CinemaSurface of the INSTALLED frozen build: real OpenGL (Mesa llvmpipe under Xvfb) + libmpv +
+# bundled kinosota-intro.mp4 + local Pre-roll + film. --smoke-test above never touched this path.
+result=0
+su -s /bin/sh viewer -c "LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1280x720x24' timeout 120 kinosota-player --cinema-smoke-test '$qa/fixture' --cinema-smoke-report '$qa/cinema-smoke.json'" || result=$?
+if [ "$result" != 0 ]; then
+  cat "$qa/cinema-smoke.json" || true
+  if [ -n "${KINOSOTA_QA_REPORT_DIR:-}" ]; then cp "$qa/"*.json "$KINOSOTA_QA_REPORT_DIR/" 2>/dev/null || true; fi
+  exit "$result"
+fi
+python3 -c "import json; r=json.load(open('$qa/cinema-smoke.json')); assert r['status']=='PASS' and r['checks']['gl_initialized'] and r['checks']['intro_frame'], r"
+# Headless platform: the surface is reported unavailable (offscreen) and the mode skips cleanly with exit 0.
+su -s /bin/sh viewer -c "QT_QPA_PLATFORM=offscreen timeout 30 kinosota-player --cinema-smoke-test --cinema-smoke-report '$qa/cinema-smoke-offscreen.json'"
+python3 -c "import json; r=json.load(open('$qa/cinema-smoke-offscreen.json')); assert r['status']=='SKIP' and 'offscreen' in (r['unavailable_reason'] or ''), r"
 if [ -n "${KINOSOTA_QA_REPORT_DIR:-}" ]; then
   cp "$qa/playback-smoke.json" "$KINOSOTA_QA_REPORT_DIR/playback-smoke-$(. /etc/os-release; echo "$ID-$VERSION_ID").json"
+  cp "$qa/cinema-smoke.json" "$KINOSOTA_QA_REPORT_DIR/cinema-smoke-$(. /etc/os-release; echo "$ID-$VERSION_ID").json"
 fi
 # No real credentials or production API calls; smoke mode never restores a session.
 [ -z "$(find /home/viewer -type f -not -path '*/.cache/*' -not -name '.bash*' -not -name '.profile' -print)" ]
