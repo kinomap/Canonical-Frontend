@@ -91,7 +91,12 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
     api.playbackTicket.mockResolvedValue({ stream_url: '/tv-stream/torrent-node-1/abc-123', title: 'Дюна' })
     api.writer.mockResolvedValue(undefined)
 
-    ;(window as unknown as { tizen?: unknown; webapis?: unknown }).tizen = { tvinputdevice: {} }
+    ;(window as unknown as { tizen?: unknown; webapis?: unknown }).tizen = {
+      tvinputdevice: {
+        registerKeyBatch: (names: string[]) => { calls.push(`keys:${names.join(',')}`) },
+        registerKey: (name: string) => { calls.push(`key:${name}`) },
+      },
+    }
     ;(window as unknown as { webapis?: unknown }).webapis = {
       avplay: {
         open: (url: string) => { calls.push(`open:${url}`) },
@@ -103,7 +108,7 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
         getState: () => avState,
         getCurrentTime: () => curMs,
         getDuration: () => 600000,
-        setDisplayRect: () => { calls.push('rect') },
+        setDisplayRect: (...a: number[]) => { calls.push(`rect:${a.join(',')}`) },
         setDisplayMethod: () => { calls.push('method') },
         setSilentSubtitle: (s: boolean) => { calls.push(`sub-silent:${s}`) },
         setListener: (l: Record<string, (...args: unknown[]) => void>) => { listener = l },
@@ -143,6 +148,16 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
     expect(calls).toContain('open:http://localhost:3000/tv-stream/torrent-node-1/abc-123')
     expect(calls).toContain('prepareAsync')
     expect(calls).toContain('play')
+    // Tizen maps the video plane from a fixed 1920x1080 grid, whatever window.innerWidth is.
+    expect(calls).toContain('rect:0,0,1920,1080')
+    expect(calls.indexOf('play')).toBeGreaterThan(calls.indexOf('prepareAsync'))
+    expect(calls.indexOf('close')).toBeLessThan(calls.indexOf('open:http://localhost:3000/tv-stream/torrent-node-1/abc-123'))
+    expect(calls).toContain('keys:MediaPlay,MediaPause,MediaPlayPause,MediaStop,MediaFastForward,MediaRewind,Return,Exit')
+    const avObject = wrapper.get('[data-testid="tv-avplayer"]').element as HTMLElement
+    expect(avObject.id).toBe('av-player')
+    expect(avObject.getAttribute('type')).toBe('application/avplayer')
+    expect(avObject.style.position).toBe('fixed')
+    expect(avObject.style.zIndex).toBe('-1')
 
     listener.oncurrentplaytime?.()
     await nextTick()
@@ -163,5 +178,24 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
     expect(calls).toContain('stop')
     expect(calls).toContain('close')
     expect(router.currentRoute.value.path).toBe('/tv')
+  })
+
+  it('closes AVPlay when the app is hidden (Tizen suspend) and reopens the stream when it is visible again', async () => {
+    await router.push({ path: '/tv/player', query: { src: 'torrent', kind: 'movie', id: '438631' } })
+    wrapper = mount(TvPlayerView, { global: { plugins: [router] }, attachTo: document.body })
+    await flushPromises(); await nextTick(); await flushPromises(); await nextTick()
+    expect(calls.filter(c => c.startsWith('open:')).length).toBe(1)
+
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(calls).toContain('stop')
+    const closesAfterHide = calls.filter(c => c === 'close').length
+
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises(); await nextTick(); await flushPromises(); await nextTick()
+    expect(closesAfterHide).toBeGreaterThan(0)
+    expect(calls.filter(c => c.startsWith('open:')).length).toBe(2)
+    delete (document as unknown as { hidden?: boolean }).hidden
   })
 })

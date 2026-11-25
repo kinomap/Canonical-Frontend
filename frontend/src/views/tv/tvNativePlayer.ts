@@ -2,7 +2,23 @@
  * Native Smart TV hardware player adapter for /tv/player (Samsung Tizen AVPlay).
  * On Tizen 5+ TVs, webapis.avplay decodes MKV, AC-3, E-AC-3, DTS and multi-audio
  * tracks directly in hardware, while LG webOS / modern browsers use <video>.
+ *
+ * The same PlayerAdapter contract (open / play / pause / resume / seek / getTracks /
+ * setAudio / setSubtitle / stop) is implemented by the ES5 factory of /tv/lite
+ * (public/assets/tv-lite.js: Orsay SEF -> Orsay AVPlay -> Orsay Player -> Tizen AVPlay -> <video>).
  */
+
+/** Samsung Tizen AVPlay takes display coordinates in a fixed 1920x1080 grid, even on UHD panels. */
+export const TIZEN_DISPLAY_GRID = { width: 1920, height: 1080 } as const
+
+/** TV decoders usually hold one stream: pause between Stop/close of one clip and open() of the next. */
+export const DECODER_RELEASE_MS = 150
+
+/** Remote keys the /tv portal handles itself on Tizen (registerKeyBatch, registerKey on Tizen 2.x–3.x). */
+export const TIZEN_MEDIA_KEYS = ['MediaPlay', 'MediaPause', 'MediaPlayPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'Return', 'Exit'] as const
+
+/** Own hosts: an https:// link to them is played over http:// while the TV portal runs over plain HTTP. */
+const TV_HTTP_HOSTS = new Set(['watch.scenrix.com', 'www.watch.scenrix.com'])
 
 export interface NativeTrackOption {
   index: number
@@ -60,15 +76,77 @@ interface TizenAvplayApi {
   setSelectTrack?: (type: 'AUDIO' | 'TEXT', index: number) => void
 }
 
+interface TizenInputDevice {
+  registerKey: (name: string) => void
+  registerKeyBatch?: (names: string[], onSuccess?: () => void, onError?: (err: unknown) => void) => void
+}
+
 type TizenWindow = Window & {
-  tizen?: unknown
+  tizen?: { tvinputdevice?: TizenInputDevice }
   webapis?: { avplay?: TizenAvplayApi }
+}
+
+/** Common contract of the TV player factory (Tizen AVPlay here, Orsay drivers and <video> in /tv/lite). */
+export interface PlayerAdapter {
+  readonly engine: string
+  open: (url: string) => boolean
+  play: () => void
+  pause: () => void
+  resume: () => void
+  seek: (seconds: number) => void
+  getTracks: () => { audio: NativeTrackOption[]; text: NativeTrackOption[] }
+  setAudio: (listIndex: number) => void
+  setSubtitle: (listIndex: number) => void
+  stop: () => void
+}
+
+export function normalizeTvMediaUrl(url: string): string {
+  if (!url || typeof window === 'undefined' || !window.location || window.location.protocol !== 'http:') return url
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' && TV_HTTP_HOSTS.has(parsed.hostname.toLowerCase())) {
+      return `http://${parsed.hostname}${parsed.pathname}${parsed.search}${parsed.hash}`
+    }
+  } catch { /* relative or malformed: keep as is */ }
+  return url
+}
+
+/** Registers the media keys of the remote on Tizen; a no-op elsewhere. Returns how the keys were registered. */
+export function registerTizenMediaKeys(): 'batch' | 'single' | 'none' {
+  if (typeof window === 'undefined') return 'none'
+  const input = (window as TizenWindow).tizen?.tvinputdevice
+  if (!input) return 'none'
+  const names = [...TIZEN_MEDIA_KEYS]
+  const one = () => names.forEach((name) => { try { input.registerKey(name) } catch { /* key not supported */ } })
+  if (typeof input.registerKeyBatch === 'function') {
+    try {
+      input.registerKeyBatch(names, undefined, one)
+      return 'batch'
+    } catch { /* Tizen 2.x–3.x */ }
+  }
+  one()
+  return 'single'
+}
+
+/** Stops a <video> and frees its decoder slot (src removed + load()). */
+export function releaseVideoElement(el: HTMLVideoElement | null | undefined): void {
+  if (!el) return
+  try { el.pause() } catch { /* detached */ }
+  try {
+    el.removeAttribute('src')
+    el.load()
+  } catch { /* detached */ }
+}
+
+export function waitDecoderRelease(ms = DECODER_RELEASE_MS): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, ms) })
 }
 
 let webapisLoadPromise: Promise<boolean> | null = null
 
 export function toAbsoluteMediaUrl(url: string): string {
   if (!url) return ''
+  url = normalizeTvMediaUrl(url)
   if (typeof window === 'undefined' || !window.location) return url
   const proto = window.location.protocol === 'https:' ? 'https:' : 'http:'
   const host = window.location.host
@@ -259,10 +337,10 @@ export function createTizenAvplayController(
   }
 
   try {
+    try { avplay.close() } catch { /* nothing was open */ }
     avplay.open(toAbsoluteMediaUrl(streamUrl))
-    const width = window.innerWidth || 1920
-    const height = window.innerHeight || 1080
-    avplay.setDisplayRect(0, 0, width, height)
+    // Tizen always maps the video plane from a 1920x1080 grid (also on 720p UI and 4K panels).
+    avplay.setDisplayRect(0, 0, TIZEN_DISPLAY_GRID.width, TIZEN_DISPLAY_GRID.height)
     avplay.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX')
     try { avplay.setSilentSubtitle?.(false) } catch { /* optional */ }
     avplay.setListener({
@@ -303,5 +381,35 @@ export function createTizenAvplayController(
   } catch {
     controller.destroy()
     return null
+  }
+}
+
+/**
+ * PlayerAdapter over Tizen AVPlay. open() closes the previous clip (stop + close) before the next one,
+ * so ad -> intro -> film never hold two streams in the hardware decoder.
+ */
+export function createTizenAvplayAdapter(callbacks: NativePlayerCallbacks): PlayerAdapter | null {
+  if (!hasTizenAvplay()) return null
+  let current: NativePlayerController | null = null
+  return {
+    engine: 'Tizen AVPlay',
+    open(url: string) {
+      current?.destroy()
+      current = createTizenAvplayController(url, callbacks)
+      return current !== null
+    },
+    play() { current?.play() },
+    pause() { current?.pause() },
+    resume() { current?.play() },
+    seek(seconds: number) { current?.seekTo(seconds) },
+    getTracks() {
+      return { audio: current?.getAudioTracks() ?? [], text: current?.getSubtitleTracks() ?? [] }
+    },
+    setAudio(listIndex: number) { current?.selectAudioTrack(listIndex) },
+    setSubtitle(listIndex: number) { current?.selectSubtitleTrack(listIndex) },
+    stop() {
+      current?.destroy()
+      current = null
+    },
   }
 }

@@ -49,23 +49,45 @@
             window.location.replace('/tv/lite');
             return;
           }
+          // Tizen: webapis.js is a parser-blocking <script> in <head>, so webapis.avplay exists before the
+          // app bundle runs (TvPlayerView still awaits loadTizenWebApis() before falling back to <video>).
           if (isTizen && !window.webapis) {
             try {
-              var s = document.createElement('script');
-              s.type = 'text/javascript';
-              s.src = '$WEBAPIS/webapis/webapis.js';
-              (document.head || document.documentElement).appendChild(s);
-            } catch (err) {}
+              document.write('<script type="text/javascript" src="$WEBAPIS/webapis/webapis.js"><\/script>');
+            } catch (err) {
+              try {
+                var s = document.createElement('script');
+                s.type = 'text/javascript';
+                s.src = '$WEBAPIS/webapis/webapis.js';
+                (document.head || document.documentElement).appendChild(s);
+              } catch (err2) {}
+            }
           }
         } catch (e) {}
       })();
     </script>
     <script>
       (function() {
+        // Tizen remote: the whole media pack goes to the page (registerKeyBatch, one by one on Tizen 2.x–3.x),
+        // plus Info / Red / Blue for the on-screen diagnostics console.
         try {
-          if (window.tizen && window.tizen.tvinputdevice) {
-            window.tizen.tvinputdevice.registerKey('Return');
-            window.tizen.tvinputdevice.registerKey('Exit');
+          var input = window.tizen && window.tizen.tvinputdevice;
+          if (input) {
+            var TV_KEYS = ['MediaPlay', 'MediaPause', 'MediaPlayPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'Return', 'Exit'];
+            var registerOne = function(names) {
+              for (var i = 0; i < names.length; i++) {
+                try { input.registerKey(names[i]); } catch (e1) {}
+              }
+            };
+            var batched = false;
+            if (typeof input.registerKeyBatch === 'function') {
+              try {
+                input.registerKeyBatch(TV_KEYS, function() {}, function() { registerOne(TV_KEYS); });
+                batched = true;
+              } catch (e2) {}
+            }
+            if (!batched) registerOne(TV_KEYS);
+            registerOne(['Info', 'ColorF0Red', 'ColorF3Blue']);
           }
         } catch (e) {}
 

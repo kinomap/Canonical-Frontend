@@ -7,6 +7,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router, { getPendingNavigation } from './router'
 import { handleChunkLoadError } from './router/chunkReload'
+import { installTvDebugConsole } from './views/tv/tvDebugConsole'
 import './style.css'
 import './styles/pageFrame.css'
 import './styles/showcase.css'
@@ -22,6 +23,9 @@ window.addEventListener('vite:preloadError', (event) => {
     event.preventDefault()
   }
 })
+
+// /tv portal: on-screen diagnostics console (?debug=1, Info, 3x Red/Blue, auto-open on fatal playback errors).
+if (window.location.pathname === '/tv' || window.location.pathname.startsWith('/tv/')) installTvDebugConsole()
 
 const app = createApp(App)
 app.use(router)

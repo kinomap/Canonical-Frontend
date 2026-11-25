@@ -712,7 +712,7 @@ describe('Lite TV portal behaviour', () => {
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 4.0) AppleWebKit/537.36 (KHTML, like Gecko) 76.0.3809.146/4.0 TV Safari/537.36' })
     const calls: string[] = []
     let batch: string[] = []
-    let prepared: (() => void) | null = null
+    const prepared: { ok: (() => void) | null } = { ok: null }
       ; (window as unknown as { tizen?: unknown }).tizen = {
         tvinputdevice: { registerKeyBatch: (names: string[]) => { batch = names }, registerKey: (n: string) => { calls.push(`key:${n}`) } },
       }
@@ -724,7 +724,7 @@ describe('Lite TV portal behaviour', () => {
           setDisplayRect: (...a: number[]) => calls.push(`rect:${a.join(',')}`),
           setDisplayMethod: (m: string) => calls.push(`method:${m}`),
           setListener: () => calls.push('listener'),
-          prepareAsync: (ok: () => void) => { calls.push('prepareAsync'); prepared = ok },
+          prepareAsync: (ok: () => void) => { calls.push('prepareAsync'); prepared.ok = ok },
           play: () => calls.push('play'),
           getCurrentTime: () => 0,
           getDuration: () => 0,
@@ -742,7 +742,7 @@ describe('Lite TV portal behaviour', () => {
       expect(calls.indexOf('open:http://localhost:3000/stream/t.m3u8')).toBeGreaterThan(-1)
       expect(calls).toContain('prepareAsync')
       expect(calls).not.toContain('play')
-      prepared?.()
+      prepared.ok?.()
       expect(calls.indexOf('play')).toBeGreaterThan(calls.indexOf('prepareAsync'))
       expect(document.getElementById('lite-player-engine')?.textContent).toBe('Tizen AVPlay')
       expect(document.body.className).toContain('lite-native-plane')

@@ -20,7 +20,17 @@ import {
   SEEK_COMMIT_MS, SEEK_SERIES_MS, TV_CONTROLS_HIDE_MS,
   formatClock, formatSeekDelta, parseTvPlayTarget, seekStep, tvPlayerQuery, type TvPlayTarget,
 } from './tvPlayback'
-import { createTizenAvplayController, hasTizenAvplay, loadTizenWebApis, type NativePlayerController } from './tvNativePlayer'
+import {
+  DECODER_RELEASE_MS,
+  createTizenAvplayController,
+  hasTizenAvplay,
+  loadTizenWebApis,
+  registerTizenMediaKeys,
+  releaseVideoElement,
+  waitDecoderRelease,
+  type NativePlayerController,
+} from './tvNativePlayer'
+import { installTvDebugConsole, tvDebugFatal, tvDebugLog } from './tvDebugConsole'
 
 interface TvEpisode { key: string; label: string; season: number; episode: number; episodeId?: string }
 interface TrackOption { label: string; active: boolean }
@@ -78,6 +88,10 @@ const seekSeries = { dir: 0, count: 0, last: 0 }
 const useNativeAvplay = ref(false)
 const activeEngine = ref<'Tizen AVPlay' | 'HTML5'>('HTML5')
 let nativeController: NativePlayerController | null = null
+/** A pre-roll / intro <video> really played: the TV decoder needs DECODER_RELEASE_MS before the film opens. */
+let commercialVideoPlayed = false
+let commercialReleasedAt = 0
+let suspendedAt = -1
 
 const currentEpisode = computed(() => episodes.value[episodeIndex.value] ?? null)
 const isSeries = computed(() => target.value?.kind === 'tv' || target.value?.kind === 'series')
@@ -110,8 +124,14 @@ const adTarget = computed(() => {
 /** An ad is on screen (pre-roll or a mid-roll over the film): the remote cannot seek or skip it. */
 const adBusy = computed(() => Boolean(adPlayer.value?.busy))
 
+function onCommercialStarted() {
+  commercialVideoPlayed = true
+}
+
 function onAdsSettled() {
   if (phase.value !== 'ads') return
+  if (commercialVideoPlayed) commercialReleasedAt = Date.now()
+  tvDebugLog('info', 'pre-roll settled -> intro')
   phase.value = 'intro'
   introActive.value = true
   clearTimeout(introFallbackTimer)
@@ -122,6 +142,13 @@ function onAdsSettled() {
 function startFilm() {
   if (phase.value === 'content') return
   clearTimeout(introFallbackTimer)
+  // Free the intro's decoder slot before the film opens (one hardware stream on most TVs).
+  document.querySelectorAll<HTMLVideoElement>('.tv-intro-layer video').forEach((el) => {
+    if (el.getAttribute('src') || el.currentSrc) commercialVideoPlayed = true
+    releaseVideoElement(el)
+  })
+  if (commercialVideoPlayed) commercialReleasedAt = Date.now()
+  tvDebugLog('info', 'intro done -> film')
   phase.value = 'content'
   introActive.value = false
   showControls()
@@ -426,6 +453,7 @@ function onLoadedMetadata() {
 function onEnded() { paused.value = true; showControls(); void saveHistory(true, true); void adPlayer.value?.end() }
 function onMediaError() {
   if (!streamUrl.value) return
+  tvDebugFatal(`playback error · engine ${activeEngine.value} · ${streamUrl.value}`)
   status.value = 'error'
   errorText.value = 'Видео не удалось воспроизвести на этом устройстве. Нажмите OK, чтобы повторить.'
 }
@@ -618,11 +646,22 @@ async function start() {
 
 async function startNativeOrHtml5(url: string) {
   const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '').toLowerCase() : ''
+  tvDebugLog('info', `open: ${url}`)
   if (!hasTizenAvplay() && (ua.includes('tizen') || Boolean((window as unknown as { tizen?: unknown }).tizen))) {
+    // Never fall back to <video> while $WEBAPIS/webapis.js may still be loading.
     await loadTizenWebApis()
     if (released || phase.value !== 'content' || streamUrl.value !== url) return
   }
+  if (commercialReleasedAt) {
+    const wait = DECODER_RELEASE_MS - (Date.now() - commercialReleasedAt)
+    commercialReleasedAt = 0
+    if (wait > 0) {
+      await waitDecoderRelease(wait)
+      if (released || phase.value !== 'content' || streamUrl.value !== url) return
+    }
+  }
   if (!hasTizenAvplay()) {
+    tvDebugLog(ua.includes('tizen') ? 'warn' : 'info', `engine: HTML5 <video>${ua.includes('tizen') ? ' (webapis.avplay unavailable)' : ''}`)
     useNativeAvplay.value = false
     activeEngine.value = 'HTML5'
     void nextTick(play)
@@ -632,6 +671,7 @@ async function startNativeOrHtml5(url: string) {
     nativeController.destroy()
     nativeController = null
   }
+  tvDebugLog('info', 'engine: Tizen AVPlay (setDisplayRect 0,0,1920,1080, prepareAsync -> play)')
   useNativeAvplay.value = true
   activeEngine.value = 'Tizen AVPlay'
   document.documentElement.classList.add('tv-native-plane')
@@ -670,6 +710,7 @@ async function startNativeOrHtml5(url: string) {
         onEnded()
       },
       onError() {
+        tvDebugLog('error', 'Tizen AVPlay onerror / prepareAsync failure')
         onMediaError()
       },
     })
@@ -702,17 +743,42 @@ function onPageHide() {
   endLease()
 }
 
+// Tizen suspend / Smart Hub: a hidden app gives the hardware decoder back and reopens at the same position.
+function onVisibilityChange() {
+  if (document.hidden) {
+    if (!nativeController || phase.value !== 'content') return
+    suspendedAt = mediaCurrentTime()
+    tvDebugLog('info', `hidden: closing Tizen AVPlay at ${Math.round(suspendedAt)}s`)
+    void saveHistory(false, true)
+    nativeController.destroy()
+    nativeController = null
+    return
+  }
+  if (suspendedAt < 0 || released) return
+  const url = streamUrl.value
+  resumeAt = suspendedAt > 1 ? suspendedAt : 0
+  suspendedAt = -1
+  if (url && phase.value === 'content') {
+    tvDebugLog('info', 'visible again: reopening the stream')
+    void startNativeOrHtml5(url)
+  }
+}
+
 onMounted(() => {
   document.documentElement.classList.add('tv-mode')
+  installTvDebugConsole()
+  registerTizenMediaKeys()
   void loadTizenWebApis()
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('pagehide', onPageHide)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   void start()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('pagehide', onPageHide)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   void saveHistory(false, true)
   release()
   document.documentElement.classList.remove('tv-mode')
@@ -729,8 +795,10 @@ defineExpose({ handle, phase, startFilm })
   >
     <object
       v-if="useNativeAvplay"
+      id="av-player"
       type="application/avplayer"
       class="tv-video"
+      style="position:fixed; left:0; top:0; width:100%; height:100%; z-index:-1;"
       data-testid="tv-avplayer"
     />
     <video
@@ -765,6 +833,7 @@ defineExpose({ handle, phase, startFilm })
       :surface="adSurface"
       v-bind="adTarget"
       data-testid="tv-ad-container"
+      @started="onCommercialStarted"
       @settled="onAdsSettled"
     />
 
