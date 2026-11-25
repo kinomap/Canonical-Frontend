@@ -1196,3 +1196,43 @@ body.lite-native-plane .lite-video {
 .lite-player-message {
     z-index: 5;
 }
+
+/* On-screen diagnostics console (?debug=1, Info, 3x Red / Blue): plain blocks only, safe for Maple WebKit. */
+.lite-debug {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    width: 1000px;
+    height: 600px;
+    padding: 10px 14px;
+    overflow: hidden;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.82);
+    color: #b8f5b0;
+    font-family: monospace;
+    font-size: 15px;
+    line-height: 21px;
+    text-align: left;
+}
+
+.lite-debug.is-hidden {
+    display: none;
+}
+
+.lite-debug-head {
+    color: #ffce21;
+    margin-bottom: 6px;
+}
+
+.lite-debug-line {
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.lite-debug-line.is-error {
+    color: #ff8a80;
+}
+
+.lite-debug-line.is-warn {
+    color: #ffd180;
+}

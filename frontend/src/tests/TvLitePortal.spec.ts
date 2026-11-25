@@ -80,7 +80,7 @@ const hover = (node: Element, at = 5) => node.dispatchEvent(new MouseEvent('mous
 const click = (node: Element) => node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 const press = (key: string, keyCode: number) => document.dispatchEvent(new KeyboardEvent('keydown', { key, keyCode, bubbles: true, cancelable: true }))
 
-type LiteHook = { pointer: { keyAt: number }; playerProblem: (kind: string) => void; filterQuery: (kind: string, f: Record<string, unknown>) => string; state: { row: number; mode: string; rows: { id: string; col: number }[] }; resolveKey: (e: { keyCode: number; key?: string }, orsay?: boolean) => string; tmdbSize: (u: string, s: string) => string; formatTime: (s: number) => string; LitePromise: new (fn: (res: (v: unknown) => void) => void) => Promise<unknown> }
+type LiteHook = { player: { currentTime: number; duration: number }; adapter: { getTracks: () => { audio: unknown[]; text: unknown[] } }; normalizeTvUrl: (u: string) => string; pointer: { keyAt: number }; playerProblem: (kind: string) => void; filterQuery: (kind: string, f: Record<string, unknown>) => string; state: { row: number; mode: string; rows: { id: string; col: number }[] }; resolveKey: (e: { keyCode: number; key?: string }, orsay?: boolean) => string; tmdbSize: (u: string, s: string) => string; formatTime: (s: number) => string; LitePromise: new (fn: (res: (v: unknown) => void) => void) => Promise<unknown> }
 const lite = () => (window as unknown as { KinosotaLite: LiteHook }).KinosotaLite
 
 async function bootLite() {
@@ -510,7 +510,8 @@ describe('Lite TV portal behaviour', () => {
     expect(video.getAttribute('src')).toBe('/tv-ad/tg-node-1/ad-1.mp4')
     video.dispatchEvent(new Event('ended'))
     await flush()
-    expect(video.getAttribute('src')).toBe('https://watch.scenrix.com/media/cinema-intro/clip.mp4')
+    // HTTP TV contour: an https:// intro link on our own host is played over http://
+    expect(video.getAttribute('src')).toBe('http://watch.scenrix.com/media/cinema-intro/clip.mp4')
     video.dispatchEvent(new Event('ended'))
     await flush()
     expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
@@ -532,7 +533,7 @@ describe('Lite TV portal behaviour', () => {
       resume: () => { avStub.status = '1'; calls.push('resume') },
       stop: () => { calls.push('stop') },
       destroy: () => { calls.push('destroy') },
-      setDisplayArea: () => { calls.push('area') },
+      setDisplayArea: (r: { left: number; top: number; width: number; height: number }) => { calls.push(`area:${r.left},${r.top},${r.width},${r.height}`) },
       startSubtitle: () => { },
       getDuration: () => 600000,
       getTotalNumOfStreamID: (kind: number) => (kind === 1 ? 2 : 0),
@@ -549,6 +550,7 @@ describe('Lite TV portal behaviour', () => {
       await flush()
       expect(calls.some(c => c.startsWith('open:http://localhost:3000/stream/t.m3u8'))).toBe(true)
       expect(calls).toContain('play')
+      expect(calls).toContain('area:0,0,960,540')
       expect(document.body.className).toContain('lite-native-plane')
       eventHook.fn?.(9)
       eventHook.fn?.(14, 12000)
@@ -569,7 +571,7 @@ describe('Lite TV portal behaviour', () => {
     }
   })
 
-  it('falls back to Samsung Orsay SEF plugin when webapis.avplay is unavailable', async () => {
+  it('prefers the Orsay SEF Player: Open 1.112 -> 1.000 fallback, 960x540 grid, OnEvent codes and SEF audio tracks', async () => {
     const origUa = navigator.userAgent
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV; Maple2012) AppleWebKit/534.7' })
     const sefCalls: string[] = []
@@ -580,14 +582,17 @@ describe('Lite TV portal behaviour', () => {
         Open?: (a: string, b: string, c: string) => boolean
         Execute?: (cmd: string, ...args: unknown[]) => unknown
         Close?: () => void
-        OnEvent?: (type: number, data?: unknown) => void
       }
       expect(sefEl).toBeTruthy()
-      sefEl.Open = (a: string, b: string, c: string) => { sefCalls.push(`Open:${a}:${b}:${c}`); return true }
+      // Late D-series firmware: only the 1.000 Player interface opens.
+      sefEl.Open = (a: string, b: string, c: string) => { sefCalls.push(`Open:${a}:${b}:${c}`); return b === '1.000' }
       sefEl.Execute = (cmd: string, ...args: unknown[]) => {
         sefCalls.push(`Exec:${cmd}:${args.join(',')}`)
         if (cmd === 'GetDuration') return 420000
-        return true
+        if (cmd === 'GetTotalNumOfStreamID') return 2
+        if (cmd === 'GetStreamLanguageInfo') return args[1] === 0 ? 7501171 : 6647399
+        if (cmd === 'GetStreamExtraData') return args[1] === 0 ? 'fourCC:AC3' : 'fourCC:DTS'
+        return 1
       }
       sefEl.Close = () => { sefCalls.push('Close') }
       Object.defineProperty(sefEl, 'OnEvent', {
@@ -597,22 +602,181 @@ describe('Lite TV portal behaviour', () => {
 
       press('', 29443) // play spotlight torrent
       await flush()
-      expect(sefCalls).toContain('Open:Player:1.000:Player')
-      expect(sefCalls.some(c => c.startsWith('Exec:InitPlayer:http://localhost:3000/stream/t.m3u8'))).toBe(true)
-      expect(sefCalls).toContain('Exec:StartPlayback:0')
+      const openIdx = sefCalls.indexOf('Open:Player:1.112:Player')
+      expect(openIdx).toBeGreaterThanOrEqual(0)
+      expect(sefCalls.indexOf('Open:Player:1.000:Player')).toBeGreaterThan(openIdx)
+      const init = sefCalls.findIndex(c => c.startsWith('Exec:InitPlayer:http://localhost:3000/stream/t.m3u8|COMPONENT=HLS'))
+      const area = sefCalls.indexOf('Exec:SetDisplayArea:0,0,960,540')
+      const start = sefCalls.indexOf('Exec:StartPlayback:0')
+      expect(init).toBeGreaterThan(sefCalls.indexOf('Exec:Stop:'))
+      expect(area).toBeGreaterThan(init)
+      expect(start).toBeGreaterThan(area)
       expect(document.body.className).toContain('lite-native-plane')
       expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay SEF')
 
-      sefHook.fn?.(9)
-      sefHook.fn?.(14, 15000)
+      sefHook.fn?.(9) // STREAM_INFO_READY
+      expect(sefCalls).toContain('Exec:GetTotalNumOfStreamID:1')
+      expect(document.getElementById('lite-player-audio')?.textContent).toContain('Russian')
+      expect(document.getElementById('lite-player-audio')?.textContent).toContain('AC3')
+      sefHook.fn?.(11) // BUFFERING_START
+      expect(document.getElementById('lite-player-message')?.textContent || '').toContain('Буферизация')
+      sefHook.fn?.(12) // BUFFERING_COMPLETE
+      sefHook.fn?.(14, 15000) // CURRENT_PLAYBACK_TIME (ms)
+      expect(lite().player.currentTime).toBe(15)
+      expect(lite().player.duration).toBe(420)
+
+      press('ArrowDown', 40) // audio track selector
+      press('ArrowRight', 39)
+      press('Enter', 13)
+      expect(sefCalls).toContain('Exec:SetStreamID:1,1')
+
       press('ArrowRight', 39)
       expect(sefCalls).toContain('Exec:JumpForward:30')
       press('', 88) // Orsay Return
-      expect(sefCalls).toContain('Exec:Stop:')
       expect(sefCalls).toContain('Close')
       expect(document.body.className).not.toContain('lite-native-plane')
     } finally {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
     }
+  })
+
+  it('declares the Orsay plugin objects statically in /tv/lite before the script', () => {
+    const body = HTML.slice(HTML.indexOf('<body>'), HTML.indexOf('<script src='))
+    for (const [id, clsid] of [
+      ['pluginObjectSef', 'SAMSUNG-INFOLINK-SEF'],
+      ['pluginObjectPlayer', 'SAMSUNG-INFOLINK-PLAYER'],
+      ['pluginObjectNNavi', 'SAMSUNG-INFOLINK-NNAVI'],
+      ['pluginObjectTVMW', 'SAMSUNG-INFOLINK-TVMW'],
+      ['pluginObjectScreen', 'SAMSUNG-INFOLINK-SCREEN'],
+    ]) {
+      expect(body).toContain(`id="${id}"`)
+      expect(body).toContain(`classid="clsid:${clsid}"`)
+    }
+  })
+
+  it('uses SEF 1.112 first on E/F/H even when Orsay AVPlay is available', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2013; Maple2012) AppleWebKit/534.7' })
+    const sefCalls: string[] = []
+    let getAvPlayCalled = false
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: { getAVPlay: () => { getAvPlayCalled = true } },
+      }
+    try {
+      await bootLite()
+      const sefEl = document.getElementById('pluginObjectSef') as HTMLElement & Record<string, unknown>
+      sefEl.Open = (a: string, b: string) => { sefCalls.push(`Open:${b}`); return true }
+      sefEl.Execute = (cmd: string, ...args: unknown[]) => { sefCalls.push(`Exec:${cmd}:${args.join(',')}`); return 1 }
+      sefEl.Close = () => { sefCalls.push('Close') }
+      press('', 29443)
+      await flush()
+      expect(sefCalls[0]).toBe('Open:1.112')
+      expect(sefCalls).not.toContain('Open:1.000')
+      expect(getAvPlayCalled).toBe(false)
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay SEF')
+    } finally {
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('falls back to the legacy Orsay Player plugin (C/D series) with the 960x540 grid', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV; Maple2011) AppleWebKit/534.7' })
+    const calls: string[] = []
+    try {
+      await bootLite()
+      const pl = document.getElementById('pluginObjectPlayer') as HTMLElement & Record<string, unknown>
+      pl.InitPlayer = (url: string) => { calls.push(`InitPlayer:${url}`); return 1 }
+      pl.SetDisplayArea = (...a: number[]) => { calls.push(`SetDisplayArea:${a.join(',')}`) }
+      pl.StartPlayback = (pos: number) => { calls.push(`StartPlayback:${pos}`); return 1 }
+      pl.Stop = () => { calls.push('Stop') }
+      pl.GetDuration = () => 300000
+      press('', 29443)
+      await flush()
+      expect(calls.some(c => c.startsWith('InitPlayer:http://localhost:3000/stream/t.m3u8'))).toBe(true)
+      expect(calls).toContain('SetDisplayArea:0,0,960,540')
+      expect(calls).toContain('StartPlayback:0')
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay Player')
+      ; (pl.OnCurrentPlayTime as (ms: number) => void)(5000)
+      expect(lite().player.currentTime).toBe(5)
+      press('', 88)
+      expect(calls).toContain('Stop')
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('drives Tizen AVPlay in the fixed 1920x1080 grid with prepareAsync before play and registers media keys', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 4.0) AppleWebKit/537.36 (KHTML, like Gecko) 76.0.3809.146/4.0 TV Safari/537.36' })
+    const calls: string[] = []
+    let batch: string[] = []
+    let prepared: (() => void) | null = null
+      ; (window as unknown as { tizen?: unknown }).tizen = {
+        tvinputdevice: { registerKeyBatch: (names: string[]) => { batch = names }, registerKey: (n: string) => { calls.push(`key:${n}`) } },
+      }
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: {
+          open: (url: string) => calls.push(`open:${url}`),
+          close: () => calls.push('close'),
+          stop: () => calls.push('stop'),
+          setDisplayRect: (...a: number[]) => calls.push(`rect:${a.join(',')}`),
+          setDisplayMethod: (m: string) => calls.push(`method:${m}`),
+          setListener: () => calls.push('listener'),
+          prepareAsync: (ok: () => void) => { calls.push('prepareAsync'); prepared = ok },
+          play: () => calls.push('play'),
+          getCurrentTime: () => 0,
+          getDuration: () => 0,
+          getState: () => 'PLAYING',
+          getTotalTrackInfo: () => [],
+        },
+      }
+    try {
+      await bootLite()
+      expect(batch).toEqual(expect.arrayContaining(['MediaPlay', 'MediaPause', 'MediaPlayPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'Return', 'Exit']))
+      press('Enter', 13)
+      await flush()
+      expect(calls).toContain('rect:0,0,1920,1080')
+      expect(calls).toContain('method:PLAYER_DISPLAY_MODE_LETTER_BOX')
+      expect(calls.indexOf('open:http://localhost:3000/stream/t.m3u8')).toBeGreaterThan(-1)
+      expect(calls).toContain('prepareAsync')
+      expect(calls).not.toContain('play')
+      prepared?.()
+      expect(calls.indexOf('play')).toBeGreaterThan(calls.indexOf('prepareAsync'))
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Tizen AVPlay')
+      expect(document.body.className).toContain('lite-native-plane')
+    } finally {
+      delete (window as unknown as { webapis?: unknown }).webapis
+      delete (window as unknown as { tizen?: unknown }).tizen
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('shows the on-screen debug console: Info toggles it, 3x Red toggles it, it lists UA, engines and console output', async () => {
+    await bootLite()
+    const panel = () => document.getElementById('lite-debug')
+    expect(panel() === null || panel()!.className.indexOf('is-hidden') !== -1).toBe(true)
+    press('', 457) // Info
+    expect(panel()?.className).toBe('lite-debug')
+    expect(panel()?.textContent).toContain('UA:')
+    ;(lite() as unknown as { debug: { log: (l: string, t: string) => void } }).debug.log('info', 'hello-from-test')
+    expect(panel()?.textContent).toContain('hello-from-test')
+    press('', 457)
+    expect(panel()?.className).toContain('is-hidden')
+    press('', 403); press('', 403); press('', 403)
+    expect(panel()?.className).toBe('lite-debug')
+    press('Enter', 13) // play: factory steps are logged
+    await flush()
+    expect(panel()?.textContent).toContain('engines: SEF=false')
+    expect(panel()?.textContent).toContain('engine: HTML5')
+    expect(lite().adapter.getTracks()).toEqual({ audio: expect.any(Array), text: [] })
+  })
+
+  it('plays https links to watch.scenrix.com over plain HTTP on an HTTP page', async () => {
+    await bootLite()
+    expect(lite().normalizeTvUrl('https://watch.scenrix.com/tv-stream/n1/a.mkv?x=1')).toBe('http://watch.scenrix.com/tv-stream/n1/a.mkv?x=1')
+    expect(lite().normalizeTvUrl('https://cdn.example.com/a.mp4')).toBe('https://cdn.example.com/a.mp4')
+    expect(lite().normalizeTvUrl('/tv-ad/n1/ad.mp4')).toBe('/tv-ad/n1/ad.mp4')
   })
 })
