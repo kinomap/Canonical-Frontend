@@ -98,12 +98,13 @@ const isSeries = computed(() => target.value?.kind === 'tv' || target.value?.kin
 const progress = computed(() => (duration.value > 0 ? Math.min(100, (currentTime.value / duration.value) * 100) : 0))
 const historyEnabled = computed(() => auth.isAuthenticated.value && target.value?.src === 'catalog' && target.value.kind === 'movie')
 
-// ── Commercial cycle: 1) pre-roll (AdPlaybackContainer) → 2) KINOSOTA intro (CinemaIntro) → 3) the film ──
-// The stream URL is requested in parallel with the ad, but the film is attached to <video> only in phase 3.
-type Phase = 'ads' | 'intro' | 'content'
-const phase = ref<Phase>('ads')
+// ── Commercial cycle: 1) KINOSOTA intro (CinemaIntro) → 2) pre-roll (AdPlaybackContainer) → 3) the film ──
+// While the intro plays, the ad plan warms and the stream URL is fetched; the film is attached only in phase 3.
+type Phase = 'intro' | 'ads' | 'content'
+const phase = ref<Phase>('intro')
 const adsReady = ref(false)
-const introActive = ref(false)
+const introActive = ref(true)
+let adEarlySettled = false
 const adPlayer = ref<InstanceType<typeof AdPlaybackContainer> | null>(null)
 const introPlayer = ref<InstanceType<typeof CinemaIntro> | null>(null)
 let introFallbackTimer: ReturnType<typeof setTimeout> | undefined
@@ -128,15 +129,33 @@ function onCommercialStarted() {
   commercialVideoPlayed = true
 }
 
+function onIntroDone() {
+  if (phase.value !== 'intro') return
+  clearTimeout(introFallbackTimer)
+  document.querySelectorAll<HTMLVideoElement>('.tv-intro-layer video').forEach((el) => {
+    if (el.getAttribute('src') || el.currentSrc) commercialVideoPlayed = true
+    releaseVideoElement(el)
+  })
+  if (commercialVideoPlayed) commercialReleasedAt = Date.now()
+  introActive.value = false
+  if (!adTarget.value || adEarlySettled || adPlayer.value?.preroll === 'none') {
+    tvDebugLog('info', 'intro done -> film')
+    startFilm()
+    return
+  }
+  tvDebugLog('info', 'intro done -> pre-roll')
+  phase.value = 'ads'
+}
+
 function onAdsSettled() {
+  if (phase.value === 'intro') {
+    adEarlySettled = true
+    return
+  }
   if (phase.value !== 'ads') return
   if (commercialVideoPlayed) commercialReleasedAt = Date.now()
-  tvDebugLog('info', 'pre-roll settled -> intro')
-  phase.value = 'intro'
-  introActive.value = true
-  clearTimeout(introFallbackTimer)
-  introFallbackTimer = setTimeout(startFilm, INTRO_MAX_MS)
-  void nextTick(() => { if (introPlayer.value && introPlayer.value.enabled === false) startFilm() })
+  tvDebugLog('info', 'pre-roll settled -> film')
+  startFilm()
 }
 
 function startFilm() {
@@ -640,7 +659,13 @@ async function start() {
   }
   try { await loadInfo(current) } catch { /* the title card is optional */ }
   if (released) return
+  phase.value = 'intro'
+  introActive.value = true
+  adEarlySettled = false
   adsReady.value = true
+  clearTimeout(introFallbackTimer)
+  introFallbackTimer = setTimeout(onIntroDone, INTRO_MAX_MS)
+  void nextTick(() => { if (introPlayer.value && introPlayer.value.enabled === false) onIntroDone() })
   await loadStream()
 }
 
@@ -828,6 +853,7 @@ defineExpose({ handle, phase, startFilm })
       ref="adPlayer"
       :main="adMainProxy"
       :source="streamUrl"
+      :requested="phase !== 'intro'"
       :host-starts="true"
       :covered="phase === 'intro'"
       :surface="adSurface"
@@ -838,7 +864,7 @@ defineExpose({ handle, phase, startFilm })
     />
 
     <div v-if="phase === 'intro'" class="tv-intro-layer" data-testid="tv-intro-layer">
-      <CinemaIntro ref="introPlayer" :active="introActive" :target="introTarget" @finished="startFilm" />
+      <CinemaIntro ref="introPlayer" :active="introActive" :target="introTarget" @finished="onIntroDone" />
     </div>
 
     <div v-if="phase === 'content' && (status === 'loading' || (status === 'ready' && buffering && !paused))" class="tv-spinner" role="status" aria-live="polite" data-testid="tv-player-loading">

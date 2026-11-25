@@ -4,8 +4,8 @@ import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { nextTick } from 'vue'
 
 /**
- * TV player commercial cycle: the REAL AdPlaybackContainer (ad plan over the mocked ad API) →
- * the KINOSOTA intro (CinemaIntro, stubbed: its clip needs a media pipeline) → the film.
+ * TV player commercial cycle: the KINOSOTA intro (CinemaIntro, stubbed: its clip needs a media pipeline) →
+ * the REAL AdPlaybackContainer (ad plan over the mocked ad API) → the film.
  */
 const api = vi.hoisted(() => ({
   request: vi.fn(),
@@ -99,7 +99,7 @@ async function finishIntro() {
   await flushPromises(); await nextTick(); await flushPromises()
 }
 
-describe('TV player: pre-roll → KINOSOTA intro → film', () => {
+describe('TV player: KINOSOTA intro → pre-roll → film', () => {
   beforeEach(async () => {
     intro.enabled = true
     Element.prototype.scrollIntoView = vi.fn()
@@ -130,34 +130,37 @@ describe('TV player: pre-roll → KINOSOTA intro → film', () => {
     vi.useRealTimers()
   })
 
-  it('requests the catalogue ad plan first and keeps the film off the screen during the pre-roll', async () => {
+  it('starts the KINOSOTA intro first while fetching the ad plan and stream in parallel', async () => {
     await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
     expect(planCalls()).toEqual(['/ads/plan/movie/m1?surface=telegram_browser'])
-    expect(adMedia().exists()).toBe(true)
-    expect(adMedia().attributes('src')).toBe(CREATIVE.media_url)
-    // the stream is prepared in parallel (zero-gap start) but is not attached to <video> yet
-    expect(api.startPlayback).toHaveBeenCalledWith('m1')
-    expect(film().attributes('src')).toBeUndefined()
-    expect(introLayer().exists()).toBe(false)
-    expect(wrapper!.find('[data-testid="tv-player-loading"]').exists()).toBe(false)
-  })
-
-  it('after the pre-roll the KINOSOTA intro plays, and only then the film starts', async () => {
-    await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
-    await adMedia().trigger('playing')
-    await adMedia().trigger('ended')
-    for (let i = 0; i < 3; i++) { await flushPromises(); await nextTick() }
-
     expect(introLayer().exists()).toBe(true)
     const stub = wrapper!.get('[data-testid="cinema-intro-stub"]')
     expect(stub.attributes('data-target')).toBe('browser_telegram')
     expect(stub.attributes('data-active')).toBe('true')
+    // Pre-roll is warming silently while intro plays, not active on screen yet
+    expect(wrapper!.get('[data-testid="tv-ad-container"]').classes()).not.toContain('visible')
+    expect(api.startPlayback).toHaveBeenCalledWith('m1')
     expect(film().attributes('src')).toBeUndefined()
+    expect(wrapper!.find('[data-testid="tv-player-loading"]').exists()).toBe(false)
+  })
+
+  it('after the intro the pre-roll ad plays, and only then the film starts', async () => {
+    await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
+    await finishIntro()
+
+    expect(introLayer().exists()).toBe(false)
+    expect(wrapper!.get('[data-testid="tv-ad-container"]').classes()).toContain('visible')
+    expect(adMedia().exists()).toBe(true)
+    expect(adMedia().attributes('src')).toBe(CREATIVE.media_url)
+    expect(film().attributes('src')).toBeUndefined()
+
+    await adMedia().trigger('playing')
+    await adMedia().trigger('ended')
+    for (let i = 0; i < 3; i++) { await flushPromises(); await nextTick() }
+
+    expect(wrapper!.get('[data-testid="tv-ad-container"]').classes()).not.toContain('visible')
     expect(api.request.mock.calls.some(call => String(call[1]?.body ?? '').includes('impression'))).toBe(true)
     expect(api.request.mock.calls.some(call => String(call[1]?.body ?? '').includes('completion'))).toBe(true)
-
-    await finishIntro()
-    expect(introLayer().exists()).toBe(false)
     expect(film().attributes('src')).toBe('https://node.example/m1.mp4')
     expect(play.mock.contexts).toContain(film().element)
   })
@@ -172,11 +175,11 @@ describe('TV player: pre-roll → KINOSOTA intro → film', () => {
     expect(film().attributes('src')).toBe('https://stream.example/1399.mp4')
   })
 
-  it('PRO / empty plan: no ad media, straight to the intro, then the film', async () => {
+  it('PRO / empty plan: straight from the intro to the film with no pre-roll phase', async () => {
     planWith(EMPTY)
     await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
-    expect(adMedia().exists()).toBe(false)
     expect(introLayer().exists()).toBe(true)
+    expect(wrapper!.get('[data-testid="tv-ad-container"]').classes()).not.toContain('visible')
     expect(film().attributes('src')).toBeUndefined()
     await finishIntro()
     expect(film().attributes('src')).toBe('https://node.example/m1.mp4')
@@ -184,6 +187,7 @@ describe('TV player: pre-roll → KINOSOTA intro → film', () => {
 
   it('the remote cannot seek, pause or skip the ad; Back leaves the player', async () => {
     await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
+    await finishIntro()
     press('ArrowRight'); press('Enter'); press('ArrowDown'); await nextTick()
     expect(wrapper!.find('[data-testid="tv-seek"]').exists()).toBe(false)
     expect(wrapper!.find('[data-testid="tv-panel"]').exists()).toBe(false)
@@ -193,7 +197,7 @@ describe('TV player: pre-roll → KINOSOTA intro → film', () => {
     expect(router.currentRoute.value.path).toBe('/tv')
   })
 
-  it('an intro switched off in the admin never holds the film', async () => {
+  it('an intro switched off in the admin plays pre-roll directly when present, or the film when empty', async () => {
     intro.enabled = false
     planWith(EMPTY)
     await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })

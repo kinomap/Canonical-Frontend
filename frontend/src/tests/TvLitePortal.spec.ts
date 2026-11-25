@@ -497,7 +497,7 @@ describe('Lite TV portal behaviour', () => {
     expect(formatTime(3725)).toBe('1:02:05')
   })
 
-  it('plays pre-roll ad -> intro -> film in sequence and requests ad with tv=true', async () => {
+  it('plays intro -> pre-roll ad -> film in sequence (matching site order) and requests ad with tv=true', async () => {
     routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
     routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-1', media_url: '/tv-ad/tg-node-1/ad-1.mp4', duration_sec: 15, skip_after: null } } })
     routes.push({ method: 'POST', path: '/ads/events/del-1', body: { ok: true } })
@@ -508,13 +508,19 @@ describe('Lite TV portal behaviour', () => {
     const prep = sent.find(item => item.url === '/api/v1/ads/prepare')
     expect(JSON.parse(prep!.body!)).toEqual({ plan_token: 'plan-1', cue_id: 'pre1', tv: true })
     const video = document.getElementById('lite-video') as HTMLVideoElement
-    expect(video.getAttribute('src')).toBe('/tv-ad/tg-node-1/ad-1.mp4')
-    video.dispatchEvent(new Event('ended'))
-    await flush()
-    // HTTP TV contour: an https:// intro link on our own host is played over http://
+    // 1) Intro plays first (HTTP TV contour: https:// intro on our own host is played over http://)
     expect(video.getAttribute('src')).toBe('http://watch.scenrix.com/media/cinema-intro/clip.mp4')
+    expect(sent.some(item => item.url === '/api/v1/ads/events/del-1')).toBe(false)
     video.dispatchEvent(new Event('ended'))
     await flush()
+    // 2) Pre-roll ad plays after intro; impression fires when ad starts playing
+    expect(video.getAttribute('src')).toBe('/tv-ad/tg-node-1/ad-1.mp4')
+    video.dispatchEvent(new Event('playing'))
+    await flush()
+    expect(sent.some(item => item.url === '/api/v1/ads/events/del-1' && item.body?.includes('"impression"'))).toBe(true)
+    video.dispatchEvent(new Event('ended'))
+    await flush()
+    // 3) Film plays straight after pre-roll (never a second intro)
     expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
   })
 
@@ -704,17 +710,17 @@ describe('Lite TV portal behaviour', () => {
       ; (window as unknown as { webapis?: unknown }).webapis = {
         avplay: {
           getAVPlay: (ok: (av: unknown) => void) => ok({
-            init: () => {},
+            init: () => { },
             setPlayerPluginObject: () => null,
             set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
             open: () => false,
-            play: () => {},
-            stop: () => {},
-            destroy: () => {},
-            setDisplayArea: () => {},
+            play: () => { },
+            stop: () => { },
+            destroy: () => { },
+            setDisplayArea: () => { },
             getVideoResolution: () => '1920|1080',
-            setCropArea: () => {},
-            startSubtitle: () => {},
+            setCropArea: () => { },
+            startSubtitle: () => { },
             getDuration: () => 0,
           }),
         },
@@ -754,17 +760,17 @@ describe('Lite TV portal behaviour', () => {
       ; (window as unknown as { webapis?: unknown }).webapis = {
         avplay: {
           getAVPlay: (ok: (av: unknown) => void) => ok({
-            init: () => {},
+            init: () => { },
             setPlayerPluginObject: () => null,
             set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
             open: () => { calls.push('open'); return undefined },
             play: () => { calls.push('play') },
-            stop: () => {},
-            destroy: () => {},
+            stop: () => { },
+            destroy: () => { },
             setDisplayArea: (r: { width: number; height: number }) => { calls.push('area'); areas.push(`${r.width}x${r.height}`) },
             getVideoResolution: () => '1920|1080',
             setCropArea: (_ok: () => void, _err: () => void, r: { width: number; height: number }) => crops.push(`${r.width}x${r.height}`),
-            startSubtitle: () => {},
+            startSubtitle: () => { },
             getDuration: () => 120000,
           }),
         },
@@ -796,17 +802,17 @@ describe('Lite TV portal behaviour', () => {
       ; (window as unknown as { webapis?: unknown }).webapis = {
         avplay: {
           getAVPlay: (ok: (av: unknown) => void) => ok({
-            init: () => {},
+            init: () => { },
             setPlayerPluginObject: () => null,
             set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
             open: () => true,
-            play: () => {},
+            play: () => { },
             stop: () => { calls.push('stop') },
             destroy: () => { calls.push('destroy') },
-            setDisplayArea: () => {},
+            setDisplayArea: () => { },
             getVideoResolution: () => '',
-            setCropArea: () => {},
-            startSubtitle: () => {},
+            setCropArea: () => { },
+            startSubtitle: () => { },
             getDuration: () => 0,
           }),
         },
@@ -864,10 +870,10 @@ describe('Lite TV portal behaviour', () => {
               play: () => { calls.push('play') },
               stop: () => { calls.push('stop') },
               destroy: () => { calls.push('destroy') },
-              setDisplayArea: () => {},
+              setDisplayArea: () => { },
               getVideoResolution: () => '1920|1080',
-              setCropArea: () => {},
-              startSubtitle: () => {},
+              setCropArea: () => { },
+              startSubtitle: () => { },
               getDuration: () => 10026,
             }),
           },
@@ -904,17 +910,17 @@ describe('Lite TV portal behaviour', () => {
         avplay: {
           getAVPlay: (ok: (av: unknown) => void) => ok({
             status: '4',
-            init: () => {},
+            init: () => { },
             setPlayerPluginObject: () => null,
             set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
             open: (url: string) => { calls.push(`open:${url}`); return true },
-            play: () => {},
-            stop: () => {},
+            play: () => { },
+            stop: () => { },
             destroy: () => { calls.push('destroy') },
-            setDisplayArea: () => {},
+            setDisplayArea: () => { },
             getVideoResolution: () => '1920|1080',
-            setCropArea: () => {},
-            startSubtitle: () => {},
+            setCropArea: () => { },
+            startSubtitle: () => { },
             getDuration: () => 0,
           }),
         },
@@ -965,7 +971,7 @@ describe('Lite TV portal behaviour', () => {
       expect(calls).toContain('SetDisplayArea:0,0,960,540')
       expect(calls).toContain('StartPlayback:0')
       expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay Player')
-      ; (pl.OnCurrentPlayTime as (ms: number) => void)(5000)
+        ; (pl.OnCurrentPlayTime as (ms: number) => void)(5000)
       expect(lite().player.currentTime).toBe(5)
       press('', 88)
       expect(calls).toContain('Stop')
@@ -1027,7 +1033,7 @@ describe('Lite TV portal behaviour', () => {
     press('', 457) // Info
     expect(panel()?.className).toBe('lite-debug')
     expect(panel()?.textContent).toContain('UA:')
-    ;(lite() as unknown as { debug: { log: (l: string, t: string) => void } }).debug.log('info', 'hello-from-test')
+      ; (lite() as unknown as { debug: { log: (l: string, t: string) => void } }).debug.log('info', 'hello-from-test')
     expect(panel()?.textContent).toContain('hello-from-test')
     press('', 457)
     expect(panel()?.className).toContain('is-hidden')
@@ -1101,19 +1107,19 @@ describe('Lite TV portal behaviour', () => {
         avplay: {
           getAVPlay: (ok: (av: unknown) => void) => ok({
             status: '2',
-            init: () => {},
+            init: () => { },
             setPlayerPluginObject: () => null,
             set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
             open: () => { calls.push('open'); return true },
             play: () => { calls.push('play') },
-            stop: () => {},
-            destroy: () => {},
+            stop: () => { },
+            destroy: () => { },
             setDisplayArea: (r: { width: number; height: number }) => {
               areas.push(`${r.width}x${r.height}`)
               return r.width <= 960
             },
             getVideoResolution: () => '1920|1080',
-            setCropArea: () => {},
+            setCropArea: () => { },
             startSubtitle: () => { subCalled = true },
             getDuration: () => 120000,
           }),
@@ -1158,12 +1164,12 @@ describe('Lite TV portal behaviour', () => {
               setPlayerPluginObject: () => null,
               set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
               open: () => true,
-              play: () => {},
-              stop: () => {},
+              play: () => { },
+              stop: () => { },
               destroy: () => { destroys.push(idx) },
               setDisplayArea: () => true,
               getVideoResolution: () => '1920|1080',
-              setCropArea: () => {},
+              setCropArea: () => { },
               getDuration: () => 120000,
             })
           },
@@ -1209,9 +1215,9 @@ describe('Lite TV portal behaviour', () => {
             init: (opts: typeof receivedHolder.opts) => { receivedHolder.opts = opts },
             setPlayerPluginObject: () => { setPluginCalled = true; return null },
             open: () => true,
-            play: () => {},
-            stop: () => {},
-            destroy: () => {},
+            play: () => { },
+            stop: () => { },
+            destroy: () => { },
             getDuration: () => 60000,
           }),
         },
@@ -1255,6 +1261,101 @@ describe('Lite TV portal behaviour', () => {
       press('', 88)
       expect(sefCalls).toContain('Close')
     } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('starts intro right away while a slow torrent ticket loads in background, then plays pre-roll -> film', async () => {
+    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: '/media/cinema-intro/clip.mp4' } })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-slow', media_url: '/tv-ad/n1/slow.mp4', duration_sec: 12, skip_after: null } } })
+    routes.push({ method: 'POST', path: '/ads/events/del-slow', body: { ok: true } })
+    await bootLite()
+    const PrevXhr = window.XMLHttpRequest
+    let releaseTicket!: () => void
+    window.XMLHttpRequest = class extends PrevXhr {
+      private reqUrl = ''
+      open(method: string, url: string) { this.reqUrl = url; super.open(method, url) }
+      send(body: string | null) {
+        if (this.reqUrl === '/api/v1/torrents/playback-ticket') {
+          void new Promise<void>(resolve => { releaseTicket = resolve }).then(() => super.send(body))
+          return
+        }
+        super.send(body)
+      }
+    } as unknown as typeof XMLHttpRequest
+    try {
+      press('', 29443)
+      await flush()
+      const video = document.getElementById('lite-video') as HTMLVideoElement
+      // Intro plays while playback-ticket is still pending
+      expect(video.getAttribute('src')).toBe('/media/cinema-intro/clip.mp4')
+      video.dispatchEvent(new Event('ended'))
+      await flush()
+      // Still waiting for slow stream: holds calmly on "Подготовка потока…" without error
+      expect(document.getElementById('lite-player-message')?.textContent).toContain('Подготовка потока')
+      releaseTicket()
+      await flush()
+      // Now Pre-roll Ad -> Film
+      expect(video.getAttribute('src')).toBe('/tv-ad/n1/slow.mp4')
+      video.dispatchEvent(new Event('ended'))
+      await flush()
+      expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
+    } finally {
+      window.XMLHttpRequest = PrevXhr
+    }
+  })
+
+  it('plays pre-roll -> film directly when admin disables intro for that target', async () => {
+    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: false, targets: { browser_torrents: false }, video_url: '/media/cinema-intro/clip.mp4' } })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-2', media_url: '/tv-ad/n1/only.mp4', duration_sec: 10, skip_after: null } } })
+    routes.push({ method: 'POST', path: '/ads/events/del-2', body: { ok: true } })
+    await bootLite()
+    press('', 29443)
+    await flush()
+    const video = document.getElementById('lite-video') as HTMLVideoElement
+    expect(video.getAttribute('src')).toBe('/tv-ad/n1/only.mp4')
+    video.dispatchEvent(new Event('ended'))
+    await flush()
+    expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
+  })
+
+  it('explains >1080p Orsay hardware limit clearly and stops pointless cascade on AvplayUnsupportedVideoResolutionError', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
+    const hook: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
+    let opens = 0
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: {
+          getAVPlay: (ok: (av: unknown) => void) => ok({
+            status: '4',
+            init: () => {},
+            setPlayerPluginObject: () => null,
+            set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
+            open: () => { opens += 1; return true },
+            play: () => {},
+            stop: () => {},
+            destroy: () => {},
+            setDisplayArea: () => true,
+            getVideoResolution: () => '1924|1082',
+            setCropArea: () => {},
+            getDuration: () => 0,
+          }),
+        },
+      }
+    try {
+      await bootLite()
+      press('', 29443)
+      await flush()
+      hook.fn?.(9)
+      hook.fn?.(6, 4) // 1924x1082 + HARDWARE RENDER_ERROR 6:4 -> fail fast cleanly without looping
+      expect(opens).toBe(1)
+      const msg = document.getElementById('lite-player-message')?.textContent || ''
+      expect(msg).toContain('1924x1082')
+      expect(msg).toContain('1920×1080')
+    } finally {
+      delete (window as unknown as { webapis?: unknown }).webapis
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
     }
   })

@@ -2004,12 +2004,14 @@
     var player = {
         card: null, sessionId: null, heartbeat: null, barTimer: null, loadId: 0,
         ready: false, stallTimer: null, firstFrame: false, problem: false, focusAct: 0,
-        phase: 'film', /* ad | intro | film */
+        phase: 'film', /* intro | ad | film */
         engineKind: 'html5',
-        lastNativeErr: '', orsaySefTried: false, orsayTried: {}, winSrcLogged: false, winSrcMedia: false,
+        lastNativeErr: '', lastNativeRes: '', orsaySefTried: false, orsayTried: {}, winSrcLogged: false, winSrcMedia: false, currentOpenUrl: '',
         paused: true, currentTime: 0, duration: 0,
         adTimer: null, adStartedAt: 0, adElapsed: 0, adDeliveryId: null, adSkipAfter: null, adCanSkip: false,
-        introTimer: null, introConfig: null, adPlan: null, stream: null,
+        adImpressionSent: false, adPlanStarted: false, adPrepDone: false, adPrepared: null, adPrepPromise: null,
+        introTimer: null, introConfig: null, introDone: false, waitingForStream: false,
+        adPlan: null, stream: null, streamDone: false, streamError: null,
         tracks: [], trackOpen: false, trackFocus: 0,
         /* engineSeq invalidates every native callback of a released engine; the timers are the only
            deferred opens and are cancelled on every new stage, rescue or close. */
@@ -2116,7 +2118,7 @@
         return !canUseOrsayAvplay() && !!(window.webapis && window.webapis.avplay && isCallableNative(window.webapis.avplay.open));
     }
 
-    var nativeSession = { kind: 'html5', av: null, plugin: null, sef: null, pl: null, activeTrack: 0, trail: '', openedAt: 0, tracksLogged: false };
+    var nativeSession = { kind: 'html5', phase: 'film', av: null, plugin: null, sef: null, pl: null, activeTrack: 0, trail: '', openedAt: 0, tracksLogged: false };
 
     /* Compact per-session event trail for tvdiag: "9,12,13*4,14=0*6" (repeats of the last type are counted;
        14+ = CURRENT_PLAYBACK_TIME with ms > 0, 14=0 = the clock ticks but stays at 0). */
@@ -2401,7 +2403,7 @@
         if (engineBusy()) player.lastReleaseAt = Date.now();
         if (kind !== 'html5' && kind !== 'tizen') {
             player.nativeReleasedAt = Date.now();
-            reportTvDiag('rel', kind + '|' + player.phase + '|ev=' + (nativeSession.trail || '-'));
+            reportTvDiag('rel', kind + '|' + (nativeSession.phase || player.phase) + '|ev=' + (nativeSession.trail || '-'));
         }
         muteNativeCallbacks();
         if ((kind === 'orsay' || kind === 'orsay-sdk') && nativeSession.av) {
@@ -2759,6 +2761,12 @@
         }, ms || STALL_MS);
     }
 
+    function sendAdImpression() {
+        if (player.phase !== 'ad' || !player.adDeliveryId || player.adImpressionSent) return;
+        player.adImpressionSent = true;
+        api.adEvent(player.adDeliveryId, 'impression')['catch'](function () {});
+    }
+
     function markFrame() {
         player.firstFrame = true;
         player.problem = false;
@@ -2767,6 +2775,7 @@
         clearStall();
         playerMessage('');
         hide($('lite-player-actions'));
+        sendAdImpression();
         readEngineTracks();
     }
 
@@ -2797,11 +2806,24 @@
         else { addClass(other, 'is-focused'); removeClass(retry, 'is-focused'); }
     }
 
+    function exceedsFullHd(resStr) {
+        if (!resStr) return false;
+        var m = String(resStr).match(/(\d+)\s*[x|]\s*(\d+)/);
+        if (!m) return false;
+        return (Number(m[1]) || 0) > 1920 || (Number(m[2]) || 0) > 1080;
+    }
+
+    function isUnsupportedResolutionErr(errMsg, resStr) {
+        if (errMsg && String(errMsg).indexOf('UnsupportedVideoResolution') !== -1) return true;
+        return exceedsFullHd(resStr) && String(errMsg).indexOf('6:4') !== -1;
+    }
+
     function playerProblem(kind) {
         clearStall();
         var prevKind = player.engineKind;
         var nativeErr = player.lastNativeErr;
-        reportTvDiag('prob', kind + '|' + prevKind + '|' + player.phase + (nativeErr ? '|' + nativeErr : ''));
+        var nativeRes = player.lastNativeRes;
+        reportTvDiag('prob', kind + '|' + prevKind + '|' + player.phase + (nativeErr ? '|' + nativeErr : '') + (nativeRes ? '|' + nativeRes : ''));
         if (player.phase === 'ad' || player.phase === 'intro') {
             debugLog('warn', player.phase + ' ' + kind + ': skipping to the next stage');
             advanceFromCommercial('error');
@@ -2815,6 +2837,9 @@
         player.focusAct = 0;
         detachVideo(false, prevKind !== 'html5');
         var hint = codecHint(card);
+        if (!hint && isUnsupportedResolutionErr(nativeErr, nativeRes)) {
+            hint = 'Разрешение этого видео (' + (nativeRes || 'больше 1080p') + ') превышает ограничение этого телевизора (1920×1080).';
+        }
         if (!hint && nativeErr) {
             var errParts = String(nativeErr).split(':');
             if (errParts[0] === '6' && errParts[1] === '2') hint = 'Декодер ТВ (6:2): неподдерживаемый видеокодек.';
@@ -2855,7 +2880,10 @@
 
     function enterNativePlane(kind, label) {
         nativeSession.kind = kind;
+        nativeSession.phase = player.phase;
         player.engineKind = kind;
+        player.lastNativeErr = '';
+        player.lastNativeRes = '';
         setEngineLabel(label);
         var video = $('lite-video');
         if (video) {
@@ -2982,7 +3010,7 @@
                 timer = setTimeout(function () {
                     if (!called) reportTvDiag('win_src', curTag + '>timeout');
                     finish();
-                }, 900);
+                }, 1200);
                 tvWin.setSource({ type: target, number: null }, function () {
                     player.winSrcMedia = true;
                     reportTvDiag('win_src', curTag + '>ok');
@@ -3074,7 +3102,7 @@
                 if (seq !== player.engineSeq) return;
                 player.orsayTried.sef = true;
                 player.lastNativeErr = type + (data1 !== undefined ? ':' + data1 : '');
-                if (!player.firstFrame && !ORSAY_FORCE_ENGINE && player.phase === 'film') {
+                if (!player.firstFrame && !ORSAY_FORCE_ENGINE && player.phase === 'film' && !isUnsupportedResolutionErr(player.lastNativeErr, player.lastNativeRes)) {
                     var nextEng = pickOrsayEngine();
                     if (nextEng) {
                         clearStall();
@@ -3100,6 +3128,8 @@
                     try { area9 = sef.Execute('SetDisplayArea', 0, 0, grid.width, grid.height); } catch (eArea9) { area9 = 'ERR:' + errText(eArea9); }
                     var res9 = '-';
                     try { res9 = sef.Execute('GetVideoResolution') || '-'; } catch (eRes9) {}
+                    var dims9 = parseOrsayResolution(res9);
+                    if (dims9) player.lastNativeRes = dims9.width + 'x' + dims9.height;
                     reportTvDiag('sef_area9', String(area9) + '|g=' + grid.width + 'x' + grid.height + '|r=' + String(res9));
                     try { player.duration = (Number(sef.Execute('GetDuration')) || 0) / 1000; } catch (eDur) {}
                     readEngineTracks();
@@ -3243,7 +3273,8 @@
             pl.OnBufferingComplete = function () { if (live()) { noteNativeEvent(12); player.paused = false; playerMessage(''); updateProgress(); showBar(); } };
             pl.OnConnectionFailed = pl.OnNetworkDisconnected = pl.OnRenderError = pl.OnStreamNotFound = function (code) {
                 if (!live()) return;
-                debugLog('error', 'Player stream error');
+                player.lastNativeErr = 'pl:' + (code !== undefined ? code : 'err');
+                debugLog('error', 'Player stream error (' + player.lastNativeErr + ')');
                 reportTvDiag('pl_ev', 'err|' + (code !== undefined ? code : '-'));
                 playerProblem('error');
             };
@@ -3357,6 +3388,7 @@
         var cW = res ? res.width : 0;
         var cH = res ? res.height : 0;
         if (cW > 0 && cH > 0) {
+            player.lastNativeRes = cW + 'x' + cH;
             if (cW / cH < (grid.width / grid.height) + 0.02) {
                 aW = Math.round(grid.height * cW / cH);
                 aX = Math.round((grid.width - aW) / 2);
@@ -3447,7 +3479,7 @@
                         if (!live()) return;
                         markOrsayEngineTried('avplay');
                         player.lastNativeErr = type + (data !== undefined ? ':' + data : '');
-                        if (!player.firstFrame && !player.orsaySefTried && player.phase === 'film') {
+                        if (!player.firstFrame && !player.orsaySefTried && player.phase === 'film' && !isUnsupportedResolutionErr(player.lastNativeErr, player.lastNativeRes)) {
                             player.orsaySefTried = true;
                             var st = '-';
                             try { st = String(av.status); } catch (eSt) {}
@@ -3575,7 +3607,7 @@
             markOrsayEngineTried('avsdk');
             player.lastNativeErr = errMsg || tag;
             reportTvDiag(tag, player.phase + '|' + (errMsg || 'fail'));
-            if (!player.firstFrame && !ORSAY_FORCE_ENGINE) {
+            if (!player.firstFrame && !ORSAY_FORCE_ENGINE && !isUnsupportedResolutionErr(player.lastNativeErr, player.lastNativeRes)) {
                 var nextEng = pickOrsayEngine();
                 if (nextEng) {
                     clearStall();
@@ -3856,26 +3888,30 @@
         }
     }
 
+    var AD_PREPARE_WAIT_MS = 2500;
+
     function advanceFromCommercial(reason) {
         var id = player.loadId;
         clearAdTimers();
+        if (player.phase === 'intro') {
+            finishIntroStage(id);
+            return;
+        }
         if (player.phase === 'ad') {
             if (player.adDeliveryId && (reason === 'ended' || reason === 'skip')) {
+                sendAdImpression();
                 api.adEvent(player.adDeliveryId, reason === 'skip' ? 'skip' : 'completion')['catch'](function () {});
             }
             player.adDeliveryId = null;
             player.adSkipAfter = null;
             player.adCanSkip = false;
-            startIntroOrFilm(id);
-            return;
-        }
-        if (player.phase === 'intro') {
+            player.adImpressionSent = false;
             startFilmStage(id);
         }
     }
 
     function onPlaybackEnded() {
-        if (player.phase === 'ad' || player.phase === 'intro') {
+        if (player.phase === 'intro' || player.phase === 'ad') {
             advanceFromCommercial('ended');
             return;
         }
@@ -3890,21 +3926,122 @@
         return true;
     }
 
-    function startIntroOrFilm(loadId) {
+    function abortStreamError(error, loadId) {
         if (loadId !== player.loadId) return;
+        clearAdTimers();
+        clearStall();
+        detachVideo(true);
+        player.phase = 'film';
+        player.waitingForStream = false;
+        player.ready = false;
+        var st = error && error.status;
         var card = player.card;
-        var intro = player.introConfig;
-        if (introEnabledForCard(intro, card)) {
-            player.phase = 'intro';
-            renderTrackStatus();
-            playerMessage('');
-            player.introTimer = setTimeout(function () {
-                if (loadId === player.loadId && player.phase === 'intro') startFilmStage(loadId);
-            }, 15000);
-            openWithEngine(intro.video_url, loadId);
+        if (st === 403) {
+            var isProError = error && error.data && (error.data.detail === 'Нужна подписка PRO' || String(error.data.detail).indexOf('подписк') !== -1);
+            var hasToken = !!readToken();
+            if (card && card.play && card.play.src === 'torrent' && (isProError || hasToken)) {
+                closePlayer();
+                openProModal();
+                return;
+            }
+            player.needsAuth = true;
+        } else if (st === 401) {
+            player.needsAuth = true;
+        }
+        playerMessage(failText(error));
+        showBar();
+    }
+
+    function beginBackgroundAds(loadId, play, episode) {
+        if (player.adPlanStarted) return;
+        player.adPlanStarted = true;
+        player.adPrepPromise = api.adPlan(play, episode)['catch'](function () { return null; }).then(function (plan) {
+            if (loadId !== player.loadId) return null;
+            player.adPlan = plan;
+            var preCue = null;
+            if (plan && plan.plan_token && plan.cue_points && plan.cue_points.length) {
+                for (var c = 0; c < plan.cue_points.length; c++) {
+                    if (plan.cue_points[c] && plan.cue_points[c].kind === 'pre') { preCue = plan.cue_points[c]; break; }
+                }
+            }
+            if (!preCue || !plan.plan_token) {
+                player.adPrepared = null;
+                player.adPrepDone = true;
+                return null;
+            }
+            return api.adPrepare(plan.plan_token, preCue.id)['catch'](function () { return null; }).then(function (prep) {
+                if (loadId !== player.loadId) return null;
+                var ad = prep && prep.ad && prep.ad.media_url ? prep.ad : null;
+                player.adPrepared = ad;
+                player.adPrepDone = true;
+                return ad;
+            });
+        });
+    }
+
+    function startAdStage(loadId, ad) {
+        if (loadId !== player.loadId) return;
+        clearAdTimers();
+        player.phase = 'ad';
+        player.adDeliveryId = ad.delivery_id;
+        player.adSkipAfter = ad.skip_after;
+        player.adCanSkip = false;
+        player.adImpressionSent = false;
+        renderTrackStatus();
+        updateAdOverlay(0, ad.duration_sec || 0);
+        var adLimit = ad.duration_sec ? Math.min(35000, Math.max(12000, (Number(ad.duration_sec) + 5) * 1000)) : 30000;
+        player.adTimer = setTimeout(function () {
+            if (loadId === player.loadId && player.phase === 'ad') advanceFromCommercial('timeout');
+        }, adLimit);
+        openWithEngine(ad.media_url, loadId);
+    }
+
+    function proceedAfterIntro(loadId) {
+        if (loadId !== player.loadId) return;
+        if (player.streamError) { abortStreamError(player.streamError, loadId); return; }
+        if (!player.streamDone) {
+            player.waitingForStream = true;
+            detachVideo(false, IS_ORSAY || IS_TIZEN);
+            playerMessage('Подготовка потока…');
+            showBar();
+            return;
+        }
+        var stream = player.stream;
+        if (!stream || !stream.url) { abortStreamError(noStream(), loadId); return; }
+        if (player.adPrepDone) {
+            if (player.adPrepared && player.adPrepared.media_url) { startAdStage(loadId, player.adPrepared); return; }
+            startFilmStage(loadId);
+            return;
+        }
+        if (player.adPrepPromise) {
+            var settled = false;
+            var waitAd = setTimeout(function () {
+                if (settled || loadId !== player.loadId) return;
+                settled = true;
+                startFilmStage(loadId);
+            }, AD_PREPARE_WAIT_MS);
+            player.adPrepPromise.then(function (ad) {
+                clearTimeout(waitAd);
+                if (settled || loadId !== player.loadId) return;
+                settled = true;
+                if (ad && ad.media_url) { startAdStage(loadId, ad); return; }
+                startFilmStage(loadId);
+            }, function () {
+                clearTimeout(waitAd);
+                if (settled || loadId !== player.loadId) return;
+                settled = true;
+                startFilmStage(loadId);
+            });
             return;
         }
         startFilmStage(loadId);
+    }
+
+    function finishIntroStage(loadId) {
+        if (loadId !== player.loadId || player.introDone) return;
+        player.introDone = true;
+        clearAdTimers();
+        proceedAfterIntro(loadId);
     }
 
     function startFilmStage(loadId) {
@@ -3913,11 +4050,15 @@
         var stream = player.stream;
         if (!stream || !stream.url) { playerProblem('error'); return; }
         player.phase = 'film';
+        player.waitingForStream = false;
         renderTrackStatus();
         playerMessage('Запускаем поток…');
         openWithEngine(stream.url, loadId);
     }
 
+    /* Strict website playback sequence: Intro -> Pre-roll Ad (if planned & prepared) -> Film.
+       The intro starts as soon as /cinema/intro permits it while stream resolution and pre-roll
+       preparation happen concurrently in the background without touching a second decoder. */
     function startStream() {
         var card = player.card;
         if (!card) return;
@@ -3930,40 +4071,51 @@
         player.firstFrame = false;
         player.ready = false;
         player.lastNativeErr = '';
+        player.lastNativeRes = '';
         player.orsaySefTried = false;
         player.orsayTried = {};
         player.winSrcLogged = false;
         player.winSrcMedia = false;
         player.currentOpenUrl = '';
         player.needsAuth = false;
-        player.phase = 'film';
+        player.phase = 'intro';
         player.stream = null;
+        player.streamDone = false;
+        player.streamError = null;
         player.introConfig = null;
+        player.introDone = false;
+        player.waitingForStream = false;
         player.adPlan = null;
+        player.adPlanStarted = false;
+        player.adPrepDone = false;
+        player.adPrepared = null;
+        player.adPrepPromise = null;
         player.adDeliveryId = null;
         player.adSkipAfter = null;
         player.adCanSkip = false;
+        player.adImpressionSent = false;
         playerMessage('Загружаем видео…');
         showBar();
 
-        var preCueCheck = (card.play.kind === 'series' || card.play.kind === 'tv')
-            ? Promise.resolve(null)
-            : api.adPlan(card.play, null)['catch'](function () { return null; });
-        var introReq = api.introConfig()['catch'](function () { return null; });
-        var streamReq = resolveStream(card.play);
+        if (card.play.kind !== 'series' && card.play.kind !== 'tv') {
+            beginBackgroundAds(id, card.play, null);
+        }
 
-        settleAll([streamReq, introReq, preCueCheck]).then(function (results) {
+        var introReq = api.introConfig()['catch'](function () { return null; });
+        resolveStream(card.play).then(function (stream) {
             if (id !== player.loadId) {
-                if (results[0] && results[0].ok && results[0].value && results[0].value.sessionId) {
-                    api.stopPlayback(results[0].value.sessionId)['catch'](function () {});
-                }
+                if (stream && stream.sessionId) api.stopPlayback(stream.sessionId)['catch'](function () {});
                 return;
             }
-            var streamRes = results[0];
-            if (!streamRes || !streamRes.ok) throw (streamRes ? streamRes.error : noStream());
-            var stream = streamRes.value;
-            if (!stream || !stream.url) throw noStream();
+            if (!stream || !stream.url) {
+                var emptyErr = noStream();
+                player.streamError = emptyErr;
+                player.streamDone = true;
+                abortStreamError(emptyErr, id);
+                return;
+            }
             player.stream = stream;
+            player.streamDone = true;
             if (stream.sessionId) {
                 player.sessionId = stream.sessionId;
                 var every = (stream.heartbeat > 0 ? stream.heartbeat : 30) * 1000;
@@ -3971,65 +4123,37 @@
                     if (player.sessionId) api.heartbeat(player.sessionId)['catch'](function () {});
                 }, every);
             }
-            var intro = (results[1] && results[1].ok) ? results[1].value : null;
-            player.introConfig = intro;
-            var resolvedPlan = (results[2] && results[2].ok) ? results[2].value : null;
-            var planReady = resolvedPlan ? Promise.resolve(resolvedPlan) : (stream.adEpisode ? api.adPlan(card.play, stream.adEpisode)['catch'](function () { return null; }) : Promise.resolve(null));
-            planReady.then(function (plan) {
-                if (id !== player.loadId) return;
-                var preCue = null;
-                if (plan && plan.plan_token && plan.cue_points && plan.cue_points.length) {
-                    for (var c = 0; c < plan.cue_points.length; c++) {
-                        if (plan.cue_points[c] && plan.cue_points[c].kind === 'pre') { preCue = plan.cue_points[c]; break; }
-                    }
-                }
-                waitNativePlatform(function () {
-                    if (id !== player.loadId) return;
-                    if (preCue && plan.plan_token) {
-                        api.adPrepare(plan.plan_token, preCue.id).then(function (prep) {
-                            if (id !== player.loadId) return;
-                            var ad = prep && prep.ad ? prep.ad : null;
-                            if (ad && ad.media_url) {
-                                player.phase = 'ad';
-                                player.adDeliveryId = ad.delivery_id;
-                                player.adSkipAfter = ad.skip_after;
-                                player.adCanSkip = false;
-                                renderTrackStatus();
-                                updateAdOverlay(0, ad.duration_sec || 0);
-                                if (ad.delivery_id) api.adEvent(ad.delivery_id, 'impression')['catch'](function () {});
-                                var adLimit = ad.duration_sec ? Math.min(35000, Math.max(12000, (Number(ad.duration_sec) + 5) * 1000)) : 30000;
-                                player.adTimer = setTimeout(function () {
-                                    if (id === player.loadId && player.phase === 'ad') advanceFromCommercial('timeout');
-                                }, adLimit);
-                                openWithEngine(ad.media_url, id);
-                            } else {
-                                startIntroOrFilm(id);
-                            }
-                        })['catch'](function () { startIntroOrFilm(id); });
-                    } else {
-                        startIntroOrFilm(id);
-                    }
-                });
-            });
-        })['catch'](function (error) {
+            if ((card.play.kind === 'series' || card.play.kind === 'tv') && !player.adPlanStarted) {
+                beginBackgroundAds(id, card.play, stream.adEpisode || null);
+            }
+            if (player.waitingForStream) {
+                player.waitingForStream = false;
+                proceedAfterIntro(id);
+            }
+        }, function (error) {
             if (id !== player.loadId) return;
-            clearStall();
-            player.ready = false;
-            var st = error && error.status;
-            if (st === 403) {
-                var isProError = error && error.data && (error.data.detail === 'Нужна подписка PRO' || String(error.data.detail).indexOf('подписк') !== -1);
-                var hasToken = !!readToken();
-                if (card && card.play && card.play.src === 'torrent' && (isProError || hasToken)) {
-                    closePlayer();
-                    openProModal();
+            player.streamError = error || noStream();
+            player.streamDone = true;
+            abortStreamError(player.streamError, id);
+        });
+
+        introReq.then(function (intro) {
+            if (id !== player.loadId || player.streamError) return;
+            player.introConfig = intro;
+            waitNativePlatform(function () {
+                if (id !== player.loadId || player.streamError) return;
+                if (introEnabledForCard(intro, card)) {
+                    player.phase = 'intro';
+                    renderTrackStatus();
+                    playerMessage('');
+                    player.introTimer = setTimeout(function () {
+                        if (id === player.loadId && player.phase === 'intro') finishIntroStage(id);
+                    }, 15000);
+                    openWithEngine(intro.video_url, id);
                     return;
                 }
-                player.needsAuth = true;
-            } else if (st === 401) {
-                player.needsAuth = true;
-            }
-            playerMessage(failText(error));
-            showBar();
+                finishIntroStage(id);
+            });
         });
     }
 
