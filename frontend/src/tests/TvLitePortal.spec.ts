@@ -779,4 +779,36 @@ describe('Lite TV portal behaviour', () => {
     expect(lite().normalizeTvUrl('https://cdn.example.com/a.mp4')).toBe('https://cdn.example.com/a.mp4')
     expect(lite().normalizeTvUrl('/tv-ad/n1/ad.mp4')).toBe('/tv-ad/n1/ad.mp4')
   })
+
+  it('uses SEF even when StartPlayback returns undefined, re-applies 960x540 on STREAM_INFO_READY and clears transparent plane cleanly', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
+    const sefCalls: string[] = []
+    const sefHook: { fn: ((type: number, data?: unknown) => void) | null } = { fn: null }
+    try {
+      await bootLite()
+      const sefEl = document.getElementById('pluginObjectSef') as HTMLElement & Record<string, unknown>
+      sefEl.Open = () => 1
+      sefEl.Execute = (cmd: string, ...args: unknown[]) => {
+        sefCalls.push(`Exec:${cmd}:${args.join(',')}`)
+        if (cmd === 'StartPlayback') return undefined
+        return 1
+      }
+      sefEl.Close = () => { sefCalls.push('Close') }
+      Object.defineProperty(sefEl, 'OnEvent', {
+        configurable: true,
+        set(fn: (type: number, data?: unknown) => void) { sefHook.fn = fn },
+      })
+      press('', 29443)
+      await flush()
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay SEF')
+      expect(document.body.style.backgroundColor).toBe('transparent')
+      sefHook.fn?.(9)
+      expect(sefCalls.filter(c => c === 'Exec:SetDisplayArea:0,0,960,540').length).toBeGreaterThanOrEqual(2)
+      press('', 88)
+      expect(document.body.style.backgroundColor).toBe('')
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
 })

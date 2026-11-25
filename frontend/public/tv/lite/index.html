@@ -11,12 +11,12 @@
   Lampa-grade Smart TV interface for 2012–2017 Smart TVs (Samsung Orsay WebKit 537, LG Netcast/webOS, Android boxes).
   Strict ES5, hardware accelerated CSS without backdrop-filter, XHR with Promise polyfill.
 -->
-<link rel="stylesheet" href="/assets/tv-lite.css?v=7">
+<link rel="stylesheet" href="/assets/tv-lite.css?v=8">
 </head>
 <body>
 <!-- Samsung Orsay (2010-2014) NPAPI plugins are declared statically, before any script: Maple WebKit binds
-     SEF / Player / Infolink objects reliably only at parse time. tv-lite.js picks SEF -> AVPlay -> Player. -->
-<div id="lite-orsay-plugins" style="position:absolute;left:-1000px;top:-1000px;width:1px;height:1px;overflow:hidden;">
+     SEF / Player / Infolink objects reliably only at parse time and inside the viewport (not clipped off-screen). -->
+<div id="lite-orsay-plugins" style="position:absolute;left:0;top:0;width:1px;height:1px;">
 <object id="pluginObjectSef" border="0" classid="clsid:SAMSUNG-INFOLINK-SEF" style="opacity:0.0;background-color:#000;width:1px;height:1px;"></object>
 <object id="pluginObjectPlayer" border="0" classid="clsid:SAMSUNG-INFOLINK-PLAYER" style="opacity:0.0;background-color:#000;width:1px;height:1px;"></object>
 <object id="pluginObjectNNavi" border="0" classid="clsid:SAMSUNG-INFOLINK-NNAVI" style="opacity:0.0;background-color:#000;width:1px;height:1px;"></object>
@@ -241,6 +241,6 @@
 
     <div id="lite-toast" class="lite-toast is-hidden"></div>
 </div>
-<script src="/assets/tv-lite.js?v=7"></script>
+<script src="/assets/tv-lite.js?v=8"></script>
 </body>
 </html>
