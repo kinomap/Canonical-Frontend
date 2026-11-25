@@ -3,7 +3,7 @@ import sys, time, subprocess, logging, os
 from html import escape
 from .engine import child_environment, native_loader
 from pathlib import Path
-from PySide6.QtCore import Qt, QEvent, QObject, QRunnable, QThreadPool, Signal, QTimer, QSize
+from PySide6.QtCore import Qt, QEvent, QObject, QRunnable, QThreadPool, Signal, Slot, QTimer, QSize
 from PySide6.QtGui import QIcon, QPixmap, QFontDatabase, QKeySequence, QShortcut
 from .theme import CinemaBackdrop, GlassFrame, PREMIUM_STYLE, icon
 from .hidpi import configure_high_dpi
@@ -18,13 +18,14 @@ from .catalog import PosterGrid, bookmarkable
 from .browse import Genres, fetch_page, filtered, page_numbers, signature, load_genres as fetch_genres
 from .filters import FilterBar
 from .preferences import Preferences,translate,movie_title
-from .settings import SettingsDrawer
+from .settings import SettingsDrawer, UpdateLockOverlay
 from .updater import Updater
 from .torrents import TorrentPage, audio_args, media_title_args
 from .deeplink import parse_launch, parse_mode
 from .direct import BUFFERING, DirectLaunchSplash, DirectPlayer, geometry_text, launch_args, stream_of
 from . import cinema as cinema_module
 from .cinema import CinemaEngine, CinemaRecovery, create_surface, retire_surface
+from .fallback import FallbackResult, play_with_fallback_prestart
 from .ads import fetch_preroll, report as report_ad
 from .browser import open_url
 from .intro_source import target_for
@@ -77,6 +78,7 @@ class SearchField(QLineEdit):
         super().resizeEvent(event);self.place_hint()
 
 class Window(QMainWindow):
+    _fallbackVisual=Signal(int)
     def __init__(self,api=None,engine=None,vault=None,restore=True,preferences=None):
         super().__init__();[QFontDatabase.addApplicationFont(str(font)) for font in (ASSET.parent/'fonts').glob('*.ttf')];self.api=api or Api();self.engine=engine or Mpv();self.vault=vault or SessionVault()
         self.preferences=preferences or Preferences();self.language=self.preferences.get("interface_language");self.title_language=self.preferences.get("title_language");self.bound=[];self.account={}
@@ -114,14 +116,17 @@ class Window(QMainWindow):
         # it shows the logo still over the external mpv window. Injected engines (tests) keep the latter.
         # 0.2.4: a surface that fails (slow Wayland map after an auto-restart, driver hiccup) is rebuilt before the
         # next launch (_ensure_cinema) instead of costing the intro and the Pre-roll for the whole session.
-        self._cinema_enabled=engine is None;self.cinema_recovery=CinemaRecovery();self._retired_cinemas=[];self._cinema_relaunch=False;self.movie_choice=None
+        self._cinema_enabled=engine is None;self.cinema_recovery=CinemaRecovery();self._retired_cinemas=[];self._cinema_relaunch=False;self._cinema_pre_film_failure=False;self.movie_choice=None
         self.cinema=create_surface() if engine is None else None
         self.splash=DirectLaunchSplash(cinema=self.cinema)
         if self.cinema is not None:self._adopt_cinema(self.cinema)
+        self._fallbackVisual.connect(self._on_fallback_visual)
         self.splash.cancelRequested.connect(self.cancel_splash_playback)
         self.splash.modeChanged.connect(self.sync_splash_window)
+        self._update_quitting=False;self._update_locked=False
+        self.update_lock=UpdateLockOverlay(self)
         # 0.1.9: Settings → «О приложении» installs a newer published build over this one.
-        self.updater=Updater(self.api,pool=self.pool,parent=self);self.updater.quitRequested.connect(self.close);self.updater.changed.connect(self.announce_update);self.announced='';self.drawer.set_updater(self.updater)
+        self.updater=Updater(self.api,pool=self.pool,parent=self);self.updater.quitRequested.connect(self._begin_update_restart);self.updater.changed.connect(self.announce_update);self.announced='';self.drawer.set_updater(self.updater)
         self.suggest=SuggestPopup(root,getattr(self.api,'origin',API_ORIGIN));self.suggest.chosen.connect(self.choose_suggestion);self.search.installEventFilter(self)
         self.retranslate();self.pages.currentChanged.connect(self.page_changed);self.page_changed(self.pages.currentIndex())
         self.pair_timer=QTimer(self);self.pair_timer.setInterval(5000);self.pair_timer.timeout.connect(self.poll_pair)
@@ -243,7 +248,9 @@ class Window(QMainWindow):
         for widget,text in [(self.avatar,'Мой аккаунт' if self.account.get('username') else 'Настройки'),(self.view_buttons['grid'],'Сетка'),(self.view_buttons['list'],'Список')]:widget.setToolTip(translate(text,self.language));widget.setAccessibleName(translate(text,self.language))
         if self.account.get('username'):self.avatar.setToolTip(self.account['username'])
         self.filters.retranslate(self.language);self.results.language=self.language;self.show_found();self.render_pager()
-        self.message.setText(self.message.raw);self.drawer.retranslate(self.language);self.torrents.retranslate(self.language);self.series.retranslate(self.language);self.refresh_titles();self.adapt_layout()
+        self.message.setText(self.message.raw);self.drawer.retranslate(self.language);self.torrents.retranslate(self.language);self.series.retranslate(self.language)
+        if hasattr(self,'update_lock') and hasattr(self,'updater'):self.update_lock.retranslate(self.language,self.updater.text(self.language))
+        self.refresh_titles();self.adapt_layout()
     def set_language(self,language):
         self.preferences.set('interface_language',language);self.language=language;self.drawer.ui_language.blockSignals(True);self.drawer.ui_language.setCurrentIndex(self.drawer.ui_language.findData(language));self.drawer.ui_language.blockSignals(False);self.retranslate()
     def set_title_language(self,language):
@@ -294,6 +301,7 @@ class Window(QMainWindow):
         if hasattr(self,'suggest') and not self.suggest.isHidden():self.suggest.place(self.search)
     def resizeEvent(self,event):
         super().resizeEvent(event);self.adapt_layout()
+        if hasattr(self,'update_lock'):self.update_lock.setGeometry(self.rect())
     def login(self):
         if self.busy:return
         identity=self.identity.text().strip();password=self.password.text();otp=self.otp.text().strip()
@@ -313,10 +321,25 @@ class Window(QMainWindow):
         if self.pending_launch:self.redeem_launch()
         self.updater.signed_in=True;QTimer.singleShot(1500,lambda:self.updater.check(quiet=True))  # Quiet: errors stay unspoken.
     def announce_update(self):
-        """Once per version: a newer build is ready to install from the settings."""
+        """Once per version: a newer build is ready to install from the settings; lock UI while installing/restarting."""
         u=self.updater
         if u.state=='available' and not u.note and u.version and u.version!=self.announced and self.pages.currentIndex()!=0:
             self.announced=u.version;self.message.setText('Доступно обновление KINOSOTA Player — откройте настройки, раздел «О приложении».')
+        self._sync_update_lock()
+    def _sync_update_lock(self):
+        if not hasattr(self,'update_lock'):return
+        locked=self.updater.is_locked;was_locked=self._update_locked;self._update_locked=locked
+        if locked:
+            if not was_locked:self.stop()
+            if self.centralWidget() is not None:self.centralWidget().setEnabled(False)
+            if hasattr(self,'shortcut'):self.shortcut.setEnabled(False)
+            self.update_lock.show_lock(self.updater.text(self.language),self.language)
+        else:
+            if self.centralWidget() is not None:self.centralWidget().setEnabled(True)
+            if hasattr(self,'shortcut'):self.shortcut.setEnabled(True)
+            self.update_lock.hide_lock()
+    def _begin_update_restart(self):
+        self._update_quitting=True;self.close()
     def set_avatar(self,name):
         name=str(name or '').strip();self.avatar.setText((name[:1] or 'K').upper());self.avatar.setToolTip(name or translate('Мой аккаунт',self.language))
     def load_genres(self):
@@ -453,19 +476,57 @@ class Window(QMainWindow):
             cinema.queue_preroll(token,ad.media_url,duration=ad.duration_sec,on_start=lambda:tell(ad,'impression'),
                                  on_end=lambda kind:tell(ad,'completion') if kind=='completion' else None)
         self.work(lambda:fetch_preroll(api,meta),done,lambda _error:cinema.cancel_preroll(token))
+    @Slot(int)
+    def _on_fallback_visual(self,generation):
+        if not self.closed and generation==self.play_generation and self.splash.isVisible():
+            self.splash.fade_out()
+    def _should_fallback_prestart(self,attempt=0,force_commercial=False):
+        return self.cinema is None and self._cinema_enabled and type(self.engine) is Mpv and (attempt==0 or force_commercial)
+    def _stop_lease_safe(self,session_id):
+        if not session_id:return
+        try:self.api.stop(session_id)
+        except Exception:pass
+    def _start_fallback_or_direct(self,generation,epoch,meta,resolve_film,*,film_args=(),win_args=(),attempt=0,force_commercial=False,on_cleanup_film=None):
+        cancelled=lambda:self.closed or epoch!=self.epoch or generation!=self.play_generation
+        if self._should_fallback_prestart(attempt,force_commercial=force_commercial):
+            return play_with_fallback_prestart(
+                self.engine,
+                self.api,
+                meta,
+                resolve_film,
+                film_args=film_args,
+                win_args=win_args,
+                cancelled=cancelled,
+                on_visual_start=lambda:self._fallbackVisual.emit(generation),
+                on_cleanup_film=on_cleanup_film,
+            )
+        resolved=resolve_film() if callable(resolve_film) else resolve_film
+        url,payload=resolved if isinstance(resolved,tuple) and len(resolved)==2 else (resolved,None)
+        if cancelled():
+            if payload is not None and callable(on_cleanup_film):on_cleanup_film(payload)
+            raise RuntimeError('Cancelled')
+        extra=[*film_args,*win_args]
+        try:
+            if extra:self.engine.start(url,extra_args=extra)
+            else:self.engine.start(url)
+            if cancelled():self.engine.stop();raise RuntimeError('Cancelled')
+        except Exception:
+            if payload is not None and callable(on_cleanup_film):on_cleanup_film(payload)
+            raise
+        return payload
     def _await_splash_first_frame(self,generation):
-        if not self.splash.isVisible():return
         wait=getattr(self.engine,'wait_playback_started',None)
         if not callable(wait):
-            self.splash.fade_out();return
-        self.splash.set_status(BUFFERING)
+            if self.splash.isVisible():self.splash.fade_out()
+            return
+        if self.splash.isVisible():self.splash.set_status(BUFFERING)
         def current():return not self.closed and generation==self.play_generation
         def done(result):
-            if current() and result in ('playing','eof','timeout'):
-                QTimer.singleShot(0, lambda: self.splash.fade_out() if current() else None)
+            if current() and result in ('playing','eof','timeout') and self.splash.isVisible():
+                QTimer.singleShot(0, lambda: self.splash.fade_out() if current() and self.splash.isVisible() else None)
         def fail(_error):
-            if current() and self.engine.alive():
-                QTimer.singleShot(0, lambda: self.splash.fade_out() if current() else None)
+            if current() and self.engine.alive() and self.splash.isVisible():
+                QTimer.singleShot(0, lambda: self.splash.fade_out() if current() and self.splash.isVisible() else None)
         self.work(lambda:wait(cancelled=lambda:not current()),done,fail)
     def cancel_splash_playback(self):
         self.pending_launch=''
@@ -495,6 +556,7 @@ class Window(QMainWindow):
         if isinstance(old,CinemaEngine):old.fallback=external  # A start already on its way goes there too.
         self.cinema=None;self.engine=external
         if failed is not None:
+            self._cinema_pre_film_failure=failed.phase in ('idle','intro','warmup')
             self.cinema_recovery.failed(reason);self._retired_cinemas.append(failed)
             # The film was already loading in the surface: check_process replays this launch externally.
             self._cinema_relaunch=film_was_loading and (self.torrent_playing or bool(self.session) or self.busy)
@@ -528,12 +590,14 @@ class Window(QMainWindow):
         """0.2.4: the surface broke while this film was loading in it: the same launch replays in external mpv."""
         meta,episode,choice,attempt=self.direct_meta,self.episode_choice,self.torrent_choice,self.torrent_attempt
         movie=dict(self.movie_choice or {}) if self.session else None
+        pre_film=self._cinema_pre_film_failure;self._cinema_pre_film_failure=False
+        next_attempt=attempt if pre_film else attempt+1
         log.warning('Replaying the current launch in the external mpv window after the cinema surface failure')
         self.stop(keep_splash=True)
-        if movie and movie.get('id'):self.start_movie(movie,force=True,recover_cinema=False)
-        elif meta:self.play_stream(meta,attempt+1)
-        elif episode:self.play_episode(episode,attempt=attempt+1)
-        elif choice:self.play_torrent(choice,force=True,attempt=attempt+1)
+        if movie and movie.get('id'):self.start_movie(movie,force=True,recover_cinema=False,force_commercial=pre_film)
+        elif meta:self.play_stream(meta,next_attempt,recover_cinema=False,force_commercial=pre_film)
+        elif episode:self.play_episode(episode,attempt=next_attempt,recover_cinema=False,force_commercial=pre_film)
+        elif choice:self.play_torrent(choice,force=True,attempt=next_attempt,recover_cinema=False,force_commercial=pre_film)
         else:self.splash.hide_now();self.message.setText('Не удалось воспроизвести видео. Проверьте соединение и повторите позднее.')
     def sync_splash_window(self,mode):
         command=getattr(self.engine,'command',None)
@@ -551,7 +615,7 @@ class Window(QMainWindow):
         item=args[0] if args and isinstance(args[0],QListWidgetItem) else self.results.currentItem()
         if not item or self.busy:return
         self.results.setCurrentItem(item);self.start_movie(item.data(Qt.ItemDataRole.UserRole))
-    def start_movie(self,movie,force=False,recover_cinema=True):
+    def start_movie(self,movie,force=False,recover_cinema=True,force_commercial=True):
         """KINOSOTA film (catalogue card or website launch): lease → mpv → heartbeat."""
         if self.busy and not force:return
         self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False);self.message.setText('Открываем фильм…')
@@ -561,25 +625,29 @@ class Window(QMainWindow):
         win_args=self._present_playback_splash('Подготовка фильма…')
         self._prepare_preroll(ad_meta)
         epoch=self.epoch;generation=self.play_generation
-        def start():
+        def resolve():
             # Finish our previous lease before asking for another stream slot.
             self.release_pending()
             if self.closed or epoch!=self.epoch or generation!=self.play_generation:raise RuntimeError('Cancelled')
             session=self.api.start(movie['id'])
-            try:
-                if self.closed or epoch!=self.epoch or generation!=self.play_generation:raise RuntimeError('Cancelled')
-                if win_args:self.engine.start(session['media_url'],extra_args=win_args)
-                else:self.engine.start(session['media_url'])
-                if self.closed or epoch!=self.epoch or generation!=self.play_generation:self.engine.stop();raise RuntimeError('Cancelled')
-            except Exception:
-                try:self.api.stop(session['session_id'])
-                except Exception:pass
-                raise
-            return session
-        def done(data):
+            return session['media_url'],session
+        def start():
+            return self._start_fallback_or_direct(
+                generation,epoch,ad_meta,resolve,
+                win_args=win_args,attempt=0,force_commercial=force_commercial,
+                on_cleanup_film=lambda sess:self._stop_lease_safe((sess or {}).get('session_id')),
+            )
+        def done(result):
+            session=result.film_payload if isinstance(result,FallbackResult) else result
+            if isinstance(result,FallbackResult) and result.aborted_by_viewer:
+                if session and session.get('session_id'):self.work(lambda:self._stop_lease_safe(session['session_id']),fail=lambda e:None)
+                if generation==self.play_generation:
+                    self.busy=False;self.play_button.setEnabled(True);self.splash.hide_now();self.message.setText('Воспроизведение завершено.')
+                return
             if generation!=self.play_generation:
-                self.work(lambda:self.api.stop(data['session_id']),fail=lambda e:None);return
-            self.busy=False;self.play_button.setEnabled(True);self.session=data['session_id'];self.playing_movie=movie['id'];self.movie_choice=dict(movie);self.lease_timer.start(max(5,data.get('heartbeat_interval_seconds',20))*1000);self.message.setText('Воспроизводится: '+movie_title(movie,self.title_language))
+                if session and session.get('session_id'):self.work(lambda:self.api.stop(session['session_id']),fail=lambda e:None)
+                return
+            self.busy=False;self.play_button.setEnabled(True);self.session=session['session_id'];self.playing_movie=movie['id'];self.movie_choice=dict(movie);self.lease_timer.start(max(5,session.get('heartbeat_interval_seconds',20))*1000);self.message.setText('Воспроизводится: '+movie_title(movie,self.title_language))
             self._await_splash_first_frame(generation)
         def fail(e):
             if generation==self.play_generation:self.busy=False;self.play_button.setEnabled(True);self.splash.hide_now();self.show_error(e)
@@ -673,19 +741,20 @@ class Window(QMainWindow):
                 self.pair_timer.stop();self.api.token=data['access_token'];self.work(self.api.access,self.signed_in)
         def fail(e):self.pending_poll=False;self.pair_timer.stop();self.show_error(e)
         self.work(lambda:self.api.request('POST','/desktop/pairing/exchange',{'device_code':code}),done,fail)
-    def play_torrent(self,choice,force=False,attempt=0):
+    def play_torrent(self,choice,force=False,attempt=0,recover_cinema=True,force_commercial=False):
         """Torrent title from the «Торренты» page or a website launch: ticket → mpv (--alang)."""
         if self.busy and not force:return
         self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False)
         title=str(choice.get('title') or 'KINOSOTA');self.message.setText('Переподключаемся…' if attempt else 'Открываем фильм…')
-        if not attempt:self._ensure_cinema()  # A reconnect keeps the window it has.
+        if not attempt and recover_cinema:self._ensure_cinema()  # A reconnect keeps the window it has.
         self._target_intro(choice)
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка фильма…')
-        if not attempt:self._prepare_preroll(choice)  # A reconnect never replays the ad.
+        if not attempt or force_commercial:self._prepare_preroll(choice)  # A reconnect never replays the ad.
         self.torrent_starting=True;self.start_timer.start()
         epoch=self.epoch;generation=self.play_generation
         def cancelled():return self.closed or epoch!=self.epoch or generation!=self.play_generation
-        def start():
+        film_args=[*audio_args(choice.get('audio_lang'),choice.get('audio_track')),*media_title_args(title)]
+        def resolve():
             self.release_pending()
             if cancelled():raise RuntimeError('Cancelled')
             ticket=self.api.torrent_ticket(choice['kind'],choice['tmdb_id'],choice.get('source_id'),choice.get('season'),choice.get('episode'))
@@ -693,11 +762,16 @@ class Window(QMainWindow):
             # 0.1.8: wake the stream first: a cold torrent may need up to a minute for its first bytes.
             if hasattr(self.api,'warm_stream'):self.api.warm_stream(ticket['stream_url'],cancelled)
             if cancelled():raise RuntimeError('Cancelled')
-            self.engine.start(ticket['stream_url'],extra_args=[*audio_args(choice.get('audio_lang'),choice.get('audio_track')),*media_title_args(title),*win_args])
-            if cancelled():self.engine.stop();raise RuntimeError('Cancelled')
-            return ticket
-        def done(ticket):
+            return ticket['stream_url'],ticket
+        def start():
+            return self._start_fallback_or_direct(
+                generation,epoch,choice,resolve,
+                film_args=film_args,win_args=win_args,attempt=attempt,force_commercial=force_commercial,
+            )
+        def done(result):
             if generation!=self.play_generation:return
+            if isinstance(result,FallbackResult) and result.aborted_by_viewer:
+                self.busy=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.splash.hide_now();self.message.setText('Воспроизведение завершено.');return
             self.busy=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.torrent_playing=True
             self.torrent_choice=dict(choice);self.episode_choice=None;self.torrent_started=time.monotonic();self.torrent_attempt=attempt
             episode=f" · S{choice['season']:02d}E{choice['episode']:02d}" if type(choice.get('season')) is int and type(choice.get('episode')) is int else ''
@@ -706,7 +780,7 @@ class Window(QMainWindow):
         def fail(error):
             if generation==self.play_generation:self.busy=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.splash.hide_now();self.show_error(error)
         self.work(start,done,fail)
-    def play_episode(self,choice,attempt=0):
+    def play_episode(self,choice,attempt=0,recover_cinema=True,force_commercial=False):
         """0.2.3: KINOSOTA Telegram series episode → /series_playback/start → mpv, with the intro and
         Pre-roll prestart of a KINOSOTA film. The series flow has no lease; a dropped first connection is
         retried with a fresh URL like a torrent stream (check_process)."""
@@ -719,23 +793,28 @@ class Window(QMainWindow):
         mark=f" · S{season:02d}E{number:02d}" if type(season) is int and type(number) is int else ''
         title=name+mark;label=episode_label(episode,lambda text:translate(text,self.language))
         self.message.setText('Переподключаемся…' if attempt else 'Открываем серию…')
-        if not attempt:self._ensure_cinema()
+        if not attempt and recover_cinema:self._ensure_cinema()
         ad_meta={'kind':'episode','id':episode['id']}  # A Telegram episode: player_telegram intro and ad plan.
         self._target_intro(ad_meta)
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка серии…')
-        if not attempt:self._prepare_preroll(ad_meta)  # A reconnect never replays the ad.
+        if not attempt or force_commercial:self._prepare_preroll(ad_meta)  # A reconnect never replays the ad.
         self.torrent_starting=True;self.start_timer.start()
         epoch=self.epoch;generation=self.play_generation
         def cancelled():return self.closed or epoch!=self.epoch or generation!=self.play_generation
-        def start():
+        film_args=media_title_args(f'{title} — {label}' if label else title)
+        def resolve():
             if cancelled():raise RuntimeError('Cancelled')
             data=self.api.start_series_playback(episode['id'])
-            if cancelled():raise RuntimeError('Cancelled')
-            self.engine.start(data['media_url'],extra_args=[*media_title_args(f'{title} — {label}' if label else title),*win_args])
-            if cancelled():self.engine.stop();raise RuntimeError('Cancelled')
-            return data
-        def done(_):
+            return data['media_url'],data
+        def start():
+            return self._start_fallback_or_direct(
+                generation,epoch,ad_meta,resolve,
+                film_args=film_args,win_args=win_args,attempt=attempt,force_commercial=force_commercial,
+            )
+        def done(result):
             if generation!=self.play_generation:return
+            if isinstance(result,FallbackResult) and result.aborted_by_viewer:
+                self.busy=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.series.set_busy(False);self.splash.hide_now();self.message.setText('Воспроизведение завершено.');return
             self.busy=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.series.set_busy(False)
             self.torrent_playing=True;self.torrent_choice=None;self.direct_meta=None;self.episode_choice=dict(choice)
             self.torrent_started=time.monotonic();self.torrent_attempt=attempt
@@ -748,7 +827,7 @@ class Window(QMainWindow):
         self.work(start,done,fail)
     def slow_start(self):
         if self.torrent_starting:self.message.setText('Подготавливаем поток… Первый запуск может занять до минуты.')
-    def play_stream(self,meta,attempt=0):
+    def play_stream(self,meta,attempt=0,recover_cinema=True,force_commercial=False):
         """Start the ticket returned by /desktop-launch/{id}/open without signing in or requesting another ticket."""
         url=stream_of(meta)
         if not url:
@@ -756,21 +835,27 @@ class Window(QMainWindow):
         self.stop(release=False,keep_splash=True);self.busy=True;self.play_button.setEnabled(False)
         title=str(meta.get('title') or 'KINOSOTA')
         self.message.setText('Переподключаемся…' if attempt else 'Открываем фильм…')
-        if not attempt:self._ensure_cinema()
+        if not attempt and recover_cinema:self._ensure_cinema()
         self._target_intro(meta)
         win_args=self._present_playback_splash('Переподключаем медиапоток…' if attempt else 'Подготовка фильма…')
-        if not attempt:self._prepare_preroll(meta)
+        if not attempt or force_commercial:self._prepare_preroll(meta)
         self.torrent_starting=True;self.start_timer.start()
         epoch=self.epoch;generation=self.play_generation
         def cancelled():return self.closed or epoch!=self.epoch or generation!=self.play_generation
-        def start():
+        film_args=launch_args(meta)
+        def resolve():
             if hasattr(self.api,'warm_stream'):self.api.warm_stream(url,cancelled)
             if cancelled():raise RuntimeError('Cancelled')
-            self.engine.start(url,extra_args=[*launch_args(meta),*win_args])
-            if cancelled():self.engine.stop();raise RuntimeError('Cancelled')
-            return True
-        def done(_):
+            return url
+        def start():
+            return self._start_fallback_or_direct(
+                generation,epoch,meta,resolve,
+                film_args=film_args,win_args=win_args,attempt=attempt,force_commercial=force_commercial,
+            )
+        def done(result):
             if generation!=self.play_generation:return
+            if isinstance(result,FallbackResult) and result.aborted_by_viewer:
+                self.busy=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()));self.splash.hide_now();self.message.setText('Воспроизведение завершено.');return
             self.busy=False;self.torrent_starting=False;self.start_timer.stop();self.play_button.setEnabled(bool(self.results.currentItem()))
             self.torrent_playing=True;self.torrent_choice=None;self.episode_choice=None;self.direct_meta=dict(meta);self.torrent_started=time.monotonic();self.torrent_attempt=attempt
             self.message.setText('Воспроизводится: '+title)
@@ -788,7 +873,7 @@ class Window(QMainWindow):
         self.raise_();self.activateWindow()
     def open_link(self,link):
         """kinosota://watch?launch=<uuid> from the website «▶ Смотреть» button."""
-        if self.closed:return
+        if self.closed or self.updater.is_locked:return
         launch=parse_launch(link)
         if not launch:
             self.surface();self.message.setText('Ссылка из браузера не распознана. Нажмите «Смотреть» на сайте ещё раз.');return
@@ -850,6 +935,9 @@ class Window(QMainWindow):
         self.show_torrents(section);self.torrents.back_caption=dict(NAV).get(section);self.torrents.open_title(meta,prefs);self.torrents.return_to=lambda:self.show_section(section)
         self.play_torrent({'kind':meta['kind'],'tmdb_id':meta['tmdb_id'],**prefs,'title':movie_title(meta,self.title_language)},force=True)
     def closeEvent(self,event):
+        if self.updater.state=='installing' and not self._update_quitting:
+            event.ignore();self.update_lock.raise_();return
+        if hasattr(self,'update_lock'):self.update_lock.hide_lock()
         if not self.remember.isChecked():self.vault.clear()
         if hasattr(self,'splash'):self.splash.dismiss()
         self.updater.shutdown();self.search.removeEventFilter(self);self.suggest.dismiss();self.drawer.dismiss();self.torrents.shutdown();self.series.shutdown();self.filters.genre_timer.stop()

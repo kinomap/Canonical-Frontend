@@ -23,6 +23,7 @@ RUNTIME_INJECTED=('QT_PLUGIN_PATH','QT_QPA_PLATFORM_PLUGIN_PATH','QML2_IMPORT_PA
                   '_PYI_SPLASH_IPC')
 # Set by the hooks only when the bundle ships them; kept when they point outside the old bundle (user settings).
 BUNDLE_PATHS=('SSL_CERT_FILE','SSL_CERT_DIR','REQUESTS_CA_BUNDLE','FONTCONFIG_FILE','FONTCONFIG_PATH')
+STALE_PATH_VARS=('LD_LIBRARY_PATH','QT_PLUGIN_PATH','QT_QPA_PLATFORM_PLUGIN_PATH','QML2_IMPORT_PATH','QML_IMPORT_PATH',*BUNDLE_PATHS)
 
 def _bundle_dirs(env):
     dirs=[getattr(sys,'_MEIPASS',None),env.get('_MEIPASS'),env.get('_MEIPASS2')]
@@ -32,6 +33,38 @@ def _bundle_dirs(env):
 def _inside(value,dirs):
     path=os.path.normpath(str(value))
     return any(path==d or path.startswith(d+os.sep) for d in dirs)
+
+def _looks_like_bundle_path(entry):
+    parts=Path(os.path.normpath(str(entry))).parts
+    return any(part=='_internal' or part.startswith('_MEI') for part in parts)
+
+def stale_bundle_environment(base=None,*,own_dirs=None):
+    """True when inherited PyInstaller/Qt/loader variables point to another or nested bundle."""
+    env=dict(os.environ if base is None else base)
+    if '_MEIPASS2' in env or '_MEIPASS' in env:
+        return True
+    level=str(env.get('_PYI_PARENT_PROCESS_LEVEL') or '').strip()
+    if level and level!='0':
+        return True
+    archive=env.get('_PYI_ARCHIVE_FILE')
+    if archive and getattr(sys,'frozen',False):
+        try:
+            if Path(archive).resolve()!=Path(sys.executable).resolve():
+                return True
+        except OSError:
+            return True
+    dirs=_bundle_dirs(env) if own_dirs is None else [os.path.normpath(d) for d in own_dirs if d]
+    for key in STALE_PATH_VARS:
+        raw=env.get(key)
+        if not raw:
+            continue
+        for entry in str(raw).split(os.pathsep):
+            entry=entry.strip()
+            if not entry:
+                continue
+            if dirs and _looks_like_bundle_path(entry) and not _inside(entry,dirs):
+                return True
+    return False
 
 def restart_environment(base=None):
     """Environment for a fresh KINOSOTA Player process (the auto-restart after an update).
@@ -49,6 +82,7 @@ def restart_environment(base=None):
     for key in [k for k in env if k.startswith('_PYI_')]:env.pop(key,None)
     for key in BUNDLE_PATHS:
         if key in env and dirs and _inside(env[key],dirs):env.pop(key,None)
+    env.pop('KINOSOTA_REEXEC',None)
     return env
 
 _spawn_lock=threading.RLock()
@@ -143,17 +177,14 @@ class Mpv:
             with native_loader():
                 self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
                 creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0)
-    def start(self,url,*,extra_args=()):
-        parts=urlsplit(url)
-        if parts.scheme!='https' or not parts.netloc or parts.username or parts.password:
-            raise ValueError('Only HTTPS media URLs are supported')
+    def _spawn_and_load(self,source,*,extra_args=(),idle='once'):
         if not self.executable:raise RuntimeError('mpv не установлен. Переустановите KINOSOTA Player.')
         with _spawn_lock:
             if not (self.alive() and self._prewarmed_args==tuple(extra_args)):
                 self.stop()
                 self.directory=tempfile.TemporaryDirectory(prefix='kinosota-player-')
                 self.endpoint=(r'\\.\pipe\kinosota-'+uuid.uuid4().hex) if os.name=='nt' else str(Path(self.directory.name)/'mpv.sock')
-                args=self._base_args(extra_args=extra_args,idle='once')
+                args=self._base_args(extra_args=extra_args,idle=idle)
                 with native_loader():
                     self.process=subprocess.Popen(args,env=child_environment(),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
                     creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0) if os.name=='nt' else 0)
@@ -170,10 +201,21 @@ class Mpv:
                     if detail:msg+=f' ({detail[:200]})'
                     raise RuntimeError(msg)
                 try:
-                    self.command(['loadfile',url,'replace']);break
+                    self.command(['loadfile',source,'replace']);break
                 except (OSError,TimeoutError):time.sleep(.05)
             else:raise RuntimeError('mpv не отвечает. Попробуйте переустановить приложение.')
         except Exception:self.stop();raise
+    def start(self,url,*,extra_args=()):
+        parts=urlsplit(url)
+        if parts.scheme!='https' or not parts.netloc or parts.username or parts.password:
+            raise ValueError('Only HTTPS media URLs are supported')
+        self._spawn_and_load(url,extra_args=extra_args,idle='once')
+    def start_local(self,path,*,extra_args=(),idle='yes'):
+        """Launch mpv with a verified local video file (e.g. bundled/cached intro before switching to stream)."""
+        target=Path(path)
+        if not target.is_file():
+            raise ValueError('Local intro media file does not exist')
+        self._spawn_and_load(str(target),extra_args=extra_args,idle=idle)
     def command(self,command):
         # Keep IPC open until mpv acknowledges the command. Closing immediately
         # can discard loadfile on mpv 0.35 before execution (Broken pipe).
@@ -234,6 +276,10 @@ class Mpv:
         try:return self.command(['get_property',name])
         except RuntimeError:return None
 
+    def set_property(self,name,value):
+        """Set one mpv property over JSON IPC."""
+        return self.command(['set_property',name,value])
+
     def enable_osc(self):
         """Enable mpv OSC and OSD only after the first video frame is actively playing."""
         for cmd in (['set_property','osc',True],['set_property','osd-level',1]):
@@ -252,7 +298,7 @@ class Mpv:
                 return False
         return True
 
-    def wait_playback_started(self, timeout=FIRST_FRAME_TIMEOUT, *, cancelled=lambda: False, interval=0.1, sleep=time.sleep, clock=time.monotonic):
+    def wait_playback_started(self, timeout=FIRST_FRAME_TIMEOUT, *, cancelled=lambda: False, interval=0.1, sleep=time.sleep, clock=time.monotonic, show_osc=True):
         """Block (off the UI thread) until the first frame is on screen.
 
         Returns 'playing', 'eof' (the file ended before a frame), 'exited' (mpv quit or crashed),
@@ -271,7 +317,8 @@ class Mpv:
                     vp = self.property('video-params')
                     efn = self.property('estimated-frame-number')
                     if self.frame_ready(pt, vp, paused_for_cache=paused_for_cache, estimated_frame=efn):
-                        self.enable_osc()
+                        if show_osc:
+                            self.enable_osc()
                         return 'playing'
                 if eof:
                     return 'eof'

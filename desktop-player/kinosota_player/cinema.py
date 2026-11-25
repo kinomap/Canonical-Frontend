@@ -164,7 +164,7 @@ def create_surface(parent=None, intro=None, *, bundled_only=False):
     bundled_only: the shipped intro only, no admin intro from the server (packaged-app QA)."""
     reason = unavailable_reason()
     if reason:
-        log.info('Cinema prestart unavailable, using the external mpv window: %s', reason)
+        log.warning('Cinema prestart unavailable, using the external mpv window: %s', reason)
         return None
     if bundled_only:
         return CinemaSurface(parent, intro=None)

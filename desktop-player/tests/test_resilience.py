@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication
 from kinosota_player import app as app_module, cinema, deeplink, direct, engine, installation, updater as updates
 from kinosota_player.cinema import CinemaEngine, CinemaRecovery, CinemaSurface
 from kinosota_player.direct import DirectLaunchSplash
-from kinosota_player.engine import Mpv, child_environment, restart_environment
+from kinosota_player.engine import Mpv, child_environment, restart_environment, stale_bundle_environment
 
 from test_cinema import FakePlayer, FakeView
 from test_filters import CatalogApi, Engine, Vault, sync
@@ -62,6 +62,20 @@ def test_restart_environment_keeps_user_certificates_outside_the_bundle(monkeypa
     frozen(monkeypatch)
     env = restart_environment({**USER, 'SSL_CERT_FILE': '/etc/ssl/certs/ca-certificates.crt'})
     assert env['SSL_CERT_FILE'] == '/etc/ssl/certs/ca-certificates.crt'
+
+
+def test_stale_bundle_environment_detects_inherited_and_reexec_vars(monkeypatch):
+    frozen(monkeypatch)
+    clean = {**USER, 'QT_PLUGIN_PATH': '/opt/kinosota-player/_internal/PySide6/Qt/plugins'}
+    assert not stale_bundle_environment(clean)
+    assert stale_bundle_environment({**clean, '_MEIPASS2': '/tmp/old/_internal'})
+    assert stale_bundle_environment({**clean, '_PYI_PARENT_PROCESS_LEVEL': '1'})
+    assert stale_bundle_environment({**clean, '_PYI_ARCHIVE_FILE': '/tmp/old/kinosota-player'})
+    assert stale_bundle_environment({**USER, 'QT_PLUGIN_PATH': '/tmp/_MEI999/PySide6/Qt/plugins'})
+    assert stale_bundle_environment({**USER, 'LD_LIBRARY_PATH': '/tmp/old/_internal:/usr/lib'})
+    restarted = restart_environment({**USER, **INJECTED, 'KINOSOTA_REEXEC': '1'})
+    assert 'KINOSOTA_REEXEC' not in restarted
+    assert not stale_bundle_environment(restarted)
 
 
 def test_child_environment_contract_for_mpv_and_dpkg_is_unchanged(monkeypatch):

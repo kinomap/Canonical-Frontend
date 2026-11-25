@@ -18,6 +18,7 @@ from . import cinema as cinema_module
 from .cinema import CHROME_HIDE_MS, INTRO_STILL, CinemaEngine, CinemaRecovery, create_surface, mpv_key_name, retire_surface
 from .deeplink import parse_launch, parse_mode
 from .engine import FIRST_FRAME_TIMEOUT, Mpv
+from .fallback import FallbackResult, play_with_fallback_prestart
 from .torrents import audio_args, media_title_args
 from .ads import fetch_preroll, report as report_ad
 from .intro_source import target_for
@@ -773,6 +774,7 @@ class DirectPlayer(QObject):
 
     finished = Signal(int)
     fallback = Signal(dict)
+    _fallbackVisual = Signal(int)
 
     def __init__(self, *, api_factory=Api, engine=None, worker=None, show_splash=True, cinema=None, parent=None):
         super().__init__(parent)
@@ -783,8 +785,10 @@ class DirectPlayer(QObject):
         self.engine = engine or (CinemaEngine(cinema) if cinema is not None else Mpv())
         # 0.2.4: a failed surface is rebuilt for the next link instead of losing the intro for the session.
         self._cinema_enabled = engine is None and show_splash
+        self._skip_fallback_commercial = False
         self.cinema_recovery = CinemaRecovery()
         self._retired_cinemas = []
+        self._fallbackVisual.connect(self._on_fallback_visual)
         self.cancel_code = 1
         self._worker = worker
         self._jobs = set()
@@ -907,6 +911,7 @@ class DirectPlayer(QObject):
         self._release_lease()
         self._close_api()
         self.meta, self.url, self.attempt, self.playing = None, '', 0, False
+        self._skip_fallback_commercial = False
         self._ensure_cinema()
         self._refresh_intro()
         self._status(STARTING)
@@ -914,7 +919,9 @@ class DirectPlayer(QObject):
         if hasattr(api, 'token'):
             api.token = ''
         self.api = api
-        if self._worker is None and self.cinema is None and callable(getattr(self.engine, 'prewarm', None)):
+        if (self._worker is None and self.cinema is None
+                and not (self._cinema_enabled and type(self.engine) is Mpv)
+                and callable(getattr(self.engine, 'prewarm', None))):
             win_args = self._window_args()
             def prewarm_task():
                 if generation != self.generation or self.retired or self.cancelling:
@@ -1076,6 +1083,15 @@ class DirectPlayer(QObject):
 
         self.work(fetch, done, lambda _error: cinema.cancel_preroll(token))
 
+    @Slot(int)
+    def _on_fallback_visual(self, generation):
+        if generation == self.generation and not self.retired and not self.cancelling:
+            self._playback_started()
+
+    def _should_fallback_prestart(self, attempt):
+        return (self.cinema is None and self._cinema_enabled and attempt == 0
+                and not self._skip_fallback_commercial and type(self.engine) is Mpv)
+
     def _start_attempt(self, generation, attempt):
         if generation != self.generation or self.api is None or not self.meta:
             return
@@ -1085,8 +1101,48 @@ class DirectPlayer(QObject):
         self._status(RECONNECTING if attempt else CONNECTING)
         # The splash geometry is read on the UI thread; the worker only reads the ready list.
         self.window = self._window_args()
+        use_fallback = self._should_fallback_prestart(attempt)
 
         def start():
+            if use_fallback:
+                grant = meta.get('access_token') if isinstance(meta, dict) else None
+                ad_api = None
+                if isinstance(grant, str) and grant.strip() and not getattr(api, 'token', ''):
+                    ad_api = self.api_factory()
+                    if hasattr(ad_api, 'token'):
+                        ad_api.token = grant.strip()
+                try:
+                    def resolve_film():
+                        if hasattr(api, 'warm_stream'):
+                            api.warm_stream(url, lambda: generation != self.generation)
+                        if generation != self.generation:
+                            raise RuntimeError('Cancelled')
+                        return url
+
+                    res = play_with_fallback_prestart(
+                        self.engine,
+                        api,
+                        meta,
+                        resolve_film,
+                        film_args=launch_args(meta),
+                        win_args=self.window,
+                        ad_api=ad_api,
+                        cancelled=lambda: generation != self.generation,
+                        on_visual_start=lambda: self._fallbackVisual.emit(generation),
+                    )
+                    if generation != self.generation:
+                        self.engine.stop()
+                        return False
+                    return res
+                except RuntimeError as error:
+                    if str(error) == 'Cancelled' and generation != self.generation:
+                        return False
+                    raise
+                finally:
+                    if ad_api is not None:
+                        close = getattr(ad_api, 'close', None)
+                        if callable(close):
+                            close()
             if hasattr(api, 'warm_stream'):
                 api.warm_stream(url, lambda: generation != self.generation)
             if generation != self.generation:
@@ -1100,7 +1156,13 @@ class DirectPlayer(QObject):
         def done(started):
             if generation != self.generation:
                 return
-            if not started:
+            if isinstance(started, FallbackResult):
+                if started.aborted_by_viewer:
+                    self._watch()
+                    return
+                if not started.started:
+                    return
+            elif not started:
                 return
             self.timer.start()
             self._await_first_frame(generation)
@@ -1269,6 +1331,7 @@ class DirectPlayer(QObject):
         log.warning('Cinema surface failed: %s. This launch continues in the external mpv window; '
                     'the next link rebuilds the surface.', reason or 'unknown')
         if self.cinema is not None:
+            self._skip_fallback_commercial = self.cinema.phase == 'film'
             self.cinema_recovery.failed(reason)
             self._retired_cinemas.append(self.cinema)
         self.cinema = None

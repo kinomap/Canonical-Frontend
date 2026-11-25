@@ -27,12 +27,14 @@ SHA256 = re.compile(r'[0-9a-f]{64}')
 VERSION = re.compile(r'\d+(?:\.\d+){1,3}')
 MACHINES = {'x86_64': 'x86_64', 'amd64': 'x86_64', 'x64': 'x86_64', 'arm64': 'arm64', 'aarch64': 'arm64'}
 DISMISSED = (126, 127)  # pkexec: the password dialog was closed, or the user may not install.
-BUSY = ('checking', 'downloading', 'installing')
+BUSY = ('checking', 'downloading', 'installing', 'restarting')
+LOCKED = ('installing', 'restarting')
 TEXTS = {
     'idle': 'Текущая версия', 'checking': 'Проверяем обновления…', 'latest': 'Установлена последняя версия',
     'available': 'Доступна версия', 'unpublished': 'Сборка для этой системы пока не опубликована',
     'manual': 'Обновление из приложения работает для установленного пакета. Скачайте новую версию на сайте.',
     'downloading': 'Скачиваем обновление…', 'installing': 'Устанавливаем обновление…',
+    'restarting': 'Перезапускаем KINOSOTA Player…',
     'failed': 'Не удалось проверить обновления',
 }
 
@@ -133,6 +135,10 @@ class Updater(QObject):
     def busy(self):
         return self.state in BUSY
 
+    @property
+    def is_locked(self):
+        return self.state in LOCKED
+
     def percent(self):
         return int(self.received * 100 / self.total) if self.total > 0 else 0
 
@@ -154,7 +160,7 @@ class Updater(QObject):
     def actions(self):
         """Which buttons the card shows: check, update (to the version), cancel, open the website."""
         state = self.state
-        return {'check': state not in ('available', 'downloading', 'installing'),
+        return {'check': state not in ('available', 'downloading', 'installing', 'restarting'),
                 'update': state == 'available', 'cancel': state == 'downloading',
                 'website': state in ('locked', 'manual', 'failed') and bool(self.item)}
 
@@ -311,9 +317,13 @@ class Updater(QObject):
             return
         if self.system == 'Windows':
             self._set('installing', 'Установщик запущен. Плеер закроется, чтобы обновиться.')
-            QTimer.singleShot(800, self.quitRequested.emit)  # Setup /CLOSEAPPLICATIONS replaces the files after us.
+            QTimer.singleShot(800, self._finish_windows_install)  # Setup /CLOSEAPPLICATIONS replaces the files after us.
         else:
             self._set('opened', 'Откройте образ и перенесите KINOSOTA Player в Applications с заменой.')
+
+    def _finish_windows_install(self):
+        self._set('restarting', 'Устанавливаем обновление и перезапускаем плеер…')
+        self.quitRequested.emit()
 
     def installed(self, code):
         if code == 0:
@@ -326,7 +336,7 @@ class Updater(QObject):
                 log.warning('Update installed; the new player starts once process %s has exited', os.getpid())
                 with native_loader():
                     self._restart_process(restart).startDetached()
-            self._set('installing', 'Устанавливаем обновление…')
+            self._set('restarting', 'Устанавливаем обновление и перезапускаем плеер…')
             self.quitRequested.emit()
             return
         if code in DISMISSED:

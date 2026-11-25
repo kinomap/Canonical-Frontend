@@ -428,4 +428,10 @@ QFrame#yearPopup{background:transparent;border:0;}
 QPushButton#yearArrow{background:transparent;border:0;border-radius:6px;padding:0;min-height:0;color:#aab5bf;font-size:10px;}
 QPushButton#yearArrow:hover{background:rgba(255,255,255,15);color:#ffd400;}
 QPushButton#yearArrow:disabled{color:rgba(255,255,255,40);}
+QWidget#updateLock{background:rgba(7,11,14,218);}
+QFrame#updateLockCard{background:#0c1319;border:1px solid #766335;border-radius:18px;}
+QLabel#updateLockEyebrow{color:#ffd24d;font-size:12px;font-weight:700;letter-spacing:1.2px;}
+QLabel#updateLockTitle{color:#ffffff;font-size:22px;font-weight:800;}
+QLabel#updateLockStatus{color:#f3f5f7;font-size:15px;font-weight:600;}
+QLabel#updateLockHint{color:#aab5bf;font-size:13px;}
 """

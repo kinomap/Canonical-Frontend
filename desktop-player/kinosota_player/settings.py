@@ -2,8 +2,8 @@
 import platform
 from .browser import BILLING_URL, SITE, open_url
 from pathlib import Path
-from PySide6.QtCore import Qt,QRect,QPropertyAnimation,QEasingCurve,QEvent,Signal,QSize
-from PySide6.QtGui import QPixmap,QIcon,QPainter
+from PySide6.QtCore import Qt,QRect,QRectF,QPropertyAnimation,QEasingCurve,QEvent,Signal,QSize,QTimer
+from PySide6.QtGui import QPixmap,QIcon,QPainter,QColor,QPen
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QWidget,QFrame,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QCheckBox,QApplication,QScrollArea,QStackedWidget,QSizePolicy,QStyledItemDelegate,QProgressBar
 from .preferences import translate
@@ -113,9 +113,12 @@ class SettingsDrawer(QWidget):
         self.update_now.setText(translate('Обновить до',self.language)+' '+u.version);self.update_now.setVisible(actions['update'])
         self.update_check.setVisible(actions['check']);self.update_check.setEnabled(not u.busy)
         self.update_cancel.setVisible(actions['cancel']);self.update_site.setVisible(actions['website'])
-        downloading=u.state=='downloading';self.update_bar.setVisible(downloading)
+        downloading=u.state=='downloading';locked=getattr(u,'is_locked',u.state in ('installing','restarting'))
+        self.update_bar.setVisible(downloading or locked)
         if downloading:
             self.update_bar.setRange(0,100 if u.total else 0);self.update_bar.setValue(u.percent())
+        elif locked:
+            self.update_bar.setRange(0,0)
     def update_account(self,data=None,state=''):
         if data is not None:self.account=dict(data)
         self.state=state;self.render_account()
@@ -127,7 +130,7 @@ class SettingsDrawer(QWidget):
     def present(self):
         self.return_focus=QApplication.focusWidget();self.setGeometry(self.parentWidget().rect());self.show();self.raise_();self.parentWidget().installEventFilter(self);QApplication.instance().installEventFilter(self);target=self.target();self.animation.stop();self.animation.setStartValue(QRect(self.width(),16,target.width(),target.height()));self.animation.setEndValue(target);self.animation.start();self.close_button.setFocus()
     def dismiss(self):
-        if not self.isVisible():return
+        if not self.isVisible() or getattr(self.updater,'is_locked',False):return
         self.animation.stop();self.hide();QApplication.instance().removeEventFilter(self);self.parentWidget().removeEventFilter(self)
         if getattr(self,'return_focus',None):self.return_focus.setFocus()
     def resizeEvent(self,event):
@@ -148,3 +151,58 @@ class SettingsDrawer(QWidget):
                     if self.panel.isAncestorOf(candidate) and candidate.isVisible() and candidate.isEnabled() and candidate.focusPolicy()&Qt.FocusPolicy.TabFocus:candidate.setFocus();return True
                 return True
         return super().eventFilter(obj,event)
+
+
+class SpinnerRing(QWidget):
+    """Smooth KINOSOTA amber arc spinner active while an update installs or restarts."""
+    def __init__(self,parent=None,size=52):
+        super().__init__(parent);self._angle=0;self.setFixedSize(size,size)
+        self._timer=QTimer(self);self._timer.setInterval(40);self._timer.timeout.connect(self._step)
+    def _step(self):
+        self._angle=(self._angle+12)%360;self.update()
+    def start(self):
+        if not self._timer.isActive():self._timer.start()
+    def stop(self):
+        if self._timer.isActive():self._timer.stop()
+    def paintEvent(self,_event):
+        p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect=QRectF(5,5,self.width()-10,self.height()-10)
+        p.setPen(QPen(QColor(255,255,255,28),4.5,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap));p.drawEllipse(rect)
+        pen=QPen(QColor('#ffc21a'),4.5,Qt.PenStyle.SolidLine,Qt.PenCapStyle.RoundCap);p.setPen(pen)
+        p.drawArc(rect,-self._angle*16,110*16)
+
+
+class UpdateLockOverlay(QWidget):
+    """Full-window blocking overlay with spinner and warning during installation and forced restart."""
+    def __init__(self,parent):
+        super().__init__(parent);self.language='ru';self.setObjectName('updateLock')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground);self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        outer=QVBoxLayout(self);outer.setContentsMargins(24,24,24,24);outer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card=QFrame(self);card.setObjectName('updateLockCard');card.setFixedWidth(480)
+        v=QVBoxLayout(card);v.setContentsMargins(28,28,28,26);v.setSpacing(12);v.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.spinner=SpinnerRing(card);v.addWidget(self.spinner,0,Qt.AlignmentFlag.AlignHCenter);v.addSpacing(4)
+        self.eyebrow=QLabel();self.eyebrow.setObjectName('updateLockEyebrow');self.eyebrow.setAlignment(Qt.AlignmentFlag.AlignCenter);v.addWidget(self.eyebrow)
+        self.title=QLabel();self.title.setObjectName('updateLockTitle');self.title.setAlignment(Qt.AlignmentFlag.AlignCenter);self.title.setWordWrap(True);v.addWidget(self.title)
+        self.status_label=QLabel();self.status_label.setObjectName('updateLockStatus');self.status_label.setTextFormat(Qt.TextFormat.PlainText);self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter);self.status_label.setWordWrap(True);v.addWidget(self.status_label)
+        self.bar=QProgressBar();self.bar.setObjectName('prepBar');self.bar.setRange(0,0);self.bar.setTextVisible(False);self.bar.setFixedHeight(5);v.addWidget(self.bar)
+        self.hint=QLabel();self.hint.setObjectName('updateLockHint');self.hint.setAlignment(Qt.AlignmentFlag.AlignCenter);self.hint.setWordWrap(True);v.addWidget(self.hint)
+        outer.addWidget(card);self.retranslate(self.language);self.hide()
+    def retranslate(self,language,status=''):
+        self.language=language
+        self.eyebrow.setText(translate('Обновление KINOSOTA Player',language))
+        self.title.setText(translate('Не закрывайте приложение',language))
+        self.hint.setText(translate('Идёт установка обновления и перезапуск. Управление временно заблокировано до завершения процесса.',language))
+        if status:self.status_label.setText(status)
+    def show_lock(self,status,language='ru'):
+        self.retranslate(language,status or translate('Устанавливаем обновление…',language))
+        if self.parentWidget() is not None:self.setGeometry(self.parentWidget().rect())
+        self.spinner.start();self.show();self.raise_();self.setFocus()
+    def hide_lock(self):
+        self.spinner.stop();self.hide()
+    def mousePressEvent(self,event):event.accept()
+    def mouseReleaseEvent(self,event):event.accept()
+    def mouseDoubleClickEvent(self,event):event.accept()
+    def wheelEvent(self,event):event.accept()
+    def keyPressEvent(self,event):event.accept()
+    def closeEvent(self,event):
+        self.spinner.stop();super().closeEvent(event)

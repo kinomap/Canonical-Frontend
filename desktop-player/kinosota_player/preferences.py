@@ -233,3 +233,11 @@ TEXT.update({
  'Эта серия пока недоступна для воспроизведения.':'This episode cannot be played yet.',
  'Сервер вернул неверную ссылку на серию. Попробуйте позже.':'The server returned an invalid episode link. Try again later.',
 })
+# 0.2.6: blocking update installation and forced restart overlay.
+TEXT.update({
+ 'Перезапускаем KINOSOTA Player…':'Restarting KINOSOTA Player…',
+ 'Устанавливаем обновление и перезапускаем плеер…':'Installing the update and restarting the player…',
+ 'Обновление KINOSOTA Player':'KINOSOTA Player update',
+ 'Не закрывайте приложение':'Do not close the application',
+ 'Идёт установка обновления и перезапуск. Управление временно заблокировано до завершения процесса.':'Installing the update and restarting. Controls are locked until the process finishes.',
+})

@@ -1,4 +1,20 @@
+import os
 import sys
+
+from kinosota_player.engine import restart_environment, stale_bundle_environment
+
+# 0.2.6: if launched by an older updater or wrapper carrying another bundle's PyInstaller / Qt paths,
+# replace the process image with a clean environment BEFORE Qt or libmpv are imported or loaded.
+if os.environ.get('KINOSOTA_REEXEC') == '1':
+    os.environ.pop('KINOSOTA_REEXEC', None)
+elif getattr(sys, 'frozen', False) and stale_bundle_environment():
+    clean_env = restart_environment()
+    clean_env['KINOSOTA_REEXEC'] = '1'
+    if os.name == 'nt':
+        import subprocess
+        subprocess.Popen([sys.executable, *sys.argv[1:]], env=clean_env)
+        raise SystemExit(0)
+    os.execve(sys.executable, sys.argv, clean_env)
 
 from kinosota_player.hidpi import configure_high_dpi
 

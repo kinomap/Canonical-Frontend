@@ -52,7 +52,7 @@ def install_command(path,system=None):
 # 0.2.4: wait (kill -0 every 0.2 s, at most RESTART_WAIT_STEPS times) until the updating process has exited, then
 # replace the shell with the installed binary. The script is a constant: the path and the PID only ever arrive as
 # positional parameters "$1" / "$2", never by string substitution into the code.
-RESTART_WAIT_STEPS=100  # 100 x 0.2 s = 20 s: Window.closeEvent may wait for workers and the cinema shutdown.
+RESTART_WAIT_STEPS=200  # 200 x 0.2 s = 40 s: Window.closeEvent may wait for workers and the cinema shutdown.
 RESTART_SCRIPT=('i=0; while [ "$i" -lt '+str(RESTART_WAIT_STEPS)+' ] && kill -0 "$2" 2>/dev/null; do sleep 0.2; i=$((i+1)); done; '
                 'exec "$1"')
 
