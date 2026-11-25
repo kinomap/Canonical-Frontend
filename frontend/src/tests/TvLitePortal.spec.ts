@@ -3,7 +3,7 @@
  * Static ES5 page for 2012–2017 TVs: checks the compatibility contract (no ES modules, no ES2015+
  * syntax, no GPU-heavy CSS) and the remote-driven behaviour (shelves, D-pad, player, exit).
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import JS from '../../public/assets/tv-lite.js?raw'
 import HTML from '../../public/tv/lite/index.html?raw'
 // The CSS contract (no backdrop-filter / clamp() / min() / max()) lives in TvLiteCss.spec.js:
@@ -109,6 +109,7 @@ describe('Lite TV portal behaviour', () => {
     window.HTMLMediaElement.prototype.load = function () { }
   })
   afterEach(() => {
+    vi.useRealTimers()
     window.XMLHttpRequest = originalXhr
     document.body.innerHTML = ''
   })
@@ -1073,6 +1074,186 @@ describe('Lite TV portal behaviour', () => {
       expect(sefCalls.filter(c => c === 'Exec:SetDisplayArea:0,0,960,540').length).toBeGreaterThanOrEqual(2)
       press('', 88)
       expect(document.body.style.backgroundColor).toBe('')
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('switches TV window source to SOURCE_MODE_MEDIA before Orsay AVPlay and retries 960x540 if setDisplayArea(1280x720) returns false', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
+    const calls: string[] = []
+    const areas: string[] = []
+    let subCalled = false
+    const hook: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
+      ; (window as unknown as { curWidget?: { width: number; height: number } }).curWidget = { width: 1280, height: 720 }
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        tv: {
+          window: {
+            SOURCE_MODE_MEDIA: 43,
+            getSource: () => ({ type: 0, number: 1 }),
+            setSource: (src: { type: number }, ok: () => void) => {
+              calls.push(`setSource:${src.type}`)
+              ok()
+            },
+          },
+        },
+        avplay: {
+          getAVPlay: (ok: (av: unknown) => void) => ok({
+            status: '2',
+            init: () => {},
+            setPlayerPluginObject: () => null,
+            set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
+            open: () => { calls.push('open'); return true },
+            play: () => { calls.push('play') },
+            stop: () => {},
+            destroy: () => {},
+            setDisplayArea: (r: { width: number; height: number }) => {
+              areas.push(`${r.width}x${r.height}`)
+              return r.width <= 960
+            },
+            getVideoResolution: () => '1920|1080',
+            setCropArea: () => {},
+            startSubtitle: () => { subCalled = true },
+            getDuration: () => 120000,
+          }),
+        },
+      }
+    try {
+      await bootLite()
+      press('', 29443)
+      await flush()
+      expect(calls).toEqual(['setSource:43', 'open', 'play'])
+      hook.fn?.(9)
+      expect(areas).toEqual(['1280x720', '960x540'])
+      expect(subCalled).toBe(false)
+      press('', 88)
+    } finally {
+      delete (window as unknown as { curWidget?: unknown }).curWidget
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('cascades from stalled Orsay AVPlay (14=0) on film to AVPlay SDK options mode without dead-ending', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
+    const inits: unknown[] = []
+    const destroys: number[] = []
+    const hook: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
+    const sdkHolder: { opts: { playCallback?: { oncurrentplaytime?: (t: unknown) => void }; bufferingCallback?: { onbufferingcomplete?: () => void } } | null } = { opts: null }
+    let calls = 0
+      ; (window as unknown as { curWidget?: { width: number; height: number } }).curWidget = { width: 1280, height: 720 }
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: {
+          getAVPlay: (ok: (av: unknown) => void) => {
+            calls += 1
+            const idx = calls
+            ok({
+              status: '4',
+              init: (opts?: unknown) => {
+                inits.push(opts ?? 'no-args')
+                if (opts && typeof opts === 'object') sdkHolder.opts = opts as typeof sdkHolder.opts
+              },
+              setPlayerPluginObject: () => null,
+              set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
+              open: () => true,
+              play: () => {},
+              stop: () => {},
+              destroy: () => { destroys.push(idx) },
+              setDisplayArea: () => true,
+              getVideoResolution: () => '1920|1080',
+              setCropArea: () => {},
+              getDuration: () => 120000,
+            })
+          },
+        },
+      }
+    try {
+      await bootLite()
+      vi.useFakeTimers()
+      press('', 29443)
+      await vi.advanceTimersByTimeAsync(30)
+      expect(inits[0]).toBe('no-args')
+      hook.fn?.(9)
+      hook.fn?.(14, 0)
+      expect(lite().player.firstFrame).toBe(false)
+      await vi.advanceTimersByTimeAsync(9700)
+      expect(destroys).toContain(1)
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay AVPlay SDK')
+      expect(sdkHolder.opts?.playCallback?.oncurrentplaytime).toBeTypeOf('function')
+      sdkHolder.opts?.bufferingCallback?.onbufferingcomplete?.()
+      sdkHolder.opts?.playCallback?.oncurrentplaytime?.({ millisecond: 650 })
+      expect(lite().player.firstFrame).toBe(true)
+      expect(lite().player.currentTime).toBe(0.65)
+      press('', 88)
+    } finally {
+      vi.useRealTimers()
+      delete (window as unknown as { curWidget?: unknown }).curWidget
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('drives Orsay AVPlay SDK options mode (?orsay=avsdk) with { zIndex: -1, playCallback, bufferingCallback }', async () => {
+    const origUa = navigator.userAgent
+    const origSearch = window.location.search || ''
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
+    window.history.replaceState({}, '', `${window.location.pathname}?orsay=avsdk`)
+    const receivedHolder: { opts: { zIndex?: number; playCallback?: { oncurrentplaytime?: (t: unknown) => void }; bufferingCallback?: { onbufferingcomplete?: () => void } } | null } = { opts: null }
+    let setPluginCalled = false
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: {
+          getAVPlay: (ok: (av: unknown) => void) => ok({
+            status: '2',
+            init: (opts: typeof receivedHolder.opts) => { receivedHolder.opts = opts },
+            setPlayerPluginObject: () => { setPluginCalled = true; return null },
+            open: () => true,
+            play: () => {},
+            stop: () => {},
+            destroy: () => {},
+            getDuration: () => 60000,
+          }),
+        },
+      }
+    try {
+      await bootLite()
+      press('', 29443)
+      await flush()
+      expect(setPluginCalled).toBe(false)
+      expect(receivedHolder.opts?.zIndex).toBe(-1)
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay AVPlay SDK')
+      receivedHolder.opts?.bufferingCallback?.onbufferingcomplete?.()
+      receivedHolder.opts?.playCallback?.oncurrentplaytime?.({ millisecond: 3000 })
+      expect(lite().player.firstFrame).toBe(true)
+      expect(lite().player.currentTime).toBe(3)
+      press('', 88)
+    } finally {
+      window.history.replaceState({}, '', `${window.location.pathname}${origSearch}`)
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('mounts dynamic SEF plugin inside #lite-native-host (visible on-screen) and closes cleanly on Back', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/534.7' })
+    const sefCalls: string[] = []
+    try {
+      await bootLite()
+      const sefEl = document.getElementById('pluginObjectSef') as HTMLElement & Record<string, unknown>
+      sefEl.Open = () => 1
+      sefEl.Execute = (cmd: string) => { sefCalls.push(cmd); return 1 }
+      sefEl.Close = () => { sefCalls.push('Close') }
+      press('', 29443)
+      await flush()
+      expect(sefEl.parentElement?.id).toBe('lite-native-host')
+      expect(sefEl.style.left).toBe('0px')
+      expect(sefEl.style.width).toBe('1280px')
+      expect(sefEl.style.height).toBe('720px')
+      expect(sefEl.style.opacity).toBe('1')
+      press('', 88)
+      expect(sefCalls).toContain('Close')
     } finally {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
     }
