@@ -2013,6 +2013,7 @@
         introTimer: null, introConfig: null, introDone: false, waitingForStream: false,
         adPlan: null, stream: null, streamDone: false, streamError: null,
         tracks: [], trackOpen: false, trackFocus: 0,
+        stallDeadline: 0, stallBumpAt: 0, seekLogged: false,
         /* engineSeq invalidates every native callback of a released engine; the timers are the only
            deferred opens and are cancelled on every new stage, rescue or close. */
         engineSeq: 0, openTimer: null, rescueTimer: null, echoTimer: null, nativeReleasedAt: 0
@@ -2513,15 +2514,25 @@
         if ((nativeSession.kind === 'orsay' || nativeSession.kind === 'orsay-sdk') && nativeSession.av) {
             try {
                 var secs = Math.round(Math.abs(delta));
-                if (nativeSession.plugin && nativeSession.plugin.Execute) {
-                    nativeSession.plugin.Execute(delta >= 0 ? 'JumpForward' : 'JumpBackward', secs);
-                } else if (delta >= 0 && nativeSession.av.jumpForward) {
-                    nativeSession.av.jumpForward(secs);
-                } else if (delta < 0 && nativeSession.av.jumpBackward) {
-                    nativeSession.av.jumpBackward(secs);
+                var seekRet;
+                var sought = false;
+                if (delta >= 0 && isCallableNative(nativeSession.av.jumpForward)) {
+                    seekRet = nativeSession.av.jumpForward(secs);
+                    sought = !nativeFailed(seekRet);
+                } else if (delta < 0 && isCallableNative(nativeSession.av.jumpBackward)) {
+                    seekRet = nativeSession.av.jumpBackward(secs);
+                    sought = !nativeFailed(seekRet);
+                }
+                if (!sought && nativeSession.plugin && nativeSession.plugin.Execute) {
+                    seekRet = nativeSession.plugin.Execute(delta >= 0 ? 'JumpForward' : 'JumpBackward', secs);
+                    sought = !nativeFailed(seekRet);
+                }
+                if (!player.seekLogged || !sought) {
+                    player.seekLogged = true;
+                    reportTvDiag('seek', nativeSession.kind + '|' + (delta >= 0 ? '+' : '-') + secs + '|ok=' + sought + '|' + String(seekRet));
                 }
                 player.currentTime = Math.max(0, player.currentTime + delta);
-            } catch (e) {}
+            } catch (e) { reportTvDiag('seek_err', nativeSession.kind + '|' + errText(e)); }
             updateProgress();
             showBar();
             return;
@@ -2715,7 +2726,7 @@
         if (orsayProvenEngine && !player.orsayTried[orsayProvenEngine]) {
             if ((orsayProvenEngine !== 'avplay' && orsayProvenEngine !== 'avsdk') || canUseOrsayAvplay()) return orsayProvenEngine;
         }
-        var order = canUseOrsayAvplay() ? ['avplay', 'avsdk', 'sef', 'player'] : ['sef', 'player'];
+        var order = canUseOrsayAvplay() ? ['avplay', 'sef', 'avsdk', 'player'] : ['sef', 'player'];
         for (var i = 0; i < order.length; i++) {
             if (!player.orsayTried[order[i]]) return order[i];
         }
@@ -2727,11 +2738,26 @@
         player.stallTimer = null;
     }
 
-    function armStall(ms) {
+    function extendStall(stepMs) {
+        if (!player.card || player.firstFrame || !player.stallDeadline) return;
+        var now = Date.now();
+        if (now - player.stallBumpAt < 1000) return;
+        player.stallBumpAt = now;
+        var left = player.stallDeadline - now;
+        if (left <= 500) return;
+        armStall(Math.min(stepMs || 10000, left), false);
+    }
+
+    function armStall(ms, resetDeadline) {
         clearStall();
+        var waitMs = ms || STALL_MS;
+        if (resetDeadline !== false || !player.stallDeadline) {
+            var isCom = (player.phase === 'ad' || player.phase === 'intro');
+            player.stallDeadline = Date.now() + (isCom ? 24000 : 28000);
+            player.stallBumpAt = 0;
+        }
         player.stallTimer = setTimeout(function () {
             if (!player.card || player.firstFrame) return;
-            markOrsayEngineTried(nativeSession.kind);
             var extra = '';
             if ((nativeSession.kind === 'orsay' || nativeSession.kind === 'orsay-sdk') && nativeSession.av) {
                 try { extra += '|st=' + nativeSession.av.status; } catch (eS) {}
@@ -2745,7 +2771,9 @@
                 extra += '|' + mediaGuardInfo();
             }
             reportTvDiag('stall', player.engineKind + '|' + player.phase + extra);
+            /* Never poison orsayTried during commercial stages (intro/ad) — film still gets primary AVPlay. */
             if (player.phase === 'ad' || player.phase === 'intro') { advanceFromCommercial('timeout'); return; }
+            markOrsayEngineTried(nativeSession.kind);
             if (IS_ORSAY && !ORSAY_FORCE_ENGINE) {
                 var nextEng = pickOrsayEngine();
                 var retryUrl = player.currentOpenUrl || (player.stream && player.stream.url) || '';
@@ -2758,7 +2786,7 @@
                 }
             }
             playerProblem('stall');
-        }, ms || STALL_MS);
+        }, waitMs);
     }
 
     function sendAdImpression() {
@@ -2770,9 +2798,18 @@
     function markFrame() {
         player.firstFrame = true;
         player.problem = false;
+        player.stallDeadline = 0;
         var okKey = orsayEngineKeyOf(nativeSession.kind);
         if (okKey) orsayProvenEngine = okKey;
         clearStall();
+        if (player.phase === 'intro') {
+            var introId = player.loadId;
+            var introLimit = player.duration > 0 ? Math.min(35000, Math.max(8000, Math.ceil(player.duration * 1000) + 3000)) : 18000;
+            clearTimeout(player.introTimer);
+            player.introTimer = setTimeout(function () {
+                if (introId === player.loadId && player.phase === 'intro') finishIntroStage(introId);
+            }, introLimit);
+        }
         playerMessage('');
         hide($('lite-player-actions'));
         sendAdImpression();
@@ -2961,16 +2998,16 @@
     }
 
     function orsayStallMs(key) {
-        if (player.phase === 'ad' || player.phase === 'intro') return 7000;
+        if (player.phase === 'ad' || player.phase === 'intro') return 14000;
         if (IS_ORSAY && !ORSAY_FORCE_ENGINE) {
             var remaining = 0;
-            var order = canUseOrsayAvplay() ? ['avplay', 'avsdk', 'sef', 'player'] : ['sef', 'player'];
+            var order = canUseOrsayAvplay() ? ['avplay', 'sef', 'avsdk', 'player'] : ['sef', 'player'];
             for (var i = 0; i < order.length; i++) {
                 if (order[i] !== key && !player.orsayTried[order[i]]) remaining += 1;
             }
-            if (remaining > 0) return 9000;
+            if (remaining > 0) return 12000;
         }
-        return 12000;
+        return 18000;
     }
 
     function orsayObjectDiag() {
@@ -3124,6 +3161,7 @@
                 if (type === 9) {
                     /* STREAM_INFO_READY: duration and audio tracks are known now */
                     gotInfo = true;
+                    extendStall();
                     var area9 = 'n/a';
                     try { area9 = sef.Execute('SetDisplayArea', 0, 0, grid.width, grid.height); } catch (eArea9) { area9 = 'ERR:' + errText(eArea9); }
                     var res9 = '-';
@@ -3148,15 +3186,18 @@
                     showBar();
                 } else if (type === 12) {
                     /* BUFFERING_COMPLETE */
+                    extendStall();
                     player.paused = false;
                     playerMessage('');
                     updateProgress();
                     showBar();
                 } else if (type === 11) {
                     /* BUFFERING_START */
+                    extendStall();
                     if (player.ready) playerMessage('Буферизация…');
                 } else if (type === 13) {
                     /* BUFFERING_PROGRESS (percent) */
+                    extendStall();
                     if (player.ready && !player.firstFrame) playerMessage('Буферизация… ' + (Number(data1) || 0) + '%');
                 } else if (type === 14) {
                     /* CURRENT_PLAYBACK_TIME (ms); 14 with 0 is reported too: the clock runs, the picture does not */
@@ -3247,6 +3288,7 @@
             pl.OnStreamInfoReady = function () {
                 if (!live()) return;
                 noteNativeEvent(9);
+                extendStall();
                 debugLog('info', 'Player OnStreamInfoReady');
                 reportTvDiag('pl_ev', 'ready');
                 try { pl.SetDisplayArea(0, 0, grid.width, grid.height); } catch (ePa9) { reportTvDiag('pl_area_err', errText(ePa9)); }
@@ -3269,8 +3311,8 @@
                 if (msVal > 0 && !player.firstFrame) markFrame();
                 updateProgress();
             };
-            pl.OnBufferingStart = function () { if (live() && player.ready) playerMessage('Буферизация…'); };
-            pl.OnBufferingComplete = function () { if (live()) { noteNativeEvent(12); player.paused = false; playerMessage(''); updateProgress(); showBar(); } };
+            pl.OnBufferingStart = function () { if (live()) { extendStall(); if (player.ready) playerMessage('Буферизация…'); } };
+            pl.OnBufferingComplete = function () { if (live()) { noteNativeEvent(12); extendStall(); player.paused = false; playerMessage(''); updateProgress(); showBar(); } };
             pl.OnConnectionFailed = pl.OnNetworkDisconnected = pl.OnRenderError = pl.OnStreamNotFound = function (code) {
                 if (!live()) return;
                 player.lastNativeErr = 'pl:' + (code !== undefined ? code : 'err');
@@ -3501,6 +3543,7 @@
                         }
                         if (type === 9) {
                             gotInfo = true;
+                            extendStall();
                             setNativePlane(true);
                             var resInfo = applyOrsayAvScale(av, grid);
                             scaleDone = !!(resInfo && resInfo.indexOf('none|') !== 0);
@@ -3517,13 +3560,18 @@
                             updateProgress();
                             showBar();
                         } else if (type === 12) {
+                            extendStall();
                             if (!scaleDone) { var s12 = applyOrsayAvScale(av, grid); scaleDone = !!(s12 && s12.indexOf('none|') !== 0); }
                             player.paused = false;
                             playerMessage('');
                             updateProgress();
                             showBar();
                         } else if (type === 11) {
+                            extendStall();
                             if (player.ready) playerMessage('Буферизация…');
+                        } else if (type === 13) {
+                            extendStall();
+                            if (player.ready && !player.firstFrame) playerMessage('Буферизация… ' + (Number(data) || 0) + '%');
                         } else if (type === 14) {
                             var ms = Number(data) || 0;
                             if (ms <= 0 && !zeroLogged) {
@@ -3670,15 +3718,18 @@
                                 onbufferingstart: function () {
                                     if (!live()) return;
                                     noteNativeEvent(11);
+                                    extendStall();
                                     if (player.ready) playerMessage('Буферизация…');
                                 },
                                 onbufferingprogress: function (pct) {
                                     if (!live()) return;
                                     noteNativeEvent(13, pct);
+                                    extendStall();
                                 },
                                 onbufferingcomplete: function () {
                                     if (!live()) return;
                                     noteNativeEvent(12);
+                                    extendStall();
                                     player.paused = false;
                                     playerMessage('');
                                     try { if (!player.duration) player.duration = (Number(av.getDuration ? av.getDuration() : av.duration) || 0) / 1000; } catch (eD2) {}
@@ -3778,13 +3829,18 @@
         }
     }
 
-    /* Player factory. Every stage (pre-roll → intro → film) goes through here: the previous stream is
-       stopped and closed first and, on a TV, the next open() waits DECODER_RELEASE_MS for the decoder. */
+    /* Player factory. Every stage (intro → pre-roll → film) goes through here: the previous stream is
+       stopped and closed first and, on a TV, the next open() waits DECODER_RELEASE_MS for the decoder.
+       orsayTried resets per stage so a buffer timeout in intro/ad never burns primary AVPlay for film. */
     function openWithEngine(rawUrl, loadId) {
         if (loadId !== player.loadId) return;
         /* v10 race: a pending open of the previous stage (intro) fired after the film had started and
            re-opened intro.video_url under the film flag. Only one deferred open may exist. */
         clearEngineTimers();
+        player.orsayTried = {};
+        player.orsaySefTried = false;
+        player.stallDeadline = 0;
+        player.stallBumpAt = 0;
         if (engineBusy()) engineDetach(player.firstFrame);
         if (IS_TV && player.lastReleaseAt) {
             var since = new Date().getTime() - player.lastReleaseAt;
@@ -4148,7 +4204,7 @@
                     playerMessage('');
                     player.introTimer = setTimeout(function () {
                         if (id === player.loadId && player.phase === 'intro') finishIntroStage(id);
-                    }, 15000);
+                    }, 28000);
                     openWithEngine(intro.video_url, id);
                     return;
                 }
@@ -4588,7 +4644,7 @@
     function isInteractive(node) {
         return hasClass(node, 'lite-card') || hasClass(node, 'lite-menu-item') || hasClass(node, 'lite-btn') ||
             hasClass(node, 'lite-pill') || hasClass(node, 'lite-back') || hasClass(node, 'lite-kb-key') ||
-            hasClass(node, 'lite-genre-tile');
+            hasClass(node, 'lite-genre-tile') || hasClass(node, 'lite-progress') || hasClass(node, 'lite-player-audio');
     }
 
     function interactiveOf(node) {
@@ -4607,7 +4663,9 @@
     function dialogTarget(node) {
         var id = node.id;
         if (state.mode === 'player') {
-            if (id === 'lite-player-back' || id === 'lite-player-retry' || id === 'lite-player-other' || id === 'lite-ad-skip') return { kind: 'player', id: id };
+            if (id === 'lite-player-back' || id === 'lite-player-retry' || id === 'lite-player-other' ||
+                id === 'lite-ad-skip' || id === 'lite-player-rw' || id === 'lite-player-state' ||
+                id === 'lite-player-ff' || id === 'lite-player-audio' || id === 'lite-progress') return { kind: 'player', id: id };
             if (player.trackOpen && hasClass(node, 'lite-pill')) {
                 var ti = indexIn($('lite-player-tracks').querySelectorAll('.lite-pill'), node);
                 if (ti >= 0) return { kind: 'track', index: ti };
@@ -4694,9 +4752,8 @@
             state.exitFocus = t.id;
             renderExit();
         } else if (t.kind === 'player') {
-            if (t.id === 'lite-player-retry') player.focusAct = 0;
-            else if (t.id === 'lite-player-other') player.focusAct = 1;
-            renderPlayerActions();
+            if (t.id === 'lite-player-retry') { player.focusAct = 0; renderPlayerActions(); }
+            else if (t.id === 'lite-player-other') { player.focusAct = 1; renderPlayerActions(); }
         } else if (t.kind === 'track') {
             player.trackFocus = t.index;
             renderTrackBar();
@@ -4728,6 +4785,23 @@
         focusTarget(t);
         if (t.kind === 'player' && t.id === 'lite-player-back') { closePlayer(); return; }
         if (t.kind === 'player' && t.id === 'lite-ad-skip') { if (player.adCanSkip) advanceFromCommercial('skip'); return; }
+        if (t.kind === 'player' && t.id === 'lite-player-rw') { if (player.phase === 'film' && !player.problem) seek(-SEEK_STEP); showBar(); return; }
+        if (t.kind === 'player' && t.id === 'lite-player-ff') { if (player.phase === 'film' && !player.problem) seek(SEEK_STEP); showBar(); return; }
+        if (t.kind === 'player' && t.id === 'lite-player-state') { if (!player.problem) togglePlay(); showBar(); return; }
+        if (t.kind === 'player' && t.id === 'lite-player-audio') { if (!player.problem) { if (player.trackOpen) closeTrackBar(); else openTrackBar(); } return; }
+        if (t.kind === 'player' && t.id === 'lite-progress') {
+            if (player.ready && player.phase === 'film' && !player.problem && player.duration > 0 && typeof event.clientX === 'number' && node.getBoundingClientRect) {
+                var rect = node.getBoundingClientRect();
+                if (rect && rect.width > 0) {
+                    var ratio = (event.clientX - rect.left) / rect.width;
+                    if (ratio < 0) ratio = 0;
+                    if (ratio > 1) ratio = 1;
+                    seek(ratio * player.duration - player.currentTime);
+                }
+            }
+            showBar();
+            return;
+        }
         if (t.kind === 'track') { selectEngineTrack(t.index); closeTrackBar(); return; }
         if (t.kind === 'pro') { onProKey('select'); return; }
         dispatchKey('select');

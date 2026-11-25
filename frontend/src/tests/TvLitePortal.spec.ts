@@ -1184,7 +1184,7 @@ describe('Lite TV portal behaviour', () => {
       hook.fn?.(9)
       hook.fn?.(14, 0)
       expect(lite().player.firstFrame).toBe(false)
-      await vi.advanceTimersByTimeAsync(9700)
+      await vi.advanceTimersByTimeAsync(13500)
       expect(destroys).toContain(1)
       expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay AVPlay SDK')
       expect(sdkHolder.opts?.playCallback?.oncurrentplaytime).toBeTypeOf('function')
@@ -1354,6 +1354,157 @@ describe('Lite TV portal behaviour', () => {
       const msg = document.getElementById('lite-player-message')?.textContent || ''
       expect(msg).toContain('1924x1082')
       expect(msg).toContain('1920×1080')
+    } finally {
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('keeps Orsay AVPlay unpoisoned across Intro stall timeout -> Pre-roll Ad -> Film', async () => {
+    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: '/media/cinema-intro/clip.mp4' } })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-v14', media_url: '/tv-ad/n1/only.mp4', duration_sec: 10, skip_after: null } } })
+    routes.push({ method: 'POST', path: '/ads/events/del-v14', body: { ok: true } })
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
+    const opens: string[] = []
+    const hooks: { fn: ((t: number, d?: unknown) => void) | null }[] = []
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: {
+          getAVPlay: (ok: (av: unknown) => void) => {
+            const slot: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
+            hooks.push(slot)
+            ok({
+              status: '4',
+              init: () => {},
+              setPlayerPluginObject: () => null,
+              set onEvent(fn: (t: number, d?: unknown) => void) { slot.fn = fn },
+              open: (url: string) => { opens.push(url); return true },
+              play: () => {},
+              stop: () => {},
+              destroy: () => {},
+              setDisplayArea: () => true,
+              getVideoResolution: () => '1920|1080',
+              setCropArea: () => {},
+              getDuration: () => 10000,
+            })
+          },
+        },
+      }
+    try {
+      await bootLite()
+      vi.useFakeTimers()
+      press('', 29443)
+      await vi.advanceTimersByTimeAsync(100)
+      expect(opens).toHaveLength(1)
+      expect(opens[0]).toContain('/media/cinema-intro/clip.mp4')
+      // Intro stalls without rendering -> 14s commercial timeout advances to Pre-roll on AVPlay (not legacy Player)
+      await vi.advanceTimersByTimeAsync(16500)
+      expect(opens).toHaveLength(2)
+      expect(opens[1]).toContain('/tv-ad/n1/only.mp4')
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay AVPlay')
+      // Complete Pre-roll -> Film also opens on Orsay AVPlay
+      hooks[1].fn?.(7)
+      hooks[1].fn?.(8)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(opens).toHaveLength(3)
+      expect(opens[2]).toContain('/stream/t.m3u8')
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay AVPlay')
+      press('', 88)
+    } finally {
+      vi.useRealTimers()
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('extends Orsay stall deadline during buffering progress events (9 -> 11 -> 13) until RENDERING_START (7)', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
+    const hook: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
+    let destroys = 0
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: {
+          getAVPlay: (ok: (av: unknown) => void) => ok({
+            status: '4',
+            init: () => {},
+            setPlayerPluginObject: () => null,
+            set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
+            open: () => true,
+            play: () => {},
+            stop: () => {},
+            destroy: () => { destroys += 1 },
+            setDisplayArea: () => true,
+            getVideoResolution: () => '1920|1080',
+            setCropArea: () => {},
+            getDuration: () => 120000,
+          }),
+        },
+      }
+    try {
+      await bootLite()
+      vi.useFakeTimers()
+      press('', 29443)
+      await vi.advanceTimersByTimeAsync(5000)
+      hook.fn?.(9)
+      await vi.advanceTimersByTimeAsync(6000)
+      hook.fn?.(11)
+      await vi.advanceTimersByTimeAsync(5000)
+      hook.fn?.(13, 60)
+      await vi.advanceTimersByTimeAsync(3000)
+      // At t=19s (past 12s/18s initial stall), AVPlay stayed alive because 9/11/13 extended stall within the 28s cap
+      expect(destroys).toBe(0)
+      hook.fn?.(7)
+      expect(lite().player.firstFrame).toBe(true)
+      press('', 88)
+    } finally {
+      vi.useRealTimers()
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('seeks via av.jumpForward/jumpBackward even when setPlayerPluginObject returns a function and handles clickable controls', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
+    const hook: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
+    const jumps: [string, number][] = []
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: {
+          getAVPlay: (ok: (av: unknown) => void) => ok({
+            status: '4',
+            init: () => {},
+            setPlayerPluginObject: () => function nativeStub() {},
+            set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
+            open: () => true,
+            play: () => {},
+            stop: () => {},
+            destroy: () => {},
+            jumpForward: (sec: number) => { jumps.push(['fwd', sec]); return true },
+            jumpBackward: (sec: number) => { jumps.push(['back', sec]); return true },
+            setDisplayArea: () => true,
+            getVideoResolution: () => '1920|1080',
+            setCropArea: () => {},
+            getDuration: () => 200000,
+          }),
+        },
+      }
+    try {
+      await bootLite()
+      press('', 29443)
+      await flush()
+      hook.fn?.(9)
+      hook.fn?.(7)
+      hook.fn?.(14, 60000)
+      expect(lite().player.currentTime).toBe(60)
+      lite().pointer.keyAt = 0
+      click(document.getElementById('lite-player-ff')!)
+      click(document.getElementById('lite-player-rw')!)
+      const bar = document.getElementById('lite-progress')!
+      bar.getBoundingClientRect = () => ({ left: 100, width: 1000, top: 0, right: 1100, bottom: 8, height: 8, x: 100, y: 0, toJSON: () => ({}) })
+      bar.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 600 }))
+      expect(jumps).toEqual([['fwd', 30], ['back', 30], ['fwd', 40]])
+      press('', 88)
     } finally {
       delete (window as unknown as { webapis?: unknown }).webapis
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })

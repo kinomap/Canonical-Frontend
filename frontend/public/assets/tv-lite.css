@@ -893,16 +893,17 @@ html, body {
 .lite-progress {
     position: relative;
     width: 1184px;
-    height: 6px;
+    height: 8px;
     margin-top: 14px;
-    border-radius: 3px;
+    border-radius: 4px;
     background: #1f2937;
     overflow: hidden;
+    cursor: pointer;
 }
 
 .lite-progress-fill {
     width: 0;
-    height: 6px;
+    height: 8px;
     background: #ffce21;
 }
 
@@ -912,9 +913,19 @@ html, body {
     color: #cbd5e1;
 }
 
+.lite-player-ctrl {
+    display: inline-block;
+    height: 30px;
+    line-height: 28px;
+    padding: 0 10px;
+    margin-right: 8px;
+    font-size: 14px;
+    border-radius: 6px;
+}
+
 .lite-player-state {
-    font-size: 20px;
-    margin-right: 14px;
+    font-size: 16px;
+    margin-right: 8px;
     color: #ffce21;
 }
 
