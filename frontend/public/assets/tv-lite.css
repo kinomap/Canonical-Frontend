@@ -1116,6 +1116,7 @@ body.lite-native-plane .lite-details,
 body.lite-native-plane .lite-viewport,
 body.lite-native-plane .lite-scroll,
 body.lite-native-plane .lite-view {
+    display: none !important;
     background: transparent !important;
     visibility: hidden;
 }

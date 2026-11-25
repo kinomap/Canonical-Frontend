@@ -195,6 +195,9 @@
         var wa = window.webapis;
         var inFrame = false;
         try { inFrame = window.top !== window.self; } catch (eF) { inFrame = true; }
+        var cw = (typeof window.curWidget !== 'undefined' && window.curWidget) ? window.curWidget : null;
+        var cwSize = (cw && cw.width && cw.height) ? (cw.width + 'x' + cw.height) : '-';
+        var winSize = (window.innerWidth || 0) + 'x' + (window.innerHeight || 0);
         var msg = 'SEF=' + !!(sef && isCallableNative(sef.Open)) +
             '(t:' + (sef ? typeof sef.Open : 'none') + ')' +
             ' Player=' + !!(pl && isCallableNative(pl.InitPlayer)) +
@@ -204,6 +207,8 @@
             ' open=' + !!(wa && wa.avplay && isCallableNative(wa.avplay.open)) +
             ' Common=' + !!window.Common +
             ' curWidget=' + (typeof window.curWidget !== 'undefined') +
+            ' cwSize=' + cwSize +
+            ' win=' + winSize +
             ' iframe=' + inFrame;
         debugLog('info', 'engines: ' + msg);
         debugLog('info', 'open: ' + url);
@@ -2526,6 +2531,7 @@
         clearStall();
         player.stallTimer = setTimeout(function () {
             if (!player.card || player.firstFrame) return;
+            reportTvDiag('stall', player.engineKind + '|' + player.phase);
             if (player.phase === 'ad' || player.phase === 'intro') { advanceFromCommercial('timeout'); return; }
             playerProblem('stall');
         }, ms || STALL_MS);
@@ -2569,6 +2575,7 @@
 
     function playerProblem(kind) {
         clearStall();
+        reportTvDiag('prob', kind + '|' + player.engineKind + '|' + player.phase);
         if (player.phase === 'ad' || player.phase === 'intro') {
             debugLog('warn', player.phase + ' ' + kind + ': skipping to the next stage');
             advanceFromCommercial('error');
@@ -2576,7 +2583,7 @@
         }
         var card = player.card;
         debugLog('error', 'playback ' + kind + ' · engine ' + player.engineKind);
-        if (IS_TV && kind === 'error') debugOpen();
+        if (IS_TV && (kind === 'error' || kind === 'stall')) debugOpen();
         player.problem = true;
         player.ready = false;
         player.focusAct = 0;
@@ -2643,10 +2650,22 @@
         return '';
     }
 
+    function orsayGridSize() {
+        var cw = (typeof window.curWidget !== 'undefined' && window.curWidget) ? window.curWidget : null;
+        var w = cw && Number(cw.width) > 0 ? Number(cw.width) : ORSAY_GRID_W;
+        var h = cw && Number(cw.height) > 0 ? Number(cw.height) : ORSAY_GRID_H;
+        return { width: w, height: h };
+    }
+
+    function orsayStallMs() {
+        return (player.phase === 'ad' || player.phase === 'intro') ? 6000 : 12000;
+    }
+
     function tryOrsaySef(rawUrl, loadId) {
         var sef = orsaySefNode();
         if (!sef) return false;
         var playUrl = orsayPlayUrl(rawUrl);
+        var grid = orsayGridSize();
         try {
             engineDetach();
             var version = sefOpenPlayer(sef);
@@ -2664,16 +2683,17 @@
                 }
                 if (type === 9) {
                     /* STREAM_INFO_READY: duration and audio tracks are known now */
-                    try { sef.Execute('SetDisplayArea', 0, 0, ORSAY_GRID_W, ORSAY_GRID_H); } catch (eArea9) {}
+                    try { sef.Execute('SetDisplayArea', 0, 0, grid.width, grid.height); } catch (eArea9) {}
                     try { player.duration = (Number(sef.Execute('GetDuration')) || 0) / 1000; } catch (eDur) {}
-                    markFrame();
+                    readEngineTracks();
+                    playerMessage('');
                     updateProgress();
                     showBar();
                 } else if (type === 7) {
                     /* RENDERING_START: the first frame is on the video plane */
                     if (!areaAppliedOnEvent) {
                         areaAppliedOnEvent = true;
-                        try { sef.Execute('SetDisplayArea', 0, 0, ORSAY_GRID_W, ORSAY_GRID_H); } catch (eArea7) {}
+                        try { sef.Execute('SetDisplayArea', 0, 0, grid.width, grid.height); } catch (eArea7) {}
                     }
                     player.paused = false;
                     markFrame();
@@ -2682,8 +2702,9 @@
                 } else if (type === 12) {
                     /* BUFFERING_COMPLETE */
                     player.paused = false;
-                    markFrame();
+                    playerMessage('');
                     updateProgress();
+                    showBar();
                 } else if (type === 11) {
                     /* BUFFERING_START */
                     if (player.ready) playerMessage('Буферизация…');
@@ -2692,12 +2713,17 @@
                     if (player.ready && !player.firstFrame) playerMessage('Буферизация… ' + (Number(data1) || 0) + '%');
                 } else if (type === 14) {
                     /* CURRENT_PLAYBACK_TIME (ms) */
-                    if (!timeLogged) { timeLogged = true; debugLog('info', 'SEF OnEvent(14, ' + data1 + ') — playback time running'); }
-                    player.currentTime = (Number(data1) || 0) / 1000;
+                    var ms = Number(data1) || 0;
+                    if (ms > 0 && !timeLogged) {
+                        timeLogged = true;
+                        debugLog('info', 'SEF OnEvent(14, ' + ms + ') — playback time running');
+                        reportTvDiag('sef_t14', String(ms));
+                    }
+                    player.currentTime = ms / 1000;
                     if (!player.duration) {
                         try { player.duration = (Number(sef.Execute('GetDuration')) || 0) / 1000; } catch (eDur2) {}
                     }
-                    if (!player.firstFrame) markFrame();
+                    if (ms > 0 && !player.firstFrame) markFrame();
                     updateProgress();
                 } else if (type === 8) {
                     /* RENDERING_COMPLETE: end of the clip */
@@ -2715,13 +2741,13 @@
             var inited = sef.Execute('InitPlayer', playUrl);
             debugLog('info', 'SEF InitPlayer -> ' + inited);
             if (!nativeFailed(inited)) {
-                try { sef.Execute('SetDisplayArea', 0, 0, ORSAY_GRID_W, ORSAY_GRID_H); } catch (eArea) {}
+                try { sef.Execute('SetDisplayArea', 0, 0, grid.width, grid.height); } catch (eArea) {}
                 var started = sef.Execute('StartPlayback', 0);
                 debugLog('info', 'SEF StartPlayback(0) -> ' + started);
                 if (!nativeFailed(started)) {
                     player.ready = true;
                     player.paused = false;
-                    armStall(15000);
+                    armStall(orsayStallMs());
                     showBar();
                     return true;
                 }
@@ -2749,31 +2775,37 @@
         var pl = orsayPlayerNode();
         if (!pl) return false;
         var playUrl = orsayPlayUrl(rawUrl);
+        var grid = orsayGridSize();
         try {
             engineDetach();
             enterNativePlane('orsay-player', 'Orsay Player');
             nativeSession.pl = pl;
+            var timeLogged = false;
             pl.OnStreamInfoReady = function () {
                 if (loadId !== player.loadId) return;
                 debugLog('info', 'Player OnStreamInfoReady');
                 reportTvDiag('pl_ev', 'ready');
-                try { pl.SetDisplayArea(0, 0, ORSAY_GRID_W, ORSAY_GRID_H); } catch (ePa9) {}
+                try { pl.SetDisplayArea(0, 0, grid.width, grid.height); } catch (ePa9) {}
                 try { player.duration = (Number(pl.GetDuration()) || 0) / 1000; } catch (ePd0) {}
-                markFrame();
+                readEngineTracks();
+                playerMessage('');
+                updateProgress();
                 showBar();
             };
             pl.OnRenderingComplete = function () { if (loadId === player.loadId) { debugLog('info', 'Player OnRenderingComplete'); try { pl.Stop(); } catch (eP) {} onPlaybackEnded(); } };
             pl.OnCurrentPlayTime = function (ms) {
                 if (loadId !== player.loadId) return;
-                player.currentTime = (Number(ms) || 0) / 1000;
+                var msVal = Number(ms) || 0;
+                if (msVal > 0 && !timeLogged) { timeLogged = true; reportTvDiag('pl_t14', String(msVal)); }
+                player.currentTime = msVal / 1000;
                 if (!player.duration) {
                     try { player.duration = (Number(pl.GetDuration()) || 0) / 1000; } catch (ePd) {}
                 }
-                if (!player.firstFrame) markFrame();
+                if (msVal > 0 && !player.firstFrame) markFrame();
                 updateProgress();
             };
             pl.OnBufferingStart = function () { if (loadId === player.loadId && player.ready) playerMessage('Буферизация…'); };
-            pl.OnBufferingComplete = function () { if (loadId === player.loadId) { player.paused = false; markFrame(); updateProgress(); showBar(); } };
+            pl.OnBufferingComplete = function () { if (loadId === player.loadId) { player.paused = false; playerMessage(''); updateProgress(); showBar(); } };
             pl.OnConnectionFailed = pl.OnNetworkDisconnected = pl.OnRenderError = pl.OnStreamNotFound = function () {
                 if (loadId !== player.loadId) return;
                 debugLog('error', 'Player stream error');
@@ -2783,13 +2815,13 @@
             var inited = pl.InitPlayer(playUrl);
             debugLog('info', 'Player InitPlayer -> ' + inited);
             if (!nativeFailed(inited)) {
-                try { pl.SetDisplayArea(0, 0, ORSAY_GRID_W, ORSAY_GRID_H); } catch (ePa) {}
+                try { pl.SetDisplayArea(0, 0, grid.width, grid.height); } catch (ePa) {}
                 var started = pl.StartPlayback(0);
                 debugLog('info', 'Player StartPlayback(0) -> ' + started);
                 if (!nativeFailed(started)) {
                     player.ready = true;
                     player.paused = false;
-                    armStall(15000);
+                    armStall(orsayStallMs());
                     showBar();
                     return true;
                 }
@@ -2805,47 +2837,81 @@
         return false;
     }
 
-    /* Driver A.2 — Orsay AVPlay ($MANAGER_WIDGET webapis.avplay.getAVPlay), when SEF did not open the stream. */
+    /* Driver A.1 — Orsay AVPlay ($MANAGER_WIDGET webapis.avplay.getAVPlay), Lampa's primary Orsay driver. */
     function openOrsayAvplay(rawUrl, loadId) {
         player.engineKind = 'orsay';
         setEngineLabel('Orsay AVPlay');
         var hostOrsay = $('lite-native-host');
         if (hostOrsay) hostOrsay.innerHTML = '<object id="lite-orsay-video" class="lite-avplayer" style="visibility:hidden;"></object>';
+        var grid = orsayGridSize();
         function fallback() {
             if (loadId !== player.loadId) return;
-            if (!tryOrsayLegacyPlayer(rawUrl, loadId)) openHtml5Fallback(rawUrl, loadId, 'Orsay plugins did not open the stream');
+            clearStall();
+            engineDetach();
+            if (tryOrsaySef(rawUrl, loadId)) return;
+            if (tryOrsayLegacyPlayer(rawUrl, loadId)) return;
+            openHtml5Fallback(rawUrl, loadId, 'Orsay plugins did not open the stream');
         }
         try {
             window.webapis.avplay.getAVPlay(function (av) {
                 if (loadId !== player.loadId) { try { av.destroy(); } catch (e0) {} return; }
                 engineDetach();
                 var h = $('lite-native-host');
-                if (h) h.innerHTML = '<object id="lite-orsay-video" class="lite-avplayer"></object>';
+                if (h) h.innerHTML = '<object id="lite-orsay-video" class="lite-avplayer" style="visibility:hidden;"></object>';
                 nativeSession.av = av;
                 enterNativePlane('orsay', 'Orsay AVPlay');
                 var playUrl = orsayPlayUrl(rawUrl);
+                var timeLogged = false;
                 try { av.init(); } catch (eInit) {}
                 try { nativeSession.plugin = av.setPlayerPluginObject(); } catch (ePlug) { nativeSession.plugin = null; }
                 av.onEvent = function (type, data) {
                     if (loadId !== player.loadId) return;
                     type = Number(type);
-                    if (type !== 14) debugLog(type >= 1 && type <= 6 ? 'warn' : 'info', 'AVPlay onEvent(' + type + ')');
+                    if (type !== 14) {
+                        debugLog(type >= 1 && type <= 6 ? 'warn' : 'info', 'AVPlay onEvent(' + type + (data !== undefined ? ', ' + data : '') + ')');
+                        if (type <= 9 || type === 12) reportTvDiag('av_ev', type + ':' + (data !== undefined ? data : ''));
+                    }
                     if (type === 9) {
                         setNativePlane(true);
-                        try { av.setDisplayArea({ left: 0, top: 0, width: ORSAY_GRID_W, height: ORSAY_GRID_H }); } catch (eArea) {}
+                        try { av.setDisplayArea({ left: 0, top: 0, width: grid.width, height: grid.height }); } catch (eArea) {}
+                        try {
+                            if (typeof av.getVideoResolution === 'function' && typeof av.setCropArea === 'function') {
+                                var res = av.getVideoResolution();
+                                if (res && Number(res.width) > 0 && Number(res.height) > 0) {
+                                    av.setCropArea({ left: 0, top: 0, width: Number(res.width), height: Number(res.height) });
+                                }
+                            }
+                        } catch (eCrop) {}
                         try { av.startSubtitle({ path: '/dtv/temp/', streamID: 999, sync: 999, callback: function () {} }); } catch (eSub) {}
-                        markFrame();
+                        try { player.duration = (Number(av.getDuration()) || 0) / 1000; } catch (eDur9) {}
+                        readEngineTracks();
+                        playerMessage('');
+                        updateProgress();
                         showBar();
-                    } else if (type === 7 || type === 12) {
+                    } else if (type === 7) {
                         player.paused = false;
                         markFrame();
+                        updateProgress();
+                        showBar();
+                    } else if (type === 12) {
+                        player.paused = false;
+                        playerMessage('');
                         updateProgress();
                         showBar();
                     } else if (type === 11) {
                         if (player.ready) playerMessage('Буферизация…');
                     } else if (type === 14) {
-                        player.currentTime = (Number(data) || 0) / 1000;
-                        try { player.duration = (av.getDuration() || 0) / 1000; } catch (eDur) {}
+                        var ms = Number(data) || 0;
+                        if (ms > 0 && !timeLogged) {
+                            timeLogged = true;
+                            debugLog('info', 'AVPlay onEvent(14, ' + ms + ') — playback time running');
+                            reportTvDiag('av_t14', String(ms));
+                        }
+                        player.currentTime = ms / 1000;
+                        if (!player.duration) {
+                            try { player.duration = (Number(av.getDuration()) || 0) / 1000; } catch (eDur) {}
+                        }
+                        if (ms > 0 && !player.firstFrame) markFrame();
                         updateProgress();
                     } else if (type === 8) {
                         try { av.stop(); } catch (eStop) {}
@@ -2857,24 +2923,37 @@
                     }
                 };
                 var opened = false;
-                try { opened = av.open(playUrl); } catch (eOpen) { opened = false; }
-                debugLog('info', 'AVPlay open -> ' + opened);
-                if (opened) {
-                    try { av.setDisplayArea({ left: 0, top: 0, width: ORSAY_GRID_W, height: ORSAY_GRID_H }); } catch (eArea0) {}
+                var openThrew = false;
+                try { opened = av.open(playUrl); } catch (eOpen) { openThrew = true; debugLog('warn', 'AVPlay open() threw: ' + debugStringify(eOpen)); }
+                var openOk = !openThrew && !nativeFailed(opened);
+                debugLog('info', 'AVPlay open -> ' + opened + ' (ok=' + openOk + ')');
+                reportTvDiag('av_open', String(opened) + '|ok=' + openOk + '|cw=' + grid.width + 'x' + grid.height);
+                if (openOk) {
+                    try { av.setDisplayArea({ left: 0, top: 0, width: grid.width, height: grid.height }); } catch (eArea0) {}
                     player.ready = true;
                     player.paused = false;
-                    av.play(function () {}, function () { debugLog('error', 'AVPlay play() failed'); playerProblem('error'); });
-                    armStall(15000);
+                    armStall(orsayStallMs());
+                    av.play(function () {}, function () {
+                        if (loadId !== player.loadId) return;
+                        debugLog('error', 'AVPlay play() failed');
+                        reportTvDiag('av_play_fail', player.phase);
+                        if (!player.firstFrame) {
+                            fallback();
+                            return;
+                        }
+                        playerProblem('error');
+                    });
                 } else {
-                    engineDetach();
                     fallback();
                 }
             }, function () {
                 debugLog('warn', 'getAVPlay error callback');
+                reportTvDiag('av_get_fail', 'cb');
                 fallback();
             });
         } catch (eOrsay) {
             debugLog('error', 'getAVPlay failed: ' + debugStringify(eOrsay));
+            reportTvDiag('av_get_fail', debugStringify(eOrsay));
             fallback();
         }
     }
@@ -2964,8 +3043,8 @@
         player.duration = 0;
         player.currentTime = 0;
         if (IS_ORSAY) {
-            if (tryOrsaySef(rawUrl, loadId)) return;
             if (canUseOrsayAvplay()) { openOrsayAvplay(rawUrl, loadId); return; }
+            if (tryOrsaySef(rawUrl, loadId)) return;
             if (tryOrsayLegacyPlayer(rawUrl, loadId)) return;
             openHtml5Fallback(rawUrl, loadId, 'no Orsay plugin answered');
             return;
