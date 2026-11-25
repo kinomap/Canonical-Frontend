@@ -1,31 +1,62 @@
-"""--cinema-smoke-test: packaged-app QA of the in-window CinemaSurface (0.2.4).
+"""--cinema-smoke-test: packaged-app QA of the in-window CinemaSurface (0.2.4, frame checks 0.2.5).
 
 --smoke-test and --playback-smoke-fixture deliberately use the external mpv engine, so before 0.2.4 the frozen
 build and the .deb never proved that the embedded OpenGL surface, libmpv render API and the bundled
 kinosota-intro.mp4 really work. This mode runs exactly the production path: create_surface() → DirectLaunchSplash →
 bundled intro → a local Pre-roll (expect_preroll / queue_preroll) → load_film → teardown, without network,
-credentials or a stored session. Exit 0 = PASS (or SKIP on a platform without OpenGL windows, e.g. offscreen)."""
+credentials or a stored session. Exit 0 = PASS (or SKIP on a platform without OpenGL windows, e.g. offscreen).
+
+0.2.5: the waits run a real QEventLoop (timers, Wayland frame callbacks and queued libmpv wake-ups are dispatched
+the way app.exec() does, no sleep between passes); PASS also requires the Pre-roll, the film dissolve and frames that
+keep reaching the screen (paintGL), and the report says how many and whether the compositor presented the window."""
 import json
 import os
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEventLoop
+from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtGui import QGuiApplication
 
 from . import cinema
 
 FILM_PHASES = ('intro', 'warmup', 'dissolve', 'film')
 HEADLESS_PLATFORMS = ('offscreen', 'minimal')
+POLL_MS = 20
+# Composited paints after the intro's first frame. A healthy run paints the intro at its frame rate (Xvfb + llvmpipe
+# in the QA containers: several per second); the 0.2.4 Wayland stall painted 0-2 times in the following 17 s.
+MIN_FLOWING_PAINTS = 8
 
 
 def _pump(seconds, until=None):
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        QCoreApplication.processEvents(QEventLoop.AllEvents, 50)
-        if until is not None and until():
-            return True
-        time.sleep(0.02)
+    """Run the application's event loop for up to seconds, or until until() is true (checked every POLL_MS)."""
+    if until is not None and until():
+        return True
+    loop = QEventLoop()
+    errors = []
+
+    def check():
+        try:
+            if until is not None and until():
+                loop.quit()
+        except Exception as error:  # Re-raised below: a slot must never swallow it.
+            errors.append(error)
+            loop.quit()
+
+    poll = QTimer()
+    poll.setInterval(POLL_MS)
+    poll.timeout.connect(check)
+    deadline = QTimer()
+    deadline.setSingleShot(True)
+    deadline.timeout.connect(loop.quit)
+    poll.start()
+    deadline.start(max(0, int(seconds * 1000)))
+    try:
+        loop.exec()
+    finally:
+        poll.stop()
+        deadline.stop()
+    if errors:
+        raise errors[0]
     return until() if until is not None else True
 
 
@@ -99,6 +130,8 @@ def _exercise(fixture, timeout, report, held, started):
         return 1
     failures = []
     surface.failed.connect(failures.append)
+    view = surface.view
+    frames = {'intro_paint': None, 'exposed_seen': False, 'unexposed_s': 0.0, 'last': time.monotonic()}
     splash = held['splash'] = DirectLaunchSplash(cinema=surface)
     splash.present()
     token = surface.expect_preroll()
@@ -109,6 +142,14 @@ def _exercise(fixture, timeout, report, held, started):
     def note():
         if not report['phases'] or report['phases'][-1] != surface.phase:
             report['phases'].append(surface.phase)
+        now = time.monotonic()
+        if view.presentation()['exposed']:
+            frames['exposed_seen'] = True
+        else:
+            frames['unexposed_s'] += now - frames['last']
+        frames['last'] = now
+        if frames['intro_paint'] is None and surface.intro_frame_at is not None:
+            frames['intro_paint'] = (view.paint_count, surface.intro_frame_at)
 
     def running():
         note()
@@ -127,10 +168,28 @@ def _exercise(fixture, timeout, report, held, started):
     checks['preroll_started'] = ad['started']
     checks['film_reached'] = surface.phase in ('dissolve', 'film')
     checks['no_failure'] = not failures
+    note()
+    state = view.presentation()
+    after_intro, intro_seconds = 0, 0.0
+    if frames['intro_paint'] is not None:
+        after_intro = view.paint_count - frames['intro_paint'][0]
+        intro_seconds = max(0.001, time.monotonic() - frames['intro_paint'][1])
+    checks['frames_flowing'] = after_intro >= MIN_FLOWING_PAINTS
+    report['presentation'] = {
+        'paints': view.paint_count, 'paints_after_intro_frame': after_intro,
+        'fps_after_intro_frame': round(after_intro / intro_seconds, 1) if intro_seconds else 0.0,
+        'exposed_seen': frames['exposed_seen'], 'exposed_at_end': state['exposed'],
+        'unexposed_seconds': round(frames['unexposed_s'], 2), 'last_paint_ms': state['last_paint_ms'],
+        'pending_frames': sorted(view.pending_frames()),
+    }
     report['final_phase'] = surface.phase
     if failures:
         report['error'] = str(failures[0])
-    required = ('gl_initialized', 'intro_frame', 'phase_ok', 'no_failure')
+    elif not frames['exposed_seen'] or (not checks['frames_flowing'] and frames['unexposed_s'] > 1):
+        report['error'] = ('the compositor did not present the window (locked or blanked screen, minimized?): '
+                           'decoded frames could not reach the screen')
+    required = ('gl_initialized', 'intro_frame', 'phase_ok', 'no_failure', 'preroll_started', 'film_reached',
+                'frames_flowing')
     return 0 if all(checks[name] for name in required) else 1
 
 

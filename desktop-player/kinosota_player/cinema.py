@@ -60,6 +60,17 @@ GL_EXPOSE_LIMIT_MS = 15000
 # a single composited frame (a really broken driver) only once per CINEMA_REBUILD_COOLDOWN_S.
 CINEMA_REBUILD_LIMIT = 3
 CINEMA_REBUILD_COOLDOWN_S = 300.0
+# 0.2.5: an OpenGL context alone proves nothing: a decoded frame (playback-restart, layer armed) must also reach the
+# screen. Wayland compositors withhold wl_surface.frame callbacks from a window nobody can see (locked or blanked
+# screen, minimized, another workspace); Qt then marks the window unexposed and QOpenGLWidget stops calling paintGL,
+# so the prestart, which advances on composited frames only, holds in intro / warmup. Watched every FRAME_WATCH_MS:
+# after FRAME_STALL_MS without the frame a repaint is requested again; a hidden, minimized or unpresented window just
+# waits (the frame is drawn as soon as the compositor shows the window again); a visible, exposed window that still
+# shows nothing FRAME_PRESENT_LIMIT_MS after it became presentable is a broken surface: the same fallback as a missing
+# OpenGL context (external player for this launch, rebuilt before the next one, CINEMA_REBUILD_LIMIT applies).
+FRAME_WATCH_MS = 1000
+FRAME_STALL_MS = 2000
+FRAME_PRESENT_LIMIT_MS = GL_EXPOSE_LIMIT_MS
 INTRO_VOLUME = 100
 FILM_VOLUME = 100
 BACKGROUND = QColor('#070b0e')
@@ -301,12 +312,13 @@ def wheel_volume_notches(angle_delta, inverted=False):
 
 # View -----------------------------------------------------------------------------------------------------------
 class _Layer:
-    __slots__ = ('name', 'player', 'fbo', 'alpha', 'armed', 'has_frame')
+    __slots__ = ('name', 'player', 'fbo', 'alpha', 'armed', 'armed_at', 'has_frame')
 
     def __init__(self, name, player, alpha):
         self.name, self.player, self.alpha = name, player, alpha
         self.fbo = None
         self.armed = False
+        self.armed_at = None    # 0.2.5: monotonic time of arm(), for the composited-frame watch.
         self.has_frame = False
 
 
@@ -342,8 +354,13 @@ class CinemaView(QOpenGLWidget):
         self._bind_vao = None
         self._bind_sampler = None
         self.first_paint_at = None
+        self.last_paint_at = None
+        self.paint_count = 0
         self.menu_open = False
         self._menu_wheel = 0
+        # libmpv calls the update callback on its own threads: emitting a signal there posts a queued call to the
+        # UI thread (thread-safe, coalesced by update()); a callback that arrives while a paint is pending is not lost
+        # either, because paintGL asks every core for update_flags() on each paint.
         self._wake.connect(self.update, Qt.ConnectionType.QueuedConnection)
         self.frameSwapped.connect(self._swapped)
 
@@ -383,12 +400,14 @@ class CinemaView(QOpenGLWidget):
         layer = self.layers.get(name)
         if layer is not None and not layer.armed:
             layer.armed = True
+            layer.armed_at = time.monotonic()
             self.update()
 
     def disarm(self, name):
         layer = self.layers.get(name)
         if layer is not None:
             layer.armed = layer.has_frame = False
+            layer.armed_at = None
             self.seen.discard(name)
             self.update()
 
@@ -401,6 +420,39 @@ class CinemaView(QOpenGLWidget):
     def alpha(self, name):
         layer = self.layers.get(name)
         return layer.alpha if layer is not None else 0.0
+
+    # Presentation (0.2.5) -----------------------------------------------------------------------------------
+    def pending_frames(self, now=None):
+        """{layer: seconds} for layers whose decoded first frame has not been composited yet."""
+        now = time.monotonic() if now is None else now
+        return {name: max(0.0, now - layer.armed_at) for name, layer in self.layers.items()
+                if layer.armed and not layer.has_frame and layer.armed_at is not None}
+
+    def presentation(self):
+        """Can a paint reach the screen now? visible / minimized / exposed (Wayland: frame callbacks) + paints."""
+        visible = minimized = exposed = False
+        try:
+            visible = self.isVisible()
+            window = self.window()
+            handle = window.windowHandle() if window is not None else None
+            minimized = bool(window is not None and window.isMinimized())
+            exposed = bool(handle is not None and handle.isExposed())
+        except RuntimeError:  # The window is being destroyed.
+            pass
+        last = self.last_paint_at
+        return {'visible': visible, 'minimized': minimized, 'exposed': exposed, 'paints': self.paint_count,
+                'last_paint_ms': None if last is None else round((time.monotonic() - last) * 1000)}
+
+    def kick(self):
+        """Ask for a repaint again: the widget's own update() and the window's frame-paced update request."""
+        self.update()
+        try:
+            window = self.window()
+            handle = window.windowHandle() if window is not None else None
+            if handle is not None:
+                handle.requestUpdate()
+        except RuntimeError:
+            pass
 
     def set_poster(self, image):
         """QImage (or path) painted under the layers until a fully opaque frame covers it."""
@@ -563,8 +615,11 @@ class CinemaView(QOpenGLWidget):
         self._blitter.setOpacity(1.0)
         self._blitter.release()
         gl.glDisable(GL_BLEND)
+        now = time.monotonic()
         if self.first_paint_at is None:
-            self.first_paint_at = time.monotonic()
+            self.first_paint_at = now
+        self.last_paint_at = now
+        self.paint_count += 1
         for name in fresh:
             self.seen.add(name)
             QTimer.singleShot(0, lambda name=name: self.frameReady.emit(name))
@@ -718,6 +773,11 @@ class CinemaSurface(QObject):
         self.watchdog.setSingleShot(True)
         self.watchdog.setInterval(GL_WATCHDOG_MS)
         self.watchdog.timeout.connect(self._check_gl)
+        self.frame_watch = QTimer(self)  # 0.2.5: decoded frames must reach the screen (see FRAME_WATCH_MS).
+        self.frame_watch.setInterval(FRAME_WATCH_MS)
+        self.frame_watch.timeout.connect(self._check_frames)
+        self._presentable_since = None
+        self._frame_stall = None
         self.ad_timer = QTimer(self)
         self.ad_timer.setInterval(READY_POLL_MS)
         self.ad_timer.timeout.connect(self._ad_tick)
@@ -1052,6 +1112,7 @@ class CinemaSurface(QObject):
         if self.phase in ('idle', 'stopped', 'ended'):
             self.phase = 'intro'
         self.watchdog.start()
+        self._watch_frames()
         return True
 
     def load_film(self, url, options=()):
@@ -1087,6 +1148,7 @@ class CinemaSurface(QObject):
         self.film_loaded_at, self.film_frame_at, self.film_started_at = time.monotonic(), None, None
         self.phase = 'warmup'
         self._loaded_core = film
+        self._watch_frames()  # Also a reconnect from a playing film: its new first frame must reach the screen.
         film.command('loadfile', url, 'replace')
 
     def stop_film(self):
@@ -1118,6 +1180,7 @@ class CinemaSurface(QObject):
         self.ad_fade.stop()
         self.ready_timer.stop()
         self.watchdog.stop()
+        self.frame_watch.stop()
         self.ad_timer.stop()
         self._ad = None
         for name in list(self.handles):
@@ -1415,6 +1478,58 @@ class CinemaSurface(QObject):
         platform = QGuiApplication.platformName() if QGuiApplication.instance() else ''
         self._fail(self.view.failure or f'OpenGL context was not created after {waited:.0f} ms '
                                         f'(platform {platform or "unknown"}, exposed {exposed})')
+
+    def _watch_frames(self):
+        if not self.frame_watch.isActive():
+            self._presentable_since, self._frame_stall = None, None
+            self.frame_watch.start()
+
+    def _check_frames(self):
+        """After initializeGL: every decoded first frame (intro, Pre-roll, film) must be composited.
+
+        Before 0.2.5 the GL watchdog ended with initializeGL(), so a window that stopped painting (Wayland withholds
+        frame callbacks from a locked / blanked screen or a minimized window) held the prestart in warmup forever
+        without a word. Hidden, minimized and unpresented windows still wait (nothing is lost: the frame is drawn the
+        moment the compositor shows the window); only a visible, exposed window without the frame fails over."""
+        if self.phase not in ('intro', 'warmup', 'failed'):
+            self.frame_watch.stop()
+            return
+        view = self.view
+        pending, presentation = getattr(view, 'pending_frames', None), getattr(view, 'presentation', None)
+        if not getattr(view, 'initialized', False) or pending is None or presentation is None:
+            return  # No context yet: _check_gl (GL_WATCHDOG_MS / GL_EXPOSE_LIMIT_MS) owns that stage.
+        now = time.monotonic()
+        state = presentation()
+        if state['visible'] and not state['minimized'] and state['exposed']:
+            if self._presentable_since is None:
+                self._presentable_since = now
+        else:
+            self._presentable_since = None
+        stalled = {name: age for name, age in pending(now).items() if age * 1000 >= FRAME_STALL_MS}
+        if not stalled:
+            if self._frame_stall is not None:
+                log.info('Cinema frames reach the screen again (%s)', self._frame_stall)
+            self._frame_stall = None
+            return
+        names = '+'.join(sorted(stalled))
+        if not state['visible'] or state['minimized']:
+            reason = 'window hidden or minimized: waiting'
+        elif not state['exposed']:
+            reason = 'compositor is not presenting the window (locked or blanked screen?): waiting'
+        else:
+            waited = min(max(stalled.values()), now - self._presentable_since) * 1000
+            if waited >= FRAME_PRESENT_LIMIT_MS:
+                platform = QGuiApplication.platformName() if QGuiApplication.instance() else ''
+                self._fail(f'no {names} frame reached the screen {waited:.0f} ms after it was decoded '
+                           f'(platform {platform or "unknown"}, exposed True, paints {state["paints"]})')
+                return
+            reason = 'exposed window not painting: repaint requested'
+        if self._frame_stall != reason:
+            log.warning('Cinema %s frame decoded %.0f ms ago but not on screen: %s (paints %s, last paint %s ms ago)',
+                        names, max(stalled.values()) * 1000, reason, state['paints'], state['last_paint_ms'])
+            self._frame_stall = reason
+        if state['visible']:
+            view.kick()
 
     def _fail(self, reason):
         if self.phase == 'unavailable':

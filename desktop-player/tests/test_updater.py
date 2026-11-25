@@ -15,7 +15,7 @@ from kinosota_player.updater import Updater, evaluate, fits_machine, is_newer, v
 SHA = 'ab' * 32
 
 
-def releases(version='0.2.5', paid=True, ready=True, sha=SHA, architecture='amd64', os_name='linux'):
+def releases(version='0.2.6', paid=True, ready=True, sha=SHA, architecture='amd64', os_name='linux'):
     item = {'os': os_name, 'ready': ready, 'version': version if ready else None, 'sha256': sha if ready else None,
             'channel': 'stable', 'architecture': architecture, 'signing': 'not-verified',
             'download_url': f'/api/v1/desktop/download/{os_name}' if ready and paid else None}
@@ -26,13 +26,13 @@ def releases(version='0.2.5', paid=True, ready=True, sha=SHA, architecture='amd6
 
 
 def test_versions_compare_numerically_and_only_this_computer_build_counts():
-    assert __version__ == '0.2.4' and version_tuple('0.1.10') == (0, 1, 10) and version_tuple('v1.0') is None
+    assert __version__ == '0.2.5' and version_tuple('0.1.10') == (0, 1, 10) and version_tuple('v1.0') is None
     assert is_newer('0.1.10', '0.1.9') and not is_newer('0.1.9', '0.1.9') and not is_newer('0.1.8', '0.1.9')
     assert not is_newer(None) and not is_newer('0.2', 'garbage')
     assert fits_machine('amd64', 'x86_64') and fits_machine('arm64', 'aarch64') and not fits_machine('arm64', 'x86_64')
     assert fits_machine(None, 'x86_64') and fits_machine('universal2', 'arm64')  # Unknown labels: the installer decides.
     state, item = evaluate(releases(), 'Linux', 'x86_64')
-    assert state == 'available' and item['version'] == '0.2.5'
+    assert state == 'available' and item['version'] == '0.2.6'
     assert evaluate(releases(version=__version__), 'Linux', 'x86_64')[0] == 'latest'
     assert evaluate(releases(version='0.1.7'), 'Linux', 'x86_64')[0] == 'latest'
     assert evaluate(releases(paid=False), 'Linux', 'x86_64')[0] == 'locked'
@@ -73,7 +73,7 @@ def test_download_streams_the_build_checks_its_checksum_and_never_leaves_a_parti
     request = seen[-1]
     assert request.url == 'https://watch.scenrix.com/api/v1/desktop/download/linux'
     assert request.headers['Authorization'] == 'Bearer session-token'
-    assert request.headers['User-Agent'] == 'KINOSOTA-Player/0.2.4'
+    assert request.headers['User-Agent'] == 'KINOSOTA-Player/0.2.5'
     # A different file than the manifest promises is thrown away.
     other = tmp_path / 'other'
     other.mkdir()
@@ -189,9 +189,9 @@ def make(api, monkeypatch, installable=True):
 def test_check_download_install_and_restart(monkeypatch, tmp_path):
     api = ReleaseApi()
     u = make(api, monkeypatch)
-    assert u.text() == 'Текущая версия: 0.2.4' and u.actions()['check'] and not u.actions()['update']
+    assert u.text() == 'Текущая версия: 0.2.5' and u.actions()['check'] and not u.actions()['update']
     u.check()
-    assert u.state == 'available' and u.text() == 'Доступна версия 0.2.5' and u.text('en') == 'Version available 0.2.5'
+    assert u.state == 'available' and u.text() == 'Доступна версия 0.2.6' and u.text('en') == 'Version available 0.2.6'
     assert u.actions() == {'check': False, 'update': True, 'cancel': False, 'website': False}
     installed = []
     monkeypatch.setattr(updates.tempfile, 'mkdtemp', lambda prefix: str(tmp_path))
@@ -245,7 +245,7 @@ def test_cancel_quiet_failures_locked_and_manual_states(monkeypatch, tmp_path):
     # The quiet check after sign-in never reports its own failure.
     quiet = make(ReleaseApi(error=ApiError(0)), monkeypatch)
     quiet.check(quiet=True)
-    assert quiet.state == 'idle' and quiet.text() == 'Текущая версия: 0.2.4'
+    assert quiet.state == 'idle' and quiet.text() == 'Текущая версия: 0.2.5'
     quiet.check()
     assert quiet.state == 'failed' and quiet.text() == 'Не удалось проверить обновления' and not quiet.actions()['website']
     # Without paid access the card explains and links to the website.
@@ -263,7 +263,7 @@ def test_cancel_quiet_failures_locked_and_manual_states(monkeypatch, tmp_path):
     manual = make(ReleaseApi(), monkeypatch, installable=False)
     manual.check()
     assert manual.state == 'manual' and manual.actions()['website'] and not manual.actions()['update']
-    latest = make(ReleaseApi(data=releases(version='0.2.4')), monkeypatch)
+    latest = make(ReleaseApi(data=releases(version='0.2.5')), monkeypatch)
     latest.check()
     assert latest.state == 'latest' and latest.text('en') == 'You have the latest version'
 
@@ -276,7 +276,7 @@ def test_settings_card_follows_the_updater(monkeypatch, tmp_path):
     parent.resize(900, 640)
     parent.show()
     drawer = SettingsDrawer(parent, Preferences(QSettings(str(tmp_path / 'prefs'), QSettings.Format.IniFormat)))
-    assert drawer.update_status.text() == 'Текущая версия: 0.2.4'
+    assert drawer.update_status.text() == 'Текущая версия: 0.2.5'
     u = make(ReleaseApi(), monkeypatch)
     drawer.set_updater(u)
     drawer.present()
@@ -284,7 +284,7 @@ def test_settings_card_follows_the_updater(monkeypatch, tmp_path):
     app.processEvents()
     assert drawer.update_check.isVisibleTo(drawer) and not drawer.update_now.isVisibleTo(drawer)
     drawer.update_check.click()
-    assert drawer.update_status.text() == 'Доступна версия 0.2.5' and drawer.update_now.text() == 'Обновить до 0.2.5'
+    assert drawer.update_status.text() == 'Доступна версия 0.2.6' and drawer.update_now.text() == 'Обновить до 0.2.6'
     assert drawer.update_now.isVisibleTo(drawer) and not drawer.update_check.isVisibleTo(drawer)
     u.work = lambda fn, done, fail: None  # The download keeps running.
     monkeypatch.setattr(updates.tempfile, 'mkdtemp', lambda prefix: str(tmp_path))
@@ -293,7 +293,7 @@ def test_settings_card_follows_the_updater(monkeypatch, tmp_path):
     drawer.retranslate('en')
     assert drawer.update_cancel.text() == 'Cancel' and drawer.update_status.text() == 'Downloading the update…'
     drawer.update_cancel.click()
-    assert drawer.update_status.text() == 'Update cancelled' and drawer.update_now.text() == 'Update to 0.2.5'
+    assert drawer.update_status.text() == 'Update cancelled' and drawer.update_now.text() == 'Update to 0.2.6'
     assert not drawer.update_bar.isVisibleTo(drawer)
     drawer.dismiss()
     parent.close()
@@ -305,7 +305,7 @@ def test_the_window_announces_a_newer_build_once(monkeypatch):
     w = window_for(FakeApi(), FakeEngine())
     w.signed_in({'username': 'viewer'})
     assert w.updater.signed_in and w.drawer.updater is w.updater
-    w.updater.item = {'version': '0.2.5'}
+    w.updater.item = {'version': '0.2.6'}
     w.updater._set('available')
     assert w.message.text() == 'Доступно обновление KINOSOTA Player — откройте настройки, раздел «О приложении».'
     w.message.setText('')

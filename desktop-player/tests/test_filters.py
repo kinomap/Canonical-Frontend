@@ -458,5 +458,5 @@ def test_catalogue_requests_follow_the_server_contract():
     assert seen[-1].method == 'DELETE' and seen[-1].url.path == '/api/v1/account/library/tv/1399'
     api.torrent_genres('tv')
     assert seen[-1].url.path == '/api/v1/torrents/genres' and seen[-1].url.params['kind'] == 'tv'
-    assert seen[-1].headers['User-Agent'] == 'KINOSOTA-Player/' + __version__ == 'KINOSOTA-Player/0.2.4'
+    assert seen[-1].headers['User-Agent'] == 'KINOSOTA-Player/' + __version__ == 'KINOSOTA-Player/0.2.5'
     api.close()

@@ -7,8 +7,8 @@ import time
 import uuid
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import (QAbstractAnimation, QEasingCurve, QObject, QPointF, QPropertyAnimation, QRect, QRectF,
-                            QRunnable, QThreadPool, QTimer, Qt, Signal, Slot)
+from PySide6.QtCore import (QAbstractAnimation, QCoreApplication, QEasingCurve, QEvent, QObject, QPointF,
+                            QPropertyAnimation, QRect, QRectF, QRunnable, QThreadPool, QTimer, Qt, Signal, Slot)
 from PySide6.QtGui import QBrush, QColor, QCursor, QGuiApplication, QImage, QLinearGradient, QPainter, QRadialGradient
 from PySide6.QtWidgets import (QApplication, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLayout, QPushButton,
                                QVBoxLayout, QWidget)
@@ -173,6 +173,40 @@ QPushButton#directLaunchResize:pressed, QPushButton#directLaunchClose:pressed {{
 """
 
 
+class _QuitWatch(QObject):
+    """0.2.5: notices an application quit (QEvent.Quit) while the launch screen is on screen.
+
+    Qt 6 asks every top-level window to close before it quits (app.quit(), macOS Cmd+Q / Dock «Quit») and cancels the
+    whole quit when one of them ignores the close. The splash ignores closes on purpose (Alt+F4 cancels the launch
+    like ✕), so app.quit() used to leave the application running in app.exec(). Installed only while the splash is
+    shown: no application-wide event filter during the rest of the session."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.quitting = False
+        self._app = None
+
+    def attach(self):
+        app = QCoreApplication.instance()
+        if app is not None and self._app is None:
+            self._app = app
+            app.installEventFilter(self)
+
+    def detach(self):
+        if self._app is not None:
+            self._app.removeEventFilter(self)
+            self._app = None
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Quit and watched is self._app:
+            self.quitting = True
+            QTimer.singleShot(0, self._settle)  # A quit another window refused: closes are user closes again.
+        return False
+
+    def _settle(self):
+        self.quitting = False
+
+
 class DirectLaunchSplash(QWidget):
     """The launch window: the KINOSOTA intro until the film dissolves in (cinema), or the logo still.
 
@@ -201,6 +235,7 @@ class DirectLaunchSplash(QWidget):
         self._fading = False
         self._close_after_fade = False
         self._closing = False
+        self._quit_watch = _QuitWatch(self)
         layout = QVBoxLayout(self)
         # The window must keep exactly target_geometry(): mpv gets the same rectangle (mpv_args), so wide system
         # fonts (Segoe UI on Windows) or a small monitor must not let the layout's minimum size grow the window.
@@ -694,8 +729,21 @@ class DirectLaunchSplash(QWidget):
         return (event.key() == Qt.Key.Key_Escape and self.mode == 'compact' and not self.isFullScreen()
                 and not self.cinema.menu_open)
 
+    def showEvent(self, event):
+        self._quit_watch.attach()
+        super().showEvent(event)
+
+    def hideEvent(self, event):
+        self._quit_watch.detach()
+        super().hideEvent(event)
+
     def closeEvent(self, event):
         if self._closing:
+            event.accept()
+            return
+        if self._quit_watch.quitting:
+            # 0.2.5: the application quits: never veto it, and nothing keeps playing in the closing window.
+            self._stop_media()
             event.accept()
             return
         event.ignore()  # Alt+F4 / Cmd+W: cancel the launch the same way as ✕.
