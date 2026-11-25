@@ -25,14 +25,31 @@ RUNTIME_INJECTED=('QT_PLUGIN_PATH','QT_QPA_PLATFORM_PLUGIN_PATH','QML2_IMPORT_PA
 BUNDLE_PATHS=('SSL_CERT_FILE','SSL_CERT_DIR','REQUESTS_CA_BUNDLE','FONTCONFIG_FILE','FONTCONFIG_PATH')
 STALE_PATH_VARS=('LD_LIBRARY_PATH','QT_PLUGIN_PATH','QT_QPA_PLATFORM_PLUGIN_PATH','QML2_IMPORT_PATH','QML_IMPORT_PATH',*BUNDLE_PATHS)
 
+def _norm_paths(raw):
+    text=os.path.normcase(os.path.normpath(str(raw)))
+    out=[text]
+    try:
+        resolved=os.path.normcase(os.path.normpath(str(Path(str(raw)).resolve())))
+        if resolved not in out:out.append(resolved)
+    except OSError:
+        pass
+    return out
+
 def _bundle_dirs(env):
     dirs=[getattr(sys,'_MEIPASS',None),env.get('_MEIPASS'),env.get('_MEIPASS2')]
     if getattr(sys,'frozen',False):dirs.append(str(Path(sys.executable).resolve().parent))
-    return [os.path.normpath(d) for d in dirs if isinstance(d,str) and d]
+    out=[]
+    for d in dirs:
+        if isinstance(d,str) and d:
+            for norm in _norm_paths(d):
+                if norm not in out:out.append(norm)
+    return out
 
 def _inside(value,dirs):
-    path=os.path.normpath(str(value))
-    return any(path==d or path.startswith(d+os.sep) for d in dirs)
+    for path in _norm_paths(value):
+        if any(path==d or path.startswith(d+os.sep) for d in dirs):
+            return True
+    return False
 
 def _looks_like_bundle_path(entry):
     parts=Path(os.path.normpath(str(entry))).parts
@@ -49,11 +66,18 @@ def stale_bundle_environment(base=None,*,own_dirs=None):
     archive=env.get('_PYI_ARCHIVE_FILE')
     if archive and getattr(sys,'frozen',False):
         try:
-            if Path(archive).resolve()!=Path(sys.executable).resolve():
+            if os.path.normcase(str(Path(archive).resolve()))!=os.path.normcase(str(Path(sys.executable).resolve())):
                 return True
         except OSError:
             return True
-    dirs=_bundle_dirs(env) if own_dirs is None else [os.path.normpath(d) for d in own_dirs if d]
+    if own_dirs is None:
+        dirs=_bundle_dirs(env)
+    else:
+        dirs=[]
+        for d in own_dirs:
+            if d:
+                for norm in _norm_paths(d):
+                    if norm not in dirs:dirs.append(norm)
     for key in STALE_PATH_VARS:
         raw=env.get(key)
         if not raw:

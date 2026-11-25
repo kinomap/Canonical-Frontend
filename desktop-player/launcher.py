@@ -12,8 +12,7 @@ elif getattr(sys, 'frozen', False) and stale_bundle_environment():
     clean_env['KINOSOTA_REEXEC'] = '1'
     if os.name == 'nt':
         import subprocess
-        subprocess.Popen([sys.executable, *sys.argv[1:]], env=clean_env)
-        raise SystemExit(0)
+        raise SystemExit(subprocess.run([sys.executable, *sys.argv[1:]], env=clean_env, check=False).returncode)
     os.execve(sys.executable, sys.argv, clean_env)
 
 from kinosota_player.hidpi import configure_high_dpi
