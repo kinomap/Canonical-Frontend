@@ -80,7 +80,7 @@ const hover = (node: Element, at = 5) => node.dispatchEvent(new MouseEvent('mous
 const click = (node: Element) => node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 const press = (key: string, keyCode: number) => document.dispatchEvent(new KeyboardEvent('keydown', { key, keyCode, bubbles: true, cancelable: true }))
 
-type LiteHook = { player: { currentTime: number; duration: number; firstFrame: boolean }; adapter: { getTracks: () => { audio: unknown[]; text: unknown[] } }; normalizeTvUrl: (u: string) => string; pointer: { keyAt: number }; playerProblem: (kind: string) => void; filterQuery: (kind: string, f: Record<string, unknown>) => string; state: { row: number; mode: string; rows: { id: string; col: number }[] }; resolveKey: (e: { keyCode: number; key?: string }, orsay?: boolean) => string; tmdbSize: (u: string, s: string) => string; formatTime: (s: number) => string; LitePromise: new (fn: (res: (v: unknown) => void) => void) => Promise<unknown> }
+type LiteHook = { player: { currentTime: number; duration: number; firstFrame: boolean }; adapter: { open: (url: string) => void; getTracks: () => { audio: unknown[]; text: unknown[] } }; normalizeTvUrl: (u: string) => string; pointer: { keyAt: number }; playerProblem: (kind: string) => void; filterQuery: (kind: string, f: Record<string, unknown>) => string; state: { row: number; mode: string; rows: { id: string; col: number }[] }; resolveKey: (e: { keyCode: number; key?: string }, orsay?: boolean) => string; tmdbSize: (u: string, s: string) => string; formatTime: (s: number) => string; LitePromise: new (fn: (res: (v: unknown) => void) => void) => Promise<unknown> }
 const lite = () => (window as unknown as { KinosotaLite: LiteHook }).KinosotaLite
 
 async function bootLite() {
@@ -694,7 +694,7 @@ describe('Lite TV portal behaviour', () => {
     }
   })
 
-  it('falls back from Orsay AVPlay to SEF when av.open returns false and honors curWidget dimensions', async () => {
+  it('falls back from Orsay AVPlay to SEF when av.open returns false and keeps the SEF 960x540 grid inside a 1280x720 widget', async () => {
     const origUa = navigator.userAgent
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42' })
     const sefCalls: string[] = []
@@ -730,7 +730,9 @@ describe('Lite TV portal behaviour', () => {
       press('', 29443)
       await flush()
       expect(sefCalls[0]).toBe('Open:1.112')
-      expect(sefCalls).toContain('Exec:SetDisplayArea:0,0,1280,720')
+      // SEF / Player take the plugin 960x540 grid even when MSX reports curWidget = 1280x720 (v8-v10 sent 1280x720)
+      expect(sefCalls).toContain('Exec:SetDisplayArea:0,0,960,540')
+      expect(sefCalls).not.toContain('Exec:SetDisplayArea:0,0,1280,720')
       expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay SEF')
       press('', 88)
     } finally {
@@ -832,6 +834,117 @@ describe('Lite TV portal behaviour', () => {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
     }
   })
+
+  it('never wakes the sourceless <video> or legacy SEF/Player objects next to Orsay AVPlay inside MSX (v8-v10 decoder contention)', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+ (KHTML, like Gecko) SmartTV Safari/537.42+' })
+    const media: string[] = []
+    const origLoad = window.HTMLMediaElement.prototype.load
+    const origPause = window.HTMLMediaElement.prototype.pause
+    window.HTMLMediaElement.prototype.load = function () { media.push('load') }
+    window.HTMLMediaElement.prototype.pause = function () { media.push('pause') }
+    const calls: string[] = []
+    const hook: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
+      ; (window as unknown as { curWidget?: { width: number; height: number } }).curWidget = { width: 1280, height: 720 }
+    try {
+      // Real TV order: the page boots inside the widget engine, $MANAGER_WIDGET webapis.js arrives later.
+      await bootLite()
+      expect(document.getElementById('pluginObjectSef')).toBeNull()
+      expect(document.getElementById('pluginObjectPlayer')).toBeNull()
+      expect(document.getElementById('lite-video')?.getAttribute('preload')).toBe('none')
+        ; (window as unknown as { webapis?: unknown }).webapis = {
+          avplay: {
+            getAVPlay: (ok: (av: unknown) => void) => ok({
+              status: '0',
+              init: () => { calls.push('init') },
+              setPlayerPluginObject: () => null,
+              set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
+              open: (url: string) => { calls.push(`open:${url}`); return true },
+              play: () => { calls.push('play') },
+              stop: () => { calls.push('stop') },
+              destroy: () => { calls.push('destroy') },
+              setDisplayArea: () => {},
+              getVideoResolution: () => '1920|1080',
+              setCropArea: () => {},
+              startSubtitle: () => {},
+              getDuration: () => 10026,
+            }),
+          },
+        }
+      press('', 29443)
+      await flush()
+      expect(calls).toContain('play')
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay AVPlay')
+      // v8-v10 called video.pause() + video.load() here, creating WebKit's (hardware) media player
+      expect(media).toEqual([])
+      expect(document.getElementById('pluginObjectSef')).toBeNull()
+      expect(document.getElementById('pluginObjectPlayer')).toBeNull()
+      hook.fn?.(9)
+      hook.fn?.(14, 40)
+      expect(lite().player.firstFrame).toBe(true)
+      press('', 88)
+      expect(calls).toContain('destroy')
+      expect(media).toEqual([])
+    } finally {
+      window.HTMLMediaElement.prototype.load = origLoad
+      window.HTMLMediaElement.prototype.pause = origPause
+      delete (window as unknown as { curWidget?: unknown }).curWidget
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('keeps a single deferred Orsay stage open and holds back a RENDER_ERROR echo of the released session', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
+    const calls: string[] = []
+    const hook: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: {
+          getAVPlay: (ok: (av: unknown) => void) => ok({
+            status: '4',
+            init: () => {},
+            setPlayerPluginObject: () => null,
+            set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
+            open: (url: string) => { calls.push(`open:${url}`); return true },
+            play: () => {},
+            stop: () => {},
+            destroy: () => { calls.push('destroy') },
+            setDisplayArea: () => {},
+            getVideoResolution: () => '1920|1080',
+            setCropArea: () => {},
+            startSubtitle: () => {},
+            getDuration: () => 0,
+          }),
+        },
+      }
+    try {
+      await bootLite()
+      press('', 29443)
+      await flush()
+      expect(calls.some(c => c.indexOf('/stream/t.m3u8') !== -1)).toBe(true)
+      // stage 2 waits for the decoder hand-over, stage 3 supersedes it before it fires (v10 intro/film race)
+      lite().adapter.open('/media/cinema-intro/clip.mp4')
+      lite().adapter.open('/tv-stream/tg-node-1/film.mp4')
+      expect(calls.filter(c => c.indexOf('open:') === 0).length).toBe(1)
+      await new Promise(resolve => setTimeout(resolve, 1700))
+      expect(calls.some(c => c.indexOf('clip.mp4') !== -1)).toBe(false)
+      expect(calls[calls.length - 1]).toBe('open:http://localhost:3000/tv-stream/tg-node-1/film.mp4')
+      const destroys = calls.filter(c => c === 'destroy').length
+      // 6:3 right after the hand-over, before STREAM_INFO_READY: echo of the released session, not a codec verdict
+      hook.fn?.(6, '3')
+      expect(calls.filter(c => c === 'destroy').length).toBe(destroys)
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay AVPlay')
+      hook.fn?.(9)
+      await new Promise(resolve => setTimeout(resolve, 1600))
+      expect(calls.filter(c => c === 'destroy').length).toBe(destroys)
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay AVPlay')
+      press('', 88)
+    } finally {
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  }, 10000)
 
   it('falls back to the legacy Orsay Player plugin (C/D series) with the 960x540 grid', async () => {
     const origUa = navigator.userAgent
