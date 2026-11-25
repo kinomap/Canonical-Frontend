@@ -62,7 +62,7 @@ class FakeXhr {
   private headers: Record<string, string> = {}
   open(method: string, url: string) { this.method = method; this.url = url }
   setRequestHeader(name: string, value: string) { this.headers[name] = value }
-  abort() {}
+  abort() { }
   send(body: string | null) {
     sent.push({ method: this.method, url: this.url, body, headers: this.headers })
     const route = routes.find(item => item.method === this.method && this.url === '/api/v1' + item.path)
@@ -103,10 +103,10 @@ describe('Lite TV portal behaviour', () => {
       { method: 'POST', path: '/playback/stop', body: { ok: true } },
       { method: 'POST', path: '/torrents/playback-ticket', body: { stream_url: '/stream/t.m3u8', title: 'Герой', expires_at: '' } },
     ]
-    ;(window as unknown as { XMLHttpRequest: unknown }).XMLHttpRequest = FakeXhr
+      ; (window as unknown as { XMLHttpRequest: unknown }).XMLHttpRequest = FakeXhr
     window.HTMLMediaElement.prototype.play = function () { return Promise.resolve() }
-    window.HTMLMediaElement.prototype.pause = function () {}
-    window.HTMLMediaElement.prototype.load = function () {}
+    window.HTMLMediaElement.prototype.pause = function () { }
+    window.HTMLMediaElement.prototype.load = function () { }
   })
   afterEach(() => {
     window.XMLHttpRequest = originalXhr
@@ -378,10 +378,14 @@ describe('Lite TV portal behaviour', () => {
 
   it('opens the reference details screen for a torrent and plays the chosen release', async () => {
     routes.push({ method: 'GET', path: '/torrents/detail/movie/55', body: { tagline: 'Выживание зависит от их связи', countries: ['США'], genres: [{ id: 1, name: 'Приключения' }, { id: 2, name: 'Триллер' }], runtime: 101, year: 2025, rating: 7.9, overview: 'Описание' } })
-    routes.push({ method: 'GET', path: '/torrents/sources/movie/55', body: { selected_source_id: 'a', sources: [
-      { source_id: 'a', quality: '1080p', source_type: 'WEB-DL', seeders: 989, size_bytes: 8053063680, start_ms: 1693, languages: ['ru'], state: 'ready', health: 'ok' },
-      { source_id: 'b', quality: '720p', source_type: 'WEB-DL', seeders: 12, size_bytes: 2147483648, languages: ['uk', 'en'], state: 'ready', health: 'ok' },
-    ] } })
+    routes.push({
+      method: 'GET', path: '/torrents/sources/movie/55', body: {
+        selected_source_id: 'a', sources: [
+          { source_id: 'a', quality: '1080p', source_type: 'WEB-DL', seeders: 989, size_bytes: 8053063680, start_ms: 1693, languages: ['ru'], state: 'ready', health: 'ok' },
+          { source_id: 'b', quality: '720p', source_type: 'WEB-DL', seeders: 12, size_bytes: 2147483648, languages: ['uk', 'en'], state: 'ready', health: 'ok' },
+        ]
+      }
+    })
     await bootLite()
     press('ArrowRight', 39) // «О фильме» next to «Смотреть»
     press('Enter', 13)
@@ -529,16 +533,16 @@ describe('Lite TV portal behaviour', () => {
       stop: () => { calls.push('stop') },
       destroy: () => { calls.push('destroy') },
       setDisplayArea: () => { calls.push('area') },
-      startSubtitle: () => {},
+      startSubtitle: () => { },
       getDuration: () => 600000,
       getTotalNumOfStreamID: (kind: number) => (kind === 1 ? 2 : 0),
       getStreamLanguageInfo: (_kind: number, idx: number) => (idx === 0 ? 7501171 : 6647399),
       getStreamExtraData: (_kind: number, idx: number) => JSON.stringify({ codec: idx === 0 ? 'ac3' : 'dts' }),
       setStreamID: (kind: number, idx: number) => { calls.push(`track:${kind}:${idx}`) },
     }
-    ;(window as unknown as { webapis?: unknown }).webapis = {
-      avplay: { getAVPlay: (cb: (av: typeof avStub) => void) => cb(avStub) },
-    }
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: { getAVPlay: (cb: (av: typeof avStub) => void) => cb(avStub) },
+      }
     try {
       await bootLite()
       press('', 29443) // play spotlight torrent
@@ -561,6 +565,53 @@ describe('Lite TV portal behaviour', () => {
       expect(document.body.className).not.toContain('lite-native-plane')
     } finally {
       delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('falls back to Samsung Orsay SEF plugin when webapis.avplay is unavailable', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV; Maple2012) AppleWebKit/534.7' })
+    const sefCalls: string[] = []
+    const sefHook: { fn: ((type: number, data?: unknown) => void) | null } = { fn: null }
+    try {
+      await bootLite()
+      const sefEl = document.getElementById('pluginObjectSef') as HTMLElement & {
+        Open?: (a: string, b: string, c: string) => boolean
+        Execute?: (cmd: string, ...args: unknown[]) => unknown
+        Close?: () => void
+        OnEvent?: (type: number, data?: unknown) => void
+      }
+      expect(sefEl).toBeTruthy()
+      sefEl.Open = (a: string, b: string, c: string) => { sefCalls.push(`Open:${a}:${b}:${c}`); return true }
+      sefEl.Execute = (cmd: string, ...args: unknown[]) => {
+        sefCalls.push(`Exec:${cmd}:${args.join(',')}`)
+        if (cmd === 'GetDuration') return 420000
+        return true
+      }
+      sefEl.Close = () => { sefCalls.push('Close') }
+      Object.defineProperty(sefEl, 'OnEvent', {
+        configurable: true,
+        set(fn: (type: number, data?: unknown) => void) { sefHook.fn = fn },
+      })
+
+      press('', 29443) // play spotlight torrent
+      await flush()
+      expect(sefCalls).toContain('Open:Player:1.000:Player')
+      expect(sefCalls.some(c => c.startsWith('Exec:InitPlayer:http://localhost:3000/stream/t.m3u8'))).toBe(true)
+      expect(sefCalls).toContain('Exec:StartPlayback:0')
+      expect(document.body.className).toContain('lite-native-plane')
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay SEF')
+
+      sefHook.fn?.(9)
+      sefHook.fn?.(14, 15000)
+      press('ArrowRight', 39)
+      expect(sefCalls).toContain('Exec:JumpForward:30')
+      press('', 88) // Orsay Return
+      expect(sefCalls).toContain('Exec:Stop:')
+      expect(sefCalls).toContain('Close')
+      expect(document.body.className).not.toContain('lite-native-plane')
+    } finally {
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
     }
   })

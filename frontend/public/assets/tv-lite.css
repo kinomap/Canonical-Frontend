@@ -1112,8 +1112,26 @@ body.lite-native-plane .lite-player {
 
 body.lite-native-plane .lite-sidebar,
 body.lite-native-plane .lite-content,
-body.lite-native-plane .lite-details {
+body.lite-native-plane .lite-details,
+body.lite-native-plane .lite-viewport,
+body.lite-native-plane .lite-scroll,
+body.lite-native-plane .lite-view {
+    background: transparent !important;
     visibility: hidden;
+}
+
+body.lite-native-plane .lite-video {
+    display: none !important;
+}
+
+.lite-player-engine {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+    font-size: 13px;
 }
 
 .lite-native-host,

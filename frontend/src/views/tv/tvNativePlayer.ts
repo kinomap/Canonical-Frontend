@@ -87,24 +87,37 @@ export function toAbsoluteMediaUrl(url: string): string {
 export function hasTizenAvplay(): boolean {
   if (typeof window === 'undefined') return false
   const win = window as TizenWindow
-  return Boolean(win.tizen && win.webapis?.avplay && typeof win.webapis.avplay.open === 'function')
+  return Boolean(win.webapis?.avplay && typeof win.webapis.avplay.open === 'function')
 }
 
 export function loadTizenWebApis(): Promise<boolean> {
   if (typeof window === 'undefined' || typeof document === 'undefined') return Promise.resolve(false)
   if (hasTizenAvplay()) return Promise.resolve(true)
+  const win = window as TizenWindow
   const ua = (navigator.userAgent || '').toLowerCase()
-  if (!ua.includes('tizen')) return Promise.resolve(false)
+  if (!ua.includes('tizen') && !win.tizen && !win.webapis) return Promise.resolve(false)
   if (webapisLoadPromise) return webapisLoadPromise
   webapisLoadPromise = new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      resolve(hasTizenAvplay())
+    }
+    const existing = document.querySelector('script[src*="$WEBAPIS/webapis/webapis.js"]') as HTMLScriptElement | null
+    if (existing) {
+      existing.addEventListener('load', finish, { once: true })
+      existing.addEventListener('error', finish, { once: true })
+      setTimeout(finish, 1800)
+      return
+    }
     const script = document.createElement('script')
     script.type = 'text/javascript'
     script.src = '$WEBAPIS/webapis/webapis.js'
-    const finish = () => resolve(hasTizenAvplay())
     script.onload = finish
-    script.onerror = () => resolve(false)
-    document.head.appendChild(script)
-    setTimeout(finish, 1200)
+    script.onerror = finish
+    ;(document.head || document.body || document.documentElement).appendChild(script)
+    setTimeout(finish, 2500)
   })
   return webapisLoadPromise
 }

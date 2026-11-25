@@ -76,6 +76,7 @@ let seekPending = false
 let historyWriter = createHistoryWriter()
 const seekSeries = { dir: 0, count: 0, last: 0 }
 const useNativeAvplay = ref(false)
+const activeEngine = ref<'Tizen AVPlay' | 'HTML5'>('HTML5')
 let nativeController: NativePlayerController | null = null
 
 const currentEpisode = computed(() => episodes.value[episodeIndex.value] ?? null)
@@ -459,6 +460,7 @@ function detachVideo() {
     nativeController = null
   }
   useNativeAvplay.value = false
+  activeEngine.value = 'HTML5'
   document.documentElement.classList.remove('tv-native-plane')
   const el = video.value
   if (!el) return
@@ -614,9 +616,15 @@ async function start() {
   await loadStream()
 }
 
-function startNativeOrHtml5(url: string) {
+async function startNativeOrHtml5(url: string) {
+  const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '').toLowerCase() : ''
+  if (!hasTizenAvplay() && (ua.includes('tizen') || Boolean((window as unknown as { tizen?: unknown }).tizen))) {
+    await loadTizenWebApis()
+    if (released || phase.value !== 'content' || streamUrl.value !== url) return
+  }
   if (!hasTizenAvplay()) {
     useNativeAvplay.value = false
+    activeEngine.value = 'HTML5'
     void nextTick(play)
     return
   }
@@ -625,9 +633,10 @@ function startNativeOrHtml5(url: string) {
     nativeController = null
   }
   useNativeAvplay.value = true
+  activeEngine.value = 'Tizen AVPlay'
   document.documentElement.classList.add('tv-native-plane')
   void nextTick(() => {
-    if (released || phase.value !== 'content') return
+    if (released || phase.value !== 'content' || streamUrl.value !== url) return
     nativeController = createTizenAvplayController(url, {
       onCanPlay() {
         buffering.value = false
@@ -675,6 +684,7 @@ function startNativeOrHtml5(url: string) {
       }
     } else {
       useNativeAvplay.value = false
+      activeEngine.value = 'HTML5'
       document.documentElement.classList.remove('tv-native-plane')
       void nextTick(play)
     }
@@ -684,7 +694,7 @@ function startNativeOrHtml5(url: string) {
 const videoSrc = computed(() => (phase.value === 'content' && streamUrl.value && !useNativeAvplay.value ? streamUrl.value : undefined))
 watch(
   () => (phase.value === 'content' && streamUrl.value ? streamUrl.value : undefined),
-  (url) => { if (url) startNativeOrHtml5(url) },
+  (url) => { if (url) void startNativeOrHtml5(url) },
 )
 
 function onPageHide() {
@@ -792,6 +802,7 @@ defineExpose({ handle, phase, startFilm })
       </div>
       <div class="tv-time">
         <span data-testid="tv-time-current">{{ formatClock(currentTime) }}</span>
+        <span class="tv-engine-badge" data-testid="tv-player-engine">{{ activeEngine }}</span>
         <span>{{ duration ? formatClock(duration) : '--:--' }}</span>
       </div>
       <p class="tv-hint">OK — {{ paused ? 'смотреть' : 'пауза' }} · ←/→ — перемотка · ↓ — дорожки и субтитры · ↑ — о фильме</p>
@@ -956,6 +967,15 @@ defineExpose({ handle, phase, startFilm })
   margin: 1.4vh 0 0;
   color: #9ca3af;
   font-size: clamp(16px, 1vw, 24px);
+}
+
+.tv-engine-badge {
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4d45e;
+  font-size: clamp(13px, 0.9vw, 20px);
+  font-weight: 700;
 }
 
 .tv-seek {

@@ -18,9 +18,12 @@
     var BAR_HIDE_MS = 4000;
 
     var ua = (window.navigator && window.navigator.userAgent ? window.navigator.userAgent : '').toLowerCase();
+    var appVer = (window.navigator && window.navigator.appVersion ? window.navigator.appVersion : '').toLowerCase();
     var IS_WEBOS = ua.indexOf('webos') !== -1 || ua.indexOf('web0s') !== -1;
     var IS_TIZEN = ua.indexOf('tizen') !== -1;
-    var IS_ORSAY = ua.indexOf('maple') !== -1 ||
+    var IS_ORSAY = ua.indexOf('maple') !== -1 || appVer.indexOf('maple') !== -1 ||
+        ua.indexOf('smarthub') !== -1 ||
+        typeof window.curWidget !== 'undefined' || typeof window.Common !== 'undefined' ||
         (ua.indexOf('smarttv') !== -1 && !IS_TIZEN && !IS_WEBOS) ||
         (ua.indexOf('samsung') !== -1 && !IS_TIZEN && ua.indexOf('netcast') === -1 && ua.indexOf('webkit/53') !== -1);
 
@@ -315,21 +318,30 @@
     var orsayBooted = false;
     var tizenBooted = false;
 
-    function loadScriptSafe(src, onDone) {
+    function loadScriptSafe(src, onDone, attemptsLeft) {
+        var left = typeof attemptsLeft === 'number' ? attemptsLeft : 3;
         try {
             var s = document.createElement('script');
             s.type = 'text/javascript';
             s.src = src;
             var settled = false;
-            var done = function () {
+            var finish = function (ok) {
                 if (settled) return;
                 settled = true;
+                if (!ok && left > 1) {
+                    loadScriptSafe(src, onDone, left - 1);
+                    return;
+                }
                 if (onDone) onDone();
             };
-            s.onload = done;
-            s.onerror = done;
-            (document.head || document.body || document.documentElement).appendChild(s);
-            setTimeout(done, 1000);
+            s.onload = s.onreadystatechange = function () {
+                if (!s.readyState || s.readyState === 'loaded' || s.readyState === 'complete') finish(true);
+            };
+            s.onerror = function () { finish(false); };
+            var target = document.body || (document.getElementsByTagName && document.getElementsByTagName('body')[0]) || document.head || document.documentElement;
+            if (!target) { finish(false); return; }
+            target.appendChild(s);
+            setTimeout(function () { finish(true); }, 2500);
         } catch (e) {
             if (onDone) onDone();
         }
@@ -340,7 +352,7 @@
             if (done) done();
             return;
         }
-        loadScriptSafe(urls[idx], function () { loadScriptChain(urls, idx + 1, done); });
+        loadScriptSafe(urls[idx], function () { loadScriptChain(urls, idx + 1, done); }, 2);
     }
 
     function initOrsayEnvironment() {
@@ -353,12 +365,15 @@
                 holder.style.left = '-1000px';
                 holder.style.top = '-1000px';
                 holder.innerHTML =
-                    '<object id="pluginObjectNNavi" border="0" classid="clsid:SAMSUNG-INFOLINK-NNAVI" style="width:1px;height:1px;"></object>' +
-                    '<object id="pluginObjectTVMW" border="0" classid="clsid:SAMSUNG-INFOLINK-TVMW" style="width:1px;height:1px;"></object>' +
-                    '<object id="pluginObjectScreen" border="0" classid="clsid:SAMSUNG-INFOLINK-SCREEN" style="width:1px;height:1px;"></object>';
-                document.body.appendChild(holder);
+                    '<object id="pluginObjectNNavi" border="0" classid="clsid:SAMSUNG-INFOLINK-NNAVI" style="opacity:0.0;background-color:#000;width:1px;height:1px;"></object>' +
+                    '<object id="pluginObjectTVMW" border="0" classid="clsid:SAMSUNG-INFOLINK-TVMW" style="opacity:0.0;background-color:#000;width:1px;height:1px;"></object>' +
+                    '<object id="pluginObjectScreen" border="0" classid="clsid:SAMSUNG-INFOLINK-SCREEN" style="opacity:0.0;background-color:#000;width:1px;height:1px;"></object>' +
+                    '<object id="pluginObjectSef" border="0" classid="clsid:SAMSUNG-INFOLINK-SEF" style="opacity:0.0;background-color:#000;width:1px;height:1px;"></object>' +
+                    '<object id="pluginObjectPlayer" border="0" classid="clsid:SAMSUNG-INFOLINK-PLAYER" style="opacity:0.0;background-color:#000;width:1px;height:1px;"></object>';
+                (document.body || document.documentElement).appendChild(holder);
             }
         } catch (e) {}
+        var deadline = Date.now() + 5000;
         function setupOrsayApis() {
             try {
                 if (window.Common && Common.API && Common.API.Widget && Common.API.Plugin && Common.API.TVKeyValue) {
@@ -381,13 +396,16 @@
                         } catch (e2) {}
                     };
                     window.onShow = onShow;
-                    setTimeout(onShow, 1200);
+                    setTimeout(onShow, 1500);
                     widgetAPI.sendReadyEvent();
+                } else if (!(window.webapis && window.webapis.avplay) && Date.now() < deadline) {
+                    setTimeout(setupOrsayApis, 100);
+                    return;
                 }
             } catch (e3) {}
             nativePlatformReady = true;
         }
-        if (window.webapis && window.webapis.avplay) {
+        if ((window.webapis && window.webapis.avplay) || (window.Common && window.Common.API)) {
             setupOrsayApis();
             return;
         }
@@ -408,7 +426,7 @@
         }
         loadScriptSafe('$WEBAPIS/webapis/webapis.js', function () {
             nativePlatformReady = true;
-        });
+        }, 2);
     }
 
     function initNativePlatform() {
@@ -1758,22 +1776,49 @@
         }
     }
 
+    function setEngineLabel(text) {
+        var node = $('lite-player-engine');
+        if (node) setText(node, text || '');
+    }
+
+    function orsaySefNode() {
+        var node = $('pluginObjectSef');
+        return (node && typeof node.Open === 'function' && typeof node.Execute === 'function') ? node : null;
+    }
+
+    function orsayPlayerNode() {
+        var node = $('pluginObjectPlayer');
+        return (node && typeof node.InitPlayer === 'function' && typeof node.StartPlayback === 'function') ? node : null;
+    }
+
     function canUseOrsayAvplay() {
         return IS_ORSAY && !!(window.webapis && window.webapis.avplay && typeof window.webapis.avplay.getAVPlay === 'function');
+    }
+
+    function canUseOrsaySef() {
+        return IS_ORSAY && !!orsaySefNode();
+    }
+
+    function canUseOrsayPlayer() {
+        return IS_ORSAY && !!orsayPlayerNode();
     }
 
     function canUseTizenAvplay() {
         return !canUseOrsayAvplay() && !!(window.webapis && window.webapis.avplay && typeof window.webapis.avplay.open === 'function');
     }
 
-    var nativeSession = { kind: 'html5', av: null, plugin: null, activeTrack: 0 };
+    var nativeSession = { kind: 'html5', av: null, plugin: null, sef: null, pl: null, activeTrack: 0 };
 
     function waitNativePlatform(callback) {
-        if (nativePlatformReady || (!IS_ORSAY && !IS_TIZEN)) { callback(); return; }
+        if (nativePlatformReady || canUseOrsayAvplay() || canUseOrsaySef() || canUseOrsayPlayer() || (!IS_ORSAY && !IS_TIZEN)) {
+            callback();
+            return;
+        }
         var attempts = 0;
+        var limit = IS_ORSAY ? 50 : 20;
         var timer = setInterval(function () {
             attempts += 1;
-            if (nativePlatformReady || canUseOrsayAvplay() || canUseTizenAvplay() || attempts >= 12) {
+            if (nativePlatformReady || canUseOrsayAvplay() || canUseOrsaySef() || canUseOrsayPlayer() || canUseTizenAvplay() || attempts >= limit) {
                 clearInterval(timer);
                 callback();
             }
@@ -1910,22 +1955,33 @@
         if (kind === 'orsay' && nativeSession.av) {
             try { nativeSession.av.stop(); } catch (e1) {}
             try { nativeSession.av.destroy(); } catch (e2) {}
+            player.lastOrsayClosedAt = Date.now();
+        } else if (kind === 'orsay-sef' && nativeSession.sef) {
+            try { nativeSession.sef.Execute('Stop'); } catch (e3) {}
+            try { nativeSession.sef.Close(); } catch (e4) {}
+            player.lastOrsayClosedAt = Date.now();
+        } else if (kind === 'orsay-player' && nativeSession.pl) {
+            try { nativeSession.pl.Stop(); } catch (e5) {}
+            player.lastOrsayClosedAt = Date.now();
         } else if (kind === 'tizen' && window.webapis && window.webapis.avplay) {
-            try { window.webapis.avplay.stop(); } catch (e3) {}
-            try { window.webapis.avplay.close(); } catch (e4) {}
+            try { window.webapis.avplay.stop(); } catch (e6) {}
+            try { window.webapis.avplay.close(); } catch (e7) {}
         }
         nativeSession.kind = 'html5';
         nativeSession.av = null;
         nativeSession.plugin = null;
+        nativeSession.sef = null;
+        nativeSession.pl = null;
         nativeSession.activeTrack = 0;
         setNativePlane(false);
+        setEngineLabel('');
         var host = $('lite-native-host');
         if (host) host.innerHTML = '';
         var video = $('lite-video');
         if (video) {
             show(video);
-            try { video.pause(); } catch (e5) {}
-            try { video.removeAttribute('src'); video.load(); } catch (e6) {}
+            try { video.pause(); } catch (e8) {}
+            try { video.removeAttribute('src'); video.load(); } catch (e9) {}
         }
         player.paused = true;
         player.currentTime = 0;
@@ -1949,6 +2005,25 @@
                     player.paused = true;
                 }
             } catch (e) {}
+            updateProgress();
+            showBar();
+            return;
+        }
+        if (nativeSession.kind === 'orsay-sef' && nativeSession.sef) {
+            try {
+                nativeSession.sef.Execute(wantPlay ? 'Resume' : 'Pause');
+                player.paused = !wantPlay;
+            } catch (eSef) {}
+            updateProgress();
+            showBar();
+            return;
+        }
+        if (nativeSession.kind === 'orsay-player' && nativeSession.pl) {
+            try {
+                if (wantPlay) nativeSession.pl.Resume();
+                else nativeSession.pl.Pause();
+                player.paused = !wantPlay;
+            } catch (ePl) {}
             updateProgress();
             showBar();
             return;
@@ -1991,6 +2066,27 @@
                 }
                 player.currentTime = Math.max(0, player.currentTime + delta);
             } catch (e) {}
+            updateProgress();
+            showBar();
+            return;
+        }
+        if (nativeSession.kind === 'orsay-sef' && nativeSession.sef) {
+            try {
+                var sSecs = Math.round(Math.abs(delta));
+                nativeSession.sef.Execute(delta >= 0 ? 'JumpForward' : 'JumpBackward', sSecs);
+                player.currentTime = Math.max(0, player.currentTime + delta);
+            } catch (eSef) {}
+            updateProgress();
+            showBar();
+            return;
+        }
+        if (nativeSession.kind === 'orsay-player' && nativeSession.pl) {
+            try {
+                var pSecs = Math.round(Math.abs(delta));
+                if (delta >= 0 && nativeSession.pl.JumpForward) nativeSession.pl.JumpForward(pSecs);
+                else if (delta < 0 && nativeSession.pl.JumpBackward) nativeSession.pl.JumpBackward(pSecs);
+                player.currentTime = Math.max(0, player.currentTime + delta);
+            } catch (ePl) {}
             updateProgress();
             showBar();
             return;
@@ -2223,20 +2319,132 @@
         applyDetailsFocus();
     }
 
+    function orsayPlayUrl(rawUrl) {
+        var playUrl = toAbsoluteUrl(rawUrl);
+        if (/\.m3u8(\?|$)/i.test(playUrl) && playUrl.toUpperCase().indexOf('|COMPONENT=HLS') === -1) playUrl += '|COMPONENT=HLS';
+        else if (/\.mpd(\?|$)/i.test(playUrl) && playUrl.toUpperCase().indexOf('|COMPONENT=HAS') === -1) playUrl += '|COMPONENT=HAS';
+        return playUrl;
+    }
+
+    function tryOrsaySefOrPlayer(rawUrl, loadId) {
+        var playUrl = orsayPlayUrl(rawUrl);
+        var cw = (window.curWidget && curWidget.width) || window.innerWidth || 1280;
+        var ch = (window.curWidget && curWidget.height) || window.innerHeight || 720;
+        var sef = orsaySefNode();
+        if (sef) {
+            try {
+                engineDetach();
+                if (sef.Open('Player', '1.000', 'Player')) {
+                    nativeSession.kind = 'orsay-sef';
+                    nativeSession.sef = sef;
+                    player.engineKind = 'orsay-sef';
+                    setEngineLabel('Orsay SEF');
+                    hide($('lite-video'));
+                    setNativePlane(true);
+                    sef.OnEvent = function (type, data) {
+                        if (loadId !== player.loadId) return;
+                        if (type === 9) {
+                            markFrame();
+                            showBar();
+                        } else if (type === 7 || type === 12) {
+                            player.paused = false;
+                            markFrame();
+                            updateProgress();
+                            showBar();
+                        } else if (type === 11) {
+                            if (player.ready) playerMessage('Буферизация…');
+                        } else if (type === 14) {
+                            player.currentTime = (Number(data) || 0) / 1000;
+                            try { player.duration = (sef.Execute('GetDuration') || 0) / 1000; } catch (eDur) {}
+                            updateProgress();
+                        } else if (type === 8) {
+                            try { sef.Execute('Stop'); } catch (eS) {}
+                            onPlaybackEnded();
+                        } else if (type >= 1 && type <= 6) {
+                            playerProblem('error');
+                        }
+                    };
+                    sef.Execute('InitPlayer', playUrl);
+                    try { sef.Execute('SetDisplayArea', 0, 0, cw, ch); } catch (eArea) {}
+                    var started = sef.Execute('StartPlayback', 0);
+                    if (started !== false && started !== 0) {
+                        player.ready = true;
+                        player.paused = false;
+                        armStall(15000);
+                        showBar();
+                        return true;
+                    }
+                }
+            } catch (eSef) {}
+        }
+        var pl = orsayPlayerNode();
+        if (pl) {
+            try {
+                engineDetach();
+                nativeSession.kind = 'orsay-player';
+                nativeSession.pl = pl;
+                player.engineKind = 'orsay-player';
+                setEngineLabel('Orsay Player');
+                hide($('lite-video'));
+                setNativePlane(true);
+                pl.OnStreamInfoReady = function () { if (loadId === player.loadId) { markFrame(); showBar(); } };
+                pl.OnRenderingComplete = function () { if (loadId === player.loadId) { try { pl.Stop(); } catch (eP) {} onPlaybackEnded(); } };
+                pl.OnCurrentPlayTime = function (ms) {
+                    if (loadId !== player.loadId) return;
+                    player.currentTime = (Number(ms) || 0) / 1000;
+                    try { player.duration = (pl.GetDuration() || 0) / 1000; } catch (ePd) {}
+                    updateProgress();
+                };
+                pl.OnBufferingStart = function () { if (loadId === player.loadId && player.ready) playerMessage('Буферизация…'); };
+                pl.OnBufferingComplete = function () { if (loadId === player.loadId) { player.paused = false; markFrame(); updateProgress(); showBar(); } };
+                pl.OnConnectionFailed = pl.OnNetworkDisconnected = pl.OnRenderError = pl.OnStreamNotFound = function () {
+                    if (loadId === player.loadId) playerProblem('error');
+                };
+                if (pl.InitPlayer(playUrl)) {
+                    try { pl.SetDisplayArea(0, 0, cw, ch); } catch (ePa) {}
+                    pl.StartPlayback(0);
+                    player.ready = true;
+                    player.paused = false;
+                    armStall(15000);
+                    showBar();
+                    return true;
+                }
+            } catch (ePl) {}
+        }
+        return false;
+    }
+
     function openWithEngine(rawUrl, loadId) {
+        if (IS_ORSAY && player.lastOrsayClosedAt) {
+            var sinceClose = Date.now() - player.lastOrsayClosedAt;
+            if (sinceClose >= 0 && sinceClose < 120) {
+                player.lastOrsayClosedAt = 0;
+                setTimeout(function () {
+                    if (loadId === player.loadId) openWithEngine(rawUrl, loadId);
+                }, 120 - sinceClose);
+                return;
+            }
+            player.lastOrsayClosedAt = 0;
+        }
         var absUrl = toAbsoluteUrl(rawUrl);
         player.firstFrame = false;
         player.ready = false;
         if (canUseOrsayAvplay()) {
             player.engineKind = 'orsay';
+            setEngineLabel('Orsay AVPlay');
+            var hostOrsay = $('lite-native-host');
+            if (hostOrsay) hostOrsay.innerHTML = '<object id="lite-orsay-video" class="lite-avplayer" style="visibility:hidden;"></object>';
             try {
                 window.webapis.avplay.getAVPlay(function (av) {
                     if (loadId !== player.loadId) { try { av.destroy(); } catch (e0) {} return; }
                     engineDetach();
+                    var h = $('lite-native-host');
+                    if (h) h.innerHTML = '<object id="lite-orsay-video" class="lite-avplayer"></object>';
                     nativeSession.kind = 'orsay';
                     nativeSession.av = av;
-                    var playUrl = absUrl;
-                    if (/\.m3u8(\?|$)/i.test(playUrl) && playUrl.toUpperCase().indexOf('|COMPONENT=HLS') === -1) playUrl += '|COMPONENT=HLS';
+                    player.engineKind = 'orsay';
+                    setEngineLabel('Orsay AVPlay');
+                    var playUrl = orsayPlayUrl(rawUrl);
                     try { av.init(); } catch (eInit) {}
                     try { nativeSession.plugin = av.setPlayerPluginObject(); } catch (ePlug) { nativeSession.plugin = null; }
                     av.onEvent = function (type, data) {
@@ -2276,19 +2484,23 @@
                         player.paused = false;
                         av.play(function () {}, function () { playerProblem('error'); });
                         armStall(15000);
-                    } else {
+                    } else if (!tryOrsaySefOrPlayer(rawUrl, loadId)) {
                         playerProblem('error');
                     }
                 }, function () {
-                    openHtml5Fallback(rawUrl, loadId);
+                    if (!tryOrsaySefOrPlayer(rawUrl, loadId)) openHtml5Fallback(rawUrl, loadId);
                 });
                 return;
             } catch (eOrsay) {}
+        }
+        if (IS_ORSAY && tryOrsaySefOrPlayer(rawUrl, loadId)) {
+            return;
         }
         if (canUseTizenAvplay()) {
             player.engineKind = 'tizen';
             engineDetach();
             nativeSession.kind = 'tizen';
+            setEngineLabel('Tizen AVPlay');
             var host = $('lite-native-host');
             if (host) host.innerHTML = '<object id="lite-avplayer" class="lite-avplayer" type="application/avplayer"></object>';
             hide($('lite-video'));
@@ -2340,6 +2552,7 @@
         engineDetach();
         player.engineKind = 'html5';
         nativeSession.kind = 'html5';
+        setEngineLabel(IS_ORSAY ? 'HTML5 (no Orsay API)' : IS_TIZEN ? 'HTML5 (no Tizen API)' : 'HTML5');
         var video = $('lite-video');
         show(video);
         video.src = rawUrl;

@@ -22,13 +22,18 @@
           }
           try { if (window.sessionStorage.getItem('kinosota:tv-engine') === 'nextgen') return; } catch (e) {}
           var ua = (navigator.userAgent || '').toLowerCase();
+          var appVer = (navigator.appVersion || '').toLowerCase();
           var isWebOs = ua.indexOf('webos') !== -1 || ua.indexOf('web0s') !== -1;
           var isTizen = ua.indexOf('tizen') !== -1;
-          var isTvUa = isWebOs || isTizen || ua.indexOf('maple') !== -1 || ua.indexOf('netcast') !== -1 ||
+          var isTvUa = isWebOs || isTizen || ua.indexOf('maple') !== -1 || appVer.indexOf('maple') !== -1 ||
+                       ua.indexOf('smarthub') !== -1 || ua.indexOf('netcast') !== -1 ||
                        ua.indexOf('smarttv') !== -1 || ua.indexOf('smart-tv') !== -1 || ua.indexOf('hbbtv') !== -1 ||
                        ua.indexOf('aft') !== -1 || ua.indexOf('bravia') !== -1 || ua.indexOf('philips') !== -1 ||
-                       ua.indexOf('android tv') !== -1 || ua.indexOf('googletv') !== -1;
-          var legacyOrsay = ua.indexOf('maple') !== -1 ||
+                       ua.indexOf('android tv') !== -1 || ua.indexOf('googletv') !== -1 ||
+                       typeof window.curWidget !== 'undefined' || typeof window.Common !== 'undefined';
+          var legacyOrsay = ua.indexOf('maple') !== -1 || appVer.indexOf('maple') !== -1 ||
+                            ua.indexOf('smarthub') !== -1 ||
+                            typeof window.curWidget !== 'undefined' || typeof window.Common !== 'undefined' ||
                             (ua.indexOf('smarttv') !== -1 && !isTizen && !isWebOs) ||
                             (ua.indexOf('samsung') !== -1 && !isTizen &&
                              (ua.indexOf('2011') !== -1 || ua.indexOf('2012') !== -1 || ua.indexOf('2013') !== -1 || ua.indexOf('2014') !== -1 || ua.indexOf('2015') !== -1));
@@ -42,6 +47,15 @@
               (chromeMajor && chromeMajor < 64) ||
               (isTvUa && ((chromeMajor && chromeMajor < 87) || !hasInset))) {
             window.location.replace('/tv/lite');
+            return;
+          }
+          if (isTizen && !window.webapis) {
+            try {
+              var s = document.createElement('script');
+              s.type = 'text/javascript';
+              s.src = '$WEBAPIS/webapis/webapis.js';
+              (document.head || document.documentElement).appendChild(s);
+            } catch (err) {}
           }
         } catch (e) {}
       })();

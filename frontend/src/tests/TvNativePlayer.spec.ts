@@ -139,6 +139,7 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
 
     expect(wrapper.find('[data-testid="tv-avplayer"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="tv-player"]').classes()).toContain('tv-native-plane')
+    expect(wrapper.get('[data-testid="tv-player-engine"]').text()).toBe('Tizen AVPlay')
     expect(calls).toContain('open:http://localhost:3000/tv-stream/torrent-node-1/abc-123')
     expect(calls).toContain('prepareAsync')
     expect(calls).toContain('play')
