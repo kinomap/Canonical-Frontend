@@ -1,5 +1,6 @@
 /** Metadata only. Never call a Telegram playback or catalogue endpoint here. */
 import { apiClient, adRequest } from './client'
+import { isSmartTvClient } from '@/lib/tvClient'
 import type { PrepStatus, PrepStatusItem } from './preparation'
 export type TorrentKind = 'movie' | 'tv'
 export type TmdbGenre = { id: number; name: string }
@@ -90,7 +91,7 @@ export const torrentPlaybackApi = {
     return adRequest('/torrents/preparation-status?keys=' + encodeURIComponent(keys.slice(0, 100).join(',')), {signal, cache: 'no-store'})
   },
   playbackTicket(kind: TorrentKind, tmdb_id: number, choice: StreamChoice = {}, signal?: AbortSignal): Promise<PlaybackTicket> {
-    return apiClient.postTorrentAction<PlaybackTicket>('playback-ticket', {kind, tmdb_id, ...choiceBody(choice)}, signal)
+    return apiClient.postTorrentAction<PlaybackTicket>('playback-ticket', {kind, tmdb_id, ...choiceBody(choice), ...(isSmartTvClient() ? { tv: true } : {})}, signal)
   },
   sources(kind: TorrentKind, tmdb_id: number, signal?: AbortSignal): Promise<TorrentSourcesView> {
     return adRequest(`/torrents/sources/${kind}/${tmdb_id}`, {signal, cache: 'no-store'})

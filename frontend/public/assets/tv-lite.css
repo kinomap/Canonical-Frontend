@@ -1100,3 +1100,81 @@ html, body {
 .lite-player-actions .lite-btn {
     margin: 0 8px;
 }
+
+/* Native TV hardware video plane (Samsung Orsay / Tizen AVPlay): keep layer underneath transparent. */
+html.lite-native-plane,
+body.lite-native-plane,
+body.lite-native-plane .lite-app,
+body.lite-native-plane .lite-player {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+body.lite-native-plane .lite-sidebar,
+body.lite-native-plane .lite-content,
+body.lite-native-plane .lite-details {
+    visibility: hidden;
+}
+
+.lite-native-host,
+.lite-avplayer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 720px;
+    z-index: 1;
+}
+
+.lite-ad-badge {
+    position: absolute;
+    top: 22px;
+    right: 40px;
+    z-index: 6;
+    padding: 8px 18px;
+    border-radius: 10px;
+    background: rgba(8, 11, 17, 0.94);
+    border: 1px solid rgba(255, 206, 33, 0.5);
+    font-size: 16px;
+    font-weight: bold;
+    color: #ffce21;
+}
+
+.lite-ad-skip {
+    position: absolute;
+    bottom: 142px;
+    right: 48px;
+    z-index: 6;
+}
+
+.lite-player-audio {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffce21;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.lite-player-tracks {
+    margin-top: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.lite-player-tracks .lite-pill {
+    margin-right: 8px;
+    height: 28px;
+    line-height: 28px;
+    padding: 0 14px;
+    font-size: 14px;
+}
+
+.lite-player-bar {
+    z-index: 4;
+}
+
+.lite-player-message {
+    z-index: 5;
+}

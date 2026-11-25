@@ -1,4 +1,6 @@
 function trafficReferrer(): string { try { return typeof document !== 'undefined' && /^https?:/.test(document.referrer) ? new URL(document.referrer).origin : '' } catch { return '' } }
+import { isSmartTvClient } from '@/lib/tvClient'
+export { isSmartTvClient }
 import { currentCinemaPrestartSignal } from '@/composables/useCinemaPrestart'
 import type {
   AudioTrack,
@@ -321,7 +323,7 @@ export const apiClient = {
   async startPlayback(movieId: string, sourceId?: string): Promise<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number, traffic_id?: string }> {
     return request<{ session_id: string, media_endpoint: string, playback_token: string, node_id: string, media_url?: string, source_id?: string, heartbeat_interval_seconds?: number, traffic_id?: string }>(`/playback/start`, {
       method: 'POST',
-      body: JSON.stringify({ movie_id: movieId, ...(sourceId ? {source_id: sourceId} : {}) }),
+      body: JSON.stringify({ movie_id: movieId, ...(sourceId ? {source_id: sourceId} : {}), ...(isSmartTvClient() ? { tv: true } : {}) }),
       headers: { 'X-View-Referrer': trafficReferrer() },
     })
   },
@@ -357,7 +359,7 @@ export const apiClient = {
   async startSeriesPlayback(episodeId: string): Promise<{ media_endpoint: string, playback_token: string, media_url?: string, traffic_id?: string }> {
     return request<{ media_endpoint: string, playback_token: string, media_url?: string, traffic_id?: string }>(`/series_playback/start`, {
       method: 'POST',
-      body: JSON.stringify({ episode_id: episodeId }),
+      body: JSON.stringify({ episode_id: episodeId, ...(isSmartTvClient() ? { tv: true } : {}) }),
       headers: { 'X-View-Referrer': trafficReferrer() },
     })
   },

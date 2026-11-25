@@ -207,7 +207,7 @@ describe('Lite TV portal behaviour', () => {
     press('', 29443) // Samsung Enter
     await flush()
     const ticket = sent.find(item => item.url === '/api/v1/torrents/playback-ticket')
-    expect(JSON.parse(ticket!.body!)).toEqual({ kind: 'movie', tmdb_id: 55 })
+    expect(JSON.parse(ticket!.body!)).toEqual({ kind: 'movie', tmdb_id: 55, tv: true })
     expect((document.getElementById('lite-video') as HTMLVideoElement).getAttribute('src')).toBe('/stream/t.m3u8')
   })
 
@@ -414,7 +414,7 @@ describe('Lite TV portal behaviour', () => {
     await flush()
     expect(lite().state.mode).toBe('player')
     const ticket = sent.find(item => item.url === '/api/v1/torrents/playback-ticket')
-    expect(JSON.parse(ticket!.body!)).toEqual({ kind: 'movie', tmdb_id: 55, source_id: 'b' })
+    expect(JSON.parse(ticket!.body!)).toEqual({ kind: 'movie', tmdb_id: 55, source_id: 'b', tv: true })
     press('Escape', 27) // back from the player lands on the details screen again
     await flush()
     expect(lite().state.mode).toBe('details')
@@ -490,5 +490,78 @@ describe('Lite TV portal behaviour', () => {
     expect(value).toBe(2)
     expect(formatTime(65)).toBe('1:05')
     expect(formatTime(3725)).toBe('1:02:05')
+  })
+
+  it('plays pre-roll ad -> intro -> film in sequence and requests ad with tv=true', async () => {
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-1', media_url: '/tv-ad/tg-node-1/ad-1.mp4', duration_sec: 15, skip_after: null } } })
+    routes.push({ method: 'POST', path: '/ads/events/del-1', body: { ok: true } })
+    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: 'https://watch.scenrix.com/media/cinema-intro/clip.mp4' } })
+    await bootLite()
+    press('', 29443) // play spotlight torrent
+    await flush()
+    const prep = sent.find(item => item.url === '/api/v1/ads/prepare')
+    expect(JSON.parse(prep!.body!)).toEqual({ plan_token: 'plan-1', cue_id: 'pre1', tv: true })
+    const video = document.getElementById('lite-video') as HTMLVideoElement
+    expect(video.getAttribute('src')).toBe('/tv-ad/tg-node-1/ad-1.mp4')
+    video.dispatchEvent(new Event('ended'))
+    await flush()
+    expect(video.getAttribute('src')).toBe('https://watch.scenrix.com/media/cinema-intro/clip.mp4')
+    video.dispatchEvent(new Event('ended'))
+    await flush()
+    expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
+  })
+
+  it('uses Samsung Orsay webapis.avplay native player, switches audio tracks and stops cleanly on Back', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple; UE46H7000) AppleWebKit/537.42' })
+    const calls: string[] = []
+    const eventHook: { fn: ((type: number, data?: unknown) => void) | null } = { fn: null }
+    const avStub = {
+      status: '0',
+      init: () => { calls.push('init') },
+      setPlayerPluginObject: () => ({ Execute: (cmd: string, sec: number) => calls.push(`exec:${cmd}:${sec}`) }),
+      set onEvent(fn: (type: number, data?: unknown) => void) { eventHook.fn = fn },
+      open: (url: string) => { calls.push(`open:${url}`); return true },
+      play: () => { calls.push('play') },
+      pause: () => { avStub.status = '5'; calls.push('pause') },
+      resume: () => { avStub.status = '1'; calls.push('resume') },
+      stop: () => { calls.push('stop') },
+      destroy: () => { calls.push('destroy') },
+      setDisplayArea: () => { calls.push('area') },
+      startSubtitle: () => {},
+      getDuration: () => 600000,
+      getTotalNumOfStreamID: (kind: number) => (kind === 1 ? 2 : 0),
+      getStreamLanguageInfo: (_kind: number, idx: number) => (idx === 0 ? 7501171 : 6647399),
+      getStreamExtraData: (_kind: number, idx: number) => JSON.stringify({ codec: idx === 0 ? 'ac3' : 'dts' }),
+      setStreamID: (kind: number, idx: number) => { calls.push(`track:${kind}:${idx}`) },
+    }
+    ;(window as unknown as { webapis?: unknown }).webapis = {
+      avplay: { getAVPlay: (cb: (av: typeof avStub) => void) => cb(avStub) },
+    }
+    try {
+      await bootLite()
+      press('', 29443) // play spotlight torrent
+      await flush()
+      expect(calls.some(c => c.startsWith('open:http://localhost:3000/stream/t.m3u8'))).toBe(true)
+      expect(calls).toContain('play')
+      expect(document.body.className).toContain('lite-native-plane')
+      eventHook.fn?.(9)
+      eventHook.fn?.(14, 12000)
+      expect(document.getElementById('lite-player-audio')?.textContent).toContain('Russian')
+      press('ArrowDown', 40) // opens audio tracks selector
+      press('ArrowRight', 39)
+      press('Enter', 13)
+      expect(calls).toContain('track:1:1')
+      press('ArrowRight', 39)
+      expect(calls).toContain('exec:JumpForward:30')
+      press('', 88) // Orsay Return
+      expect(calls).toContain('stop')
+      expect(calls).toContain('destroy')
+      expect(document.body.className).not.toContain('lite-native-plane')
+    } finally {
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
   })
 })

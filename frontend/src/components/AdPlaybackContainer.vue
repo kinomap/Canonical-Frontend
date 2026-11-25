@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { adRequest } from '@/api/client'
+import { isSmartTvClient } from '@/lib/tvClient'
 import { pendingCues, resolvedCues, type Cue } from '@/utils/adTimeline'
 /**
  * surface: where this playback happens (Ad Studio «Среды показа»); the plan holds only ads enabled there.
@@ -55,7 +56,7 @@ function event(kind:string){const id=ad.value?.delivery_id;if(!id)return Promise
 function prepare(cue:Cue):Promise<Ad|null>{
  if(!prepared||prepared.id!==cue.id||Date.now()-prepared.at>=prepared.maxAge){
   const t=token
-  prepared={id:cue.id,at:Date.now(),maxAge:30000,value:adRequest<{ad:Ad|null}>('/ads/prepare',{method:'POST',body:JSON.stringify({plan_token:t,cue_id:cue.id}),signal:AbortSignal.timeout(6000)}).then(x=>{if(prepared?.id===cue.id)prepared.maxAge=Math.max(1,Math.min(30000,x.ad?.cache_ttl_ms??30000));return x.ad}).catch(()=>null)}
+  prepared={id:cue.id,at:Date.now(),maxAge:30000,value:adRequest<{ad:Ad|null}>('/ads/prepare',{method:'POST',body:JSON.stringify({plan_token:t,cue_id:cue.id,...(isSmartTvClient()?{tv:true}:{})}),signal:AbortSignal.timeout(6000)}).then(x=>{if(prepared?.id===cue.id)prepared.maxAge=Math.max(1,Math.min(30000,x.ad?.cache_ttl_ms??30000));return x.ad}).catch(()=>null)}
  }
  return prepared.value
 }

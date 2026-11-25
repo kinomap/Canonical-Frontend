@@ -20,6 +20,7 @@ import {
   SEEK_COMMIT_MS, SEEK_SERIES_MS, TV_CONTROLS_HIDE_MS,
   formatClock, formatSeekDelta, parseTvPlayTarget, seekStep, tvPlayerQuery, type TvPlayTarget,
 } from './tvPlayback'
+import { createTizenAvplayController, hasTizenAvplay, loadTizenWebApis, type NativePlayerController } from './tvNativePlayer'
 
 interface TvEpisode { key: string; label: string; season: number; episode: number; episodeId?: string }
 interface TrackOption { label: string; active: boolean }
@@ -74,6 +75,8 @@ let released = false
 let seekPending = false
 let historyWriter = createHistoryWriter()
 const seekSeries = { dir: 0, count: 0, last: 0 }
+const useNativeAvplay = ref(false)
+let nativeController: NativePlayerController | null = null
 
 const currentEpisode = computed(() => episodes.value[episodeIndex.value] ?? null)
 const isSeries = computed(() => target.value?.kind === 'tv' || target.value?.kind === 'series')
@@ -185,6 +188,11 @@ function trackLabel(track: { label?: string; language?: string }, index: number,
 }
 
 function readTracks() {
+  if (nativeController) {
+    audioOptions.value = nativeController.getAudioTracks().map(({ label, active }) => ({ label, active }))
+    subtitleOptions.value = nativeController.getSubtitleTracks().map(({ label, active }) => ({ label, active }))
+    return
+  }
   const audio = audioTrackList()
   const list: TrackOption[] = []
   if (audio) for (let i = 0; i < audio.length; i++) list.push({ label: trackLabel(audio[i], i, 'Дорожка'), active: audio[i].enabled })
@@ -204,6 +212,11 @@ function readTracks() {
 }
 
 function selectAudio(index: number) {
+  if (nativeController) {
+    nativeController.selectAudioTrack(index)
+    readTracks()
+    return
+  }
   const audio = audioTrackList()
   if (audio && index < audio.length) {
     for (let i = 0; i < audio.length; i++) audio[i].enabled = i === index
@@ -212,6 +225,11 @@ function selectAudio(index: number) {
 }
 
 function selectSubtitle(index: number) {
+  if (nativeController) {
+    nativeController.selectSubtitleTrack(index)
+    readTracks()
+    return
+  }
   const text = video.value?.textTracks
   if (text) {
     let n = 0
@@ -248,7 +266,31 @@ function showControls() {
 }
 
 // ── Playback control ─────────────────────────────────────────────────────
+function mediaCurrentTime(): number {
+  return nativeController ? nativeController.getCurrentTime() : (video.value?.currentTime || 0)
+}
+
+function mediaDuration(): number {
+  const value = nativeController ? nativeController.getDuration() : (video.value?.duration ?? 0)
+  return Number.isFinite(value) && value > 0 ? value : duration.value
+}
+
+const adMainProxy = computed<HTMLVideoElement | null>(() => {
+  if (!useNativeAvplay.value) return video.value
+  return {
+    get currentTime() { return mediaCurrentTime() },
+    get duration() { return mediaDuration() || Infinity },
+    play: () => { play(); return Promise.resolve() },
+    pause: () => pause(),
+  } as unknown as HTMLVideoElement
+})
+
 function play() {
+  if (nativeController) {
+    nativeController.play()
+    onPlay()
+    return
+  }
   const el = video.value
   if (!el) return
   const started = el.play()
@@ -256,18 +298,24 @@ function play() {
 }
 
 function pause() {
+  if (nativeController) {
+    nativeController.pause()
+    onPause()
+    return
+  }
   video.value?.pause()
 }
 
 function togglePlay() {
   if (status.value !== 'ready') return
-  if (video.value?.paused ?? paused.value) play()
+  const isPaused = nativeController ? nativeController.isPaused() : (video.value?.paused ?? paused.value)
+  if (isPaused) play()
   else pause()
 }
 
 function seekBy(dir: 1 | -1) {
-  const el = video.value
-  if (!el || status.value !== 'ready') return
+  if (!nativeController && !video.value) return
+  if (status.value !== 'ready') return
   const now = Date.now()
   const continues = seekSeries.dir === dir && now - seekSeries.last <= SEEK_SERIES_MS
   seekSeries.count = continues ? seekSeries.count + 1 : 0
@@ -276,10 +324,11 @@ function seekBy(dir: 1 | -1) {
   if (!seekPending) {
     seekPending = true
     seekDelta.value = 0
-    seekTarget.value = el.currentTime || 0
+    seekTarget.value = mediaCurrentTime()
   }
   const from = seekTarget.value
-  const max = Number.isFinite(el.duration) && el.duration > 0 ? Math.max(0, el.duration - 1) : Infinity
+  const total = mediaDuration()
+  const max = Number.isFinite(total) && total > 0 ? Math.max(0, total - 1) : Infinity
   const next = Math.max(0, Math.min(max, from + dir * seekStep(seekSeries.count)))
   seekDelta.value = (seekDelta.value ?? 0) + (next - from)
   seekTarget.value = next
@@ -289,10 +338,14 @@ function seekBy(dir: 1 | -1) {
 }
 
 function commitSeek() {
-  const el = video.value
-  if (el && seekPending) {
-    el.currentTime = seekTarget.value
-    currentTime.value = seekTarget.value
+  if (seekPending) {
+    if (nativeController) {
+      nativeController.seekTo(seekTarget.value)
+      currentTime.value = seekTarget.value
+    } else if (video.value) {
+      video.value.currentTime = seekTarget.value
+      currentTime.value = seekTarget.value
+    }
   }
   seekPending = false
   seekSeries.dir = 0
@@ -378,12 +431,11 @@ function onMediaError() {
 
 // ── Watch history & session lease ────────────────────────────────────────
 async function saveHistory(ended: boolean, keepalive: boolean) {
-  const el = video.value
-  if (!historyEnabled.value || !sessionId || !el) return
-  const total = Number.isFinite(el.duration) ? el.duration : duration.value
+  if (!historyEnabled.value || !sessionId || (!nativeController && !video.value)) return
+  const total = mediaDuration()
   if (!(total > 0)) return
   lastHistorySave = Date.now()
-  try { await historyWriter(sessionId, el.currentTime, total, ended, keepalive) } catch { /* best effort */ }
+  try { await historyWriter(sessionId, mediaCurrentTime(), total, ended, keepalive) } catch { /* best effort */ }
 }
 
 function beginLease(id: string, intervalSeconds?: number) {
@@ -402,6 +454,12 @@ function endLease() {
 }
 
 function detachVideo() {
+  if (nativeController) {
+    nativeController.destroy()
+    nativeController = null
+  }
+  useNativeAvplay.value = false
+  document.documentElement.classList.remove('tv-native-plane')
   const el = video.value
   if (!el) return
   try {
@@ -556,8 +614,78 @@ async function start() {
   await loadStream()
 }
 
-const videoSrc = computed(() => (phase.value === 'content' && streamUrl.value ? streamUrl.value : undefined))
-watch(videoSrc, (url) => { if (url) void nextTick(play) })
+function startNativeOrHtml5(url: string) {
+  if (!hasTizenAvplay()) {
+    useNativeAvplay.value = false
+    void nextTick(play)
+    return
+  }
+  if (nativeController) {
+    nativeController.destroy()
+    nativeController = null
+  }
+  useNativeAvplay.value = true
+  document.documentElement.classList.add('tv-native-plane')
+  void nextTick(() => {
+    if (released || phase.value !== 'content') return
+    nativeController = createTizenAvplayController(url, {
+      onCanPlay() {
+        buffering.value = false
+        if (nativeController) {
+          duration.value = nativeController.getDuration() || 0
+          if (resumeAt > 0) {
+            nativeController.seekTo(resumeAt)
+            currentTime.value = resumeAt
+            resumeAt = 0
+          }
+        }
+      },
+      onPlaying() {
+        buffering.value = false
+        onPlay()
+      },
+      onWaiting() {
+        buffering.value = true
+      },
+      onTimeUpdate(cur, dur) {
+        if (!seekPending) currentTime.value = cur
+        if (dur > 0) duration.value = dur
+        adPlayer.value?.tick()
+        if (Date.now() - lastHistorySave >= HISTORY_SAVE_EVERY_MS) void saveHistory(false, false)
+      },
+      onTracksChanged(audioTracks, subtitleTracks) {
+        audioOptions.value = audioTracks.map(({ label, active }) => ({ label, active }))
+        subtitleOptions.value = subtitleTracks.map(({ label, active }) => ({ label, active }))
+      },
+      onEnded() {
+        onEnded()
+      },
+      onError() {
+        onMediaError()
+      },
+    })
+    if (nativeController) {
+      readTracks()
+      const dur = nativeController.getDuration()
+      if (dur > 0) duration.value = dur
+      if (resumeAt > 0) {
+        nativeController.seekTo(resumeAt)
+        currentTime.value = resumeAt
+        resumeAt = 0
+      }
+    } else {
+      useNativeAvplay.value = false
+      document.documentElement.classList.remove('tv-native-plane')
+      void nextTick(play)
+    }
+  })
+}
+
+const videoSrc = computed(() => (phase.value === 'content' && streamUrl.value && !useNativeAvplay.value ? streamUrl.value : undefined))
+watch(
+  () => (phase.value === 'content' && streamUrl.value ? streamUrl.value : undefined),
+  (url) => { if (url) startNativeOrHtml5(url) },
+)
 
 function onPageHide() {
   void saveHistory(false, true)
@@ -566,6 +694,7 @@ function onPageHide() {
 
 onMounted(() => {
   document.documentElement.classList.add('tv-mode')
+  void loadTizenWebApis()
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('pagehide', onPageHide)
   void start()
@@ -585,10 +714,17 @@ defineExpose({ handle, phase, startFilm })
 <template>
   <div
     class="tv-player"
-    :class="{ 'controls-hidden': !controlsVisible && mode === 'playback' && !paused }"
+    :class="{ 'controls-hidden': !controlsVisible && mode === 'playback' && !paused, 'tv-native-plane': useNativeAvplay }"
     data-testid="tv-player"
   >
+    <object
+      v-if="useNativeAvplay"
+      type="application/avplayer"
+      class="tv-video"
+      data-testid="tv-avplayer"
+    />
     <video
+      v-else
       ref="video"
       class="tv-video"
       :src="videoSrc"
@@ -612,7 +748,7 @@ defineExpose({ handle, phase, startFilm })
     <AdPlaybackContainer
       v-if="adsReady && adTarget"
       ref="adPlayer"
-      :main="video"
+      :main="adMainProxy"
       :source="streamUrl"
       :host-starts="true"
       :covered="phase === 'intro'"
@@ -714,6 +850,11 @@ defineExpose({ handle, phase, startFilm })
   overflow: hidden;
   background: #000;
   color: #f5f5f7;
+}
+
+.tv-player.tv-native-plane,
+.tv-player.tv-native-plane .tv-video {
+  background: transparent;
 }
 
 .tv-intro-layer {
@@ -998,5 +1139,14 @@ defineExpose({ handle, phase, startFilm })
   color: #fff;
   transform: scale(1.05);
   outline: none;
+}
+</style>
+
+<style>
+html.tv-native-plane,
+html.tv-native-plane body,
+html.tv-native-plane #app {
+  background: transparent !important;
+  background-color: transparent !important;
 }
 </style>

@@ -11,7 +11,7 @@
   Lampa-grade Smart TV interface for 2012–2017 Smart TVs (Samsung Orsay WebKit 537, LG Netcast/webOS, Android boxes).
   Strict ES5, hardware accelerated CSS without backdrop-filter, XHR with Promise polyfill.
 -->
-<link rel="stylesheet" href="/assets/tv-lite.css?v=4">
+<link rel="stylesheet" href="/assets/tv-lite.css?v=5">
 </head>
 <body>
 <div id="lite-app" class="lite-app">
@@ -147,8 +147,11 @@
 
     <!-- Player -->
     <div id="lite-player" class="lite-player is-hidden">
+        <div id="lite-native-host" class="lite-native-host"></div>
         <video id="lite-video" class="lite-video" preload="auto"></video>
         <span id="lite-player-back" class="lite-btn lite-back lite-player-back">&#8592; Назад</span>
+        <div id="lite-ad-badge" class="lite-ad-badge is-hidden"></div>
+        <span id="lite-ad-skip" class="lite-btn lite-ad-skip is-hidden">Пропустить рекламу</span>
         <div id="lite-player-message" class="lite-player-message"></div>
         <div id="lite-player-actions" class="lite-player-actions is-hidden">
             <span id="lite-player-retry" class="lite-btn lite-btn-primary is-focused">Повторить</span>
@@ -160,8 +163,10 @@
             <div class="lite-player-row">
                 <span id="lite-player-state" class="lite-player-state">▶</span>
                 <span id="lite-player-time" class="lite-player-time">0:00 / 0:00</span>
-                <span class="lite-player-hint">OK — пауза · ◀ ▶ — 30 сек · Назад — выход</span>
+                <span id="lite-player-audio" class="lite-player-audio is-hidden"></span>
+                <span id="lite-player-hint" class="lite-player-hint">OK — пауза · ◀ ▶ — 30 сек · Назад — выход</span>
             </div>
+            <div id="lite-player-tracks" class="lite-player-tracks is-hidden"></div>
         </div>
     </div>
 
@@ -226,6 +231,6 @@
 
     <div id="lite-toast" class="lite-toast is-hidden"></div>
 </div>
-<script src="/assets/tv-lite.js?v=4"></script>
+<script src="/assets/tv-lite.js?v=5"></script>
 </body>
 </html>

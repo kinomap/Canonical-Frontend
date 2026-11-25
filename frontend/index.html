@@ -9,9 +9,9 @@
     <meta name="description" content="KINOSOTA — фильмы, сериалы и новые истории. Найдите кино по жанру и рейтингу." />
     <title>KINOSOTA — фильмы и сериалы</title>
     <script>
-      // Dual-Engine safety net (TV_MULTI_EPOCH_PORTAL_SPEC §2): a 2012–2017 TV that opens /tv directly
-      // (Orsay / Netcast, or no ES modules) goes to the ES5 Lite portal instead of a dark empty screen.
-      // ?engine=nextgen (Launcher «Next-Gen» mode) keeps the full portal for this tab session.
+      // Dual-Engine safety net (TV_MULTI_EPOCH_PORTAL_SPEC §2): legacy TVs (Orsay, Netcast,
+      // webOS 1-4, Tizen 2-4, no ES modules / Proxy / CSS inset) automatically go to /tv/lite
+      // without bothering the user. ?engine=nextgen keeps the full portal for this session.
       (function() {
         try {
           var path = window.location.pathname || '';
@@ -22,9 +22,27 @@
           }
           try { if (window.sessionStorage.getItem('kinosota:tv-engine') === 'nextgen') return; } catch (e) {}
           var ua = (navigator.userAgent || '').toLowerCase();
-          var legacyUa = ua.indexOf('maple') !== -1 || ua.indexOf('netcast') !== -1;
+          var isWebOs = ua.indexOf('webos') !== -1 || ua.indexOf('web0s') !== -1;
+          var isTizen = ua.indexOf('tizen') !== -1;
+          var isTvUa = isWebOs || isTizen || ua.indexOf('maple') !== -1 || ua.indexOf('netcast') !== -1 ||
+                       ua.indexOf('smarttv') !== -1 || ua.indexOf('smart-tv') !== -1 || ua.indexOf('hbbtv') !== -1 ||
+                       ua.indexOf('aft') !== -1 || ua.indexOf('bravia') !== -1 || ua.indexOf('philips') !== -1 ||
+                       ua.indexOf('android tv') !== -1 || ua.indexOf('googletv') !== -1;
+          var legacyOrsay = ua.indexOf('maple') !== -1 ||
+                            (ua.indexOf('smarttv') !== -1 && !isTizen && !isWebOs) ||
+                            (ua.indexOf('samsung') !== -1 && !isTizen &&
+                             (ua.indexOf('2011') !== -1 || ua.indexOf('2012') !== -1 || ua.indexOf('2013') !== -1 || ua.indexOf('2014') !== -1 || ua.indexOf('2015') !== -1));
+          var legacyTvOs = ua.indexOf('netcast') !== -1 || /web0?s\/[1-4]\./.test(ua) || /tizen[\s/]+[1-4]\./.test(ua);
+          var chromeMatch = ua.match(/(?:chrome|crios|chromium)\/(\d+)/) || ua.match(/\b(\d{2,3})\.\d+\.\d+\.\d+\/[\d.]+\s+tv\b/);
+          var chromeMajor = chromeMatch && chromeMatch[1] ? parseInt(chromeMatch[1], 10) : 0;
           var modules = 'noModule' in document.createElement('script');
-          if (legacyUa || !modules) window.location.replace('/tv/lite');
+          var hasProxy = typeof window.Proxy === 'function';
+          var hasInset = !!(window.CSS && window.CSS.supports && window.CSS.supports('inset', '0px'));
+          if (legacyOrsay || legacyTvOs || !modules || !hasProxy ||
+              (chromeMajor && chromeMajor < 64) ||
+              (isTvUa && ((chromeMajor && chromeMajor < 87) || !hasInset))) {
+            window.location.replace('/tv/lite');
+          }
         } catch (e) {}
       })();
     </script>
