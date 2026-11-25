@@ -72,7 +72,7 @@ def test_stale_bundle_environment_detects_inherited_and_reexec_vars(monkeypatch)
     assert stale_bundle_environment({**clean, '_PYI_PARENT_PROCESS_LEVEL': '1'})
     assert stale_bundle_environment({**clean, '_PYI_ARCHIVE_FILE': '/tmp/old/kinosota-player'})
     assert stale_bundle_environment({**USER, 'QT_PLUGIN_PATH': '/tmp/_MEI999/PySide6/Qt/plugins'})
-    assert stale_bundle_environment({**USER, 'LD_LIBRARY_PATH': '/tmp/old/_internal:/usr/lib'})
+    assert stale_bundle_environment({**USER, 'LD_LIBRARY_PATH': f'/tmp/old/_internal{os.pathsep}/usr/lib'})
     restarted = restart_environment({**USER, **INJECTED, 'KINOSOTA_REEXEC': '1'})
     assert 'KINOSOTA_REEXEC' not in restarted
     assert not stale_bundle_environment(restarted)
