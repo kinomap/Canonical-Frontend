@@ -550,10 +550,10 @@ describe('Lite TV portal behaviour', () => {
       await flush()
       expect(calls.some(c => c.startsWith('open:http://localhost:3000/stream/t.m3u8'))).toBe(true)
       expect(calls).toContain('play')
-      expect(calls).toContain('area:0,0,960,540')
       expect(document.body.className).toContain('lite-native-plane')
       expect((document.getElementById('lite-orsay-video') as HTMLElement | null)?.style.visibility).toBe('hidden')
       eventHook.fn?.(9)
+      expect(calls).toContain('area:0,0,960,540')
       expect(lite().player.firstFrame).toBe(false)
       expect(document.getElementById('lite-player-audio')?.textContent).toContain('Russian')
       eventHook.fn?.(14, 12000)
@@ -646,11 +646,9 @@ describe('Lite TV portal behaviour', () => {
     }
   })
 
-  it('declares the Orsay plugin objects statically in /tv/lite before the script', () => {
+  it('declares core Orsay Infolink objects statically without competing Player/SEF plugins before AVPlay', () => {
     const body = HTML.slice(HTML.indexOf('<body>'), HTML.indexOf('<script src='))
     for (const [id, clsid] of [
-      ['pluginObjectSef', 'SAMSUNG-INFOLINK-SEF'],
-      ['pluginObjectPlayer', 'SAMSUNG-INFOLINK-PLAYER'],
       ['pluginObjectNNavi', 'SAMSUNG-INFOLINK-NNAVI'],
       ['pluginObjectTVMW', 'SAMSUNG-INFOLINK-TVMW'],
       ['pluginObjectScreen', 'SAMSUNG-INFOLINK-SCREEN'],
@@ -658,6 +656,8 @@ describe('Lite TV portal behaviour', () => {
       expect(body).toContain(`id="${id}"`)
       expect(body).toContain(`classid="clsid:${clsid}"`)
     }
+    expect(body).not.toContain('pluginObjectSef')
+    expect(body).not.toContain('pluginObjectPlayer')
   })
 
   it('prefers Orsay AVPlay (Lampa parity) when available and falls back to SEF when AVPlay fails', async () => {
@@ -675,10 +675,13 @@ describe('Lite TV portal behaviour', () => {
       }
     try {
       await bootLite()
-      const sefEl = document.getElementById('pluginObjectSef') as HTMLElement & Record<string, unknown>
+      const holder = document.getElementById('lite-orsay-plugins')!
+      const sefEl = document.createElement('object') as unknown as HTMLElement & Record<string, unknown>
+      sefEl.id = 'pluginObjectSef'
       sefEl.Open = (a: string, b: string) => { sefCalls.push(`Open:${b}`); return true }
       sefEl.Execute = (cmd: string, ...args: unknown[]) => { sefCalls.push(`Exec:${cmd}:${args.join(',')}`); return 1 }
       sefEl.Close = () => { sefCalls.push('Close') }
+      holder.appendChild(sefEl as unknown as Node)
       press('', 29443)
       await flush()
       expect(getAvPlayCalled).toBe(true)
@@ -708,7 +711,7 @@ describe('Lite TV portal behaviour', () => {
             stop: () => {},
             destroy: () => {},
             setDisplayArea: () => {},
-            getVideoResolution: () => ({ width: 1920, height: 1080 }),
+            getVideoResolution: () => '1920|1080',
             setCropArea: () => {},
             startSubtitle: () => {},
             getDuration: () => 0,
@@ -717,10 +720,13 @@ describe('Lite TV portal behaviour', () => {
       }
     try {
       await bootLite()
-      const sefEl = document.getElementById('pluginObjectSef') as HTMLElement & Record<string, unknown>
+      const holder = document.getElementById('lite-orsay-plugins')!
+      const sefEl = document.createElement('object') as unknown as HTMLElement & Record<string, unknown>
+      sefEl.id = 'pluginObjectSef'
       sefEl.Open = (_a: string, b: string) => { sefCalls.push(`Open:${b}`); return true }
       sefEl.Execute = (cmd: string, ...args: unknown[]) => { sefCalls.push(`Exec:${cmd}:${args.join(',')}`); return 1 }
       sefEl.Close = () => { sefCalls.push('Close') }
+      holder.appendChild(sefEl as unknown as Node)
       press('', 29443)
       await flush()
       expect(sefCalls[0]).toBe('Open:1.112')
@@ -734,11 +740,12 @@ describe('Lite TV portal behaviour', () => {
     }
   })
 
-  it('uses curWidget dimensions and setCropArea in Orsay AVPlay when av.open returns undefined', async () => {
+  it('uses curWidget dimensions and 3-arg setCropArea with pipe getVideoResolution in Orsay AVPlay', async () => {
     const origUa = navigator.userAgent
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42' })
     const areas: string[] = []
     const crops: string[] = []
+    const calls: string[] = []
     const hook: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
       ; (window as unknown as { curWidget?: { width: number; height: number } }).curWidget = { width: 1280, height: 720 }
       ; (window as unknown as { webapis?: unknown }).webapis = {
@@ -747,13 +754,13 @@ describe('Lite TV portal behaviour', () => {
             init: () => {},
             setPlayerPluginObject: () => null,
             set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
-            open: () => undefined,
-            play: () => {},
+            open: () => { calls.push('open'); return undefined },
+            play: () => { calls.push('play') },
             stop: () => {},
             destroy: () => {},
-            setDisplayArea: (r: { width: number; height: number }) => areas.push(`${r.width}x${r.height}`),
-            getVideoResolution: () => ({ width: 1920, height: 1080 }),
-            setCropArea: (r: { width: number; height: number }) => crops.push(`${r.width}x${r.height}`),
+            setDisplayArea: (r: { width: number; height: number }) => { calls.push('area'); areas.push(`${r.width}x${r.height}`) },
+            getVideoResolution: () => '1920|1080',
+            setCropArea: (_ok: () => void, _err: () => void, r: { width: number; height: number }) => crops.push(`${r.width}x${r.height}`),
             startSubtitle: () => {},
             getDuration: () => 120000,
           }),
@@ -763,6 +770,8 @@ describe('Lite TV portal behaviour', () => {
       await bootLite()
       press('', 29443)
       await flush()
+      // Lampa parity: setDisplayArea is NOT called before play()/STREAM_INFO_READY (9)
+      expect(calls).toEqual(['open', 'play'])
       hook.fn?.(9)
       expect(areas).toContain('1280x720')
       expect(crops).toContain('1920x1080')
@@ -770,6 +779,55 @@ describe('Lite TV portal behaviour', () => {
       press('', 88)
     } finally {
       delete (window as unknown as { curWidget?: unknown }).curWidget
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('rescues Orsay AVPlay event 6 before first frame via SEF without calling stop() or revealing <video>', async () => {
+    const origUa = navigator.userAgent
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42' })
+    const calls: string[] = []
+    const sefCalls: string[] = []
+    const hook: { fn: ((t: number, d?: unknown) => void) | null } = { fn: null }
+      ; (window as unknown as { webapis?: unknown }).webapis = {
+        avplay: {
+          getAVPlay: (ok: (av: unknown) => void) => ok({
+            init: () => {},
+            setPlayerPluginObject: () => null,
+            set onEvent(fn: (t: number, d?: unknown) => void) { hook.fn = fn },
+            open: () => true,
+            play: () => {},
+            stop: () => { calls.push('stop') },
+            destroy: () => { calls.push('destroy') },
+            setDisplayArea: () => {},
+            getVideoResolution: () => '',
+            setCropArea: () => {},
+            startSubtitle: () => {},
+            getDuration: () => 0,
+          }),
+        },
+      }
+    try {
+      await bootLite()
+      const holder = document.getElementById('lite-orsay-plugins')!
+      const sefEl = document.createElement('object') as unknown as HTMLElement & Record<string, unknown>
+      sefEl.id = 'pluginObjectSef'
+      sefEl.Open = (_a: string, b: string) => { sefCalls.push(`Open:${b}`); return true }
+      sefEl.Execute = (cmd: string) => { sefCalls.push(`Exec:${cmd}`); return 1 }
+      sefEl.Close = () => { sefCalls.push('Close') }
+      holder.appendChild(sefEl as unknown as Node)
+
+      press('', 29443)
+      await flush()
+      hook.fn?.(6, '2') // UNSUPPORTED_VIDEO_CODEC on AVPlay film
+      expect(calls).toEqual(['destroy']) // no stop() on broken AVPlay
+      expect(document.getElementById('lite-video')?.className).toContain('is-hidden')
+      await new Promise(resolve => setTimeout(resolve, 550))
+      expect(sefCalls[0]).toBe('Open:1.112')
+      expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay SEF')
+      press('', 88)
+    } finally {
       delete (window as unknown as { webapis?: unknown }).webapis
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
     }
