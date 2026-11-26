@@ -93,7 +93,7 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
     for (const fn of Object.values(api)) fn.mockReset()
     authMock.token!.value = 'jwt'
     api.detail.mockResolvedValue({ title: 'Дюна', overview: '', year: 2024, backdrop: null })
-    api.playbackTicket.mockResolvedValue({ stream_url: '/tv-stream/torrent-node-1/abc-123', title: 'Дюна' })
+    api.playbackTicket.mockResolvedValue({ stream_url: 'https://torrent-node-1.scenrix.com/stream/abc-123?token=t1', title: 'Дюна' })
     api.writer.mockResolvedValue(undefined)
 
     ;(window as unknown as { tizen?: unknown; webapis?: unknown }).tizen = {
@@ -143,7 +143,7 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
     document.documentElement.classList.remove('tv-native-plane')
   })
 
-  it('opens /tv-stream via Tizen AVPlay with absolute URL, switches audio track and cleans up on Back', async () => {
+  it('opens the Media Node stream via Tizen AVPlay over https, switches audio track and cleans up on Back', async () => {
     await router.push({ path: '/tv/player', query: { src: 'torrent', kind: 'movie', id: '438631' } })
     wrapper = mount(TvPlayerView, { global: { plugins: [router] }, attachTo: document.body })
     await flushPromises(); await nextTick(); await flushPromises(); await nextTick()
@@ -151,13 +151,13 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
     expect(wrapper.find('[data-testid="tv-avplayer"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="tv-player"]').classes()).toContain('tv-native-plane')
     expect(wrapper.get('[data-testid="tv-player-engine"]').text()).toBe('Tizen AVPlay')
-    expect(calls).toContain('open:http://localhost:3000/tv-stream/torrent-node-1/abc-123')
+    expect(calls).toContain('open:https://torrent-node-1.scenrix.com/stream/abc-123?token=t1')
     expect(calls).toContain('prepareAsync')
     expect(calls).toContain('play')
     // Tizen maps the video plane from a fixed 1920x1080 grid, whatever window.innerWidth is.
     expect(calls).toContain('rect:0,0,1920,1080')
     expect(calls.indexOf('play')).toBeGreaterThan(calls.indexOf('prepareAsync'))
-    expect(calls.indexOf('close')).toBeLessThan(calls.indexOf('open:http://localhost:3000/tv-stream/torrent-node-1/abc-123'))
+    expect(calls.indexOf('close')).toBeLessThan(calls.indexOf('open:https://torrent-node-1.scenrix.com/stream/abc-123?token=t1'))
     expect(calls).toContain('keys:MediaPlay,MediaPause,MediaPlayPause,MediaStop,MediaFastForward,MediaRewind,Return,Exit')
     const avObject = wrapper.get('[data-testid="tv-avplayer"]').element as HTMLElement
     expect(avObject.id).toBe('av-player')

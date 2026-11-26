@@ -17,8 +17,13 @@ export const DECODER_RELEASE_MS = 150
 /** Remote keys the /tv portal handles itself on Tizen (registerKeyBatch, registerKey on Tizen 2.x–3.x). */
 export const TIZEN_MEDIA_KEYS = ['MediaPlay', 'MediaPause', 'MediaPlayPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'Return', 'Exit'] as const
 
-/** Own hosts: an https:// link to them is played over http:// while the TV portal runs over plain HTTP. */
+/**
+ * Own portal hosts: an https:// link to them is played over http:// while the TV portal runs over plain HTTP.
+ * Media never comes from them (ZERO MEDIA ON VPS1/VPS2): films, ads and the intro stream from the Media Nodes.
+ */
 const TV_HTTP_HOSTS = new Set(['watch.scenrix.com', 'www.watch.scenrix.com'])
+/** Media Nodes (tg-node-N, torrent-node-N, node-N) serve HTTPS only (port 80 is closed): never downgraded. */
+const MEDIA_NODE_HOST = /^(?:(?:tg|torrent)-)?node-\d{1,3}\./i
 
 export interface NativeTrackOption {
   index: number
@@ -104,7 +109,8 @@ export function normalizeTvMediaUrl(url: string): string {
   if (!url || typeof window === 'undefined' || !window.location || window.location.protocol !== 'http:') return url
   try {
     const parsed = new URL(url)
-    if (parsed.protocol === 'https:' && TV_HTTP_HOSTS.has(parsed.hostname.toLowerCase())) {
+    const hostname = parsed.hostname.toLowerCase()
+    if (parsed.protocol === 'https:' && !MEDIA_NODE_HOST.test(hostname) && TV_HTTP_HOSTS.has(hostname)) {
       return `http://${parsed.hostname}${parsed.pathname}${parsed.search}${parsed.hash}`
     }
   } catch { /* relative or malformed: keep as is */ }

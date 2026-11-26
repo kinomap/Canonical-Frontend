@@ -8,12 +8,6 @@ upstream control_pool {
     keepalive 32;
 }
 
-# v15 edge cache (VPS2) for the published cinema intro: <version>.mp4 / -still.jpg / -poster.jpg are
-# content-addressed and immutable, so Smart TVs get them from here instead of over the WireGuard hop
-# to VPS1. /var/cache/nginx is the container tmpfs (uid 101): RAM-backed, empty after a restart; the
-# backend keeps one published intro, so real use is a few dozen MB (128m is the hard ceiling).
-proxy_cache_path /var/cache/nginx/intro_cache levels=1:2 keys_zone=intro_cache:10m max_size=128m inactive=7d use_temp_path=off;
-
 # Public-only showcase. Validated exact placeholders; no global envsubst.
 log_format public_no_query '$remote_addr $request_method $uri $status';
 server {
@@ -28,67 +22,9 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
     }
-    location ^~ /media/cinema-intro/ {
-        proxy_pass http://control_pool;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header Connection "";
-        proxy_set_header Range $http_range;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_read_timeout 120s;
-        gzip off;
-        # v15: published intro files are cached on VPS2; the clip in 1 MiB slices, so the first second of a
-        # TV's Range request is served from RAM. Anything else under the prefix stays an uncached relay.
-        location ~ "^/media/cinema-intro/[0-9A-Za-z]{1,64}\.mp4$" {
-            proxy_pass http://control_pool;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header Connection "";
-            proxy_set_header X-Forwarded-For $remote_addr;
-            proxy_cache intro_cache;
-            proxy_cache_lock on;
-            proxy_cache_lock_timeout 10s;
-            proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-            proxy_ignore_headers Cache-Control Expires Set-Cookie;
-            proxy_hide_header Cache-Control;
-            proxy_hide_header Expires;
-            proxy_hide_header Set-Cookie;
-            proxy_buffering on;
-            add_header Cache-Control "public, max-age=31536000, immutable";
-            add_header X-Cache-Status $upstream_cache_status always;
-            add_header X-Content-Type-Options nosniff always;
-            slice 1m;
-            proxy_set_header Range $slice_range;
-            proxy_cache_key "$uri$slice_range";
-            proxy_cache_valid 200 206 30d;
-            proxy_read_timeout 120s;
-            gzip off;
-        }
-        location ~ "^/media/cinema-intro/[0-9A-Za-z]{1,64}-(?:still|poster)\.jpg$" {
-            proxy_pass http://control_pool;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header Connection "";
-            proxy_set_header X-Forwarded-For $remote_addr;
-            proxy_cache intro_cache;
-            proxy_cache_lock on;
-            proxy_cache_lock_timeout 10s;
-            proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-            proxy_ignore_headers Cache-Control Expires Set-Cookie;
-            proxy_hide_header Cache-Control;
-            proxy_hide_header Expires;
-            proxy_hide_header Set-Cookie;
-            proxy_buffering on;
-            add_header Cache-Control "public, max-age=31536000, immutable";
-            add_header X-Cache-Status $upstream_cache_status always;
-            add_header X-Content-Type-Options nosniff always;
-            proxy_cache_key $uri;
-            proxy_cache_valid 200 30d;
-            proxy_read_timeout 60s;
-        }
-    }
+    # ZERO MEDIA ON VPS1/VPS2: media bytes go client -> https://<node>/ only; this edge never relays or caches them.
+    location ^~ /media/cinema-intro/ { return 404; }
+    location ~* ^/media/.+\.(?:mp4|webm|m4v|mkv|mov|avi|ts|m3u8|mpd|mp3|aac|m4a|ogg|oga|opus|flac|wav)$ { return 404; }
     location /media/ {
         proxy_pass http://control_pool;
         proxy_http_version 1.1;
@@ -101,66 +37,16 @@ server {
         proxy_buffers 16 128k;
         proxy_busy_buffers_size 256k;
     }
+    # The prestart intro is served by the Media Nodes only (https://<node>/intro/...).
+    location ^~ /cinema/intro/ { return 404; }
     location ^~ /cinema/ {
         root /usr/share/nginx/html/public;
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";
         add_header X-Content-Type-Options nosniff always;
     }
-    # Smart TV relay on HTTP/80 as well as TLS/443: legacy Orsay/NetCast/early Tizen open links over HTTP
-    # because they cannot negotiate modern TLS 1.2/1.3 ECDSA certificates with media nodes.
-    location ~ "^/tv-stream/(?<tvnode>(?:(?:tg|torrent)-)?node-[0-9]{1,3})/(?<tvsource>[0-9a-fA-F-]{36})$" {
-        limit_except GET HEAD { deny all; }
-        resolver 127.0.0.11 valid=30s ipv6=off;
-        proxy_pass https://$tvnode.scenrix.com/stream/$tvsource$is_args$args;
-        proxy_http_version 1.1;
-        proxy_ssl_server_name on;
-        proxy_ssl_name $tvnode.scenrix.com;
-        proxy_ssl_verify on;
-        proxy_ssl_verify_depth 3;
-        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
-        proxy_ssl_protocols TLSv1.2 TLSv1.3;
-        proxy_ssl_session_reuse on;
-        proxy_set_header Host $tvnode.scenrix.com;
-        proxy_set_header Connection "";
-        proxy_set_header Range $http_range;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_connect_timeout 8s;
-        proxy_read_timeout 600s;
-        proxy_send_timeout 600s;
-        gzip off;
-        add_header Cache-Control "no-store" always;
-        add_header X-Content-Type-Options nosniff always;
-        add_header Referrer-Policy no-referrer always;
-    }
-    location ~ "^/tv-ad/(?<tvnode>(?:(?:tg|torrent)-)?node-[0-9]{1,3})/(?<tvsource>[0-9a-fA-F-]{36})$" {
-        limit_except GET HEAD { deny all; }
-        resolver 127.0.0.11 valid=30s ipv6=off;
-        proxy_pass https://$tvnode.scenrix.com/ads/$tvsource$is_args$args;
-        proxy_http_version 1.1;
-        proxy_ssl_server_name on;
-        proxy_ssl_name $tvnode.scenrix.com;
-        proxy_ssl_verify on;
-        proxy_ssl_verify_depth 3;
-        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
-        proxy_ssl_protocols TLSv1.2 TLSv1.3;
-        proxy_ssl_session_reuse on;
-        proxy_set_header Host $tvnode.scenrix.com;
-        proxy_set_header Connection "";
-        proxy_set_header Range $http_range;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_connect_timeout 8s;
-        proxy_read_timeout 120s;
-        proxy_send_timeout 120s;
-        gzip off;
-        add_header Cache-Control "no-store" always;
-        add_header X-Content-Type-Options nosniff always;
-        add_header Referrer-Policy no-referrer always;
-    }
+    location = /stream { return 404; }
+    location ^~ /stream/ { return 404; }
     location ^~ /assets/ { root /usr/share/nginx/html/public; try_files $uri =404; add_header Cache-Control "public, max-age=31536000, immutable"; add_header X-Content-Type-Options nosniff always; }
     # Lite TV portal for 2012-2017 Smart TVs (static ES5 page, never the SPA fallback).
     location = /tv/lite { root /usr/share/nginx/html/public; try_files /tv/lite/index.html =404; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
@@ -196,6 +82,8 @@ server {
     location ~ "^/(movies|series)/[0-9a-f-]{36}(/[a-z0-9-]+)?$" { root /usr/share/nginx/html; try_files /seo$uri/index.html /public$uri/index.html /public/index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
     location = /genres { root /usr/share/nginx/html; try_files /seo$genre_snapshot /seo/genres/index.html /public/genres/index.html /public/index.html; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
     location ^~ /posters/v1/ { root /usr/share/nginx/html/public; try_files $uri =404; add_header Cache-Control "public, max-age=31536000, immutable"; add_header X-Content-Type-Options nosniff always; }
+    # The prestart intro is served by the Media Nodes only (https://<node>/intro/...).
+    location ^~ /cinema/intro/ { return 404; }
     location ^~ /cinema/ {
         root /usr/share/nginx/html/public;
         try_files $uri =404;
@@ -225,67 +113,9 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
     }
-    location ^~ /media/cinema-intro/ {
-        proxy_pass http://control_pool;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header Connection "";
-        proxy_set_header Range $http_range;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_read_timeout 120s;
-        gzip off;
-        # v15: published intro files are cached on VPS2; the clip in 1 MiB slices, so the first second of a
-        # TV's Range request is served from RAM. Anything else under the prefix stays an uncached relay.
-        location ~ "^/media/cinema-intro/[0-9A-Za-z]{1,64}\.mp4$" {
-            proxy_pass http://control_pool;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header Connection "";
-            proxy_set_header X-Forwarded-For $remote_addr;
-            proxy_cache intro_cache;
-            proxy_cache_lock on;
-            proxy_cache_lock_timeout 10s;
-            proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-            proxy_ignore_headers Cache-Control Expires Set-Cookie;
-            proxy_hide_header Cache-Control;
-            proxy_hide_header Expires;
-            proxy_hide_header Set-Cookie;
-            proxy_buffering on;
-            add_header Cache-Control "public, max-age=31536000, immutable";
-            add_header X-Cache-Status $upstream_cache_status always;
-            add_header X-Content-Type-Options nosniff always;
-            slice 1m;
-            proxy_set_header Range $slice_range;
-            proxy_cache_key "$uri$slice_range";
-            proxy_cache_valid 200 206 30d;
-            proxy_read_timeout 120s;
-            gzip off;
-        }
-        location ~ "^/media/cinema-intro/[0-9A-Za-z]{1,64}-(?:still|poster)\.jpg$" {
-            proxy_pass http://control_pool;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header Connection "";
-            proxy_set_header X-Forwarded-For $remote_addr;
-            proxy_cache intro_cache;
-            proxy_cache_lock on;
-            proxy_cache_lock_timeout 10s;
-            proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-            proxy_ignore_headers Cache-Control Expires Set-Cookie;
-            proxy_hide_header Cache-Control;
-            proxy_hide_header Expires;
-            proxy_hide_header Set-Cookie;
-            proxy_buffering on;
-            add_header Cache-Control "public, max-age=31536000, immutable";
-            add_header X-Cache-Status $upstream_cache_status always;
-            add_header X-Content-Type-Options nosniff always;
-            proxy_cache_key $uri;
-            proxy_cache_valid 200 30d;
-            proxy_read_timeout 60s;
-        }
-    }
+    # ZERO MEDIA ON VPS1/VPS2: media bytes go client -> https://<node>/ only; this edge never relays or caches them.
+    location ^~ /media/cinema-intro/ { return 404; }
+    location ~* ^/media/.+\.(?:mp4|webm|m4v|mkv|mov|avi|ts|m3u8|mpd|mp3|aac|m4a|ogg|oga|opus|flac|wav)$ { return 404; }
     location /media/ {
         proxy_pass http://control_pool;
         proxy_http_version 1.1;
@@ -300,60 +130,6 @@ server {
     }
     location = /stream { return 404; }
     location ^~ /stream/ { return 404; }
-    # Smart TV relay: old TV browsers cannot do TLS with the media nodes directly, so the token-authorised
-    # /stream/<source> (and /ads/<creative>) of a known node is served from this origin over HTTP/1.1 with Range passthrough.
-    location ~ "^/tv-stream/(?<tvnode>(?:(?:tg|torrent)-)?node-[0-9]{1,3})/(?<tvsource>[0-9a-fA-F-]{36})$" {
-        limit_except GET HEAD { deny all; }
-        resolver 127.0.0.11 valid=30s ipv6=off;
-        proxy_pass https://$tvnode.scenrix.com/stream/$tvsource$is_args$args;
-        proxy_http_version 1.1;
-        proxy_ssl_server_name on;
-        proxy_ssl_name $tvnode.scenrix.com;
-        proxy_ssl_verify on;
-        proxy_ssl_verify_depth 3;
-        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
-        proxy_ssl_protocols TLSv1.2 TLSv1.3;
-        proxy_ssl_session_reuse on;
-        proxy_set_header Host $tvnode.scenrix.com;
-        proxy_set_header Connection "";
-        proxy_set_header Range $http_range;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_connect_timeout 8s;
-        proxy_read_timeout 600s;
-        proxy_send_timeout 600s;
-        gzip off;
-        add_header Cache-Control "no-store" always;
-        add_header X-Content-Type-Options nosniff always;
-        add_header Referrer-Policy no-referrer always;
-    }
-    location ~ "^/tv-ad/(?<tvnode>(?:(?:tg|torrent)-)?node-[0-9]{1,3})/(?<tvsource>[0-9a-fA-F-]{36})$" {
-        limit_except GET HEAD { deny all; }
-        resolver 127.0.0.11 valid=30s ipv6=off;
-        proxy_pass https://$tvnode.scenrix.com/ads/$tvsource$is_args$args;
-        proxy_http_version 1.1;
-        proxy_ssl_server_name on;
-        proxy_ssl_name $tvnode.scenrix.com;
-        proxy_ssl_verify on;
-        proxy_ssl_verify_depth 3;
-        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
-        proxy_ssl_protocols TLSv1.2 TLSv1.3;
-        proxy_ssl_session_reuse on;
-        proxy_set_header Host $tvnode.scenrix.com;
-        proxy_set_header Connection "";
-        proxy_set_header Range $http_range;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_connect_timeout 8s;
-        proxy_read_timeout 120s;
-        proxy_send_timeout 120s;
-        gzip off;
-        add_header Cache-Control "no-store" always;
-        add_header X-Content-Type-Options nosniff always;
-        add_header Referrer-Policy no-referrer always;
-    }
     location ^~ /assets/ { root /usr/share/nginx/html/public; try_files $uri =404; add_header Cache-Control "public, max-age=31536000, immutable"; add_header X-Content-Type-Options nosniff always; }
     location = /index.html { root /usr/share/nginx/html; try_files /seo/index.html /public/index.html =404; add_header Cache-Control "no-cache"; add_header X-Content-Type-Options nosniff always; add_header Referrer-Policy strict-origin-when-cross-origin always; }
     # Lite TV portal for 2012-2017 Smart TVs (static ES5 page, never the SPA fallback).

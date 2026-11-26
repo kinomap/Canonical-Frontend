@@ -164,12 +164,17 @@ function withStreamProbe(onProbe: (url: string, reply: (status: number) => void)
   return { aborts, restore: () => { window.XMLHttpRequest = Prev } }
 }
 
+/** ZERO MEDIA ON VPS1/VPS2: the intro (default and uploaded) streams straight from a Media Node. */
+const INTRO_CLIP = 'https://tg-node-1.scenrix.com/intro/default/v1.mp4?token=t1'
+const INTRO_POSTER_URL = 'https://tg-node-1.scenrix.com/intro/default/v1-poster.jpg?token=t1'
+const INTRO_STILL_URL = 'https://tg-node-1.scenrix.com/intro/default/v1-still.jpg?token=t1'
+
 const INTRO_V15 = {
   enabled: true,
   targets: { browser_torrents: true },
-  video_url: '/media/cinema-intro/clip.mp4',
-  poster_url: '/media/cinema-intro/poster.jpg',
-  still_url: '/media/cinema-intro/still.jpg',
+  video_url: INTRO_CLIP,
+  poster_url: INTRO_POSTER_URL,
+  still_url: INTRO_STILL_URL,
 }
 
 describe('Lite TV portal behaviour', () => {
@@ -177,7 +182,7 @@ describe('Lite TV portal behaviour', () => {
   beforeEach(() => {
     sent = []
     // v15: /cinema/intro is cached per device (localStorage); every test boots a fresh "device".
-    window.localStorage.removeItem('kinosota.tv.cinema-intro.v1')
+    window.localStorage.removeItem('kinosota.tv.cinema-intro.v2')
     routes = [
       { method: 'GET', path: '/torrents/catalog?kind=movie&page=1&collection=spotlight', body: SPOTLIGHT },
       { method: 'GET', path: '/movies/home', body: HOME },
@@ -277,7 +282,7 @@ describe('Lite TV portal behaviour', () => {
     await flush()
     expect(lite().state.mode).toBe('player')
     const start = sent.find(item => item.url === '/api/v1/playback/start')
-    expect(JSON.parse(start!.body!)).toEqual({ movie_id: 'm1', tv: true })
+    expect(JSON.parse(start!.body!)).toEqual({ movie_id: 'm1', tv: true, max_width: 1920, max_height: 1080 })
     expect((document.getElementById('lite-video') as HTMLVideoElement).getAttribute('src')).toBe('/media/m1.mp4')
     press('', 10009) // Samsung Tizen Return
     await flush()
@@ -292,7 +297,7 @@ describe('Lite TV portal behaviour', () => {
     press('', 29443) // Samsung Enter
     await flush()
     const ticket = sent.find(item => item.url === '/api/v1/torrents/playback-ticket')
-    expect(JSON.parse(ticket!.body!)).toEqual({ kind: 'movie', tmdb_id: 55, tv: true })
+    expect(JSON.parse(ticket!.body!)).toEqual({ kind: 'movie', tmdb_id: 55, tv: true, max_width: 1920, max_height: 1080 })
     expect((document.getElementById('lite-video') as HTMLVideoElement).getAttribute('src')).toBe('/stream/t.m3u8')
   })
 
@@ -410,6 +415,33 @@ describe('Lite TV portal behaviour', () => {
     expect(document.getElementById('lite-pro-modal')?.className).toContain('is-hidden')
   })
 
+  it('retries an Orsay torrent ticket with the fitting file named by 409 TV_MEDIA_UNSUPPORTED', async () => {
+    const tickets = () => sent.filter(item => item.url === '/api/v1/torrents/playback-ticket').map(item => JSON.parse(item.body!))
+    const fits = () => tickets().slice(-1)[0]?.source_id === 'fit-1080'
+    routes = routes.map(item => (item.path === '/torrents/playback-ticket' ? {
+      ...item,
+      get status() { return fits() ? 200 : 409 },
+      get body() { return fits() ? item.body : { detail: { code: 'TV_MEDIA_UNSUPPORTED', message: '2160p', alternative_source_id: 'fit-1080' } } },
+    } : item))
+    await bootLite()
+    press('', 29443) // Play spotlight torrent title
+    await flush()
+    expect(tickets()).toEqual([
+      { kind: 'movie', tmdb_id: 55, tv: true, max_width: 1920, max_height: 1080 },
+      { kind: 'movie', tmdb_id: 55, tv: true, max_width: 1920, max_height: 1080, source_id: 'fit-1080' },
+    ])
+    expect(lite().state.mode).toBe('player')
+  })
+
+  it('explains 409 TV_MEDIA_UNSUPPORTED without an alternative instead of "still preparing"', async () => {
+    routes = routes.map(item => (item.path === '/torrents/playback-ticket' ? { ...item, status: 409, body: { detail: { code: 'TV_MEDIA_UNSUPPORTED', message: 'codec' } } } : item))
+    await bootLite()
+    press('', 29443) // Play spotlight torrent title
+    await flush()
+    expect(sent.filter(item => item.url === '/api/v1/torrents/playback-ticket')).toHaveLength(1)
+    expect(document.getElementById('lite-player-message')?.textContent).toBe('Этот файл не поддерживается телевизором. Выберите другой источник.')
+  })
+
   it('carries the KINOSOTA wordmark and no corner badge', () => {
     expect(HTML).not.toContain('lite-badge')
     expect(HTML).toContain('<span class="wordmark-highlight">KINO</span><span class="wordmark-honey">SOTA</span>')
@@ -503,7 +535,7 @@ describe('Lite TV portal behaviour', () => {
     await flush()
     expect(lite().state.mode).toBe('player')
     const ticket = sent.find(item => item.url === '/api/v1/torrents/playback-ticket')
-    expect(JSON.parse(ticket!.body!)).toEqual({ kind: 'movie', tmdb_id: 55, source_id: 'b', tv: true })
+    expect(JSON.parse(ticket!.body!)).toEqual({ kind: 'movie', tmdb_id: 55, source_id: 'b', tv: true, max_width: 1920, max_height: 1080 })
     press('Escape', 27) // back from the player lands on the details screen again
     await flush()
     expect(lite().state.mode).toBe('details')
@@ -547,7 +579,7 @@ describe('Lite TV portal behaviour', () => {
   })
 
   it('turns an endless spinner into a diagnosis with retry and another-source actions', async () => {
-    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: { overview: 'x', mime_type: 'video/x-matroska', genres: [] } })
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1&max_width=1920&max_height=1080', body: { overview: 'x', mime_type: 'video/x-matroska', genres: [] } })
     await bootLite()
     press('ArrowDown', 40)
     press('Enter', 13)
@@ -581,29 +613,29 @@ describe('Lite TV portal behaviour', () => {
     expect(formatTime(3725)).toBe('1:02:05')
   })
 
-  it('plays intro -> pre-roll ad -> film in sequence (matching site order) and requests ad with tv=true', async () => {
-    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
-    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-1', media_url: '/tv-ad/tg-node-1/ad-1.mp4', duration_sec: 15, skip_after: null } } })
+  it('plays intro -> pre-roll ad -> film in sequence (matching site order) and requests the ad on the tv_torrent surface', async () => {
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=tv_torrent', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-1', media_url: 'https://tg-node-1.scenrix.com/ads/ad-1.mp4?token=a1', duration_sec: 15, skip_after: null } } })
     routes.push({ method: 'POST', path: '/ads/events/del-1', body: { ok: true } })
-    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: 'https://watch.scenrix.com/media/cinema-intro/clip.mp4' } })
+    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: INTRO_CLIP } })
     await bootLite()
     vi.useFakeTimers()
     press('', 29443) // play spotlight torrent
     await vi.advanceTimersByTimeAsync(50)
     const prep = sent.find(item => item.url === '/api/v1/ads/prepare')
-    expect(JSON.parse(prep!.body!)).toEqual({ plan_token: 'plan-1', cue_id: 'pre1', tv: true })
+    expect(JSON.parse(prep!.body!)).toEqual({ plan_token: 'plan-1', cue_id: 'pre1' })
     const video = document.getElementById('lite-video') as HTMLVideoElement
     // 1) Intro plays first (HTTP TV contour: https:// intro on our own host is played over http://)
-    expect(video.getAttribute('src')).toBe('http://watch.scenrix.com/media/cinema-intro/clip.mp4')
+    expect(video.getAttribute('src')).toBe(INTRO_CLIP)
     expect(sent.some(item => item.url === '/api/v1/ads/events/del-1')).toBe(false)
     video.dispatchEvent(new Event('ended'))
     await vi.advanceTimersByTimeAsync(50)
     // v15: a clip shorter than MIN_INTRO_MS (5 s) never lets the pre-roll in early
-    expect(video.getAttribute('src')).not.toBe('/tv-ad/tg-node-1/ad-1.mp4')
+    expect(video.getAttribute('src')).not.toBe('https://tg-node-1.scenrix.com/ads/ad-1.mp4?token=a1')
     expect((lite().player as unknown as { phase: string }).phase).toBe('intro')
     await vi.advanceTimersByTimeAsync(5000 + 900)
     // 2) Pre-roll ad plays after intro; impression fires when ad starts playing
-    expect(video.getAttribute('src')).toBe('/tv-ad/tg-node-1/ad-1.mp4')
+    expect(video.getAttribute('src')).toBe('https://tg-node-1.scenrix.com/ads/ad-1.mp4?token=a1')
     video.dispatchEvent(new Event('playing'))
     await vi.advanceTimersByTimeAsync(50)
     expect(sent.some(item => item.url === '/api/v1/ads/events/del-1' && item.body?.includes('"impression"'))).toBe(true)
@@ -1021,12 +1053,12 @@ describe('Lite TV portal behaviour', () => {
       await flush()
       expect(calls.some(c => c.indexOf('/stream/t.m3u8') !== -1)).toBe(true)
       // stage 2 waits for the decoder hand-over, stage 3 supersedes it before it fires (v10 intro/film race)
-      lite().adapter.open('/media/cinema-intro/clip.mp4')
-      lite().adapter.open('/tv-stream/tg-node-1/film.mp4')
+      lite().adapter.open(INTRO_CLIP)
+      lite().adapter.open('https://tg-node-1.scenrix.com/stream/film?token=f1')
       expect(calls.filter(c => c.indexOf('open:') === 0).length).toBe(1)
       await new Promise(resolve => setTimeout(resolve, 1700))
       expect(calls.some(c => c.indexOf('clip.mp4') !== -1)).toBe(false)
-      expect(calls[calls.length - 1]).toBe('open:http://localhost:3000/tv-stream/tg-node-1/film.mp4')
+      expect(calls[calls.length - 1]).toBe('open:https://tg-node-1.scenrix.com/stream/film?token=f1')
       const destroys = calls.filter(c => c === 'destroy').length
       // 6:3 right after the hand-over, before STREAM_INFO_READY: echo of the released session, not a codec verdict
       hook.fn?.(6, '3')
@@ -1136,11 +1168,15 @@ describe('Lite TV portal behaviour', () => {
     expect(lite().adapter.getTracks()).toEqual({ audio: expect.any(Array), text: [] })
   })
 
-  it('plays https links to watch.scenrix.com over plain HTTP on an HTTP page', async () => {
+  it('plays https links to watch.scenrix.com over plain HTTP on an HTTP page, never downgrades a Media Node', async () => {
     await bootLite()
-    expect(lite().normalizeTvUrl('https://watch.scenrix.com/tv-stream/n1/a.mkv?x=1')).toBe('http://watch.scenrix.com/tv-stream/n1/a.mkv?x=1')
+    expect(lite().normalizeTvUrl('https://watch.scenrix.com/media/posters/a.jpg?x=1')).toBe('http://watch.scenrix.com/media/posters/a.jpg?x=1')
     expect(lite().normalizeTvUrl('https://cdn.example.com/a.mp4')).toBe('https://cdn.example.com/a.mp4')
-    expect(lite().normalizeTvUrl('/tv-ad/n1/ad.mp4')).toBe('/tv-ad/n1/ad.mp4')
+    expect(lite().normalizeTvUrl('/assets/tv-lite.js')).toBe('/assets/tv-lite.js')
+    // ZERO MEDIA ON VPS1/VPS2: media comes from the nodes over HTTPS only (port 80 on the nodes is closed).
+    expect(lite().normalizeTvUrl('https://tg-node-1.scenrix.com/stream/abc?token=t')).toBe('https://tg-node-1.scenrix.com/stream/abc?token=t')
+    expect(lite().normalizeTvUrl('https://torrent-node-2.scenrix.com/stream/x?token=t')).toBe('https://torrent-node-2.scenrix.com/stream/x?token=t')
+    expect(lite().normalizeTvUrl(INTRO_CLIP)).toBe(INTRO_CLIP)
   })
 
   it('uses SEF even when StartPlayback returns undefined, re-applies 960x540 on STREAM_INFO_READY and clears transparent plane cleanly', async () => {
@@ -1356,9 +1392,9 @@ describe('Lite TV portal behaviour', () => {
   })
 
   it('starts intro right away while a slow torrent ticket loads in background, then plays pre-roll -> film', async () => {
-    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: '/media/cinema-intro/clip.mp4' } })
-    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
-    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-slow', media_url: '/tv-ad/n1/slow.mp4', duration_sec: 12, skip_after: null } } })
+    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: INTRO_CLIP } })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=tv_torrent', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-slow', media_url: 'https://tg-node-1.scenrix.com/ads/slow.mp4?token=a1', duration_sec: 12, skip_after: null } } })
     routes.push({ method: 'POST', path: '/ads/events/del-slow', body: { ok: true } })
     await bootLite()
     const PrevXhr = window.XMLHttpRequest
@@ -1380,7 +1416,7 @@ describe('Lite TV portal behaviour', () => {
       await vi.advanceTimersByTimeAsync(50)
       const video = document.getElementById('lite-video') as HTMLVideoElement
       // Intro plays while playback-ticket is still pending
-      expect(video.getAttribute('src')).toBe('/media/cinema-intro/clip.mp4')
+      expect(video.getAttribute('src')).toBe(INTRO_CLIP)
       video.dispatchEvent(new Event('ended'))
       await vi.advanceTimersByTimeAsync(50)
       // v15: inside MIN_INTRO_MS the intro rests silently on its final picture
@@ -1391,7 +1427,7 @@ describe('Lite TV portal behaviour', () => {
       releaseTicket()
       await vi.advanceTimersByTimeAsync(1000)
       // Now Pre-roll Ad -> Film
-      expect(video.getAttribute('src')).toBe('/tv-ad/n1/slow.mp4')
+      expect(video.getAttribute('src')).toBe('https://tg-node-1.scenrix.com/ads/slow.mp4?token=a1')
       video.dispatchEvent(new Event('ended'))
       await vi.advanceTimersByTimeAsync(1000)
       expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
@@ -1401,15 +1437,15 @@ describe('Lite TV portal behaviour', () => {
   })
 
   it('plays pre-roll -> film directly when admin disables intro for that target', async () => {
-    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: false, targets: { browser_torrents: false }, video_url: '/media/cinema-intro/clip.mp4' } })
-    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
-    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-2', media_url: '/tv-ad/n1/only.mp4', duration_sec: 10, skip_after: null } } })
+    routes.unshift({ method: 'GET', path: '/cinema/intro', body: { enabled: false, targets: { browser_torrents: false, tv_torrent: false }, video_url: INTRO_CLIP } })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=tv_torrent', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-2', media_url: 'https://tg-node-1.scenrix.com/ads/only.mp4?token=a1', duration_sec: 10, skip_after: null } } })
     routes.push({ method: 'POST', path: '/ads/events/del-2', body: { ok: true } })
     await bootLite()
     press('', 29443)
     await flush()
     const video = document.getElementById('lite-video') as HTMLVideoElement
-    expect(video.getAttribute('src')).toBe('/tv-ad/n1/only.mp4')
+    expect(video.getAttribute('src')).toBe('https://tg-node-1.scenrix.com/ads/only.mp4?token=a1')
     video.dispatchEvent(new Event('ended'))
     await flush()
     expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
@@ -1456,8 +1492,8 @@ describe('Lite TV portal behaviour', () => {
 
   it('v15: Orsay paints the intro poster at 0 ms from the boot cache and never shows buffering text in intro / pre-roll', async () => {
     routes.push({ method: 'GET', path: '/cinema/intro', body: INTRO_V15 })
-    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
-    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-v15', media_url: '/tv-ad/n1/v15.mp4', duration_sec: 10, skip_after: null } } })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=tv_torrent', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-v15', media_url: 'https://tg-node-1.scenrix.com/ads/v15.mp4?token=a1', duration_sec: 10, skip_after: null } } })
     routes.push({ method: 'POST', path: '/ads/events/del-v15', body: { ok: true } })
     const orsay = installOrsayAvplay()
     const message = () => document.getElementById('lite-player-message')?.textContent || ''
@@ -1465,16 +1501,16 @@ describe('Lite TV portal behaviour', () => {
       await bootLite()
       // Boot prefetch: the config (and poster / still) are known before the first Play
       expect(sent.some(item => item.url === '/api/v1/cinema/intro')).toBe(true)
-      expect(JSON.parse(window.localStorage.getItem('kinosota.tv.cinema-intro.v1') || '{}').cfg?.poster_url).toBe('/media/cinema-intro/poster.jpg')
+      expect(JSON.parse(window.localStorage.getItem('kinosota.tv.cinema-intro.v2') || '{}').cfg?.poster_url).toBe(INTRO_POSTER_URL)
       vi.useFakeTimers()
       press('', 29443)
       // 0 ms: poster painted synchronously, no 'Загружаем видео…' over it
       const poster = document.getElementById('lite-intro-poster') as HTMLImageElement
       expect(poster.classList.contains('is-hidden')).toBe(false)
-      expect(poster.getAttribute('src')).toBe('/media/cinema-intro/poster.jpg')
+      expect(poster.getAttribute('src')).toBe(INTRO_POSTER_URL)
       expect(message()).toBe('')
       await vi.advanceTimersByTimeAsync(100)
-      expect(orsay.opens[0]).toContain('/media/cinema-intro/clip.mp4')
+      expect(orsay.opens[0]).toContain(INTRO_CLIP)
       const intro = orsay.hooks[0].fn!
       intro(9)
       intro(11)
@@ -1489,7 +1525,7 @@ describe('Lite TV portal behaviour', () => {
       // 5 s gate -> 400 ms veil -> clean release (600 ms) -> pre-roll opens under the veil
       await vi.advanceTimersByTimeAsync(4900 + 400 + 600 + 200)
       expect(orsay.opens).toHaveLength(2)
-      expect(orsay.opens[1]).toContain('/tv-ad/n1/v15.mp4')
+      expect(orsay.opens[1]).toContain('https://tg-node-1.scenrix.com/ads/v15.mp4?token=a1')
       const veil = document.getElementById('lite-transition-veil') as HTMLElement
       expect(veil.classList.contains('is-on')).toBe(true)
       const ad = orsay.hooks[1].fn!
@@ -1511,8 +1547,8 @@ describe('Lite TV portal behaviour', () => {
 
   it('v15: a fast stream never cuts the intro before MIN_INTRO_MS (5 s), then pre-roll -> film', async () => {
     routes.push({ method: 'GET', path: '/cinema/intro', body: INTRO_V15 })
-    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
-    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-fast', media_url: '/tv-ad/n1/fast.mp4', duration_sec: 10, skip_after: null } } })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=tv_torrent', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-fast', media_url: 'https://tg-node-1.scenrix.com/ads/fast.mp4?token=a1', duration_sec: 10, skip_after: null } } })
     routes.push({ method: 'POST', path: '/ads/events/del-fast', body: { ok: true } })
     await bootLite()
     const probe = withStreamProbe((_url, reply) => { setTimeout(() => reply(206), 30) })
@@ -1521,16 +1557,16 @@ describe('Lite TV portal behaviour', () => {
       press('', 29443)
       await vi.advanceTimersByTimeAsync(200)
       const video = document.getElementById('lite-video') as HTMLVideoElement
-      expect(video.getAttribute('src')).toBe('/media/cinema-intro/clip.mp4')
+      expect(video.getAttribute('src')).toBe(INTRO_CLIP)
       // Stream, first bytes (Range probe, no second decoder) and pre-roll are ready within 200 ms ...
       expect(sent.some(item => item.url === '/stream/t.m3u8' && item.headers?.Range === 'bytes=0-65535')).toBe(true)
       expect(litePlayer().filmBytesReady).toBe(true)
       // ... yet the intro keeps the screen until 5 s
       await vi.advanceTimersByTimeAsync(4600)
-      expect(video.getAttribute('src')).toBe('/media/cinema-intro/clip.mp4')
+      expect(video.getAttribute('src')).toBe(INTRO_CLIP)
       expect(litePlayer().phase).toBe('intro')
       await vi.advanceTimersByTimeAsync(400 + 900 + 100)
-      expect(video.getAttribute('src')).toBe('/tv-ad/n1/fast.mp4')
+      expect(video.getAttribute('src')).toBe('https://tg-node-1.scenrix.com/ads/fast.mp4?token=a1')
       video.dispatchEvent(new Event('playing'))
       await vi.advanceTimersByTimeAsync(50)
       video.dispatchEvent(new Event('ended'))
@@ -1544,8 +1580,8 @@ describe('Lite TV portal behaviour', () => {
 
   it('v15: holds the intro on its still frame until a slow torrent delivers the first bytes (8-10 s)', async () => {
     routes.push({ method: 'GET', path: '/cinema/intro', body: INTRO_V15 })
-    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
-    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-cold', media_url: '/tv-ad/n1/cold.mp4', duration_sec: 10, skip_after: null } } })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=tv_torrent', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-cold', media_url: 'https://tg-node-1.scenrix.com/ads/cold.mp4?token=a1', duration_sec: 10, skip_after: null } } })
     routes.push({ method: 'POST', path: '/ads/events/del-cold', body: { ok: true } })
     await bootLite()
     let reply: ((status: number) => void) | null = null
@@ -1557,7 +1593,7 @@ describe('Lite TV portal behaviour', () => {
       await vi.advanceTimersByTimeAsync(200)
       const video = document.getElementById('lite-video') as HTMLVideoElement
       const poster = document.getElementById('lite-intro-poster') as HTMLImageElement
-      expect(video.getAttribute('src')).toBe('/media/cinema-intro/clip.mp4')
+      expect(video.getAttribute('src')).toBe(INTRO_CLIP)
       video.dispatchEvent(new Event('playing'))
       await vi.advanceTimersByTimeAsync(2800)
       // The clip ends naturally at ~3 s: Ambient Hold on still_url with the soft vignette, never black
@@ -1565,16 +1601,16 @@ describe('Lite TV portal behaviour', () => {
       await vi.advanceTimersByTimeAsync(50)
       expect(poster.classList.contains('is-hidden')).toBe(false)
       expect(poster.classList.contains('is-faded')).toBe(false)
-      expect(poster.getAttribute('src')).toBe('/media/cinema-intro/still.jpg')
+      expect(poster.getAttribute('src')).toBe(INTRO_STILL_URL)
       expect(document.getElementById('lite-hold-vignette')?.classList.contains('is-hidden')).toBe(false)
       // The torrent worker needs ~9 s for the first piece: the hold lasts past MIN_INTRO_MS
       await vi.advanceTimersByTimeAsync(6000)
       expect(litePlayer().phase).toBe('intro')
-      expect(video.getAttribute('src')).not.toBe('/tv-ad/n1/cold.mp4')
+      expect(video.getAttribute('src')).not.toBe('https://tg-node-1.scenrix.com/ads/cold.mp4?token=a1')
       expect(message()).not.toContain('Буферизация')
       reply!(206)
       await vi.advanceTimersByTimeAsync(900 + 100)
-      expect(video.getAttribute('src')).toBe('/tv-ad/n1/cold.mp4')
+      expect(video.getAttribute('src')).toBe('https://tg-node-1.scenrix.com/ads/cold.mp4?token=a1')
       expect(poster.classList.contains('is-hidden')).toBe(true)
       expect(message()).toBe('')
       press('', 88)
@@ -1624,7 +1660,7 @@ describe('Lite TV portal behaviour', () => {
   }
 
   it('v15: on Orsay a 1924×1082 catalogue film offers (and focuses) its ready 1080p torrent before the pre-roll', async () => {
-    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: MONSTER })
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1&max_width=1920&max_height=1080', body: MONSTER })
     routes.push({ method: 'GET', path: '/torrents/sources/movie/1244523', body: MONSTER_TORRENTS })
     const orsay = installOrsayAvplay()
     try {
@@ -1653,7 +1689,7 @@ describe('Lite TV portal behaviour', () => {
   })
 
   it('v15: the 6:4 error screen of a 1924×1082 catalogue film offers «Открыть 1080p (торрент)»', async () => {
-    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: MONSTER })
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1&max_width=1920&max_height=1080', body: MONSTER })
     routes.push({ method: 'GET', path: '/torrents/sources/movie/1244523', body: MONSTER_TORRENTS })
     const orsay = installOrsayAvplay()
     try {
@@ -1688,7 +1724,7 @@ describe('Lite TV portal behaviour', () => {
   })
 
   it('v15: on Orsay without a playable 1080p torrent the details only warn about the 1924×1082 file', async () => {
-    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: MONSTER })
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1&max_width=1920&max_height=1080', body: MONSTER })
     routes.push({ method: 'GET', path: '/torrents/sources/movie/1244523', body: { allowed: false, sources: [] } })
     const orsay = installOrsayAvplay()
     try {
@@ -1708,14 +1744,14 @@ describe('Lite TV portal behaviour', () => {
   })
 
   it('v15: off Orsay a 1924×1082 catalogue film keeps the plain «Смотреть» and looks up nothing', async () => {
-    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: MONSTER })
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1&max_width=1920&max_height=1080', body: MONSTER })
     routes.push({ method: 'GET', path: '/torrents/sources/movie/1244523', body: MONSTER_TORRENTS })
     await bootLite()
     press('ArrowDown', 40)
     press('Enter', 13)
     await flush()
     await flush()
-    expect(sent.some(item => item.url === '/api/v1/movies/m1?tv=1')).toBe(true)
+    expect(sent.some(item => item.url === '/api/v1/movies/m1?tv=1&max_width=1920&max_height=1080')).toBe(true)
     expect(document.getElementById('lite-act-hd')?.className).toContain('is-hidden')
     expect(sent.some(item => item.url === '/api/v1/torrents/sources/movie/1244523')).toBe(false)
     expect(document.getElementById('lite-details-ready')?.textContent).toBe('Доступно в каталоге')
@@ -1744,9 +1780,9 @@ describe('Lite TV portal behaviour', () => {
   })
 
   it('keeps Orsay AVPlay unpoisoned across Intro stall timeout -> Pre-roll Ad -> Film', async () => {
-    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: '/media/cinema-intro/clip.mp4' } })
-    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
-    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-v14', media_url: '/tv-ad/n1/only.mp4', duration_sec: 10, skip_after: null } } })
+    routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: INTRO_CLIP } })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=tv_torrent', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-v14', media_url: 'https://tg-node-1.scenrix.com/ads/only.mp4?token=a1', duration_sec: 10, skip_after: null } } })
     routes.push({ method: 'POST', path: '/ads/events/del-v14', body: { ok: true } })
     const origUa = navigator.userAgent
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+' })
@@ -1780,11 +1816,11 @@ describe('Lite TV portal behaviour', () => {
       press('', 29443)
       await vi.advanceTimersByTimeAsync(100)
       expect(opens).toHaveLength(1)
-      expect(opens[0]).toContain('/media/cinema-intro/clip.mp4')
+      expect(opens[0]).toContain(INTRO_CLIP)
       // Intro stalls without rendering -> 14s commercial timeout advances to Pre-roll on AVPlay (not legacy Player)
       await vi.advanceTimersByTimeAsync(16500)
       expect(opens).toHaveLength(2)
-      expect(opens[1]).toContain('/tv-ad/n1/only.mp4')
+      expect(opens[1]).toContain('https://tg-node-1.scenrix.com/ads/only.mp4?token=a1')
       expect(document.getElementById('lite-player-engine')?.textContent).toBe('Orsay AVPlay')
       // Complete Pre-roll -> Film also opens on Orsay AVPlay
       hooks[1].fn?.(7)

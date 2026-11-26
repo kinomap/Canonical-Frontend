@@ -12,8 +12,11 @@ The launch never waits for the network:
   renamed, the video last, so a half-downloaded version is never chosen. The next launch picks
   the new clip up; the one on screen is never swapped mid-play.
 
-Everything the server says is validated: only the API host, only ``…/cinema-intro/<version>``
-paths, bounded sizes and real MP4 / JPEG signatures. Any failure keeps the previous choice.
+ZERO MEDIA ON VPS1/VPS2: an uploaded clip is pulled straight from a Media Node,
+``https://<node>.<site>/intro/custom/<version><suffix>?token=<intro-view JWT>``, never from the API
+host (VPS 1/VPS 2 serve no media). Everything the server says is validated: only Media Node hosts
+of the API's own site, only that node route with its signed token, bounded sizes and real
+MP4 / JPEG signatures. Any failure keeps the previous choice.
 
 The admin switches the intro per playback environment (``targets``): the desktop player honours
 ``player_telegram`` for Telegram streams (a catalogue film without ``tmdb_id``) and
@@ -31,7 +34,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -55,6 +58,9 @@ STATE_FILE = 'state.json'
 VERSION = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$')
 SUFFIXES = {'video': '.mp4', 'poster': '-poster.jpg', 'still': '-still.jpg'}
 URL_KEYS = {'video': 'video_url', 'poster': 'poster_url', 'still': 'still_url'}
+NODE_INTRO_PATH = '/intro/custom/'                      # kinomap/node media-nginx.conf: the uploaded intro route.
+TOKEN = re.compile(r'^[A-Za-z0-9._-]{1,4096}$')          # intro-view JWT, checked by the node.
+MAX_URL_LENGTH = 8192
 SIGNATURES = {'video': lambda head: head[4:8] == b'ftyp', 'poster': lambda head: head[:3] == b'\xff\xd8\xff',
               'still': lambda head: head[:3] == b'\xff\xd8\xff'}
 DOWNLOAD_ORDER = ('poster', 'still', 'video')          # Video last: its presence marks a complete version.
@@ -117,9 +123,10 @@ def sanitize_config(raw, origin: str = API_ORIGIN):
     version = raw.get('version')
     if not isinstance(version, str) or not VERSION.match(version):
         return None
-    host = urlsplit(origin).hostname
+    api_host = (urlsplit(origin).hostname or '').lower()
+    site = _site_of(api_host)
     for kind, key in URL_KEYS.items():
-        url = _safe_url(raw.get(key), origin, host, version + SUFFIXES[kind])
+        url = _safe_url(raw.get(key), api_host, site, version + SUFFIXES[kind])
         if url is None:
             return None
         config['urls'][kind] = url
@@ -127,16 +134,26 @@ def sanitize_config(raw, origin: str = API_ORIGIN):
     return config
 
 
-def _safe_url(value, origin, host, filename):
-    if not isinstance(value, str) or not value or len(value) > 512:
+def _site_of(host: str) -> str:
+    """The API's own site (``watch.scenrix.com`` -> ``scenrix.com``): the Media Nodes live under it."""
+    labels = host.split('.')
+    return '.'.join(labels[-2:]) if len(labels) >= 2 and all(labels) else ''
+
+
+def _safe_url(value, api_host: str, site: str, filename: str):
+    """Only ``https://<node>.<site>/intro/custom/<filename>?token=<JWT>``; the API host itself is refused."""
+    if not isinstance(value, str) or not value or len(value) > MAX_URL_LENGTH or not site:
         return None
-    if value.startswith('/') and not value.startswith('//'):
-        value = origin.rstrip('/') + value
     parts = urlsplit(value)
-    if parts.scheme != 'https' or parts.hostname != host or parts.username or parts.password or parts.query or parts.fragment:
+    host = (parts.hostname or '').lower()
+    if parts.scheme != 'https' or parts.username or parts.password or parts.fragment:
         return None
-    path = parts.path
-    if '..' in path or '//' in path or not re.fullmatch(r'(/[A-Za-z0-9_-]+)*/cinema-intro/' + re.escape(filename), path):
+    if host == api_host or not host.endswith('.' + site):
+        return None  # VPS 1/VPS 2 never serve media; foreign hosts are never trusted.
+    if parts.path != NODE_INTRO_PATH + filename:
+        return None
+    query = parse_qs(parts.query, keep_blank_values=True)
+    if list(query) != ['token'] or len(query['token']) != 1 or not TOKEN.match(query['token'][0]):
         return None
     return value
 

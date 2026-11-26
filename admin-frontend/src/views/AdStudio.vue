@@ -33,9 +33,11 @@ async function previewSource(id:string){
 }
 const snapshot=()=>JSON.stringify({creative:passport.value,definition:definition.value})
 const dirty=computed(()=>!!baseline.value&&snapshot()!==baseline.value)
-// Среды показа: Telegram / torrents × browser / desktop player. They narrow the existing reach, never replace it.
-const PLATFORMS=[{key:'telegram_browser',label:'Telegram-стримы: Браузер'},{key:'telegram_player',label:'Telegram-стримы: Десктоп-плеер'},{key:'torrent_browser',label:'Торрент-стримы: Браузер'},{key:'torrent_player',label:'Торрент-стримы: Десктоп-плеер'}] as const
-function withPlatforms(d:any){if(d){const p=d.platforms||{};d.platforms=Object.fromEntries(PLATFORMS.map(x=>[x.key,p[x.key]!==false]))}return d}
+// Среды показа: Telegram / torrents × browser / desktop player / Smart TV. They narrow the existing reach, never replace it.
+// Smart TV surfaces saved before they existed follow the browser surface (backend TV_SURFACE_PARENTS).
+const PLATFORMS=[{key:'telegram_browser',label:'Telegram-стримы: Браузер'},{key:'telegram_player',label:'Telegram-стримы: Десктоп-плеер'},{key:'torrent_browser',label:'Торрент-стримы: Браузер'},{key:'torrent_player',label:'Торрент-стримы: Десктоп-плеер'},{key:'tv_telegram',label:'Telegram-стримы: Smart TV'},{key:'tv_torrent',label:'Торрент-стримы: Smart TV'}] as const
+const TV_SURFACE_PARENTS:Record<string,string>={tv_telegram:'telegram_browser',tv_torrent:'torrent_browser'}
+function withPlatforms(d:any){if(d){const p=d.platforms||{};d.platforms=Object.fromEntries(PLATFORMS.map(x=>[x.key,(typeof p[x.key]==='boolean'?p[x.key]:p[TV_SURFACE_PARENTS[x.key]])!==false]))}return d}
 const noPlatform=computed(()=>!!definition.value&&!PLATFORMS.some(x=>definition.value.platforms?.[x.key]))
 const blocked=computed(()=>!editorUnlocked.value||busy.value||loading.value||checking.value||!review.value||review.value.conflict_count>0||noPlatform.value||!passport.value?.title?.trim()||selectedCreative.value?.status==='deleting')
 const weekdays=['Пн','Вт','Ср','Чт','Пт','Сб','Вс']

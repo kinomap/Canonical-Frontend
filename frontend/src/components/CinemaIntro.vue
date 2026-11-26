@@ -8,8 +8,9 @@
  * paused (no freeze, no stutter): it plays on to its natural end and rests on its final picture
  * (a custom clip cross-fades to its admin still), drifting in a slow zoom until the parent
  * dissolves it into the next stage.
- * The clip comes from the admin-managed config (GET /api/v1/cinema/intro, cached);
- * when the intro is switched off the layer is a plain backdrop and nothing plays.
+ * The clip comes from the admin-managed config (GET /api/v1/cinema/intro, cached) and is always
+ * streamed from a Media Node (https://<node>/intro/...); nothing of it is bundled with this site.
+ * When the intro is switched off (or no node serves it) the layer is a plain backdrop and nothing plays.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { DISSOLVE_MS, HOLD_LEAD_S, attachIntroAudio, introConfig, introEnabledFor, introSources, loadIntroConfig, prefersReducedMotion, startIntro, type IntroAudio, type IntroStart, type IntroTarget } from '@/lib/cinemaIntro'
@@ -22,10 +23,10 @@ const video = ref<HTMLVideoElement | null>(null)
 const still = prefersReducedMotion()
 // Frozen at mount: a config refresh mid-launch never swaps the clip under the viewer.
 const config = introConfig.value
-const enabled = props.target ? introEnabledFor(config, props.target) : config.enabled
+const enabled = !!config.video_url && (props.target ? introEnabledFor(config, props.target) : config.enabled)
 const sources = introSources(config)
 const poster = config.poster_url
-const backdrop = computed(() => (config.is_custom ? { backgroundImage: `url('${poster}')` } : undefined))
+const backdrop = computed(() => (poster ? { backgroundImage: `url('${poster}')` } : undefined))
 const holdStill = config.is_custom ? config.still_url : null
 const holding = ref(false)
 let audio: IntroAudio | null = null
@@ -99,7 +100,7 @@ defineExpose({ end, enabled, holding })
 </template>
 
 <style>
-.cinema-intro{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#1d2e39 url('/cinema/intro/kinosota-intro-v1.jpg') center/cover no-repeat}
+.cinema-intro{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#1d2e39 center/cover no-repeat}
 .cinema-intro.is-off{background:#070b0e}
 .cinema-intro__media{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .cinema-intro__hold{opacity:0;transition:opacity 600ms ease}

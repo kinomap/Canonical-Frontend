@@ -26,3 +26,22 @@ test('Reset is confirmed and disabled when already on the stock intro',()=>{
  // Stock intro already shown on every target: nothing to reset.
  assert.match(card,/\(!view\.is_custom && allOn\)/);
 });
+test('Smart TV targets: six intro targets, TV ones inherit their browser counterpart',()=>{
+ assert.match(card,/type IntroTarget = 'browser_telegram' \| 'player_telegram' \| 'browser_torrents' \| 'player_torrents' \| 'tv_telegram' \| 'tv_torrent'/);
+ assert.match(card,/\{ key: 'tv_telegram', label: 'Smart TV: Telegram-стримы' \}/);
+ assert.match(card,/\{ key: 'tv_torrent', label: 'Smart TV: Торрент-стримы' \}/);
+ assert.match(card,/TV_TARGET_PARENTS: Partial<Record<IntroTarget, IntroTarget>> = \{ tv_telegram: 'browser_telegram', tv_torrent: 'browser_torrents' \}/);
+});
+test('ZERO MEDIA: the preview plays only from a Media Node and the node sync status is shown',()=>{
+ assert.match(card,/const previewable = computed\(\(\) => !!view\.value\?\.video_url && view\.value\.video_url\.startsWith\('https:\/\/'\)\)/);
+ assert.match(card,/<video v-if="view && previewable"/);
+ assert.match(card,/data-testid="intro-nodes"/);
+ assert.match(card,/view\.value\?\.is_custom \? nodes\.value\.custom_ready : nodes\.value\.default_ready/);
+ assert.match(card,/data-testid="intro-node-errors"/);
+ assert.doesNotMatch(card,/\/cinema\/intro\/|\/media\/cinema-intro\//);
+});
+test('Ad Studio offers the Smart TV surfaces, inheriting the browser surface when unset',()=>{
+ assert.match(studio,/\{key:'tv_telegram',label:'Telegram-стримы: Smart TV'\},\{key:'tv_torrent',label:'Торрент-стримы: Smart TV'\}\] as const/);
+ assert.match(studio,/TV_SURFACE_PARENTS:Record<string,string>=\{tv_telegram:'telegram_browser',tv_torrent:'torrent_browser'\}/);
+ assert.match(studio,/\(typeof p\[x\.key\]==='boolean'\?p\[x\.key\]:p\[TV_SURFACE_PARENTS\[x\.key\]\]\)!==false/);
+});

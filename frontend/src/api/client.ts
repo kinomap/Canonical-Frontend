@@ -43,7 +43,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
-    public detail?: { code?: string; message?: string; reason?: string; entitlement?: string }
+    public detail?: { code?: string; message?: string; reason?: string; entitlement?: string; alternative_source_id?: string }
   ) {
     super(message)
     this.name = 'ApiError'

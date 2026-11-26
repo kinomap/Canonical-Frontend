@@ -1,20 +1,25 @@
 <script setup lang="ts">
 /**
  * Prestart intro CMS (Ad Studio): preview of the active intro, MP4/WebM upload with progress,
- * four independent playback targets (browser / desktop player × Telegram / torrents) and reset
- * to the bundled KINOSOTA intro. Web and desktop players pick the change up on their own
- * (GET /api/v1/cinema/intro), no rebuilds. The intro is a brand bumper, not an ad slot.
+ * six independent playback targets (browser / desktop player / Smart TV × Telegram / torrents),
+ * Media Node sync status and reset to the standard KINOSOTA intro. Web, TV and desktop players
+ * pick the change up on their own (GET /api/v1/cinema/intro), no rebuilds. The intro is a brand
+ * bumper, not an ad slot. ZERO MEDIA ON VPS1/VPS2: the clip (default and uploaded) is served only
+ * by the Media Nodes (https://<node>/intro/...); the preview plays from a node as well.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import axios from 'axios'
 
-type IntroTarget = 'browser_telegram' | 'player_telegram' | 'browser_torrents' | 'player_torrents'
+type IntroTarget = 'browser_telegram' | 'player_telegram' | 'browser_torrents' | 'player_torrents' | 'tv_telegram' | 'tv_torrent'
 type IntroTargets = Record<IntroTarget, boolean>
 interface IntroView {
   enabled: boolean; targets?: IntroTargets; version: string; video_url: string; webm_url: string | null; still_url: string; poster_url?: string
   duration_ms: number; is_custom: boolean; processing: boolean; last_error: string | null; original_name?: string | null
   byte_size?: number | null; max_upload_bytes: number
+  nodes?: IntroNodes
 }
+/** How many live Media Nodes report the intro files (cinema_intro_node_caches). */
+interface IntroNodes { reporting: number; default_ready: number; custom_ready: number; errors: string[] }
 const endpoint = '/api/v1/admin/cinema/intro'
 const headers = () => ({ Authorization: 'Bearer ' + (localStorage.getItem('admin_token') || 'cookie-session') })
 const view = ref<IntroView | null>(null), busy = ref(false), uploading = ref(false), progress = ref(0)
@@ -28,12 +33,22 @@ const TARGETS: { key: IntroTarget; label: string }[] = [
   { key: 'player_telegram', label: 'Десктоп-плеер: Telegram-стримы' },
   { key: 'browser_torrents', label: 'Браузер: Торрент-стримы' },
   { key: 'player_torrents', label: 'Десктоп-плеер: Торрент-стримы' },
+  { key: 'tv_telegram', label: 'Smart TV: Telegram-стримы' },
+  { key: 'tv_torrent', label: 'Smart TV: Торрент-стримы' },
 ]
+/** Smart TV targets saved before they existed follow their browser counterpart (backend TV_TARGET_PARENTS). */
+const TV_TARGET_PARENTS: Partial<Record<IntroTarget, IntroTarget>> = { tv_telegram: 'browser_telegram', tv_torrent: 'browser_torrents' }
 /** Old backend without `targets`: every target follows `enabled`. */
 const targets = computed<IntroTargets>(() => Object.fromEntries(TARGETS.map(({ key }) => {
-  const value = view.value?.targets?.[key]
-  return [key, typeof value === 'boolean' ? value : !!view.value?.enabled]
+  const own = view.value?.targets?.[key]
+  const parent = TV_TARGET_PARENTS[key] ? view.value?.targets?.[TV_TARGET_PARENTS[key]!] : undefined
+  return [key, typeof own === 'boolean' ? own : typeof parent === 'boolean' ? parent : !!view.value?.enabled]
 })) as IntroTargets)
+const nodes = computed<IntroNodes>(() => view.value?.nodes ?? { reporting: 0, default_ready: 0, custom_ready: 0, errors: [] })
+/** Nodes already serving the published clip: the uploaded one, else the standard intro of the node image. */
+const nodesReady = computed(() => (view.value?.is_custom ? nodes.value.custom_ready : nodes.value.default_ready))
+/** The preview plays only from a Media Node URL (never from this admin or the control plane). */
+const previewable = computed(() => !!view.value?.video_url && view.value.video_url.startsWith('https://'))
 const allOn = computed(() => TARGETS.every(({ key }) => targets.value[key]))
 const allOff = computed(() => TARGETS.every(({ key }) => !targets.value[key]))
 
@@ -119,7 +134,7 @@ defineExpose({ load, upload, toggle, toggleTarget, setAll, reset })
     <header class="section-heading">
       <div>
         <h2>Интро престарта</h2>
-        <p class="muted">Заставка перед фильмом на сайте и в KINOSOTA Player. Изменения применяются без пересборки и обновления приложения.</p>
+        <p class="muted">Заставка перед фильмом на сайте, на Smart TV и в KINOSOTA Player. Ролик раздают только медиа-ноды. Изменения применяются без пересборки и обновления приложения.</p>
       </div>
     </header>
     <fieldset class="intro-targets" :disabled="!view || busy" data-testid="intro-targets">
@@ -138,15 +153,18 @@ defineExpose({ load, upload, toggle, toggleTarget, setAll, reset })
     <div v-if="notice" class="alert success" role="status">{{ notice }}</div>
     <div class="intro-body">
       <div class="intro-preview">
-        <video v-if="view" :key="previewKey" controls playsinline preload="metadata" :poster="view.poster_url || view.still_url" data-testid="intro-preview">
+        <video v-if="view && previewable" :key="previewKey" controls playsinline preload="metadata" :poster="view.poster_url || view.still_url" data-testid="intro-preview">
           <source v-if="view.webm_url" :src="view.webm_url" type="video/webm" />
           <source :src="view.video_url" type="video/mp4" />
         </video>
+        <p v-else-if="view" class="muted" data-testid="intro-preview-pending">Предпросмотр появится, когда медиа-нода начнёт раздавать текущее интро.</p>
         <p v-else class="muted">Загружаем текущее интро…</p>
       </div>
       <div class="intro-meta">
         <p><strong>{{ view?.is_custom ? 'Загруженное интро' : 'Стандартное интро KINOSOTA' }}</strong></p>
         <p v-if="view" class="muted">Версия {{ view.version }} · {{ seconds }} сек<span v-if="view.original_name"> · {{ view.original_name }}</span></p>
+        <p v-if="view" class="muted" data-testid="intro-nodes">Медиа-ноды: {{ nodesReady }} из {{ nodes.reporting }} раздают {{ view.is_custom ? 'загруженное' : 'стандартное' }} интро<span v-if="!nodes.reporting"> · ни одна нода ещё не отчиталась, интро не показывается</span></p>
+        <p v-if="nodes.errors.length" class="alert error" data-testid="intro-node-errors">Ошибки синхронизации на нодах: {{ nodes.errors.join('; ') }}</p>
         <p v-if="view?.processing" class="intro-processing" role="status">⏳ Оптимизация нового ролика… Пока показывается текущее интро.</p>
         <div class="intro-drop" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="dropped">
           <p>Перетащите MP4/WebM сюда или</p>

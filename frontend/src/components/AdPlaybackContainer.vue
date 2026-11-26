@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { adRequest } from '@/api/client'
-import { isSmartTvClient } from '@/lib/tvClient'
 import { pendingCues, resolvedCues, type Cue } from '@/utils/adTimeline'
 /**
  * surface: where this playback happens (Ad Studio «Среды показа»); the plan holds only ads enabled there.
+ * Smart TV players pass tv_telegram / tv_torrent. Creatives always come straight from a Media Node.
  * Torrent streams have no catalogue id: torrentKind + tmdbId (+ season / episode) name the title.
  * requested=false holds the pre-roll (e.g. while the prestart intro plays): Intro → Pre-roll → film.
  * hostStarts: the host player starts the film itself; the container then resumes `main` only after it
@@ -20,7 +20,7 @@ import { pendingCues, resolvedCues, type Cue } from '@/utils/adTimeline'
  * `playing` (and the `started` event) mark the real start of the ad picture: a host intro dissolves on it.
  * covered: a host intro is above the container; no «Загрузка рекламы…» caption then.
  */
-type AdSurface='telegram_browser'|'torrent_browser'
+type AdSurface='telegram_browser'|'torrent_browser'|'tv_telegram'|'tv_torrent'
 const props=withDefaults(defineProps<{main:HTMLVideoElement|null; targetId?:string; targetType?:'movie'|'episode'; source:string;requested?:boolean;surface?:AdSurface;torrentKind?:'movie'|'tv';tmdbId?:number;season?:number;episode?:number;hostStarts?:boolean;covered?:boolean}>(),{requested:true,hostStarts:false,covered:false,surface:'telegram_browser',targetId:undefined,targetType:undefined,torrentKind:undefined,tmdbId:undefined,season:undefined,episode:undefined})
 const planPath=computed(()=>{
  const surface='surface='+encodeURIComponent(props.surface)
@@ -56,7 +56,7 @@ function event(kind:string){const id=ad.value?.delivery_id;if(!id)return Promise
 function prepare(cue:Cue):Promise<Ad|null>{
  if(!prepared||prepared.id!==cue.id||Date.now()-prepared.at>=prepared.maxAge){
   const t=token
-  prepared={id:cue.id,at:Date.now(),maxAge:30000,value:adRequest<{ad:Ad|null}>('/ads/prepare',{method:'POST',body:JSON.stringify({plan_token:t,cue_id:cue.id,...(isSmartTvClient()?{tv:true}:{})}),signal:AbortSignal.timeout(6000)}).then(x=>{if(prepared?.id===cue.id)prepared.maxAge=Math.max(1,Math.min(30000,x.ad?.cache_ttl_ms??30000));return x.ad}).catch(()=>null)}
+  prepared={id:cue.id,at:Date.now(),maxAge:30000,value:adRequest<{ad:Ad|null}>('/ads/prepare',{method:'POST',body:JSON.stringify({plan_token:t,cue_id:cue.id}),signal:AbortSignal.timeout(6000)}).then(x=>{if(prepared?.id===cue.id)prepared.maxAge=Math.max(1,Math.min(30000,x.ad?.cache_ttl_ms??30000));return x.ad}).catch(()=>null)}
  }
  return prepared.value
 }

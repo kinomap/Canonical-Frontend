@@ -14,21 +14,25 @@ from kinosota_player.intro_source import BUNDLED, DISABLED, IntroChoice, IntroSo
 from test_cinema import URL, make_surface, push
 
 ORIGIN = 'https://watch.scenrix.com'
+NODE = 'https://tg-node-1.scenrix.com'   # ZERO MEDIA ON VPS1/VPS2: the clip comes from a Media Node only.
+TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJ0eXAiOiJpbnRyby12aWV3In0.c2ln'
 VERSION = '0123456789abcdef'
 MP4 = b'\x00\x00\x00\x20ftypisom' + b'\x00' * 4096
 JPG = b'\xff\xd8\xff\xe0' + b'\x00' * 512
 
 
-def custom_config(enabled=True, version=VERSION, host=ORIGIN):
-    prefix = f'{host}/media/cinema-intro/{version}'
-    return {'enabled': enabled, 'version': version, 'video_url': prefix + '.mp4', 'webm_url': None,
-            'still_url': prefix + '-still.jpg', 'poster_url': prefix + '-poster.jpg', 'duration_ms': 5000, 'is_custom': True}
+def custom_config(enabled=True, version=VERSION, host=NODE):
+    prefix, token = f'{host}/intro/custom/{version}', f'?token={TOKEN}'
+    return {'enabled': enabled, 'version': version, 'video_url': prefix + '.mp4' + token, 'webm_url': None,
+            'still_url': prefix + '-still.jpg' + token, 'poster_url': prefix + '-poster.jpg' + token,
+            'duration_ms': 5000, 'is_custom': True}
 
 
 def default_config(enabled=True):
-    return {'enabled': enabled, 'version': 'default-v1', 'video_url': ORIGIN + '/cinema/intro/kinosota-intro-v1.mp4',
-            'webm_url': None, 'still_url': ORIGIN + '/cinema/intro/kinosota-intro-v1.jpg',
-            'poster_url': ORIGIN + '/cinema/intro/kinosota-intro-v1.jpg', 'duration_ms': 14933, 'is_custom': False}
+    token = f'?token={TOKEN}'
+    return {'enabled': enabled, 'version': 'default-v1', 'video_url': NODE + '/intro/default/v1.mp4' + token,
+            'webm_url': None, 'still_url': NODE + '/intro/default/v1.jpg' + token,
+            'poster_url': NODE + '/intro/default/v1.jpg' + token, 'duration_ms': 14933, 'is_custom': False}
 
 
 class Server:
@@ -37,8 +41,8 @@ class Server:
     def __init__(self, config, files=None, etag='"v1"'):
         self.config, self.etag, self.requests = config, etag, []
         self.files = files if files is not None else {
-            f'/media/cinema-intro/{VERSION}.mp4': MP4, f'/media/cinema-intro/{VERSION}-poster.jpg': JPG,
-            f'/media/cinema-intro/{VERSION}-still.jpg': JPG}
+            f'/intro/custom/{VERSION}.mp4': MP4, f'/intro/custom/{VERSION}-poster.jpg': JPG,
+            f'/intro/custom/{VERSION}-still.jpg': JPG}
         self.gate = None  # threading.Event: hold the config answer (slow network).
 
     def __call__(self, request):
@@ -128,11 +132,22 @@ def test_offline_server_errors_and_garbage_keep_the_previous_choice(tmp_path):
 
 
 @pytest.mark.parametrize('mutate', [
-    lambda c: c.update(video_url='https://evil.example/media/cinema-intro/%s.mp4' % VERSION),
-    lambda c: c.update(video_url='http://watch.scenrix.com/media/cinema-intro/%s.mp4' % VERSION),
-    lambda c: c.update(video_url=ORIGIN + '/media/cinema-intro/../../etc/passwd'),
-    lambda c: c.update(video_url=ORIGIN + '/media/cinema-intro/other.mp4'),
-    lambda c: c.update(still_url=ORIGIN + '/media/cinema-intro/%s-still.jpg?x=1' % VERSION),
+    lambda c: c.update(video_url='https://evil.example/intro/custom/%s.mp4?token=t' % VERSION),
+    lambda c: c.update(video_url='https://tg-node-1.scenrix.com.evil.example/intro/custom/%s.mp4?token=t' % VERSION),
+    lambda c: c.update(video_url='https://evilscenrix.com/intro/custom/%s.mp4?token=t' % VERSION),
+    lambda c: c.update(video_url='http://tg-node-1.scenrix.com/intro/custom/%s.mp4?token=t' % VERSION),
+    # VPS 1/VPS 2 never serve media: the API host itself and its former intro paths are refused.
+    lambda c: c.update(video_url=ORIGIN + '/intro/custom/%s.mp4?token=t' % VERSION),
+    lambda c: c.update(video_url=ORIGIN + '/media/cinema-intro/%s.mp4' % VERSION),
+    lambda c: c.update(video_url='/intro/custom/%s.mp4?token=t' % VERSION),
+    lambda c: c.update(video_url=NODE + '/intro/custom/../../etc/passwd?token=t'),
+    lambda c: c.update(video_url=NODE + '/intro/custom/other.mp4?token=t'),
+    lambda c: c.update(video_url=NODE + '/intro/default/%s.mp4?token=t' % VERSION),
+    lambda c: c.update(still_url=NODE + '/intro/custom/%s-still.jpg' % VERSION),
+    lambda c: c.update(still_url=NODE + '/intro/custom/%s-still.jpg?token=' % VERSION),
+    lambda c: c.update(still_url=NODE + '/intro/custom/%s-still.jpg?token=t&x=1' % VERSION),
+    lambda c: c.update(still_url=NODE + '/intro/custom/%s-still.jpg?token=t#frag' % VERSION),
+    lambda c: c.update(poster_url='https://user:pw@tg-node-1.scenrix.com/intro/custom/%s-poster.jpg?token=t' % VERSION),
     lambda c: c.update(version='../escape'),
     lambda c: c.update(version='a' * 80),
 ])
@@ -142,16 +157,23 @@ def test_untrusted_urls_and_versions_are_rejected(mutate):
     assert sanitize_config(config, ORIGIN) is None
 
 
-def test_relative_urls_are_resolved_against_the_api_origin():
-    config = custom_config()
-    config['video_url'] = f'/media/cinema-intro/{VERSION}.mp4'
-    assert sanitize_config(config, ORIGIN)['urls']['video'] == f'{ORIGIN}/media/cinema-intro/{VERSION}.mp4'
+def test_the_uploaded_clip_is_pulled_straight_from_a_media_node(tmp_path):
+    config = sanitize_config(custom_config(host='https://torrent-node-2.scenrix.com'), ORIGIN)
+    assert config['urls']['video'] == f'https://torrent-node-2.scenrix.com/intro/custom/{VERSION}.mp4?token={TOKEN}'
+    server = Server(custom_config())
+    intro = source(tmp_path, server)
+    assert intro.refresh() is True and intro.current().custom
+    media = [request.url for request in server.requests if request.url.path != '/api/v1/cinema/intro']
+    assert len(media) == 3
+    assert {url.host for url in media} == {'tg-node-1.scenrix.com'}
+    assert all(url.params.get('token') == TOKEN for url in media)
+    assert {request.url.host for request in server.requests if request.url.path == '/api/v1/cinema/intro'} == {'watch.scenrix.com'}
 
 
 @pytest.mark.parametrize('body', [b'<html>error</html>' + b'0' * 100, b''])
 def test_a_bad_or_empty_download_is_never_published(tmp_path, body):
     server = Server(custom_config())
-    server.files[f'/media/cinema-intro/{VERSION}.mp4'] = body
+    server.files[f'/intro/custom/{VERSION}.mp4'] = body
     intro = source(tmp_path, server)
     assert intro.refresh() is False and intro.current() == BUNDLED
     assert not (tmp_path / 'intro' / f'{VERSION}.mp4').exists() and not list((tmp_path / 'intro').glob('*.part'))
@@ -177,8 +199,8 @@ def test_reset_to_default_prunes_the_custom_clip_and_switching_versions_keeps_on
     old = intro.current()
     new = 'fedcba9876543210'
     server.config, server.etag = custom_config(version=new), '"v2"'
-    server.files.update({f'/media/cinema-intro/{new}.mp4': MP4, f'/media/cinema-intro/{new}-poster.jpg': JPG,
-                         f'/media/cinema-intro/{new}-still.jpg': JPG})
+    server.files.update({f'/intro/custom/{new}.mp4': MP4, f'/intro/custom/{new}-poster.jpg': JPG,
+                         f'/intro/custom/{new}-still.jpg': JPG})
     assert intro.refresh() is True and intro.current().version == new and not old.video.exists()
     server.config, server.etag = default_config(), '"v3"'
     assert intro.refresh() is True and intro.current() == BUNDLED

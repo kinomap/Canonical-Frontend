@@ -68,8 +68,9 @@
        ORSAY_CLEAN_RELEASE_MS after it. Failed / never-rendered stages keep ORSAY_STAGE_RELEASE_MS and the
        echo guard (ORSAY_ECHO_MS / ORSAY_ECHO_GRACE_MS) stays unchanged. ?orsayrel=NNN overrides it. */
     var ORSAY_CLEAN_RELEASE_MS = 600;
-    /* /cinema/intro is prefetched at boot and cached (memory + localStorage, like cinemaIntro.ts). */
-    var INTRO_CACHE_KEY = 'kinosota.tv.cinema-intro.v1';
+    /* /cinema/intro is prefetched at boot and cached (memory + localStorage, like cinemaIntro.ts).
+       v2: v1 answers held same-origin /cinema/intro/ and /media/cinema-intro/ paths, which no longer exist. */
+    var INTRO_CACHE_KEY = 'kinosota.tv.cinema-intro.v2';
     /* Field switches for bisecting on a real TV: ?orsay=avplay|avsdk|sef|player forces the engine,
        ?orsaygrid=widget|960 forces the SetDisplayArea grid of the plugins / AVPlay. */
     var LITE_QUERY = (window.location && window.location.search) ? String(window.location.search) : '';
@@ -79,8 +80,18 @@
     /* ?orsaywin=late keeps the old behaviour (MEDIA source switched only right before av.open). */
     var ORSAY_EARLY_WIN_SRC = !/[?&]orsaywin=late(&|$)/.test(LITE_QUERY);
     var ORSAY_GRID_MODE = (LITE_QUERY.match(/[?&]orsaygrid=(widget|960)(&|$)/) || [])[1] || '';
-    /* Own hosts: an https:// URL of these hosts is played over plain HTTP when the portal runs over HTTP. */
+    /* Own hosts: an https:// URL of these hosts is played over plain HTTP when the portal runs over HTTP.
+       ZERO MEDIA ON VPS1/VPS2: films, ads and the intro never come from them, only from the Media Nodes. */
     var TV_HTTP_HOSTS = { 'watch.scenrix.com': 1, 'www.watch.scenrix.com': 1 };
+    /* Media Nodes (tg-node-N, torrent-node-N, node-N) serve HTTPS only (port 80 is closed): never downgraded. */
+    var MEDIA_NODE_HOST = /^(?:(?:tg|torrent)-)?node-\d{1,3}\./i;
+    /* The node intro route: https://<node>/intro/<default|custom>/<file>?token=<intro-view JWT>. */
+    var NODE_INTRO_URL = /^https:\/\/([A-Za-z0-9.-]+)(?::\d{1,5})?\/intro\/(?:default|custom)\/[0-9A-Za-z]{1,64}(?:\.mp4|\.webm|\.jpg|-still\.jpg|-poster\.jpg)\?token=[A-Za-z0-9._-]{1,4096}$/;
+    /* /tv/lite (Samsung Orsay and other legacy TVs) decodes at most 1920x1080: the only client that sends a
+       frame ceiling (4K Smart TVs on /tv never do). A fitting file is preferred, a bigger one never refused. */
+    var LITE_MAX_WIDTH = 1920;
+    var LITE_MAX_HEIGHT = 1080;
+    var LITE_FRAME_QUERY = 'max_width=' + LITE_MAX_WIDTH + '&max_height=' + LITE_MAX_HEIGHT;
 
     /* ── On-screen diagnostics console ──
        Old TVs give no way to read console output. The overlay mirrors console.*, window.onerror and the
@@ -457,33 +468,39 @@
         genreContent: function (slug, page) { return request('GET', '/movies?genre=' + encodeURIComponent(slug) + '&page=' + (page || 1)); },
         search: function (q) { return request('GET', '/search?q=' + encodeURIComponent(q) + '&page=1&page_size=30'); },
         /* ?tv=1: the backend describes the source TV playback picks (<= 1920x1080 when one exists). */
-        movieDetail: function (id) { return request('GET', '/movies/' + encodeURIComponent(id) + '?tv=1'); },
+        movieDetail: function (id) { return request('GET', '/movies/' + encodeURIComponent(id) + '?tv=1&' + LITE_FRAME_QUERY); },
         seriesDetail: function (id) { return request('GET', '/series/' + encodeURIComponent(id)); },
         torrentDetail: function (kind, id) { return request('GET', '/torrents/detail/' + kind + '/' + encodeURIComponent(id)); },
         torrentSources: function (kind, id) { return request('GET', '/torrents/sources/' + kind + '/' + encodeURIComponent(id)); },
-        startPlayback: function (movieId) { return request('POST', '/playback/start', { movie_id: movieId, tv: true }); },
+        startPlayback: function (movieId) { return request('POST', '/playback/start', { movie_id: movieId, tv: true, max_width: LITE_MAX_WIDTH, max_height: LITE_MAX_HEIGHT }); },
         heartbeat: function (sessionId) { return request('POST', '/playback/heartbeat', { session_id: sessionId }); },
         stopPlayback: function (sessionId) { return request('POST', '/playback/stop', { session_id: sessionId }); },
-        startSeriesPlayback: function (episodeId) { return request('POST', '/series_playback/start', { episode_id: episodeId, tv: true }); },
+        startSeriesPlayback: function (episodeId) { return request('POST', '/series_playback/start', { episode_id: episodeId, tv: true, max_width: LITE_MAX_WIDTH, max_height: LITE_MAX_HEIGHT }); },
         torrentTicket: function (body) {
-            var payload = { tv: true };
+            var payload = { tv: true, max_width: LITE_MAX_WIDTH, max_height: LITE_MAX_HEIGHT };
             for (var k in body) if (Object.prototype.hasOwnProperty.call(body, k)) payload[k] = body[k];
-            return request('POST', '/torrents/playback-ticket', payload);
+            return request('POST', '/torrents/playback-ticket', payload).then(null, function (error) {
+                /* The chosen file is above the ceiling: the server names a fitting file of the same title. */
+                var alternative = tvMediaAlternative(error);
+                if (!alternative || alternative === payload.source_id) throw error;
+                payload.source_id = alternative;
+                return request('POST', '/torrents/playback-ticket', payload);
+            });
         },
         introConfig: function () { return request('GET', '/cinema/intro'); },
         adPlan: function (play, episode) {
             if (!play) return Promise.reject(new Error('NO_TARGET'));
             if (play.src === 'torrent') {
                 var extra = play.kind === 'tv' && episode ? '&season=' + episode.season + '&episode=' + episode.episode : '';
-                return request('GET', '/ads/plan/torrent/' + encodeURIComponent(play.kind) + '/' + encodeURIComponent(play.id) + '?surface=torrent_browser' + extra);
+                return request('GET', '/ads/plan/torrent/' + encodeURIComponent(play.kind) + '/' + encodeURIComponent(play.id) + '?surface=tv_torrent' + extra);
             }
             if (play.kind === 'series') {
                 if (!episode || !episode.id) return Promise.reject(new Error('NO_EPISODE'));
-                return request('GET', '/ads/plan/episode/' + encodeURIComponent(episode.id) + '?surface=telegram_browser');
+                return request('GET', '/ads/plan/episode/' + encodeURIComponent(episode.id) + '?surface=tv_telegram');
             }
-            return request('GET', '/ads/plan/movie/' + encodeURIComponent(play.id) + '?surface=telegram_browser');
+            return request('GET', '/ads/plan/movie/' + encodeURIComponent(play.id) + '?surface=tv_telegram');
         },
-        adPrepare: function (planToken, cueId) { return request('POST', '/ads/prepare', { plan_token: planToken, cue_id: cueId, tv: true }); },
+        adPrepare: function (planToken, cueId) { return request('POST', '/ads/prepare', { plan_token: planToken, cue_id: cueId }); },
         adEvent: function (deliveryId, eventName) { return request('POST', '/ads/events/' + encodeURIComponent(deliveryId), { event: eventName }); },
         startPairing: function () { return request('POST', '/desktop/pairing/start'); },
         pollPairing: function (deviceCode) { return request('POST', '/desktop/pairing/exchange', { device_code: deviceCode }); }
@@ -2183,14 +2200,26 @@
         return '';
     }
 
-    /* The TV contour runs over plain HTTP: https:// links to our own hosts are played over http://. */
+    /* The TV contour runs over plain HTTP: https:// links to our own hosts are played over http://.
+       Media Node links stay https:// (the nodes have no port 80, their RSA certificates suit old TVs). */
     function normalizeTvUrl(url) {
         if (!url || typeof url !== 'string') return url || '';
         var loc = window.location;
         if (!loc || loc.protocol !== 'http:') return url;
         var m = url.match(/^https:\/\/([^\/:?#]+)(?::443)?([\/?#].*)?$/i);
-        if (m && TV_HTTP_HOSTS[m[1].toLowerCase()]) return 'http://' + m[1] + (m[2] || '/');
+        if (m && !MEDIA_NODE_HOST.test(m[1]) && TV_HTTP_HOSTS[m[1].toLowerCase()]) return 'http://' + m[1] + (m[2] || '/');
         return url;
+    }
+
+    /* 409 TV_MEDIA_UNSUPPORTED: a file this TV cannot decode (or above its Full-HD ceiling). */
+    function tvMediaDetail(error) {
+        var detail = error && error.status === 409 && error.data ? error.data.detail : null;
+        return detail && typeof detail === 'object' && detail.code === 'TV_MEDIA_UNSUPPORTED' ? detail : null;
+    }
+
+    function tvMediaAlternative(error) {
+        var detail = tvMediaDetail(error);
+        return detail && typeof detail.alternative_source_id === 'string' ? detail.alternative_source_id : '';
     }
 
     function toAbsoluteUrl(url) {
@@ -2784,6 +2813,7 @@
     function failText(error) {
         var status = error && error.status;
         if (status === 401 || status === 403) return 'Для просмотра нужен вход в аккаунт KINOSOTA.';
+        if (tvMediaDetail(error)) return 'Этот файл не поддерживается телевизором. Выберите другой источник.';
         if (status === 404 || status === 409 || status === 425) return 'Видео ещё готовится. Попробуйте чуть позже.';
         return 'Не удалось запустить видео. Нажмите OK, чтобы повторить.';
     }
@@ -4153,12 +4183,36 @@
         return !!cfg && typeof cfg === 'object' && typeof cfg.enabled === 'boolean';
     }
 
+    /* Only a Media Node intro URL is played: https, a host other than this portal, the node route and its token. */
+    function safeIntroUrl(url) {
+        if (!url || typeof url !== 'string') return '';
+        var m = url.match(NODE_INTRO_URL);
+        if (!m) return '';
+        var loc = window.location;
+        if (loc && loc.hostname && m[1].toLowerCase() === String(loc.hostname).toLowerCase()) return '';
+        return url;
+    }
+
+    /* No usable node URL = no intro (the film is never blocked, nothing is fetched from this portal). */
+    function sanitizeIntroConfig(cfg) {
+        if (!introCacheValid(cfg)) return null;
+        var out = {};
+        for (var k in cfg) if (Object.prototype.hasOwnProperty.call(cfg, k)) out[k] = cfg[k];
+        out.video_url = safeIntroUrl(cfg.video_url);
+        out.webm_url = safeIntroUrl(cfg.webm_url) || null;
+        out.still_url = safeIntroUrl(cfg.still_url);
+        out.poster_url = safeIntroUrl(cfg.poster_url) || out.still_url;
+        if (!out.video_url) out.enabled = false;
+        return out;
+    }
+
     function readIntroCache() {
         if (introCache.cfg) return introCache.cfg;
         try {
             var raw = window.localStorage ? window.localStorage.getItem(INTRO_CACHE_KEY) : null;
             var parsed = raw ? JSON.parse(raw) : null;
-            if (parsed && introCacheValid(parsed.cfg)) introCache.cfg = parsed.cfg;
+            var cached = parsed ? sanitizeIntroConfig(parsed.cfg) : null;
+            if (cached) introCache.cfg = cached;
         } catch (e) {}
         return introCache.cfg;
     }
@@ -4191,6 +4245,7 @@
         if (introCache.pending) return introCache.pending;
         introCache.pending = api.introConfig().then(function (cfg) {
             introCache.pending = null;
+            cfg = sanitizeIntroConfig(cfg);
             if (introCacheValid(cfg)) {
                 storeIntroCache(cfg);
                 preloadIntroImages(cfg);
@@ -4487,8 +4542,11 @@
 
     function introEnabledForCard(intro, card) {
         if (!intro || !intro.enabled || !intro.video_url) return false;
-        var key = isTorrentCard(card) ? 'browser_torrents' : 'browser_telegram';
+        /* Smart TV targets; configs saved before them follow the browser counterpart (as the backend does). */
+        var key = isTorrentCard(card) ? 'tv_torrent' : 'tv_telegram';
+        var parent = isTorrentCard(card) ? 'browser_torrents' : 'browser_telegram';
         if (intro.targets && typeof intro.targets[key] === 'boolean') return intro.targets[key];
+        if (intro.targets && typeof intro.targets[parent] === 'boolean') return intro.targets[parent];
         return true;
     }
 
