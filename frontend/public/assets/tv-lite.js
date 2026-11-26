@@ -50,10 +50,34 @@
     var ORSAY_STAGE_RELEASE_MS = 1500;
     var ORSAY_ECHO_MS = 3500;
     var ORSAY_ECHO_GRACE_MS = 1500;
+    /* v15 cinema pipeline (Intro >= 5 s -> Pre-roll -> Film), 1:1 with VideoPlayer.vue / TorrentPlayer.vue:
+       the intro is never cut before MIN_INTRO_MS and hands over only once the film's first bytes arrived
+       (probeStreamFirstBytes: one plain XHR Range request, no second decoder) or the probe gave up after
+       FILM_PREPROBE_MAX_WAIT_MS. */
+    var MIN_INTRO_MS = 5000;
+    var FILM_PREPROBE_MAX_WAIT_MS = 12000;
+    var FILM_PROBE_RANGE = 'bytes=0-65535';
+    /* Stage hand-over veil (#lite-transition-veil, #070b0e): 400 ms over native planes (Orsay / Tizen),
+       900 ms dissolve + volume fade in HTML5 mode. */
+    var VEIL_FADE_MS = 400;
+    var DISSOLVE_MS = 900;
+    /* 'Запускаем поток…' only when the film shows no frame for this long after its stage started. */
+    var FILM_NOTICE_MS = 3000;
+    /* A stage that rendered (7), saw no error event and is released on purpose (av_ev:8, or stop() +
+       destroy() under the veil) frees the Orsay decoder much faster than a failed one: the next stage opens
+       ORSAY_CLEAN_RELEASE_MS after it. Failed / never-rendered stages keep ORSAY_STAGE_RELEASE_MS and the
+       echo guard (ORSAY_ECHO_MS / ORSAY_ECHO_GRACE_MS) stays unchanged. ?orsayrel=NNN overrides it. */
+    var ORSAY_CLEAN_RELEASE_MS = 600;
+    /* /cinema/intro is prefetched at boot and cached (memory + localStorage, like cinemaIntro.ts). */
+    var INTRO_CACHE_KEY = 'kinosota.tv.cinema-intro.v1';
     /* Field switches for bisecting on a real TV: ?orsay=avplay|avsdk|sef|player forces the engine,
        ?orsaygrid=widget|960 forces the SetDisplayArea grid of the plugins / AVPlay. */
     var LITE_QUERY = (window.location && window.location.search) ? String(window.location.search) : '';
     var ORSAY_FORCE_ENGINE = (LITE_QUERY.match(/[?&]orsay=(avplay|avsdk|sef|player)(&|$)/) || [])[1] || '';
+    var ORSAY_REL_QUERY = Number((LITE_QUERY.match(/[?&]orsayrel=(\d{3,4})(&|$)/) || [])[1] || 0);
+    if (ORSAY_REL_QUERY >= 200 && ORSAY_REL_QUERY <= 5000) ORSAY_CLEAN_RELEASE_MS = ORSAY_REL_QUERY;
+    /* ?orsaywin=late keeps the old behaviour (MEDIA source switched only right before av.open). */
+    var ORSAY_EARLY_WIN_SRC = !/[?&]orsaywin=late(&|$)/.test(LITE_QUERY);
     var ORSAY_GRID_MODE = (LITE_QUERY.match(/[?&]orsaygrid=(widget|960)(&|$)/) || [])[1] || '';
     /* Own hosts: an https:// URL of these hosts is played over plain HTTP when the portal runs over HTTP. */
     var TV_HTTP_HOSTS = { 'watch.scenrix.com': 1, 'www.watch.scenrix.com': 1 };
@@ -1658,10 +1682,28 @@
         }
         for (var k = 0; k < det.sources.length && !sel; k++) if (det.sources[k]['default']) sel = det.sources[k];
         if (!sel && det.sources.length) sel = det.sources[0];
+        sel = orsayFullHdSource(sel);
         det.selected = sel;
         det.quality = sel ? qualityLabel(sel) : null;
         det.lang = sel ? langCodeOf(sel) : null;
         renderWatchCard();
+    }
+
+    /* v15: Orsay (2014) decodes at most 1920x1080 — its default torrent is the best <= 1080p release in the
+       backend's order (same audio language first), even when a 2160p one is listed first. The quality pills
+       still allow an explicit choice. */
+    function orsayFullHdSource(sel) {
+        if (!IS_ORSAY || !sel || resolutionOf(qualityLabel(sel)) <= 1080) return sel;
+        var lang = langCodeOf(sel);
+        var fallback = null;
+        for (var i = 0; i < det.sources.length; i++) {
+            var item = det.sources[i];
+            var res = resolutionOf(qualityLabel(item));
+            if (res > 1080) continue;
+            if (res > 0 && (!lang || langCodeOf(item) === lang)) return item;
+            if (!fallback || (res > 0 && resolutionOf(qualityLabel(fallback)) === 0)) fallback = item;
+        }
+        return fallback || sel;
     }
 
     function selectQuality(label) {
@@ -1870,6 +1912,11 @@
         det.card = card;
         state.detailsCard = card;
         state.detailsOpen = true;
+        /* v15: warm-up before Play — Orsay MEDIA source switched while the user reads the details (one
+           async tvWindow call, no-op once active; ?orsaywin=late restores the old timing) and the intro
+           config / poster fetched if the boot prefetch has not landed yet. */
+        if (IS_ORSAY && ORSAY_EARLY_WIN_SRC) ensureOrsayMediaSource(function () {});
+        if (!readIntroCache()) refreshIntroConfig();
         state.mode = 'details';
         var torrent = isTorrentCard(card);
         det.tmdb = card.tmdbId || (torrent ? Number(card.play.id) : null) || null;
@@ -2016,7 +2063,12 @@
         stallDeadline: 0, stallBumpAt: 0, seekLogged: false,
         /* engineSeq invalidates every native callback of a released engine; the timers are the only
            deferred opens and are cancelled on every new stage, rescue or close. */
-        engineSeq: 0, openTimer: null, rescueTimer: null, echoTimer: null, nativeReleasedAt: 0
+        engineSeq: 0, openTimer: null, rescueTimer: null, echoTimer: null, nativeReleasedAt: 0,
+        /* v15 hand-over state: Intro >= MIN_INTRO_MS, film first bytes (probe), veil / Ambient Hold. */
+        introShownAt: 0, introClipEnded: false, handoffTimer: null, handoffStarted: false,
+        filmBytesReady: false, probeTimedOut: false, probeXhr: null, probeTimer: null,
+        adWaitSince: 0, adWaitExpired: false, veilTimer: null, posterTimer: null, filmNoticeTimer: null,
+        lastReleaseClean: false, volumeTimer: null, volumeBefore: -1
     };
 
     var ORSAY_LANGS = {
@@ -2401,7 +2453,11 @@
         player.engineSeq += 1;
         clearEngineTimers();
         clearStall();
-        if (engineBusy()) player.lastReleaseAt = Date.now();
+        if (engineBusy()) {
+            player.lastReleaseAt = Date.now();
+            /* v15: clean = the stage rendered (7), saw no error event (1-4, 6) and is stopped on purpose. */
+            player.lastReleaseClean = !!(stopStream && player.firstFrame && !/(^|,)[12346](\*\d+)?(,|$)/.test(nativeSession.trail || ''));
+        }
         if (kind !== 'html5' && kind !== 'tizen') {
             player.nativeReleasedAt = Date.now();
             reportTvDiag('rel', kind + '|' + (nativeSession.phase || player.phase) + '|ev=' + (nativeSession.trail || '-'));
@@ -2597,6 +2653,14 @@
         if (text) show(node); else hide(node);
     }
 
+    /* v15: buffering states (11 / 13 / 5 and their plugin / HTML5 twins) never surface during the
+       commercial stages — the intro poster / veil covers them and the stall watchdog keeps running
+       (extendStall). Only the film shows them. */
+    function bufferNotice(text) {
+        if (player.phase === 'intro' || player.phase === 'ad') return;
+        if (player.ready) playerMessage(text);
+    }
+
     function showBar() {
         var bar = $('lite-player-bar');
         removeClass(bar, 'is-faded');
@@ -2621,6 +2685,11 @@
         setText($('lite-player-time'), formatTime(current) + ' / ' + formatTime(duration));
         setText($('lite-player-state'), player.paused ? '❚❚' : '▶');
         if (player.phase === 'ad') updateAdOverlay(current, duration);
+        /* v15: within 0.25 s of the intro's end its still frame takes over (no black EOS frame). */
+        if (player.phase === 'intro' && !player.introClipEnded && !player.introDone && duration > 1 && current >= duration - 0.25) {
+            var eosId = player.loadId;
+            setTimeout(function () { if (eosId === player.loadId) onIntroClipEnded('eos'); }, 0);
+        }
     }
 
     function failText(error) {
@@ -2802,13 +2871,24 @@
         var okKey = orsayEngineKeyOf(nativeSession.kind);
         if (okKey) orsayProvenEngine = okKey;
         clearStall();
+        clearTimeout(player.filmNoticeTimer);
+        player.filmNoticeTimer = null;
         if (player.phase === 'intro') {
             var introId = player.loadId;
             var introLimit = player.duration > 0 ? Math.min(35000, Math.max(8000, Math.ceil(player.duration * 1000) + 3000)) : 18000;
             clearTimeout(player.introTimer);
             player.introTimer = setTimeout(function () {
-                if (introId === player.loadId && player.phase === 'intro') finishIntroStage(introId);
+                if (introId === player.loadId && player.phase === 'intro') onIntroClipEnded('limit');
             }, introLimit);
+            /* The intro poster dissolves into the running clip (400 ms) — no black frame in between. */
+            if (!player.introClipEnded) {
+                fadeIntroPoster();
+                setVeil(false, false, false);
+            }
+        } else {
+            /* Pre-roll / film rendered under the veil: lift it (RENDERING_START (7) on Orsay). */
+            hideIntroPoster();
+            setVeil(false, isHtml5Stage(), false);
         }
         playerMessage('');
         hide($('lite-player-actions'));
@@ -3194,11 +3274,11 @@
                 } else if (type === 11) {
                     /* BUFFERING_START */
                     extendStall();
-                    if (player.ready) playerMessage('Буферизация…');
+                    bufferNotice('Буферизация…');
                 } else if (type === 13) {
                     /* BUFFERING_PROGRESS (percent) */
                     extendStall();
-                    if (player.ready && !player.firstFrame) playerMessage('Буферизация… ' + (Number(data1) || 0) + '%');
+                    if (!player.firstFrame) bufferNotice('Буферизация… ' + (Number(data1) || 0) + '%');
                 } else if (type === 14) {
                     /* CURRENT_PLAYBACK_TIME (ms); 14 with 0 is reported too: the clock runs, the picture does not */
                     var ms = Number(data1) || 0;
@@ -3223,7 +3303,7 @@
                     onPlaybackEnded();
                 } else if (type === 5) {
                     /* NETWORK_SLOW: not fatal, the stall timer still guards the first frame */
-                    if (player.ready) playerMessage('Медленная сеть, буферизация…');
+                    bufferNotice('Медленная сеть, буферизация…');
                 } else if (type >= 1 && type <= 6) {
                     /* CONNECTION_FAILED / AUTHENTICATION_FAILED / STREAM_NOT_FOUND / NETWORK_DISCONNECTED / RENDER_ERROR */
                     var errCode = type + (data1 !== undefined ? ':' + data1 : '');
@@ -3311,7 +3391,7 @@
                 if (msVal > 0 && !player.firstFrame) markFrame();
                 updateProgress();
             };
-            pl.OnBufferingStart = function () { if (live()) { extendStall(); if (player.ready) playerMessage('Буферизация…'); } };
+            pl.OnBufferingStart = function () { if (live()) { extendStall(); bufferNotice('Буферизация…'); } };
             pl.OnBufferingComplete = function () { if (live()) { noteNativeEvent(12); extendStall(); player.paused = false; playerMessage(''); updateProgress(); showBar(); } };
             pl.OnConnectionFailed = pl.OnNetworkDisconnected = pl.OnRenderError = pl.OnStreamNotFound = function (code) {
                 if (!live()) return;
@@ -3568,10 +3648,10 @@
                             showBar();
                         } else if (type === 11) {
                             extendStall();
-                            if (player.ready) playerMessage('Буферизация…');
+                            bufferNotice('Буферизация…');
                         } else if (type === 13) {
                             extendStall();
-                            if (player.ready && !player.firstFrame) playerMessage('Буферизация… ' + (Number(data) || 0) + '%');
+                            if (!player.firstFrame) bufferNotice('Буферизация… ' + (Number(data) || 0) + '%');
                         } else if (type === 14) {
                             var ms = Number(data) || 0;
                             if (ms <= 0 && !zeroLogged) {
@@ -3594,7 +3674,7 @@
                             try { av.stop(); } catch (eStop) {}
                             onPlaybackEnded();
                         } else if (type === 5) {
-                            if (player.ready) playerMessage('Медленная сеть, буферизация…');
+                            bufferNotice('Медленная сеть, буферизация…');
                         } else if (type >= 1 && type <= 6) {
                             var errCode = type + (data !== undefined ? ':' + data : '');
                             if (isOrsayEcho(type, gotInfo)) {
@@ -3719,7 +3799,7 @@
                                     if (!live()) return;
                                     noteNativeEvent(11);
                                     extendStall();
-                                    if (player.ready) playerMessage('Буферизация…');
+                                    bufferNotice('Буферизация…');
                                 },
                                 onbufferingprogress: function (pct) {
                                     if (!live()) return;
@@ -3785,7 +3865,7 @@
             avp.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
             try { if (avp.setSilentSubtitle) avp.setSilentSubtitle(false); } catch (eS) {}
             avp.setListener({
-                onbufferingstart: function () { if (loadId === player.loadId && player.ready) playerMessage('Буферизация…'); },
+                onbufferingstart: function () { if (loadId === player.loadId) bufferNotice('Буферизация…'); },
                 onbufferingcomplete: function () { if (loadId === player.loadId) { player.paused = false; markFrame(); updateProgress(); } },
                 oncurrentplaytime: function () {
                     if (loadId !== player.loadId) return;
@@ -3844,7 +3924,7 @@
         if (engineBusy()) engineDetach(player.firstFrame);
         if (IS_TV && player.lastReleaseAt) {
             var since = new Date().getTime() - player.lastReleaseAt;
-            var wait = IS_ORSAY ? ORSAY_STAGE_RELEASE_MS : DECODER_RELEASE_MS;
+            var wait = IS_ORSAY ? (player.lastReleaseClean ? ORSAY_CLEAN_RELEASE_MS : ORSAY_STAGE_RELEASE_MS) : DECODER_RELEASE_MS;
             if (since >= 0 && since < wait) {
                 /* lastReleaseAt is kept until the open really happens: a superseding stage still waits. */
                 var seq = player.engineSeq;
@@ -3946,11 +4026,321 @@
 
     var AD_PREPARE_WAIT_MS = 2500;
 
+    /* ---------- v15 cinema pipeline: intro cache, poster / veil, film first-bytes probe, hand-over ---------- */
+
+    var introCache = { cfg: null, pending: null, images: [] };
+
+    function introCacheValid(cfg) {
+        return !!cfg && typeof cfg === 'object' && typeof cfg.enabled === 'boolean';
+    }
+
+    function readIntroCache() {
+        if (introCache.cfg) return introCache.cfg;
+        try {
+            var raw = window.localStorage ? window.localStorage.getItem(INTRO_CACHE_KEY) : null;
+            var parsed = raw ? JSON.parse(raw) : null;
+            if (parsed && introCacheValid(parsed.cfg)) introCache.cfg = parsed.cfg;
+        } catch (e) {}
+        return introCache.cfg;
+    }
+
+    function storeIntroCache(cfg) {
+        if (!introCacheValid(cfg)) return;
+        introCache.cfg = cfg;
+        try {
+            if (window.localStorage) window.localStorage.setItem(INTRO_CACHE_KEY, JSON.stringify({ at: new Date().getTime(), cfg: cfg }));
+        } catch (e) {}
+    }
+
+    /* Poster / still are decoded before Play, so #lite-intro-poster paints at 0 ms. */
+    function preloadIntroImages(cfg) {
+        if (!cfg || !cfg.enabled || typeof window.Image !== 'function') return;
+        var urls = [cfg.poster_url, cfg.still_url];
+        for (var i = 0; i < urls.length; i++) {
+            if (!urls[i]) continue;
+            try {
+                var img = new window.Image();
+                img.src = normalizeTvUrl(urls[i]);
+                introCache.images.push(img);
+            } catch (e) {}
+        }
+        if (introCache.images.length > 6) introCache.images = introCache.images.slice(introCache.images.length - 4);
+    }
+
+    /* Boot prefetch + background revalidation; resolves with the freshest known config (or null). */
+    function refreshIntroConfig() {
+        if (introCache.pending) return introCache.pending;
+        introCache.pending = api.introConfig().then(function (cfg) {
+            introCache.pending = null;
+            if (introCacheValid(cfg)) {
+                storeIntroCache(cfg);
+                preloadIntroImages(cfg);
+                return cfg;
+            }
+            return readIntroCache();
+        }, function () {
+            introCache.pending = null;
+            return readIntroCache();
+        });
+        return introCache.pending;
+    }
+
+    function isHtml5Stage() {
+        return nativeSession.kind === 'html5' && !IS_ORSAY && !IS_TIZEN;
+    }
+
+    function showIntroPoster(url, hold) {
+        var img = $('lite-intro-poster');
+        var src = url ? normalizeTvUrl(url) : '';
+        if (!img || !src) return false;
+        clearTimeout(player.posterTimer);
+        player.posterTimer = null;
+        if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+        removeClass(img, 'is-faded');
+        if (hold) addClass(img, 'is-hold'); else removeClass(img, 'is-hold');
+        show(img);
+        var vignette = $('lite-hold-vignette');
+        if (vignette) { if (hold) show(vignette); else hide(vignette); }
+        return true;
+    }
+
+    function fadeIntroPoster() {
+        var img = $('lite-intro-poster');
+        if (!img || hasClass(img, 'is-hidden')) return;
+        addClass(img, 'is-faded');
+        hide($('lite-hold-vignette'));
+        clearTimeout(player.posterTimer);
+        player.posterTimer = setTimeout(function () {
+            player.posterTimer = null;
+            hideIntroPoster();
+        }, VEIL_FADE_MS + 60);
+    }
+
+    function hideIntroPoster() {
+        clearTimeout(player.posterTimer);
+        player.posterTimer = null;
+        var img = $('lite-intro-poster');
+        if (img) {
+            hide(img);
+            addClass(img, 'is-faded');
+            removeClass(img, 'is-hold');
+        }
+        hide($('lite-hold-vignette'));
+    }
+
+    function veilIsOn() {
+        var veil = $('lite-transition-veil');
+        return !!veil && hasClass(veil, 'is-on');
+    }
+
+    /* #lite-transition-veil: on = #070b0e cover. dissolve = 900 ms (HTML5), instant = no transition. */
+    function setVeil(on, dissolve, instant) {
+        var veil = $('lite-transition-veil');
+        if (!veil) return;
+        if (dissolve) addClass(veil, 'is-dissolve'); else removeClass(veil, 'is-dissolve');
+        if (instant) addClass(veil, 'is-instant'); else removeClass(veil, 'is-instant');
+        if (on) addClass(veil, 'is-on'); else removeClass(veil, 'is-on');
+    }
+
+    /* HTML5 only: the outgoing stage's sound fades with the picture. Orsay keeps its hardware volume. */
+    function fadeVideoVolume(ms) {
+        var video = $('lite-video');
+        if (!video) return;
+        clearInterval(player.volumeTimer);
+        var start = 1;
+        try { if (typeof video.volume === 'number' && !isNaN(video.volume)) start = video.volume; } catch (e) {}
+        if (player.volumeBefore < 0) player.volumeBefore = start;
+        var steps = Math.max(1, Math.round(ms / 60));
+        var step = 0;
+        player.volumeTimer = setInterval(function () {
+            step += 1;
+            try { video.volume = Math.max(0, start * (1 - step / steps)); } catch (e2) {}
+            if (step >= steps) {
+                clearInterval(player.volumeTimer);
+                player.volumeTimer = null;
+            }
+        }, 60);
+    }
+
+    function restoreVideoVolume() {
+        clearInterval(player.volumeTimer);
+        player.volumeTimer = null;
+        if (player.volumeBefore < 0) return;
+        var video = $('lite-video');
+        try { if (video) video.volume = player.volumeBefore; } catch (e) {}
+        player.volumeBefore = -1;
+    }
+
+    /* Covers the outgoing stage with the veil (400 ms on native planes, 900 ms dissolve + volume fade in
+       HTML5) and runs next() underneath it: the decoder re-initialisation between Intro, Pre-roll and Film
+       is never seen. The veil lifts on the next stage's first frame (markFrame / RENDERING_START 7). */
+    function coverStage(loadId, next) {
+        if (loadId !== player.loadId) return;
+        clearTimeout(player.veilTimer);
+        player.veilTimer = null;
+        if (!$('lite-transition-veil') || veilIsOn()) {
+            hideIntroPoster();
+            next();
+            return;
+        }
+        var html5 = isHtml5Stage();
+        var ms = html5 ? DISSOLVE_MS : VEIL_FADE_MS;
+        setVeil(true, html5, false);
+        if (html5) fadeVideoVolume(ms);
+        player.veilTimer = setTimeout(function () {
+            player.veilTimer = null;
+            if (loadId !== player.loadId) return;
+            hideIntroPoster();
+            next();
+        }, ms);
+    }
+
+    function cancelFilmProbe() {
+        clearTimeout(player.probeTimer);
+        player.probeTimer = null;
+        var xhr = player.probeXhr;
+        player.probeXhr = null;
+        if (!xhr) return;
+        try { xhr.onreadystatechange = null; } catch (e) {}
+        try { xhr.abort(); } catch (e2) {}
+    }
+
+    /* Film first bytes while the intro plays: one plain XHR GET with Range bytes=0-65535 (no second
+       decoder, nothing for Orsay to contend with). 200 / 206 with body bytes -> filmBytesReady; any other
+       outcome, or FILM_PREPROBE_MAX_WAIT_MS, ends the wait (the film's own engine then reports problems).
+       The request is aborted as soon as bytes arrive, so the media node / torrent worker slot is free long
+       before AVPlay opens the film. */
+    function probeStreamFirstBytes(rawUrl, loadId) {
+        cancelFilmProbe();
+        player.filmBytesReady = false;
+        player.probeTimedOut = false;
+        var url = rawUrl ? normalizeTvUrl(rawUrl) : '';
+        var xhr = null;
+        if (url && window.XMLHttpRequest) {
+            try { xhr = new window.XMLHttpRequest(); } catch (e) { xhr = null; }
+        }
+        if (!xhr) {
+            player.probeTimedOut = true;
+            return;
+        }
+        var startedAt = new Date().getTime();
+        var settled = false;
+        function settle(ok, tag) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(player.probeTimer);
+            player.probeTimer = null;
+            if (player.probeXhr === xhr) player.probeXhr = null;
+            try { xhr.onreadystatechange = null; } catch (e) {}
+            if (xhr.readyState !== 4) {
+                try { xhr.abort(); } catch (e2) {}
+            }
+            if (loadId !== player.loadId) return;
+            if (ok) player.filmBytesReady = true; else player.probeTimedOut = true;
+            reportTvDiag('film_probe', tag + '|t=' + (new Date().getTime() - startedAt));
+            evaluateIntroHandoff(loadId);
+        }
+        xhr.onreadystatechange = function () {
+            var state = xhr.readyState;
+            if (state < 3) return;
+            var status = 0;
+            try { status = xhr.status; } catch (e) {}
+            if (status === 200 || status === 206) {
+                settle(true, 'st' + status + '|rs' + state);
+                return;
+            }
+            if (state === 4) settle(false, 'st' + status);
+        };
+        player.probeXhr = xhr;
+        player.probeTimer = setTimeout(function () { settle(false, 'timeout'); }, FILM_PREPROBE_MAX_WAIT_MS);
+        try {
+            xhr.open('GET', url, true);
+            xhr.setRequestHeader('Range', FILM_PROBE_RANGE);
+            if (xhr.overrideMimeType) xhr.overrideMimeType('text/plain; charset=x-user-defined');
+            xhr.send(null);
+        } catch (e3) {
+            settle(false, 'open');
+        }
+    }
+
+    function holdNotice() {
+        /* A long cold-torrent hold gets one quiet line over the still — never over the running clip. */
+        if (player.introClipEnded && !player.problem) playerMessage('Подготовка потока…');
+    }
+
+    /* The single gate between the intro and the next stage (1:1 with VideoPlayer.vue / TorrentPlayer.vue):
+       never before MIN_INTRO_MS since the poster / first frame was shown, only once the film's stream is
+       resolved and its first bytes arrived (or the probe gave up), and after the pre-roll is prepared or
+       AD_PREPARE_WAIT_MS passed since the 5 s mark. A stream error exits through abortStreamError(). */
+    function evaluateIntroHandoff(loadId) {
+        if (loadId !== player.loadId || player.phase !== 'intro' || player.introDone || player.handoffStarted) return;
+        if (player.streamError) return;
+        clearTimeout(player.handoffTimer);
+        player.handoffTimer = null;
+        /* Nothing to hand over from until the intro is actually on screen (runIntro / poster). */
+        if (!player.introShownAt) return;
+        var now = new Date().getTime();
+        var elapsed = now - player.introShownAt;
+        if (elapsed < MIN_INTRO_MS) {
+            player.handoffTimer = setTimeout(function () { evaluateIntroHandoff(loadId); }, MIN_INTRO_MS - elapsed);
+            return;
+        }
+        if (!player.streamDone || !player.stream || !player.stream.url) {
+            holdNotice();
+            return;
+        }
+        if (!player.filmBytesReady && !player.probeTimedOut) {
+            if (!player.probeXhr && !player.probeTimer) probeStreamFirstBytes(player.stream.url, loadId);
+            if (loadId !== player.loadId || player.handoffStarted) return;
+            if (!player.filmBytesReady && !player.probeTimedOut) {
+                holdNotice();
+                return;
+            }
+        }
+        if (player.adPrepPromise && !player.adPrepDone && !player.adWaitExpired) {
+            if (!player.adWaitSince) {
+                player.adWaitSince = now;
+                player.adPrepPromise.then(function () { evaluateIntroHandoff(loadId); }, function () { evaluateIntroHandoff(loadId); });
+            }
+            var waited = now - player.adWaitSince;
+            if (waited < AD_PREPARE_WAIT_MS) {
+                player.handoffTimer = setTimeout(function () { evaluateIntroHandoff(loadId); }, AD_PREPARE_WAIT_MS - waited);
+                return;
+            }
+            player.adWaitExpired = true;
+        }
+        player.handoffStarted = true;
+        playerMessage('');
+        reportTvDiag('handoff', 't=' + elapsed + '|bytes=' + (player.filmBytesReady ? 1 : 0) + '|ad=' + (player.adPrepared ? 1 : 0));
+        coverStage(loadId, function () { finishIntroStage(loadId); });
+    }
+
+    /* Ambient Hold: the intro clip reached its end (av_ev:8 / 0.25 s before duration), failed or stalled
+       before the hand-over is allowed. Its final picture (still_url, else poster_url) covers the plane with
+       a soft vignette, the decoder is released cleanly underneath and evaluateIntroHandoff() decides when
+       the veil leads into the next stage. */
+    function onIntroClipEnded(reason) {
+        var id = player.loadId;
+        if (player.phase !== 'intro' || player.introDone || player.introClipEnded || player.handoffStarted) return;
+        player.introClipEnded = true;
+        clearTimeout(player.introTimer);
+        player.introTimer = null;
+        reportTvDiag('intro_end', reason + '|t=' + (player.introShownAt ? new Date().getTime() - player.introShownAt : -1));
+        var cfg = player.introConfig || readIntroCache() || {};
+        if (showIntroPoster(cfg.still_url || cfg.poster_url, true)) setVeil(false, false, true);
+        else setVeil(true, false, true);
+        var clean = reason === 'ended' || reason === 'eos' || reason === 'limit';
+        detachVideo(clean, IS_ORSAY || IS_TIZEN);
+        evaluateIntroHandoff(id);
+    }
+
     function advanceFromCommercial(reason) {
         var id = player.loadId;
         clearAdTimers();
         if (player.phase === 'intro') {
-            finishIntroStage(id);
+            /* v15: the clip ending / failing / stalling never cuts the intro stage short — Ambient Hold on
+               still_url until evaluateIntroHandoff() lets the next stage in (MIN_INTRO_MS + film bytes). */
+            onIntroClipEnded(reason);
             return;
         }
         if (player.phase === 'ad') {
@@ -3962,7 +4352,8 @@
             player.adSkipAfter = null;
             player.adCanSkip = false;
             player.adImpressionSent = false;
-            startFilmStage(id);
+            /* The veil covers the last pre-roll frame, then the film opens underneath it. */
+            coverStage(id, function () { startFilmStage(id); });
         }
     }
 
@@ -4069,7 +4460,7 @@
             startFilmStage(loadId);
             return;
         }
-        if (player.adPrepPromise) {
+        if (player.adPrepPromise && !player.adWaitExpired) {
             var settled = false;
             var waitAd = setTimeout(function () {
                 if (settled || loadId !== player.loadId) return;
@@ -4107,8 +4498,15 @@
         if (!stream || !stream.url) { playerProblem('error'); return; }
         player.phase = 'film';
         player.waitingForStream = false;
+        cancelFilmProbe();
         renderTrackStatus();
-        playerMessage('Запускаем поток…');
+        playerMessage('');
+        if (!veilIsOn()) setVeil(true, false, true);
+        clearTimeout(player.filmNoticeTimer);
+        player.filmNoticeTimer = setTimeout(function () {
+            player.filmNoticeTimer = null;
+            if (loadId === player.loadId && player.phase === 'film' && !player.firstFrame && !player.problem) playerMessage('Запускаем поток…');
+        }, FILM_NOTICE_MS);
         openWithEngine(stream.url, loadId);
     }
 
@@ -4150,14 +4548,43 @@
         player.adSkipAfter = null;
         player.adCanSkip = false;
         player.adImpressionSent = false;
-        playerMessage('Загружаем видео…');
+        cancelFilmProbe();
+        clearTimeout(player.handoffTimer);
+        clearTimeout(player.veilTimer);
+        clearTimeout(player.filmNoticeTimer);
+        player.handoffTimer = null;
+        player.veilTimer = null;
+        player.filmNoticeTimer = null;
+        player.introShownAt = 0;
+        player.introClipEnded = false;
+        player.handoffStarted = false;
+        player.filmBytesReady = false;
+        player.probeTimedOut = false;
+        player.adWaitSince = 0;
+        player.adWaitExpired = false;
+        restoreVideoVolume();
+        /* v15: the intro config comes from the boot cache, so the poster is on screen at 0 ms (no
+           'Загружаем видео…' over it) and the intro never waits for the network; a background refresh
+           keeps the cache current for the next Play. */
+        var cachedIntro = readIntroCache();
+        if (introEnabledForCard(cachedIntro, card)) {
+            showIntroPoster(cachedIntro.poster_url || cachedIntro.still_url, false);
+            setVeil(false, false, true);
+            player.introShownAt = new Date().getTime();
+            playerMessage('');
+        } else {
+            hideIntroPoster();
+            setVeil(true, false, true);
+            playerMessage(cachedIntro ? 'Загружаем видео…' : '');
+        }
         showBar();
 
         if (card.play.kind !== 'series' && card.play.kind !== 'tv') {
             beginBackgroundAds(id, card.play, null);
         }
 
-        var introReq = api.introConfig()['catch'](function () { return null; });
+        var introReq = cachedIntro ? null : refreshIntroConfig();
+        if (cachedIntro) refreshIntroConfig();
         resolveStream(card.play).then(function (stream) {
             if (id !== player.loadId) {
                 if (stream && stream.sessionId) api.stopPlayback(stream.sessionId)['catch'](function () {});
@@ -4185,7 +4612,11 @@
             if (player.waitingForStream) {
                 player.waitingForStream = false;
                 proceedAfterIntro(id);
+                return;
             }
+            /* v15: warm the film's first bytes while the intro is on screen (one XHR Range request). */
+            if (player.phase === 'intro' && !player.introDone) probeStreamFirstBytes(stream.url, id);
+            evaluateIntroHandoff(id);
         }, function (error) {
             if (id !== player.loadId) return;
             player.streamError = error || noStream();
@@ -4193,24 +4624,38 @@
             abortStreamError(player.streamError, id);
         });
 
-        introReq.then(function (intro) {
+        function runIntro(intro) {
             if (id !== player.loadId || player.streamError) return;
             player.introConfig = intro;
+            var enabled = introEnabledForCard(intro, card);
+            if (enabled && !player.introShownAt) {
+                showIntroPoster(intro.poster_url || intro.still_url, false);
+                setVeil(false, false, true);
+                player.introShownAt = new Date().getTime();
+                playerMessage('');
+            } else if (!enabled) {
+                hideIntroPoster();
+                setVeil(true, false, true);
+            }
             waitNativePlatform(function () {
                 if (id !== player.loadId || player.streamError) return;
-                if (introEnabledForCard(intro, card)) {
+                if (enabled) {
                     player.phase = 'intro';
                     renderTrackStatus();
                     playerMessage('');
                     player.introTimer = setTimeout(function () {
-                        if (id === player.loadId && player.phase === 'intro') finishIntroStage(id);
+                        if (id === player.loadId && player.phase === 'intro') onIntroClipEnded('limit');
                     }, 28000);
                     openWithEngine(intro.video_url, id);
+                    evaluateIntroHandoff(id);
                     return;
                 }
                 finishIntroStage(id);
             });
-        });
+        }
+
+        if (cachedIntro) runIntro(cachedIntro);
+        else introReq.then(runIntro, function () { runIntro(null); });
     }
 
     function openPlayer(card) {
@@ -4227,8 +4672,19 @@
 
     function closePlayer() {
         player.loadId += 1;
+        /* v15: «Назад» during the intro aborts the film first-bytes probe and every hand-over timer. */
+        cancelFilmProbe();
+        clearTimeout(player.handoffTimer);
+        clearTimeout(player.veilTimer);
+        clearTimeout(player.filmNoticeTimer);
+        player.handoffTimer = null;
+        player.veilTimer = null;
+        player.filmNoticeTimer = null;
         endSession();
         detachVideo(true);
+        hideIntroPoster();
+        setVeil(false, false, true);
+        restoreVideoVolume();
         clearTimeout(player.barTimer);
         clearStall();
         player.card = null;
@@ -4851,7 +5307,7 @@
         video.addEventListener('timeupdate', updateProgress, false);
         video.addEventListener('play', function () { updateProgress(); showBar(); }, false);
         video.addEventListener('pause', function () { updateProgress(); showBar(); }, false);
-        video.addEventListener('waiting', function () { if (player.ready) { playerMessage('Буферизация…'); if (!player.stallTimer && !player.problem) armStall(STALL_MS + 5000); } }, false);
+        video.addEventListener('waiting', function () { if (player.ready) { bufferNotice('Буферизация…'); if (!player.stallTimer && !player.problem) armStall(STALL_MS + 5000); } }, false);
         video.addEventListener('playing', function () { reportTvDiag('v_play', player.phase); markFrame(); }, false);
         video.addEventListener('canplay', function () { if (player.card && video.getAttribute('src')) markFrame(); }, false);
         video.addEventListener('loadeddata', function () { if (player.card && video.getAttribute('src')) markFrame(); }, false);
@@ -4911,6 +5367,9 @@
         window.addEventListener('beforeunload', endSession, false);
         document.addEventListener('visibilitychange', onVisibilityChange, false);
         document.addEventListener('webkitvisibilitychange', onVisibilityChange, false);
+        /* v15: the intro config / poster / still are prefetched at boot, so Play paints the poster at 0 ms. */
+        readIntroCache();
+        refreshIntroConfig();
         loadHome();
     }
 
@@ -4925,6 +5384,12 @@
         document.removeEventListener('mousewheel', onPointerWheel, false);
         document.removeEventListener('wheel', onPointerWheel, false);
         clearAdTimers();
+        cancelFilmProbe();
+        clearTimeout(player.handoffTimer);
+        clearTimeout(player.veilTimer);
+        clearTimeout(player.filmNoticeTimer);
+        clearTimeout(player.posterTimer);
+        clearInterval(player.volumeTimer);
         clearTimeout(player.stallTimer);
         engineDetach();
         window.removeEventListener('resize', fitScreen, false);

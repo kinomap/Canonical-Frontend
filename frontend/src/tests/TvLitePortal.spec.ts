@@ -90,10 +90,94 @@ async function bootLite() {
   await flush()
 }
 
+const ORSAY_UA = 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV+2014; Maple2012) AppleWebKit/537.42+'
+type AvHook = { fn: ((t: number, d?: unknown) => void) | null }
+type LitePlayerV15 = { phase: string; filmBytesReady: boolean; probeTimedOut: boolean; introShownAt: number }
+const litePlayer = () => lite().player as unknown as LitePlayerV15
+
+/** Orsay (2014, Maple) with webapis.avplay: every stage gets its own AVPlay instance / event hook. */
+function installOrsayAvplay() {
+  const opens: string[] = []
+  const hooks: AvHook[] = []
+  const origUa = navigator.userAgent
+  Object.defineProperty(navigator, 'userAgent', { configurable: true, value: ORSAY_UA })
+    ; (window as unknown as { webapis?: unknown }).webapis = {
+      avplay: {
+        getAVPlay: (ok: (av: unknown) => void) => {
+          const slot: AvHook = { fn: null }
+          hooks.push(slot)
+          ok({
+            status: '4',
+            init: () => {},
+            setPlayerPluginObject: () => null,
+            set onEvent(fn: (t: number, d?: unknown) => void) { slot.fn = fn },
+            open: (url: string) => { opens.push(url); return true },
+            play: () => {},
+            stop: () => {},
+            destroy: () => {},
+            setDisplayArea: () => true,
+            getVideoResolution: () => '1920|1080',
+            setCropArea: () => {},
+            getDuration: () => 10000,
+          })
+        },
+      },
+    }
+  return {
+    opens,
+    hooks,
+    restore() {
+      delete (window as unknown as { webapis?: unknown }).webapis
+      Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    },
+  }
+}
+
+/** Answers the v15 film first-bytes probe (GET with Range) on top of FakeXhr and records aborts. */
+function withStreamProbe(onProbe: (url: string, reply: (status: number) => void) => void) {
+  const Prev = window.XMLHttpRequest
+  const aborts: string[] = []
+  window.XMLHttpRequest = class extends (Prev as unknown as typeof FakeXhr) {
+    private probeUrl = ''
+    private probeRange = ''
+    private probeAborted = false
+    open(method: string, url: string) { this.probeUrl = url; super.open(method, url) }
+    setRequestHeader(name: string, value: string) {
+      if (name === 'Range') this.probeRange = value
+      super.setRequestHeader(name, value)
+    }
+    abort() { this.probeAborted = true; aborts.push(this.probeUrl) }
+    send(body: string | null) {
+      if (!this.probeRange) { super.send(body); return }
+      sent.push({ method: 'GET', url: this.probeUrl, body, headers: { Range: this.probeRange } })
+      onProbe(this.probeUrl, (status: number) => {
+        if (this.probeAborted) return
+        this.status = status
+        this.readyState = 3
+        this.onreadystatechange?.()
+        if (this.probeAborted) return
+        this.readyState = 4
+        this.onreadystatechange?.()
+      })
+    }
+  } as unknown as typeof XMLHttpRequest
+  return { aborts, restore: () => { window.XMLHttpRequest = Prev } }
+}
+
+const INTRO_V15 = {
+  enabled: true,
+  targets: { browser_torrents: true },
+  video_url: '/media/cinema-intro/clip.mp4',
+  poster_url: '/media/cinema-intro/poster.jpg',
+  still_url: '/media/cinema-intro/still.jpg',
+}
+
 describe('Lite TV portal behaviour', () => {
   const originalXhr = window.XMLHttpRequest
   beforeEach(() => {
     sent = []
+    // v15: /cinema/intro is cached per device (localStorage); every test boots a fresh "device".
+    window.localStorage.removeItem('kinosota.tv.cinema-intro.v1')
     routes = [
       { method: 'GET', path: '/torrents/catalog?kind=movie&page=1&collection=spotlight', body: SPOTLIGHT },
       { method: 'GET', path: '/movies/home', body: HOME },
@@ -503,8 +587,9 @@ describe('Lite TV portal behaviour', () => {
     routes.push({ method: 'POST', path: '/ads/events/del-1', body: { ok: true } })
     routes.push({ method: 'GET', path: '/cinema/intro', body: { enabled: true, targets: { browser_torrents: true }, video_url: 'https://watch.scenrix.com/media/cinema-intro/clip.mp4' } })
     await bootLite()
+    vi.useFakeTimers()
     press('', 29443) // play spotlight torrent
-    await flush()
+    await vi.advanceTimersByTimeAsync(50)
     const prep = sent.find(item => item.url === '/api/v1/ads/prepare')
     expect(JSON.parse(prep!.body!)).toEqual({ plan_token: 'plan-1', cue_id: 'pre1', tv: true })
     const video = document.getElementById('lite-video') as HTMLVideoElement
@@ -512,14 +597,19 @@ describe('Lite TV portal behaviour', () => {
     expect(video.getAttribute('src')).toBe('http://watch.scenrix.com/media/cinema-intro/clip.mp4')
     expect(sent.some(item => item.url === '/api/v1/ads/events/del-1')).toBe(false)
     video.dispatchEvent(new Event('ended'))
-    await flush()
+    await vi.advanceTimersByTimeAsync(50)
+    // v15: a clip shorter than MIN_INTRO_MS (5 s) never lets the pre-roll in early
+    expect(video.getAttribute('src')).not.toBe('/tv-ad/tg-node-1/ad-1.mp4')
+    expect((lite().player as unknown as { phase: string }).phase).toBe('intro')
+    await vi.advanceTimersByTimeAsync(5000 + 900)
     // 2) Pre-roll ad plays after intro; impression fires when ad starts playing
     expect(video.getAttribute('src')).toBe('/tv-ad/tg-node-1/ad-1.mp4')
     video.dispatchEvent(new Event('playing'))
-    await flush()
+    await vi.advanceTimersByTimeAsync(50)
     expect(sent.some(item => item.url === '/api/v1/ads/events/del-1' && item.body?.includes('"impression"'))).toBe(true)
     video.dispatchEvent(new Event('ended'))
-    await flush()
+    // HTML5 mode: 900 ms dissolve (DISSOLVE_MS) covers the hand-over to the film
+    await vi.advanceTimersByTimeAsync(900 + 50)
     // 3) Film plays straight after pre-roll (never a second intro)
     expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
   })
@@ -1285,21 +1375,25 @@ describe('Lite TV portal behaviour', () => {
       }
     } as unknown as typeof XMLHttpRequest
     try {
+      vi.useFakeTimers()
       press('', 29443)
-      await flush()
+      await vi.advanceTimersByTimeAsync(50)
       const video = document.getElementById('lite-video') as HTMLVideoElement
       // Intro plays while playback-ticket is still pending
       expect(video.getAttribute('src')).toBe('/media/cinema-intro/clip.mp4')
       video.dispatchEvent(new Event('ended'))
-      await flush()
+      await vi.advanceTimersByTimeAsync(50)
+      // v15: inside MIN_INTRO_MS the intro rests silently on its final picture
+      expect(document.getElementById('lite-player-message')?.textContent || '').toBe('')
+      await vi.advanceTimersByTimeAsync(5000)
       // Still waiting for slow stream: holds calmly on "Подготовка потока…" without error
       expect(document.getElementById('lite-player-message')?.textContent).toContain('Подготовка потока')
       releaseTicket()
-      await flush()
+      await vi.advanceTimersByTimeAsync(1000)
       // Now Pre-roll Ad -> Film
       expect(video.getAttribute('src')).toBe('/tv-ad/n1/slow.mp4')
       video.dispatchEvent(new Event('ended'))
-      await flush()
+      await vi.advanceTimersByTimeAsync(1000)
       expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
     } finally {
       window.XMLHttpRequest = PrevXhr
@@ -1357,6 +1451,185 @@ describe('Lite TV portal behaviour', () => {
     } finally {
       delete (window as unknown as { webapis?: unknown }).webapis
       Object.defineProperty(navigator, 'userAgent', { configurable: true, value: origUa })
+    }
+  })
+
+  it('v15: Orsay paints the intro poster at 0 ms from the boot cache and never shows buffering text in intro / pre-roll', async () => {
+    routes.push({ method: 'GET', path: '/cinema/intro', body: INTRO_V15 })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-v15', media_url: '/tv-ad/n1/v15.mp4', duration_sec: 10, skip_after: null } } })
+    routes.push({ method: 'POST', path: '/ads/events/del-v15', body: { ok: true } })
+    const orsay = installOrsayAvplay()
+    const message = () => document.getElementById('lite-player-message')?.textContent || ''
+    try {
+      await bootLite()
+      // Boot prefetch: the config (and poster / still) are known before the first Play
+      expect(sent.some(item => item.url === '/api/v1/cinema/intro')).toBe(true)
+      expect(JSON.parse(window.localStorage.getItem('kinosota.tv.cinema-intro.v1') || '{}').cfg?.poster_url).toBe('/media/cinema-intro/poster.jpg')
+      vi.useFakeTimers()
+      press('', 29443)
+      // 0 ms: poster painted synchronously, no 'Загружаем видео…' over it
+      const poster = document.getElementById('lite-intro-poster') as HTMLImageElement
+      expect(poster.classList.contains('is-hidden')).toBe(false)
+      expect(poster.getAttribute('src')).toBe('/media/cinema-intro/poster.jpg')
+      expect(message()).toBe('')
+      await vi.advanceTimersByTimeAsync(100)
+      expect(orsay.opens[0]).toContain('/media/cinema-intro/clip.mp4')
+      const intro = orsay.hooks[0].fn!
+      intro(9)
+      intro(11)
+      intro(13, 40)
+      intro(5)
+      await vi.advanceTimersByTimeAsync(10)
+      expect(message()).not.toContain('Буферизация')
+      expect(message()).not.toContain('Медленная сеть')
+      intro(7) // RENDERING_START: the poster dissolves into the running clip
+      await vi.advanceTimersByTimeAsync(10)
+      expect(poster.classList.contains('is-faded')).toBe(true)
+      // 5 s gate -> 400 ms veil -> clean release (600 ms) -> pre-roll opens under the veil
+      await vi.advanceTimersByTimeAsync(4900 + 400 + 600 + 200)
+      expect(orsay.opens).toHaveLength(2)
+      expect(orsay.opens[1]).toContain('/tv-ad/n1/v15.mp4')
+      const veil = document.getElementById('lite-transition-veil') as HTMLElement
+      expect(veil.classList.contains('is-on')).toBe(true)
+      const ad = orsay.hooks[1].fn!
+      ad(9)
+      ad(11)
+      ad(13, 55)
+      ad(5)
+      await vi.advanceTimersByTimeAsync(10)
+      expect(message()).toBe('')
+      ad(7) // the pre-roll's first frame lifts the veil
+      await vi.advanceTimersByTimeAsync(10)
+      expect(veil.classList.contains('is-on')).toBe(false)
+      press('', 88)
+    } finally {
+      vi.useRealTimers()
+      orsay.restore()
+    }
+  })
+
+  it('v15: a fast stream never cuts the intro before MIN_INTRO_MS (5 s), then pre-roll -> film', async () => {
+    routes.push({ method: 'GET', path: '/cinema/intro', body: INTRO_V15 })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-fast', media_url: '/tv-ad/n1/fast.mp4', duration_sec: 10, skip_after: null } } })
+    routes.push({ method: 'POST', path: '/ads/events/del-fast', body: { ok: true } })
+    await bootLite()
+    const probe = withStreamProbe((_url, reply) => { setTimeout(() => reply(206), 30) })
+    try {
+      vi.useFakeTimers()
+      press('', 29443)
+      await vi.advanceTimersByTimeAsync(200)
+      const video = document.getElementById('lite-video') as HTMLVideoElement
+      expect(video.getAttribute('src')).toBe('/media/cinema-intro/clip.mp4')
+      // Stream, first bytes (Range probe, no second decoder) and pre-roll are ready within 200 ms ...
+      expect(sent.some(item => item.url === '/stream/t.m3u8' && item.headers?.Range === 'bytes=0-65535')).toBe(true)
+      expect(litePlayer().filmBytesReady).toBe(true)
+      // ... yet the intro keeps the screen until 5 s
+      await vi.advanceTimersByTimeAsync(4600)
+      expect(video.getAttribute('src')).toBe('/media/cinema-intro/clip.mp4')
+      expect(litePlayer().phase).toBe('intro')
+      await vi.advanceTimersByTimeAsync(400 + 900 + 100)
+      expect(video.getAttribute('src')).toBe('/tv-ad/n1/fast.mp4')
+      video.dispatchEvent(new Event('playing'))
+      await vi.advanceTimersByTimeAsync(50)
+      video.dispatchEvent(new Event('ended'))
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(video.getAttribute('src')).toBe('/stream/t.m3u8')
+      press('', 88)
+    } finally {
+      probe.restore()
+    }
+  })
+
+  it('v15: holds the intro on its still frame until a slow torrent delivers the first bytes (8-10 s)', async () => {
+    routes.push({ method: 'GET', path: '/cinema/intro', body: INTRO_V15 })
+    routes.push({ method: 'GET', path: '/ads/plan/torrent/movie/55?surface=torrent_browser', body: { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' } })
+    routes.push({ method: 'POST', path: '/ads/prepare', body: { ad: { delivery_id: 'del-cold', media_url: '/tv-ad/n1/cold.mp4', duration_sec: 10, skip_after: null } } })
+    routes.push({ method: 'POST', path: '/ads/events/del-cold', body: { ok: true } })
+    await bootLite()
+    let reply: ((status: number) => void) | null = null
+    const probe = withStreamProbe((_url, answer) => { reply = answer })
+    const message = () => document.getElementById('lite-player-message')?.textContent || ''
+    try {
+      vi.useFakeTimers()
+      press('', 29443)
+      await vi.advanceTimersByTimeAsync(200)
+      const video = document.getElementById('lite-video') as HTMLVideoElement
+      const poster = document.getElementById('lite-intro-poster') as HTMLImageElement
+      expect(video.getAttribute('src')).toBe('/media/cinema-intro/clip.mp4')
+      video.dispatchEvent(new Event('playing'))
+      await vi.advanceTimersByTimeAsync(2800)
+      // The clip ends naturally at ~3 s: Ambient Hold on still_url with the soft vignette, never black
+      video.dispatchEvent(new Event('ended'))
+      await vi.advanceTimersByTimeAsync(50)
+      expect(poster.classList.contains('is-hidden')).toBe(false)
+      expect(poster.classList.contains('is-faded')).toBe(false)
+      expect(poster.getAttribute('src')).toBe('/media/cinema-intro/still.jpg')
+      expect(document.getElementById('lite-hold-vignette')?.classList.contains('is-hidden')).toBe(false)
+      // The torrent worker needs ~9 s for the first piece: the hold lasts past MIN_INTRO_MS
+      await vi.advanceTimersByTimeAsync(6000)
+      expect(litePlayer().phase).toBe('intro')
+      expect(video.getAttribute('src')).not.toBe('/tv-ad/n1/cold.mp4')
+      expect(message()).not.toContain('Буферизация')
+      reply!(206)
+      await vi.advanceTimersByTimeAsync(900 + 100)
+      expect(video.getAttribute('src')).toBe('/tv-ad/n1/cold.mp4')
+      expect(poster.classList.contains('is-hidden')).toBe(true)
+      expect(message()).toBe('')
+      press('', 88)
+    } finally {
+      probe.restore()
+    }
+  })
+
+  it('v15: Orsay picks the best <= 1080p torrent by default even when a 2160p release is listed first', async () => {
+    routes.push({ method: 'GET', path: '/torrents/detail/movie/55', body: { year: 2025, rating: 7.9, overview: 'Описание' } })
+    routes.push({
+      method: 'GET', path: '/torrents/sources/movie/55', body: {
+        selected_source_id: 'uhd', sources: [
+          { source_id: 'uhd', quality: '2160p', source_type: 'WEB-DL', seeders: 900, size_bytes: 32212254720, languages: ['ru'], state: 'ready', health: 'ok' },
+          { source_id: 'fhd', quality: '1080p', source_type: 'WEB-DL', seeders: 500, size_bytes: 8053063680, languages: ['ru'], state: 'ready', health: 'ok' },
+        ]
+      }
+    })
+    const orsay = installOrsayAvplay()
+    try {
+      await bootLite()
+      press('ArrowRight', 39) // «О фильме» next to «Смотреть»
+      press('Enter', 13)
+      await flush()
+      expect(lite().state.mode).toBe('details')
+      expect(document.getElementById('lite-details-selected')?.textContent).toContain('✓ Выбрано: 1080p WEB-DL')
+      press('Enter', 13) // ▶ Смотреть
+      await flush()
+      const ticket = sent.find(item => item.url === '/api/v1/torrents/playback-ticket')
+      expect(JSON.parse(ticket!.body!).source_id).toBe('fhd')
+      press('', 88)
+    } finally {
+      orsay.restore()
+    }
+  })
+
+  it('v15: «Назад» before the intro ends aborts the film first-bytes probe', async () => {
+    routes.push({ method: 'GET', path: '/cinema/intro', body: INTRO_V15 })
+    await bootLite()
+    const probe = withStreamProbe(() => { /* the torrent never answers */ })
+    try {
+      vi.useFakeTimers()
+      press('', 29443)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(sent.some(item => item.url === '/stream/t.m3u8' && item.headers?.Range === 'bytes=0-65535')).toBe(true)
+      expect(probe.aborts).toHaveLength(0)
+      press('', 88)
+      await vi.advanceTimersByTimeAsync(50)
+      expect(probe.aborts).toEqual(['/stream/t.m3u8'])
+      expect(lite().state.mode).not.toBe('player')
+      // Nothing resumes behind the closed player
+      await vi.advanceTimersByTimeAsync(15000)
+      expect((document.getElementById('lite-video') as HTMLVideoElement).getAttribute('src') || '').not.toContain('/stream/t.m3u8')
+    } finally {
+      probe.restore()
     }
   })
 

@@ -1209,6 +1209,70 @@ body.lite-native-plane .lite-video {
     z-index: 5;
 }
 
+/* v15 cinema pipeline (Intro >= 5 s -> Pre-roll -> Film). The intro poster (poster_url, then still_url for
+   the Ambient Hold) and the stage hand-over veil sit above the video plane (native host: z-index 1) and
+   below the bar / message / ad overlays. Opacity-only transitions: cheap on Mali-400 (Orsay H-Series). */
+.lite-intro-poster {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 720px;
+    z-index: 2;
+    object-fit: cover;
+    background: #070b0e;
+    opacity: 1;
+    -webkit-transition: opacity 0.4s ease-out;
+    transition: opacity 0.4s ease-out;
+}
+
+.lite-intro-poster.is-faded {
+    opacity: 0;
+}
+
+/* Soft vignette over the still frame while the film's first bytes arrive (static, no transition). */
+.lite-hold-vignette {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 720px;
+    z-index: 2;
+    background: -webkit-radial-gradient(center, ellipse cover, rgba(7, 11, 14, 0) 55%, rgba(7, 11, 14, 0.78) 100%);
+    background: radial-gradient(ellipse at center, rgba(7, 11, 14, 0) 55%, rgba(7, 11, 14, 0.78) 100%);
+    pointer-events: none;
+}
+
+/* #070b0e veil: 0 -> 1 before a stage is stopped, 1 -> 0 on the next stage's first frame (7). */
+.lite-transition-veil {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 720px;
+    z-index: 3;
+    background: #070b0e;
+    opacity: 0;
+    pointer-events: none;
+    -webkit-transition: opacity 0.4s ease-out;
+    transition: opacity 0.4s ease-out;
+}
+
+.lite-transition-veil.is-on {
+    opacity: 1;
+}
+
+/* HTML5 mode: 900 ms dissolve (DISSOLVE_MS) together with the volume fade. */
+.lite-transition-veil.is-dissolve {
+    -webkit-transition-duration: 0.9s;
+    transition-duration: 0.9s;
+}
+
+.lite-transition-veil.is-instant {
+    -webkit-transition: none;
+    transition: none;
+}
+
 /* On-screen diagnostics console (?debug=1, Info, 3x Red / Blue): plain blocks only, safe for Maple WebKit. */
 .lite-debug {
     position: absolute;
