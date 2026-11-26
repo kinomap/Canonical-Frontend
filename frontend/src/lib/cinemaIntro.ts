@@ -5,14 +5,13 @@
  * GainNode when the page may run an AudioContext (also the only way on iOS,
  * where media volume is read-only) and an HTML5 volume ramp otherwise. Both use
  * equal-power curves, so the intro and the film never dip or clip together.
+ *
+ * ZERO MEDIA ON VPS1/VPS2: the clip is never bundled with the SPA nor served by this site. The
+ * Media Nodes serve it (default and admin-uploaded) as https://<node>/intro/<kind>/<file>?token=,
+ * and GET /api/v1/cinema/intro names those URLs. No usable answer = no intro, never a VPS URL.
  */
 import { ref } from 'vue'
 
-export const INTRO_POSTER = '/cinema/intro/kinosota-intro-v1.jpg'
-export const INTRO_SOURCES = [
-  { src: '/cinema/intro/kinosota-intro-v1.webm', type: 'video/webm; codecs="vp9, opus"' },
-  { src: '/cinema/intro/kinosota-intro-v1.mp4', type: 'video/mp4; codecs="avc1.640028, mp4a.40.2"' },
-] as const
 /** Cross-dissolve from the intro to the film (or to the opened desktop player). */
 export const DISSOLVE_MS = 900
 /** Film progress the dissolve waits for: `playing` alone can come before the first presented frame. */
@@ -33,19 +32,23 @@ export function introRemaining(startedAt: number, now = introClock.now()): numbe
 
 /**
  * Dynamic intro (admin «Видео и Реклама» → «Интро престарта»): GET /api/v1/cinema/intro says
- * whether the intro is on and which clip is active. Fail-safe: any error keeps the bundled
- * default clip. The last answer is kept in sessionStorage only as the instant fallback value:
- * every load revalidates with the server (Cache-Control: no-cache + ETag, a cheap 304 while
- * unchanged), so an admin checkbox change applies to the very next start, never 60 s later.
+ * whether the intro is on and which node serves the active clip. Fail-safe: any error keeps the
+ * last good answer, else no intro at all (the film is never blocked). The last answer is kept in
+ * sessionStorage only as the instant fallback value: every load revalidates with the server
+ * (Cache-Control: no-cache + ETag, a cheap 304 while unchanged), so an admin checkbox change
+ * applies to the very next start, never 60 s later.
  */
 /** Where the intro plays (admin «Интро престарта» checkboxes). The intro is a brand bumper, not an ad. */
-export const INTRO_TARGETS = ['browser_telegram', 'player_telegram', 'browser_torrents', 'player_torrents'] as const
+export const INTRO_TARGETS = ['browser_telegram', 'player_telegram', 'browser_torrents', 'player_torrents', 'tv_telegram', 'tv_torrent'] as const
 export type IntroTarget = typeof INTRO_TARGETS[number]
 export type IntroTargets = Record<IntroTarget, boolean>
+/** Smart TV targets saved before they existed follow their browser counterpart (same rule as the backend). */
+export const TV_TARGET_PARENTS: Readonly<Partial<Record<IntroTarget, IntroTarget>>> = Object.freeze({ tv_telegram: 'browser_telegram', tv_torrent: 'browser_torrents' })
 export interface IntroConfig {
   enabled: boolean
   targets: IntroTargets
   version: string
+  /** https://<node>/intro/<kind>/<file>?token=… ('' while no node serves an intro). */
   video_url: string
   webm_url: string | null
   still_url: string
@@ -55,47 +58,63 @@ export interface IntroConfig {
 }
 export const allTargets = (on: boolean): IntroTargets =>
   Object.fromEntries(INTRO_TARGETS.map((key) => [key, on])) as IntroTargets
-/** Old backends (or caches) without `targets`: every target follows `enabled`. */
+/** Old backends (or caches) without `targets`: every target follows `enabled`; missing TV targets follow their browser parent. */
 export function normalizeTargets(raw: unknown, fallback: boolean): IntroTargets {
   const data = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
-  return Object.fromEntries(INTRO_TARGETS.map((key) => [key, typeof data[key] === 'boolean' ? data[key] : fallback])) as IntroTargets
+  const own = (key: IntroTarget): boolean | undefined => (typeof data[key] === 'boolean' ? data[key] as boolean : undefined)
+  return Object.fromEntries(INTRO_TARGETS.map((key) => {
+    const parent = TV_TARGET_PARENTS[key]
+    return [key, own(key) ?? (parent ? own(parent) : undefined) ?? fallback]
+  })) as IntroTargets
 }
-/** Should the intro play on this surface? */
-export function introEnabledFor(config: Pick<IntroConfig, 'enabled'> & { targets?: Partial<IntroTargets> }, target: IntroTarget): boolean {
+/** Should the intro play on this surface? Never without a node URL to play it from. */
+export function introEnabledFor(config: Pick<IntroConfig, 'enabled'> & { targets?: Partial<IntroTargets>; video_url?: string }, target: IntroTarget): boolean {
+  if (typeof config.video_url === 'string' && !config.video_url) return false
   const value = config.targets?.[target]
   return typeof value === 'boolean' ? value : !!config.enabled
 }
 export type IntroSource = { src: string; type: string }
 export const INTRO_ENDPOINT = '/api/v1/cinema/intro'
-export const INTRO_CACHE_KEY = 'kinosota.cinema-intro.v1'
+/** v2: v1 answers held same-origin /cinema/intro/ and /media/cinema-intro/ paths, which no longer exist. */
+export const INTRO_CACHE_KEY = 'kinosota.cinema-intro.v2'
 /** 0: a stored answer is never trusted without asking the server (it only bridges network errors). */
 export const INTRO_CACHE_TTL_MS = 0
-export const DEFAULT_INTRO: IntroConfig = Object.freeze({
-  enabled: true,
-  targets: Object.freeze(allTargets(true)),
-  version: 'default-v1',
-  video_url: INTRO_SOURCES[1].src,
-  webm_url: INTRO_SOURCES[0].src,
-  still_url: INTRO_POSTER,
-  poster_url: INTRO_POSTER,
-  duration_ms: 14933,
+/** Length of the bundled node default clip (kinosota-intro-v1), used when the server omits it. */
+export const DEFAULT_INTRO_DURATION_MS = 14933
+/** Until the server names a node that serves the intro there is no intro: never a URL on this site. */
+export const NO_INTRO: IntroConfig = Object.freeze({
+  enabled: false,
+  targets: Object.freeze(allTargets(false)),
+  version: 'none',
+  video_url: '',
+  webm_url: null,
+  still_url: '',
+  poster_url: '',
+  duration_ms: DEFAULT_INTRO_DURATION_MS,
   is_custom: false,
 })
-const SAFE_PREFIXES = ['/cinema/intro/', '/media/cinema-intro/']
+/** The node intro routes (kinomap/node media-nginx.conf): /intro/<default|custom>/<version><suffix>. */
+const NODE_INTRO_PATH = /^\/intro\/(?:default|custom)\/[0-9A-Za-z]{1,64}(?:\.mp4|\.webm|\.jpg|-still\.jpg|-poster\.jpg)$/
+const TOKEN = /^[A-Za-z0-9._-]{1,4096}$/
 
-/** Only our own intro paths are accepted; absolute URLs are reduced to their path on this site. */
-export function safeIntroPath(value: unknown): string | null {
-  if (typeof value !== 'string' || !value) return null
-  let path = value
-  if (!value.startsWith('/')) {
-    try {
-      const url = new URL(value)
-      if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
-      path = url.pathname
-    } catch { return null }
-  }
-  if (path.startsWith('//') || path.includes('..') || !SAFE_PREFIXES.some((prefix) => path.startsWith(prefix))) return null
-  return /^[A-Za-z0-9/._-]+$/.test(path) ? path : null
+/**
+ * Only a Media Node intro URL is accepted: https, a real host other than this site (VPS 2 never
+ * serves media), the node intro route and its signed `token`. Paths on this site are refused.
+ */
+export function safeIntroUrl(value: unknown, pageHost: string | null = currentHost()): string | null {
+  if (typeof value !== 'string' || !value || !value.startsWith('https://')) return null
+  let url: URL
+  try { url = new URL(value) } catch { return null }
+  if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.hash) return null
+  if (pageHost && url.host.toLowerCase() === pageHost.toLowerCase()) return null
+  if (!NODE_INTRO_PATH.test(url.pathname)) return null
+  const token = url.searchParams.get('token')
+  if (!token || !TOKEN.test(token) || [...url.searchParams.keys()].some((key) => key !== 'token')) return null
+  return url.href
+}
+
+function currentHost(): string | null {
+  try { return typeof location === 'undefined' ? null : location.host || null } catch { return null }
 }
 
 export function sanitizeIntroConfig(raw: unknown): IntroConfig | null {
@@ -104,18 +123,19 @@ export function sanitizeIntroConfig(raw: unknown): IntroConfig | null {
   if (typeof data.enabled !== 'boolean') return null
   const targets = normalizeTargets(data.targets, data.enabled)
   const playsSomewhere = Object.values(targets).some(Boolean)
-  const video = safeIntroPath(data.video_url)
-  const still = safeIntroPath(data.still_url)
-  if ((data.enabled || playsSomewhere) && (!video || !still)) return null
+  if (!data.enabled && !playsSomewhere) return { ...NO_INTRO, targets, version: typeof data.version === 'string' ? data.version.slice(0, 64) : NO_INTRO.version }
+  const video = safeIntroUrl(data.video_url)
+  const still = safeIntroUrl(data.still_url)
+  if (!video || !still) return null
   return {
     enabled: playsSomewhere,
     targets,
     version: typeof data.version === 'string' ? data.version.slice(0, 64) : 'unknown',
-    video_url: video ?? DEFAULT_INTRO.video_url,
-    webm_url: safeIntroPath(data.webm_url),
-    still_url: still ?? DEFAULT_INTRO.still_url,
-    poster_url: safeIntroPath(data.poster_url) ?? still ?? DEFAULT_INTRO.poster_url,
-    duration_ms: typeof data.duration_ms === 'number' && data.duration_ms > 0 ? data.duration_ms : DEFAULT_INTRO.duration_ms,
+    video_url: video,
+    webm_url: safeIntroUrl(data.webm_url),
+    still_url: still,
+    poster_url: safeIntroUrl(data.poster_url) ?? still,
+    duration_ms: typeof data.duration_ms === 'number' && data.duration_ms > 0 ? data.duration_ms : DEFAULT_INTRO_DURATION_MS,
     is_custom: data.is_custom === true,
   }
 }
@@ -135,8 +155,8 @@ function readCached(now = Date.now()): { config: IntroConfig; fresh: boolean } |
   } catch { return null }
 }
 
-/** The active intro, available synchronously (cached answer, or the bundled default). */
-export const introConfig = ref<IntroConfig>(readCached()?.config ?? { ...DEFAULT_INTRO })
+/** The active intro, available synchronously (cached answer, or no intro until the server answers). */
+export const introConfig = ref<IntroConfig>(readCached()?.config ?? { ...NO_INTRO })
 let inflight: Promise<IntroConfig> | null = null
 
 export function loadIntroConfig(options: { force?: boolean; fetcher?: typeof fetch; timeoutMs?: number } = {}): Promise<IntroConfig> {
@@ -160,8 +180,8 @@ export function loadIntroConfig(options: { force?: boolean; fetcher?: typeof fet
       try { storage()?.setItem(INTRO_CACHE_KEY, JSON.stringify({ at: Date.now(), config })) } catch { /* private mode */ }
       return config
     } catch {
-      // Network/server problem: keep the last known answer, else the bundled default. Never block the film.
-      introConfig.value = cached?.config ?? introConfig.value ?? { ...DEFAULT_INTRO }
+      // Network/server problem: keep the last known answer, else no intro. Never block the film.
+      introConfig.value = cached?.config ?? introConfig.value ?? { ...NO_INTRO }
       return introConfig.value
     } finally {
       if (timer !== undefined) clearTimeout(timer)
@@ -172,7 +192,7 @@ export function loadIntroConfig(options: { force?: boolean; fetcher?: typeof fet
 }
 
 export function introSources(config: IntroConfig): IntroSource[] {
-  if (!config.is_custom) return INTRO_SOURCES.map((source) => ({ ...source }))
+  if (!config.video_url) return []
   const sources: IntroSource[] = []
   if (config.webm_url) sources.push({ src: config.webm_url, type: 'video/webm' })
   sources.push({ src: config.video_url, type: 'video/mp4' })
@@ -183,7 +203,7 @@ export function introSources(config: IntroConfig): IntroSource[] {
 export function resetIntroConfigForTests() {
   inflight = null
   try { storage()?.removeItem(INTRO_CACHE_KEY) } catch { /* ignore */ }
-  introConfig.value = { ...DEFAULT_INTRO }
+  introConfig.value = { ...NO_INTRO }
 }
 
 export type IntroStart = 'sound' | 'muted' | 'blocked'

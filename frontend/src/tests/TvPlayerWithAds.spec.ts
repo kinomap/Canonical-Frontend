@@ -143,10 +143,10 @@ describe('TV player: KINOSOTA intro → pre-roll → film', () => {
 
   it('starts the KINOSOTA intro first while fetching the ad plan and stream in parallel', async () => {
     await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
-    expect(planCalls()).toEqual(['/ads/plan/movie/m1?surface=telegram_browser'])
+    expect(planCalls()).toEqual(['/ads/plan/movie/m1?surface=tv_telegram'])
     expect(introLayer().exists()).toBe(true)
     const stub = wrapper!.get('[data-testid="cinema-intro-stub"]')
-    expect(stub.attributes('data-target')).toBe('browser_telegram')
+    expect(stub.attributes('data-target')).toBe('tv_telegram')
     expect(stub.attributes('data-active')).toBe('true')
     // Pre-roll is warming silently while intro plays, not active on screen yet
     expect(wrapper!.get('[data-testid="tv-ad-container"]').classes()).not.toContain('visible')
@@ -176,12 +176,12 @@ describe('TV player: KINOSOTA intro → pre-roll → film', () => {
     expect(play.mock.contexts).toContain(film().element)
   })
 
-  it('torrent episode: plan by kind / TMDB id / season / episode on torrent_browser; the chosen source goes to the ticket', async () => {
+  it('torrent episode: plan by kind / TMDB id / season / episode on tv_torrent; the chosen source goes to the ticket', async () => {
     planWith(EMPTY)
     await mountPlayer({ src: 'torrent', kind: 'tv', id: '1399', season: '1', episode: '2', source: 'src-4k' })
-    expect(planCalls()).toEqual(['/ads/plan/torrent/tv/1399?surface=torrent_browser&season=1&episode=2'])
+    expect(planCalls()).toEqual(['/ads/plan/torrent/tv/1399?surface=tv_torrent&season=1&episode=2'])
     expect(api.playbackTicket).toHaveBeenCalledWith('tv', 1399, { season: 1, episode: 2, source_id: 'src-4k' })
-    expect(wrapper!.get('[data-testid="cinema-intro-stub"]').attributes('data-target')).toBe('browser_torrents')
+    expect(wrapper!.get('[data-testid="cinema-intro-stub"]').attributes('data-target')).toBe('tv_torrent')
     await finishIntro()
     expect(film().attributes('src')).toBe('https://stream.example/1399.mp4')
   })

@@ -116,9 +116,9 @@ let introFallbackTimer: ReturnType<typeof setTimeout> | undefined
 let introStartedAt = introClock.now()
 let introHoldTimer: ReturnType<typeof setTimeout> | undefined
 
-const adSurface = computed(() => (target.value?.src === 'torrent' ? 'torrent_browser' : 'telegram_browser'))
-/** The TV plays in the browser: the admin «Интро престарта» browser targets apply to it. */
-const introTarget = computed<IntroTarget>(() => (target.value?.src === 'torrent' ? 'browser_torrents' : 'browser_telegram'))
+/** Smart TV surfaces (Ad Studio «Среды показа», admin «Интро престарта»): tv_telegram / tv_torrent. */
+const adSurface = computed(() => (target.value?.src === 'torrent' ? 'tv_torrent' : 'tv_telegram'))
+const introTarget = computed<IntroTarget>(() => (target.value?.src === 'torrent' ? 'tv_torrent' : 'tv_telegram'))
 const adTarget = computed(() => {
   const current = target.value
   if (!current) return null
@@ -568,6 +568,9 @@ function failText(error: unknown): string {
   const code = error instanceof ApiError ? error.status : 0
   if (code === 401) return 'Войдите в аккаунт: «Профиль» в меню ТВ.'
   if (code === 403) return 'Просмотр доступен по подписке PRO. Оформите её в профиле на сайте.'
+  if (code === 409 && error instanceof ApiError && error.detail?.code === 'TV_MEDIA_UNSUPPORTED') {
+    return 'Этот файл не поддерживается телевизором. Выберите другой источник в карточке фильма.'
+  }
   if (code === 404 || code === 409 || code === 425) return 'Видео ещё готовится. Попробуйте чуть позже.'
   return 'Не удалось запустить видео. Нажмите OK, чтобы повторить.'
 }
@@ -646,7 +649,13 @@ async function loadStream() {
     if (current.src === 'torrent') {
       if (current.kind === 'tv' && !currentEpisode.value) throw new ApiError(409, 'NO_EPISODES')
       const choice = current.kind === 'tv' ? { season: currentEpisode.value!.season, episode: currentEpisode.value!.episode } : {}
-      const ticket = await torrentPlaybackApi.playbackTicket(current.kind, Number(current.id), current.sourceId ? { ...choice, source_id: current.sourceId } : choice)
+      const request = (sourceId?: string) => torrentPlaybackApi.playbackTicket(current.kind, Number(current.id), sourceId ? { ...choice, source_id: sourceId } : choice)
+      const ticket = await request(current.sourceId).catch((error: unknown) => {
+        // The chosen file does not suit this TV: the server names a fitting one of the same title.
+        const alternative = error instanceof ApiError && error.status === 409 && error.detail?.code === 'TV_MEDIA_UNSUPPORTED' ? error.detail.alternative_source_id : undefined
+        if (!alternative || alternative === current.sourceId) throw error
+        return request(alternative)
+      })
       if (id !== loadId) return
       url = ticket.stream_url
       if (!title.value) title.value = ticket.title

@@ -7,7 +7,8 @@ vi.mock('@/api/torrents',async(orig)=>({...(await orig<typeof import('@/api/torr
 vi.mock('@/api/client',async(orig)=>({...(await orig<typeof import('@/api/client')>()),adRequest:request}))
 import Player from '@/components/TorrentPlayer.vue'
 import {ApiError} from '@/api/client'
-import {introClock,MIN_INTRO_MS} from '@/lib/cinemaIntro'
+import {introClock,MIN_INTRO_MS,resetIntroConfigForTests} from '@/lib/cinemaIntro'
+import {useNodeIntro} from './nodeIntro'
 
 const ticket={stream_url:'https://media.example/stream/7.mp4',expires_at:'2026-11-20T12:00:00Z'}
 const creative={delivery_id:'d1',media_url:'https://media.example/ads/1.mp4',duration_sec:10,skip_after:5,cta_url:'',cta_text:''}
@@ -17,13 +18,14 @@ const wrappers:any[]=[]
 let clock=0
 beforeEach(()=>{
  api.playbackTicket.mockReset();request.mockReset()
+ useNodeIntro() // The intro answer App.vue loads at boot: the clip comes from a Media Node.
  // By default every clock read is 5 s later (the intro minimum is over); the min-intro tests drive the clock themselves.
  vi.spyOn(introClock,'now').mockImplementation(()=>(clock+=MIN_INTRO_MS))
  vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{})
  vi.spyOn(HTMLMediaElement.prototype,'load').mockImplementation(()=>{})
  vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue(undefined)
 })
-afterEach(()=>{wrappers.splice(0).forEach(w=>w.unmount());vi.restoreAllMocks();vi.useRealTimers()})
+afterEach(()=>{wrappers.splice(0).forEach(w=>w.unmount());vi.restoreAllMocks();vi.useRealTimers();resetIntroConfigForTests()})
 
 async function start(extra:any={}){
  api.playbackTicket.mockResolvedValue(ticket)

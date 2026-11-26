@@ -1,12 +1,16 @@
 import { DOMWrapper, mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CinemaPrestartOverlay from '@/components/CinemaPrestartOverlay.vue'
 import { showCinemaPrestart, useCinemaPrestart } from '@/composables/useCinemaPrestart'
+import { resetIntroConfigForTests } from '@/lib/cinemaIntro'
+import { nodeIntroUrl, useNodeIntro } from './nodeIntro'
 
 describe('CinemaPrestartOverlay', () => {
+  beforeEach(() => useNodeIntro())
   afterEach(() => {
     document.body.innerHTML = ''
     vi.useRealTimers()
+    resetIntroConfigForTests()
   })
 
   it('renders immediately and changes to the preparation status after two seconds', async () => {
@@ -27,10 +31,11 @@ describe('CinemaPrestartOverlay', () => {
     expect(dialog.querySelector('.reel, .spokes, .holes')).toBeNull()
     const intro = dialog.querySelector('[data-testid="cinema-intro"] video') as HTMLVideoElement
     expect(intro).not.toBeNull()
-    expect(intro.getAttribute('poster')).toBe('/cinema/intro/kinosota-intro-v1.jpg') // First frame on the first paint.
+    expect(intro.getAttribute('poster')).toBe(nodeIntroUrl('default', 'v1.jpg')) // First frame on the first paint.
     expect(intro.hasAttribute('playsinline')).toBe(true)
+    // ZERO MEDIA ON VPS1/VPS2: the clip streams straight from the Media Node, never from this site.
     expect([...intro.querySelectorAll('source')].map((s) => s.getAttribute('src'))).toEqual([
-      '/cinema/intro/kinosota-intro-v1.webm', '/cinema/intro/kinosota-intro-v1.mp4'])
+      nodeIntroUrl('default', 'v1.webm'), nodeIntroUrl('default', 'v1.mp4')])
     expect(dialog.textContent).not.toContain('KINOSOTA PLAYER') // No intermediate emblem over the intro.
     expect((dialog as HTMLElement).style.getPropertyValue('--cinema-dissolve')).toBe('900ms')
     wrapper.unmount()

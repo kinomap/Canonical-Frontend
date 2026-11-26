@@ -1,6 +1,7 @@
 import {describe,it,expect,vi,beforeEach,afterEach} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
-import {introClock,MIN_INTRO_MS} from '@/lib/cinemaIntro'
+import {introClock,MIN_INTRO_MS,resetIntroConfigForTests} from '@/lib/cinemaIntro'
+import {nodeIntroUrl,useNodeIntro} from './nodeIntro'
 const api=vi.hoisted(()=>({playbackTicket:vi.fn()}))
 vi.mock('@/api/torrents',async(orig)=>({...(await orig<typeof import('@/api/torrents')>()),torrentPlaybackApi:api}))
 import Player from '@/components/TorrentPlayer.vue'
@@ -8,8 +9,8 @@ import playerSource from '@/components/TorrentPlayer.vue?raw'
 const options={global:{stubs:{RouterLink:{template:'<a><slot /></a>'}}}}
 // These scenarios start after the 5 s intro minimum (every clock read is 5 s later); TorrentPreroll.spec covers the minimum itself.
 let clock=0
-beforeEach(()=>{api.playbackTicket.mockReset();vi.spyOn(introClock,'now').mockImplementation(()=>(clock+=MIN_INTRO_MS))})
-afterEach(()=>{vi.mocked(introClock.now).mockRestore?.()})
+beforeEach(()=>{api.playbackTicket.mockReset();useNodeIntro();vi.spyOn(introClock,'now').mockImplementation(()=>(clock+=MIN_INTRO_MS))})
+afterEach(()=>{vi.mocked(introClock.now).mockRestore?.();resetIntroConfigForTests()})
 describe('actual torrent player viewport',()=>{
  it('places the sole PRO paywall inside the player without stealing focus',()=>{
   const w=mount(Player,{...options,props:{access:false,accessError:false,kind:'movie'}})
@@ -212,8 +213,8 @@ describe('player proportions, launch screen and closing the codec notice',()=>{
   // The KINOSOTA intro replaces the spinner: first-frame poster at once, WebM and MP4 sources, no reels.
   expect(overlay().find('.launch-spinner').exists()).toBe(false);expect(overlay().find('svg').exists()).toBe(false)
   const intro=overlay().get('[data-testid="cinema-intro"] video')
-  expect(intro.attributes('poster')).toBe('/cinema/intro/kinosota-intro-v1.jpg')
-  expect(intro.findAll('source').map(s=>s.attributes('src'))).toEqual(['/cinema/intro/kinosota-intro-v1.webm','/cinema/intro/kinosota-intro-v1.mp4'])
+  expect(intro.attributes('poster')).toBe(nodeIntroUrl('default','v1.jpg'))
+  expect(intro.findAll('source').map(s=>s.attributes('src'))).toEqual([nodeIntroUrl('default','v1.webm'),nodeIntroUrl('default','v1.mp4')])
   issue(ticket('https://media.example/stream/21.mp4'));await flushPromises()
   expect(w.get('video.torrent-video').attributes('src')).toBe('https://media.example/stream/21.mp4')
   expect(overlay().classes()).not.toContain('is-hidden');expect(overlay().text()).toContain('Загружаем первые секунды видео…')

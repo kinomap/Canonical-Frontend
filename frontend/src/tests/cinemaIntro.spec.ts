@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import CinemaIntro from '@/components/CinemaIntro.vue'
-import { attachIntroAudio, fadeInCurve, fadeInFilm, fadeOutCurve, firstFrameWatcher, INTRO_SOURCES, rampVolume, startIntro } from '@/lib/cinemaIntro'
+import { attachIntroAudio, fadeInCurve, fadeInFilm, fadeOutCurve, firstFrameWatcher, introSources, NO_INTRO, rampVolume, resetIntroConfigForTests, safeIntroUrl, sanitizeIntroConfig, startIntro } from '@/lib/cinemaIntro'
+import { INTRO_TOKEN, NODE_DEFAULT_INTRO, nodeIntroAnswer, nodeIntroUrl, useNodeIntro } from './nodeIntro'
 
 function media(play: () => Promise<void> | undefined) {
   const element = document.createElement('video')
@@ -10,16 +11,49 @@ function media(play: () => Promise<void> | undefined) {
   return element
 }
 
+beforeEach(() => useNodeIntro())
+
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  resetIntroConfigForTests()
 })
 
 describe('KINOSOTA web intro', () => {
-  it('offers VP9/Opus WebM first and H.264/AAC MP4 as the fallback', () => {
-    expect(INTRO_SOURCES.map((s) => s.src)).toEqual(['/cinema/intro/kinosota-intro-v1.webm', '/cinema/intro/kinosota-intro-v1.mp4'])
-    expect(INTRO_SOURCES[0].type).toContain('vp9')
-    expect(INTRO_SOURCES[1].type).toContain('avc1')
+  it('offers the node WebM first and the node MP4 as the fallback, never a clip of this site', () => {
+    expect(introSources(NODE_DEFAULT_INTRO)).toEqual([
+      { src: nodeIntroUrl('default', 'v1.webm'), type: 'video/webm' },
+      { src: nodeIntroUrl('default', 'v1.mp4'), type: 'video/mp4' },
+    ])
+    expect(introSources(NO_INTRO)).toEqual([])
+    expect(NO_INTRO.enabled).toBe(false)
+  })
+
+  it('accepts only Media Node intro URLs (ZERO MEDIA ON VPS1/VPS2)', () => {
+    const ok = nodeIntroUrl('custom', 'b10e9c8894dac431.mp4', 'https://torrent-node-2.scenrix.com')
+    expect(safeIntroUrl(ok, 'watch.scenrix.com')).toBe(ok)
+    expect(safeIntroUrl(nodeIntroUrl('default', 'v1-poster.jpg'), 'watch.scenrix.com')).toBe(nodeIntroUrl('default', 'v1-poster.jpg'))
+    for (const bad of [
+      '/cinema/intro/kinosota-intro-v1.mp4',
+      '/media/cinema-intro/b10e9c8894dac431.mp4',
+      'https://watch.scenrix.com/intro/default/v1.mp4?token=' + INTRO_TOKEN,
+      'http://tg-node-1.scenrix.com/intro/default/v1.mp4?token=' + INTRO_TOKEN,
+      'https://tg-node-1.scenrix.com/intro/default/v1.mp4',
+      'https://tg-node-1.scenrix.com/intro/default/v1.mp4?token=',
+      'https://tg-node-1.scenrix.com/intro/default/v1.mp4?token=a&x=1',
+      'https://tg-node-1.scenrix.com/intro/default/../v1.mp4?token=a',
+      'https://tg-node-1.scenrix.com/stream/abc?token=a',
+      'https://user:pw@tg-node-1.scenrix.com/intro/default/v1.mp4?token=a',
+      'javascript:alert(1)',
+    ]) expect(safeIntroUrl(bad, 'watch.scenrix.com'), bad).toBeNull()
+  })
+
+  it('turns an answer without a usable node URL into no intro at all', () => {
+    expect(sanitizeIntroConfig(nodeIntroAnswer({ video_url: '/cinema/intro/kinosota-intro-v1.mp4' }))).toBeNull()
+    const off = sanitizeIntroConfig({ enabled: false, targets: {}, video_url: '/cinema/intro/kinosota-intro-v1.mp4' })
+    expect(off).toMatchObject({ enabled: false, video_url: '', still_url: '', poster_url: '' })
+    const tvInherits = sanitizeIntroConfig(nodeIntroAnswer({ targets: { browser_telegram: false, browser_torrents: true } as never }))
+    expect(tvInherits?.targets).toMatchObject({ tv_telegram: false, tv_torrent: true, browser_telegram: false, player_telegram: true })
   })
 
   it('starts with sound after the click and falls back to a muted intro under a strict autoplay policy', async () => {

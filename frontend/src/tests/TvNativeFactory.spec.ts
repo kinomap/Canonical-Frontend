@@ -29,10 +29,22 @@ describe('TV player factory helpers', () => {
   })
 
   it('plays https links to our own TV host over http on an HTTP page, leaves others alone', () => {
-    expect(normalizeTvMediaUrl('https://watch.scenrix.com/media/cinema-intro/a.mp4?v=2')).toBe('http://watch.scenrix.com/media/cinema-intro/a.mp4?v=2')
+    expect(normalizeTvMediaUrl('https://watch.scenrix.com/media/posters/a.jpg?v=2')).toBe('http://watch.scenrix.com/media/posters/a.jpg?v=2')
     expect(normalizeTvMediaUrl('https://cdn.example.com/a.mp4')).toBe('https://cdn.example.com/a.mp4')
-    expect(normalizeTvMediaUrl('/tv-stream/n1/a.mkv')).toBe('/tv-stream/n1/a.mkv')
-    expect(toAbsoluteMediaUrl('https://watch.scenrix.com/tv-ad/n1/ad.mp4')).toBe('http://watch.scenrix.com/tv-ad/n1/ad.mp4')
+    expect(normalizeTvMediaUrl('/media/m1.mp4')).toBe('/media/m1.mp4')
+    expect(toAbsoluteMediaUrl('https://watch.scenrix.com/media/posters/a.jpg')).toBe('http://watch.scenrix.com/media/posters/a.jpg')
+  })
+
+  it('never downgrades a Media Node: films, ads and the intro stay https:// (port 80 on the nodes is closed)', () => {
+    for (const url of [
+      'https://tg-node-1.scenrix.com/stream/abc?token=t',
+      'https://torrent-node-2.scenrix.com/stream/x/0?token=t',
+      'https://node-3.scenrix.com/ads/creative.mp4?token=t',
+      'https://tg-node-1.scenrix.com/intro/default/v1.mp4?token=t',
+    ]) {
+      expect(normalizeTvMediaUrl(url)).toBe(url)
+      expect(toAbsoluteMediaUrl(url)).toBe(url)
+    }
   })
 
   it('registers the media key pack with registerKeyBatch and falls back to registerKey on Tizen 2.x–3.x', () => {
@@ -89,12 +101,12 @@ describe('TV player factory helpers', () => {
     })
     expect(adapter).not.toBeNull()
     expect(adapter!.engine).toBe('Tizen AVPlay')
-    expect(adapter!.open('/tv-ad/n1/ad.mp4')).toBe(true)
+    expect(adapter!.open('https://tg-node-1.scenrix.com/ads/ad.mp4?token=a1')).toBe(true)
     expect(calls).toContain('rect:0,0,1920,1080')
     calls.length = 0
-    adapter!.open('/tv-stream/n1/film.mkv')
+    adapter!.open('https://tg-node-1.scenrix.com/stream/film?token=f1')
     expect(calls.indexOf('stop')).toBeGreaterThan(-1)
-    expect(calls.indexOf('stop')).toBeLessThan(calls.indexOf('open:http://localhost:3000/tv-stream/n1/film.mkv'))
+    expect(calls.indexOf('stop')).toBeLessThan(calls.indexOf('open:https://tg-node-1.scenrix.com/stream/film?token=f1'))
     expect(adapter!.getTracks()).toEqual({ audio: [], text: [{ index: -1, label: 'Выкл', active: true }] })
     adapter!.stop()
     expect(calls).toContain('close')

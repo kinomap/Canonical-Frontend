@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import VideoPlayer from '@/components/VideoPlayer.vue'
-import { DEFAULT_INTRO, INTRO_CACHE_KEY, INTRO_CACHE_TTL_MS, allTargets, introConfig, loadIntroConfig, resetIntroConfigForTests } from '@/lib/cinemaIntro'
+import { INTRO_CACHE_KEY, INTRO_CACHE_TTL_MS, allTargets, introConfig, loadIntroConfig, resetIntroConfigForTests } from '@/lib/cinemaIntro'
+import { NODE_DEFAULT_INTRO } from './nodeIntro'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn() }))
 vi.mock('@/api/client', () => ({ adRequest: mocks.request }))
@@ -12,7 +13,7 @@ const stubs = {
 }
 
 function answer(browserTelegram: boolean) {
-  return { ...DEFAULT_INTRO, targets: { ...allTargets(true), browser_telegram: browserTelegram } }
+  return { ...NODE_DEFAULT_INTRO, targets: { ...allTargets(true), browser_telegram: browserTelegram } }
 }
 function serve(...bodies: unknown[]) {
   const fetcher = vi.fn()
