@@ -15,7 +15,7 @@ import { useAuthStore } from '@/stores/auth'
 import { resolveTvKey, useTvNavigation, type TvAction, type TvRow, type TvSelectTarget } from '@/composables/useTvNavigation'
 import AdPlaybackContainer from '@/components/AdPlaybackContainer.vue'
 import CinemaIntro from '@/components/CinemaIntro.vue'
-import type { IntroTarget } from '@/lib/cinemaIntro'
+import { introClock, introRemaining, type IntroStart, type IntroTarget } from '@/lib/cinemaIntro'
 import {
   SEEK_COMMIT_MS, SEEK_SERIES_MS, TV_CONTROLS_HIDE_MS,
   formatClock, formatSeekDelta, parseTvPlayTarget, seekStep, tvPlayerQuery, type TvPlayTarget,
@@ -108,6 +108,13 @@ let adEarlySettled = false
 const adPlayer = ref<InstanceType<typeof AdPlaybackContainer> | null>(null)
 const introPlayer = ref<InstanceType<typeof CinemaIntro> | null>(null)
 let introFallbackTimer: ReturnType<typeof setTimeout> | undefined
+/**
+ * Intro (>= MIN_INTRO_MS, 5 s) → pre-roll → film, exactly as VideoPlayer.vue / TorrentPlayer.vue: whatever
+ * ends the intro earlier (a short clip, a refused autoplay) waits until the intro has been on screen 5 s.
+ * The intro layer is rendered from the very first paint, so its clock starts with the view.
+ */
+let introStartedAt = introClock.now()
+let introHoldTimer: ReturnType<typeof setTimeout> | undefined
 
 const adSurface = computed(() => (target.value?.src === 'torrent' ? 'torrent_browser' : 'telegram_browser'))
 /** The TV plays in the browser: the admin «Интро престарта» browser targets apply to it. */
@@ -131,6 +138,16 @@ function onCommercialStarted() {
 
 function onIntroDone() {
   if (phase.value !== 'intro') return
+  // Never before the 5 s minimum while a clip is shown; an intro switched off in the admin never waits.
+  if (introPlayer.value?.enabled !== false) {
+    const wait = introRemaining(introStartedAt)
+    if (wait > 0) {
+      clearTimeout(introHoldTimer)
+      introHoldTimer = setTimeout(onIntroDone, wait)
+      return
+    }
+  }
+  clearTimeout(introHoldTimer)
   clearTimeout(introFallbackTimer)
   document.querySelectorAll<HTMLVideoElement>('.tv-intro-layer video').forEach((el) => {
     if (el.getAttribute('src') || el.currentSrc) commercialVideoPlayed = true
@@ -147,6 +164,11 @@ function onIntroDone() {
   phase.value = 'ads'
 }
 
+/** Autoplay refused (even muted): the poster has had its 5 s, then the next stage starts (not after 15 s). */
+function onIntroStarted(result: IntroStart) {
+  if (result === 'blocked') onIntroDone()
+}
+
 function onAdsSettled() {
   if (phase.value === 'intro') {
     adEarlySettled = true
@@ -160,6 +182,7 @@ function onAdsSettled() {
 
 function startFilm() {
   if (phase.value === 'content') return
+  clearTimeout(introHoldTimer)
   clearTimeout(introFallbackTimer)
   // Free the intro's decoder slot before the film opens (one hardware stream on most TVs).
   document.querySelectorAll<HTMLVideoElement>('.tv-intro-layer video').forEach((el) => {
@@ -522,6 +545,7 @@ function release() {
   if (released) return
   released = true
   loadId++
+  clearTimeout(introHoldTimer)
   clearTimeout(introFallbackTimer)
   clearTimeout(hideTimer)
   clearTimeout(seekCommitTimer)
@@ -659,6 +683,8 @@ async function start() {
   }
   try { await loadInfo(current) } catch { /* the title card is optional */ }
   if (released) return
+  // Re-entering the intro (its layer mounts again) restarts the 5 s minimum.
+  if (phase.value !== 'intro') introStartedAt = introClock.now()
   phase.value = 'intro'
   introActive.value = true
   adEarlySettled = false
@@ -864,7 +890,7 @@ defineExpose({ handle, phase, startFilm })
     />
 
     <div v-if="phase === 'intro'" class="tv-intro-layer" data-testid="tv-intro-layer">
-      <CinemaIntro ref="introPlayer" :active="introActive" :target="introTarget" @finished="onIntroDone" />
+      <CinemaIntro ref="introPlayer" :active="introActive" :target="introTarget" @started="onIntroStarted" @finished="onIntroDone" />
     </div>
 
     <div v-if="phase === 'content' && (status === 'loading' || (status === 'ready' && buffering && !paused))" class="tv-spinner" role="status" aria-live="polite" data-testid="tv-player-loading">

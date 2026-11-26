@@ -547,7 +547,7 @@ describe('Lite TV portal behaviour', () => {
   })
 
   it('turns an endless spinner into a diagnosis with retry and another-source actions', async () => {
-    routes.push({ method: 'GET', path: '/movies/m1', body: { overview: 'x', mime_type: 'video/x-matroska', genres: [] } })
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: { overview: 'x', mime_type: 'video/x-matroska', genres: [] } })
     await bootLite()
     press('ArrowDown', 40)
     press('Enter', 13)
@@ -1609,6 +1609,116 @@ describe('Lite TV portal behaviour', () => {
     } finally {
       orsay.restore()
     }
+  })
+
+  /* «Монстр Амазонки»: the only catalogue file is an encoder-padded 1924x1082 that the Orsay decoder refuses
+     with RENDER_ERROR 6:4 after the intro and the pre-roll; a ready 1080p torrent of the same title exists. */
+  const MONSTER = { overview: 'x', genres: [], tmdb_id: 1244523, resolution_width: 1924, resolution_height: 1082 }
+  const MONSTER_TORRENTS = {
+    allowed: true, sources: [
+      { source_id: 'uhd', quality: '2160p', source_type: 'WEB-DL', languages: ['ru'], state: 'ready', health: 'ok' },
+      { source_id: 'cold', quality: '1080p', source_type: 'WEB-DL', languages: ['ru'], state: 'loading', health: 'ok' },
+      { source_id: 'a8a9d22c', quality: '1080p', source_type: 'WEB-DL', languages: ['ru'], state: 'ready', health: 'ok' },
+      { source_id: 'sd', quality: '720p', source_type: 'WEBRip', languages: ['ru'], state: 'ready', health: 'ok' },
+    ],
+  }
+
+  it('v15: on Orsay a 1924×1082 catalogue film offers (and focuses) its ready 1080p torrent before the pre-roll', async () => {
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: MONSTER })
+    routes.push({ method: 'GET', path: '/torrents/sources/movie/1244523', body: MONSTER_TORRENTS })
+    const orsay = installOrsayAvplay()
+    try {
+      await bootLite()
+      press('ArrowDown', 40)
+      press('Enter', 13)
+      await flush()
+      await flush()
+      expect(lite().state.mode).toBe('details')
+      const hd = document.getElementById('lite-act-hd')!
+      expect(hd.className).not.toContain('is-hidden')
+      expect(hd.className).toContain('is-focused')
+      expect(hd.textContent).toBe('Открыть 1080p (торрент)')
+      expect(document.getElementById('lite-details-selected')?.textContent).toContain('1924×1082')
+      expect(document.getElementById('lite-details-ready')?.textContent).toContain('1080p WEB-DL')
+      press('Enter', 13)
+      await flush()
+      expect(lite().state.mode).toBe('player')
+      const ticket = sent.find(item => item.url === '/api/v1/torrents/playback-ticket')
+      expect(JSON.parse(ticket!.body!)).toMatchObject({ kind: 'movie', tmdb_id: 1244523, source_id: 'a8a9d22c' })
+      expect(sent.some(item => item.url === '/api/v1/playback/start')).toBe(false)
+      press('', 88)
+    } finally {
+      orsay.restore()
+    }
+  })
+
+  it('v15: the 6:4 error screen of a 1924×1082 catalogue film offers «Открыть 1080p (торрент)»', async () => {
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: MONSTER })
+    routes.push({ method: 'GET', path: '/torrents/sources/movie/1244523', body: MONSTER_TORRENTS })
+    const orsay = installOrsayAvplay()
+    try {
+      await bootLite()
+      press('ArrowDown', 40)
+      press('Enter', 13)
+      await flush()
+      await flush()
+      press('ArrowLeft', 37) // back on ▶ Смотреть: the catalogue file after all
+      press('Enter', 13)
+      await flush()
+      expect(sent.some(item => item.url === '/api/v1/playback/start')).toBe(true)
+      const p = lite().player as unknown as { phase: string; lastNativeErr: string; lastNativeRes: string }
+      p.phase = 'film'
+      p.lastNativeErr = '6:4'
+      p.lastNativeRes = '' // AVPlay failed before reporting a frame: the details' 1924x1082 is used
+      lite().playerProblem('error')
+      await flush()
+      expect(document.getElementById('lite-player-message')?.textContent).toContain('1924×1082')
+      const other = document.getElementById('lite-player-other')!
+      expect(other.textContent).toBe('Открыть 1080p (торрент)')
+      expect(other.className).toContain('is-focused')
+      press('Enter', 13)
+      await flush()
+      const ticket = sent.find(item => item.url === '/api/v1/torrents/playback-ticket')
+      expect(JSON.parse(ticket!.body!)).toMatchObject({ tmdb_id: 1244523, source_id: 'a8a9d22c' })
+      expect(lite().state.mode).toBe('player')
+      press('', 88)
+    } finally {
+      orsay.restore()
+    }
+  })
+
+  it('v15: on Orsay without a playable 1080p torrent the details only warn about the 1924×1082 file', async () => {
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: MONSTER })
+    routes.push({ method: 'GET', path: '/torrents/sources/movie/1244523', body: { allowed: false, sources: [] } })
+    const orsay = installOrsayAvplay()
+    try {
+      await bootLite()
+      press('ArrowDown', 40)
+      press('Enter', 13)
+      await flush()
+      await flush()
+      expect(sent.some(item => item.url === '/api/v1/torrents/sources/movie/1244523')).toBe(true)
+      expect(document.getElementById('lite-act-hd')?.className).toContain('is-hidden')
+      expect(document.getElementById('lite-details-selected')?.textContent).toContain('1924×1082')
+      expect(document.getElementById('lite-details-ready')?.textContent).toBe('Видео больше 1080p')
+      expect(document.getElementById('lite-act-play')?.className).toContain('is-focused')
+    } finally {
+      orsay.restore()
+    }
+  })
+
+  it('v15: off Orsay a 1924×1082 catalogue film keeps the plain «Смотреть» and looks up nothing', async () => {
+    routes.push({ method: 'GET', path: '/movies/m1?tv=1', body: MONSTER })
+    routes.push({ method: 'GET', path: '/torrents/sources/movie/1244523', body: MONSTER_TORRENTS })
+    await bootLite()
+    press('ArrowDown', 40)
+    press('Enter', 13)
+    await flush()
+    await flush()
+    expect(sent.some(item => item.url === '/api/v1/movies/m1?tv=1')).toBe(true)
+    expect(document.getElementById('lite-act-hd')?.className).toContain('is-hidden')
+    expect(sent.some(item => item.url === '/api/v1/torrents/sources/movie/1244523')).toBe(false)
+    expect(document.getElementById('lite-details-ready')?.textContent).toBe('Доступно в каталоге')
   })
 
   it('v15: «Назад» before the intro ends aborts the film first-bytes probe', async () => {

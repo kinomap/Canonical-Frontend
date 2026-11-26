@@ -7,6 +7,13 @@ upstream control_pool {
     server __BACKEND_WG_ADDRESS__:8888;
     keepalive 32;
 }
+
+# v15 edge cache (VPS2) for the published cinema intro: <version>.mp4 / -still.jpg / -poster.jpg are
+# content-addressed and immutable, so Smart TVs get them from here instead of over the WireGuard hop
+# to VPS1. /var/cache/nginx is the container tmpfs (uid 101): RAM-backed, empty after a restart; the
+# backend keeps one published intro, so real use is a few dozen MB (128m is the hard ceiling).
+proxy_cache_path /var/cache/nginx/intro_cache levels=1:2 keys_zone=intro_cache:10m max_size=128m inactive=7d use_temp_path=off;
+
 # Public-only showcase. Validated exact placeholders; no global envsubst.
 log_format public_no_query '$remote_addr $request_method $uri $status';
 server {
@@ -32,6 +39,55 @@ server {
         proxy_request_buffering off;
         proxy_read_timeout 120s;
         gzip off;
+        # v15: published intro files are cached on VPS2; the clip in 1 MiB slices, so the first second of a
+        # TV's Range request is served from RAM. Anything else under the prefix stays an uncached relay.
+        location ~ "^/media/cinema-intro/[0-9A-Za-z]{1,64}\.mp4$" {
+            proxy_pass http://control_pool;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header Connection "";
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_cache intro_cache;
+            proxy_cache_lock on;
+            proxy_cache_lock_timeout 10s;
+            proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+            proxy_ignore_headers Cache-Control Expires Set-Cookie;
+            proxy_hide_header Cache-Control;
+            proxy_hide_header Expires;
+            proxy_hide_header Set-Cookie;
+            proxy_buffering on;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+            add_header X-Cache-Status $upstream_cache_status always;
+            add_header X-Content-Type-Options nosniff always;
+            slice 1m;
+            proxy_set_header Range $slice_range;
+            proxy_cache_key "$uri$slice_range";
+            proxy_cache_valid 200 206 30d;
+            proxy_read_timeout 120s;
+            gzip off;
+        }
+        location ~ "^/media/cinema-intro/[0-9A-Za-z]{1,64}-(?:still|poster)\.jpg$" {
+            proxy_pass http://control_pool;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header Connection "";
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_cache intro_cache;
+            proxy_cache_lock on;
+            proxy_cache_lock_timeout 10s;
+            proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+            proxy_ignore_headers Cache-Control Expires Set-Cookie;
+            proxy_hide_header Cache-Control;
+            proxy_hide_header Expires;
+            proxy_hide_header Set-Cookie;
+            proxy_buffering on;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+            add_header X-Cache-Status $upstream_cache_status always;
+            add_header X-Content-Type-Options nosniff always;
+            proxy_cache_key $uri;
+            proxy_cache_valid 200 30d;
+            proxy_read_timeout 60s;
+        }
     }
     location /media/ {
         proxy_pass http://control_pool;
@@ -40,6 +96,10 @@ server {
         proxy_set_header Host $host;
         proxy_set_header Range $http_range;
         proxy_set_header X-Forwarded-For $remote_addr;
+        # v15: posters/backdrops (100-600 KB) fit the buffers instead of spilling to proxy_temp files.
+        proxy_buffer_size 128k;
+        proxy_buffers 16 128k;
+        proxy_busy_buffers_size 256k;
     }
     location ^~ /cinema/ {
         root /usr/share/nginx/html/public;
@@ -60,6 +120,7 @@ server {
         proxy_ssl_verify_depth 3;
         proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
         proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_session_reuse on;
         proxy_set_header Host $tvnode.scenrix.com;
         proxy_set_header Connection "";
         proxy_set_header Range $http_range;
@@ -85,6 +146,7 @@ server {
         proxy_ssl_verify_depth 3;
         proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
         proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_session_reuse on;
         proxy_set_header Host $tvnode.scenrix.com;
         proxy_set_header Connection "";
         proxy_set_header Range $http_range;
@@ -174,6 +236,55 @@ server {
         proxy_request_buffering off;
         proxy_read_timeout 120s;
         gzip off;
+        # v15: published intro files are cached on VPS2; the clip in 1 MiB slices, so the first second of a
+        # TV's Range request is served from RAM. Anything else under the prefix stays an uncached relay.
+        location ~ "^/media/cinema-intro/[0-9A-Za-z]{1,64}\.mp4$" {
+            proxy_pass http://control_pool;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header Connection "";
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_cache intro_cache;
+            proxy_cache_lock on;
+            proxy_cache_lock_timeout 10s;
+            proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+            proxy_ignore_headers Cache-Control Expires Set-Cookie;
+            proxy_hide_header Cache-Control;
+            proxy_hide_header Expires;
+            proxy_hide_header Set-Cookie;
+            proxy_buffering on;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+            add_header X-Cache-Status $upstream_cache_status always;
+            add_header X-Content-Type-Options nosniff always;
+            slice 1m;
+            proxy_set_header Range $slice_range;
+            proxy_cache_key "$uri$slice_range";
+            proxy_cache_valid 200 206 30d;
+            proxy_read_timeout 120s;
+            gzip off;
+        }
+        location ~ "^/media/cinema-intro/[0-9A-Za-z]{1,64}-(?:still|poster)\.jpg$" {
+            proxy_pass http://control_pool;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header Connection "";
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_cache intro_cache;
+            proxy_cache_lock on;
+            proxy_cache_lock_timeout 10s;
+            proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+            proxy_ignore_headers Cache-Control Expires Set-Cookie;
+            proxy_hide_header Cache-Control;
+            proxy_hide_header Expires;
+            proxy_hide_header Set-Cookie;
+            proxy_buffering on;
+            add_header Cache-Control "public, max-age=31536000, immutable";
+            add_header X-Cache-Status $upstream_cache_status always;
+            add_header X-Content-Type-Options nosniff always;
+            proxy_cache_key $uri;
+            proxy_cache_valid 200 30d;
+            proxy_read_timeout 60s;
+        }
     }
     location /media/ {
         proxy_pass http://control_pool;
@@ -182,6 +293,10 @@ server {
         proxy_set_header Host $host;
         proxy_set_header Range $http_range;
         proxy_set_header X-Forwarded-For $remote_addr;
+        # v15: posters/backdrops (100-600 KB) fit the buffers instead of spilling to proxy_temp files.
+        proxy_buffer_size 128k;
+        proxy_buffers 16 128k;
+        proxy_busy_buffers_size 256k;
     }
     location = /stream { return 404; }
     location ^~ /stream/ { return 404; }
@@ -198,6 +313,7 @@ server {
         proxy_ssl_verify_depth 3;
         proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
         proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_session_reuse on;
         proxy_set_header Host $tvnode.scenrix.com;
         proxy_set_header Connection "";
         proxy_set_header Range $http_range;
@@ -223,6 +339,7 @@ server {
         proxy_ssl_verify_depth 3;
         proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
         proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_session_reuse on;
         proxy_set_header Host $tvnode.scenrix.com;
         proxy_set_header Connection "";
         proxy_set_header Range $http_range;

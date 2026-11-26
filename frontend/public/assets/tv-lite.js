@@ -456,7 +456,8 @@
         genres: function () { return request('GET', '/genres'); },
         genreContent: function (slug, page) { return request('GET', '/movies?genre=' + encodeURIComponent(slug) + '&page=' + (page || 1)); },
         search: function (q) { return request('GET', '/search?q=' + encodeURIComponent(q) + '&page=1&page_size=30'); },
-        movieDetail: function (id) { return request('GET', '/movies/' + encodeURIComponent(id)); },
+        /* ?tv=1: the backend describes the source TV playback picks (<= 1920x1080 when one exists). */
+        movieDetail: function (id) { return request('GET', '/movies/' + encodeURIComponent(id) + '?tv=1'); },
         seriesDetail: function (id) { return request('GET', '/series/' + encodeURIComponent(id)); },
         torrentDetail: function (kind, id) { return request('GET', '/torrents/detail/' + kind + '/' + encodeURIComponent(id)); },
         torrentSources: function (kind, id) { return request('GET', '/torrents/sources/' + kind + '/' + encodeURIComponent(id)); },
@@ -1582,7 +1583,10 @@
     var det = {
         card: null, token: 0, tmdb: null, tmdbKind: null, info: null, view: null, sources: [],
         selected: null, quality: null, lang: null, saved: false, busy: false,
-        rows: [], row: 1, col: 0
+        rows: [], row: 1, col: 0,
+        /* v15: frame of the catalogue file the TV would play ('1924x1082') and, on Orsay when it is above
+           1920x1080, a ready <= 1080p torrent of the same title ({ tmdb, source }) offered before the ads. */
+        sourceRes: '', hdAlt: null
     };
 
     function genreNamesOf(list) {
@@ -1640,6 +1644,56 @@
     }
 
     function isTorrentCard(card) { return !!(card && card.play && card.play.src === 'torrent'); }
+
+    /* ── v15: catalogue files above 1920x1080 on Orsay ──
+       The Orsay decoder refuses anything above Full HD, even an encoder-padded 1924x1082, with
+       RENDER_ERROR 6:4 — and only after the intro and the pre-roll. The details learn the frame of the TV
+       pick (/movies/{id}?tv=1) and, when it is still too big, look for a READY <= 1080p torrent of the
+       same title (listed only to users allowed to play torrents): «Открыть 1080p (торрент)» is offered
+       and focused in the details, and again on the 6:4 error screen. */
+    function frameOf(width, height) {
+        var w = Number(width) || 0;
+        var h = Number(height) || 0;
+        return w && h ? w + 'x' + h : '';
+    }
+
+    function frameText(res) { return String(res || '').replace(/\s*[x|]\s*/, '×'); }
+
+    function pickHdAlternative(view) {
+        var list = view && view.allowed !== false && view.sources ? view.sources : [];
+        var best = null;
+        var bestRes = 0;
+        for (var i = 0; i < list.length; i++) {
+            var item = list[i];
+            if (!item || !item.source_id || item.state !== 'ready' || item.health === 'dead') continue;
+            var res = resolutionOf(qualityLabel(item));
+            /* the best frame <= 1080p; equal frames keep the backend's order (language, health) */
+            if (!res || res > 1080 || res <= bestRes) continue;
+            best = item;
+            bestRes = res;
+        }
+        return best;
+    }
+
+    function lookupHdAlternative(tmdb, done) {
+        if (!IS_ORSAY || !tmdb) return;
+        api.torrentSources('movie', tmdb).then(function (view) {
+            var source = pickHdAlternative(view);
+            if (source) done({ tmdb: Number(tmdb), source: source });
+        })['catch'](function () {});
+    }
+
+    function hdAlternativeCard(card, alt) {
+        var copy = {};
+        for (var key in card) if (Object.prototype.hasOwnProperty.call(card, key)) copy[key] = card[key];
+        copy.play = { src: 'torrent', kind: 'movie', id: String(alt.tmdb), sourceId: alt.source.source_id };
+        copy.release = alt.source;
+        copy.tmdbId = alt.tmdb;
+        copy.quality = qualityLabel(alt.source);
+        copy.sourceRes = '';
+        copy.hdAlt = null;
+        return copy;
+    }
 
     function qualityOptions() {
         var seen = {};
@@ -1759,8 +1813,11 @@
         var sel = det.selected;
         var fav = $('lite-act-fav');
         var rebuild = $('lite-act-rebuild');
+        var hd = $('lite-act-hd');
+        var hdAlt = !torrent && det.hdAlt ? det.hdAlt : null;
         if (det.tmdb) show(fav); else hide(fav);
         if (torrent && det.tmdbKind) show(rebuild); else hide(rebuild);
+        if (hdAlt) show(hd); else hide(hd);
         if (det.saved) addClass(fav, 'is-on'); else removeClass(fav, 'is-on');
 
         var line = $('lite-details-selected');
@@ -1795,8 +1852,14 @@
             }
         } else {
             line.appendChild(document.createTextNode('✓ Источник: каталог KINOSOTA' + (card.quality ? ' • ' + card.quality : '')));
-            setText(ready, 'Доступно в каталоге');
-            addClass(ready, 'is-ok');
+            if (IS_ORSAY && exceedsFullHd(det.sourceRes)) {
+                line.appendChild(el('span', 'is-warn', '  Видео ' + frameText(det.sourceRes) + ' больше 1920×1080 — этот телевизор его не откроет.'));
+                setText(ready, hdAlt ? 'Есть версия ' + qualityLabel(hdAlt.source) + ' (торрент)' : 'Видео больше 1080p');
+                if (hdAlt) addClass(ready, 'is-ok');
+            } else {
+                setText(ready, 'Доступно в каталоге');
+                addClass(ready, 'is-ok');
+            }
         }
 
         /* quality and language pills (torrent releases only) */
@@ -1830,6 +1893,7 @@
 
         var rows = [[{ node: $('lite-act-back'), id: 'back' }]];
         var actions = [{ node: $('lite-act-play'), id: 'play' }];
+        if (hdAlt) actions.push({ node: hd, id: 'hd' });
         if (det.tmdb) actions.push({ node: fav, id: 'fav' });
         if (torrent && det.tmdbKind) actions.push({ node: rebuild, id: 'rebuild' });
         rows.push(actions);
@@ -1932,6 +1996,8 @@
         det.lang = null;
         det.saved = false;
         det.busy = false;
+        det.sourceRes = '';
+        det.hdAlt = null;
         det.row = 1;
         det.col = 0;
         renderDetails();
@@ -1957,6 +2023,18 @@
                 if (token !== det.token || !res) return;
                 if (res.tmdb_id && !det.tmdb) { det.tmdb = res.tmdb_id; det.tmdbKind = 'movie'; loadFavoriteState(token); renderWatchCard(); }
                 mergeInfo({ overview: res.overview || '', backdrop: tmdbSize(res.backdrop, 'w1280'), runtime: res.runtime || 0, genres: genreNamesOf(res.genres), mime: res.mime_type || '' });
+                det.sourceRes = frameOf(res.resolution_width, res.resolution_height);
+                if (IS_ORSAY && exceedsFullHd(det.sourceRes)) {
+                    debugLog('warn', 'catalogue file ' + det.sourceRes + ' > 1920x1080: looking for a 1080p torrent');
+                    renderWatchCard();
+                    lookupHdAlternative(res.tmdb_id, function (alt) {
+                        if (token !== det.token) return;
+                        det.hdAlt = alt;
+                        /* the playable version takes the focus unless the user has already moved on */
+                        var onPlay = state.mode === 'details' && det.rows[det.row] && det.rows[det.row][det.col] && det.rows[det.row][det.col].id === 'play';
+                        renderWatchCard(onPlay ? 'hd' : undefined);
+                    });
+                }
                 if (res.tmdb_id) {
                     api.torrentDetail('movie', res.tmdb_id).then(function (extra) {
                         if (token === det.token && extra) mergeInfo({ tagline: extra.tagline || '', countries: extra.countries || [], rating: ratingOf(extra.rating) });
@@ -2033,12 +2111,21 @@
         for (var key in card) if (Object.prototype.hasOwnProperty.call(card, key)) copy[key] = card[key];
         copy.play = { src: card.play.src, kind: card.play.kind, id: card.play.id, sourceId: det.selected && det.selected.source_id ? det.selected.source_id : null };
         copy.release = det.selected || null;
+        copy.sourceRes = isTorrentCard(card) ? '' : det.sourceRes;
+        copy.hdAlt = isTorrentCard(card) ? null : det.hdAlt;
         openPlayer(copy);
+    }
+
+    function playHdAlternative() {
+        if (!det.card || !det.hdAlt) return;
+        debugLog('info', 'open the ' + qualityLabel(det.hdAlt.source) + ' torrent instead of the ' + det.sourceRes + ' catalogue file');
+        openPlayer(hdAlternativeCard(det.card, det.hdAlt));
     }
 
     function activateDetails(id) {
         if (id === 'back') closeDetailsModal();
         else if (id === 'play') playSelected();
+        else if (id === 'hd') playHdAlternative();
         else if (id === 'fav') toggleFavorite();
         else if (id === 'rebuild') rebuildSelected();
         else if (id === 'audio') cycleAudio();
@@ -2068,7 +2155,9 @@
         introShownAt: 0, introClipEnded: false, handoffTimer: null, handoffStarted: false,
         filmBytesReady: false, probeTimedOut: false, probeXhr: null, probeTimer: null,
         adWaitSince: 0, adWaitExpired: false, veilTimer: null, posterTimer: null, filmNoticeTimer: null,
-        lastReleaseClean: false, volumeTimer: null, volumeBefore: -1
+        lastReleaseClean: false, volumeTimer: null, volumeBefore: -1,
+        /* v15: the 6:4 error screen offers the ready 1080p torrent instead of «Выбрать другой источник». */
+        hdOffer: false
     };
 
     var ORSAY_LANGS = {
@@ -2919,6 +3008,7 @@
     function renderPlayerActions() {
         var retry = $('lite-player-retry');
         var other = $('lite-player-other');
+        setText(other, player.hdOffer ? 'Открыть 1080p (торрент)' : 'Выбрать другой источник');
         if (player.focusAct === 0) { addClass(retry, 'is-focused'); removeClass(other, 'is-focused'); }
         else { addClass(other, 'is-focused'); removeClass(retry, 'is-focused'); }
     }
@@ -2954,8 +3044,10 @@
         player.focusAct = 0;
         detachVideo(false, prevKind !== 'html5');
         var hint = codecHint(card);
-        if (!hint && isUnsupportedResolutionErr(nativeErr, nativeRes)) {
-            hint = 'Разрешение этого видео (' + (nativeRes || 'больше 1080p') + ') превышает ограничение этого телевизора (1920×1080).';
+        var tooBig = isUnsupportedResolutionErr(nativeErr, nativeRes || (card && card.sourceRes));
+        player.hdOffer = false;
+        if (!hint && tooBig) {
+            hint = 'Разрешение этого видео (' + (nativeRes || frameText(card && card.sourceRes) || 'больше 1080p') + ') превышает ограничение этого телевизора (1920×1080).';
         }
         if (!hint && nativeErr) {
             var errParts = String(nativeErr).split(':');
@@ -2965,13 +3057,40 @@
         }
         var head = kind === 'error' ? 'Телевизор не смог воспроизвести это видео.' : 'Видео не запустилось за 10 секунд.';
         playerMessage(head + ' ' + (hint || 'Проверьте сеть или выберите другой источник.'));
+        if (tooBig && card && !isTorrentCard(card)) offerHdAlternative(card);
         show($('lite-player-actions'));
         renderPlayerActions();
         showBar();
     }
 
+    /* 6:4 on a catalogue file: «Выбрать другой источник» becomes «Открыть 1080p (торрент)» (focused) as soon
+       as a ready <= 1080p release is known — from the details or looked up now. */
+    function offerHdAlternative(card) {
+        var apply = function (alt) {
+            if (player.card !== card || !player.problem) return;
+            card.hdAlt = alt;
+            player.hdOffer = true;
+            player.focusAct = 1;
+            renderPlayerActions();
+        };
+        if (card.hdAlt) { apply(card.hdAlt); return; }
+        var sameAsDetails = det.card && det.card.play && card.play && det.card.play.id === card.play.id;
+        var tmdb = card.tmdbId || (sameAsDetails ? det.tmdb : null);
+        if (tmdb) { lookupHdAlternative(tmdb, apply); return; }
+        if (!IS_ORSAY || !card.play || card.play.kind !== 'movie') return;
+        api.movieDetail(card.play.id).then(function (res) {
+            if (res && res.tmdb_id) lookupHdAlternative(res.tmdb_id, apply);
+        })['catch'](function () {});
+    }
+
     function playerChooseOther() {
         var card = player.card;
+        if (player.hdOffer && card && card.hdAlt) {
+            var alt = hdAlternativeCard(card, card.hdAlt);
+            closePlayer();
+            openPlayer(alt);
+            return;
+        }
         var wasOpen = state.detailsOpen;
         closePlayer();
         if (!wasOpen && card) openDetailsModal(card);
@@ -4690,6 +4809,7 @@
         player.card = null;
         player.ready = false;
         player.problem = false;
+        player.hdOffer = false;
         player.phase = 'film';
         hide($('lite-player-actions'));
         hide($('lite-player'));

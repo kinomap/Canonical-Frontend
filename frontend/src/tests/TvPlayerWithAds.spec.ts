@@ -61,6 +61,7 @@ vi.mock('@/components/CinemaIntro.vue', async () => {
 })
 
 import TvPlayerView from '@/views/tv/TvPlayerView.vue'
+import { MIN_INTRO_MS, introClock } from '@/lib/cinemaIntro'
 
 const CREATIVE = { delivery_id: 'd1', media_url: 'https://ads.example/preroll.mp4', duration_sec: 15, skip_after: null, cta_url: '', cta_text: '' }
 const PRE = { cue_points: [{ id: 'pre1', kind: 'pre', at_sec: 0 }], plan_token: 'plan-1' }
@@ -69,6 +70,8 @@ const EMPTY = { cue_points: [], plan_token: null }
 let router: Router
 let wrapper: VueWrapper | undefined
 let play: ReturnType<typeof vi.spyOn>
+/** Intro clock (introClock seam): the 5 s minimum is measured on it. */
+let clock = 0
 
 function press(key: string) {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
@@ -94,14 +97,22 @@ const adMedia = () => wrapper!.find('[data-testid="ad-media"]')
 const introLayer = () => wrapper!.find('[data-testid="tv-intro-layer"]')
 const planCalls = () => api.request.mock.calls.map(call => String(call[0])).filter(url => url.includes('/ads/plan/'))
 
-async function finishIntro() {
+/** The intro clip reaches its end `after` ms after it started (by default once its 5 s minimum is over). */
+async function finishIntro(after = MIN_INTRO_MS) {
+  clock += after
   wrapper!.findComponent({ name: 'CinemaIntro' }).vm.$emit('finished')
   await flushPromises(); await nextTick(); await flushPromises()
+}
+
+async function settle() {
+  for (let i = 0; i < 3; i++) { await flushPromises(); await nextTick() }
 }
 
 describe('TV player: KINOSOTA intro → pre-roll → film', () => {
   beforeEach(async () => {
     intro.enabled = true
+    clock = 1_000_000
+    vi.spyOn(introClock, 'now').mockImplementation(() => clock)
     Element.prototype.scrollIntoView = vi.fn()
     play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
@@ -210,10 +221,60 @@ describe('TV player: KINOSOTA intro → pre-roll → film', () => {
     planWith(EMPTY)
     await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
     expect(introLayer().exists()).toBe(true)
+    clock += 15_000
     vi.advanceTimersByTime(15_000)
     await flushPromises(); await nextTick()
     expect(introLayer().exists()).toBe(false)
     expect(film().attributes('src')).toBe('https://node.example/m1.mp4')
+  })
+
+  it('Intro (>= 5 s) → pre-roll: a clip that ends after 1 s keeps the ad back until the intro has had 5 s', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
+    await finishIntro(1000)
+    expect(introLayer().exists()).toBe(true)
+    expect(wrapper!.get('[data-testid="tv-ad-container"]').classes()).not.toContain('visible')
+    expect(film().attributes('src')).toBeUndefined()
+
+    clock += MIN_INTRO_MS - 1000 - 1
+    vi.advanceTimersByTime(MIN_INTRO_MS - 1000 - 1)
+    await settle()
+    expect(introLayer().exists()).toBe(true)
+
+    clock += 1
+    vi.advanceTimersByTime(1)
+    await settle()
+    expect(introLayer().exists()).toBe(false)
+    expect(wrapper!.get('[data-testid="tv-ad-container"]').classes()).toContain('visible')
+    expect(adMedia().attributes('src')).toBe(CREATIVE.media_url)
+    expect(film().attributes('src')).toBeUndefined()
+  })
+
+  it('Intro (>= 5 s) → film: with no ad an early end waits for the minimum, and a refused autoplay waits 5 s, not 15 s', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    planWith(EMPTY)
+    await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
+    wrapper!.findComponent({ name: 'CinemaIntro' }).vm.$emit('started', 'blocked')
+    await settle()
+    expect(introLayer().exists()).toBe(true)
+    expect(film().attributes('src')).toBeUndefined()
+
+    clock += MIN_INTRO_MS
+    vi.advanceTimersByTime(MIN_INTRO_MS)
+    await settle()
+    expect(introLayer().exists()).toBe(false)
+    expect(film().attributes('src')).toBe('https://node.example/m1.mp4')
+  })
+
+  it('a clip that plays with sound or muted does not end the intro early', async () => {
+    planWith(EMPTY)
+    await mountPlayer({ src: 'catalog', kind: 'movie', id: 'm1' })
+    clock += MIN_INTRO_MS * 2
+    wrapper!.findComponent({ name: 'CinemaIntro' }).vm.$emit('started', 'sound')
+    wrapper!.findComponent({ name: 'CinemaIntro' }).vm.$emit('started', 'muted')
+    await settle()
+    expect(introLayer().exists()).toBe(true)
+    expect(film().attributes('src')).toBeUndefined()
   })
 
   it('never hands the stream to an external player', async () => {

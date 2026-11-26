@@ -70,6 +70,7 @@ vi.mock('@/components/CinemaIntro.vue', async () => {
 })
 
 import TvPlayerView from '@/views/tv/TvPlayerView.vue'
+import { MIN_INTRO_MS, introClock } from '@/lib/cinemaIntro'
 
 describe('TvPlayerView Samsung Tizen native AVPlay', () => {
   let router: Router
@@ -84,6 +85,10 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
     listener = {}
     avState = 'PLAYING'
     curMs = 15000
+    // Not about the intro: every look at its clock is MIN_INTRO_MS later, so the stub's at-once
+    // `finished` already satisfies the 5 s minimum (TvPlayerWithAds.spec.ts covers the hold itself).
+    let introNow = 0
+    vi.spyOn(introClock, 'now').mockImplementation(() => (introNow += MIN_INTRO_MS))
     Element.prototype.scrollIntoView = vi.fn()
     for (const fn of Object.values(api)) fn.mockReset()
     authMock.token!.value = 'jwt'
@@ -132,6 +137,7 @@ describe('TvPlayerView Samsung Tizen native AVPlay', () => {
   afterEach(() => {
     wrapper?.unmount()
     wrapper = undefined
+    vi.mocked(introClock.now).mockRestore()
     delete (window as unknown as { tizen?: unknown }).tizen
     delete (window as unknown as { webapis?: unknown }).webapis
     document.documentElement.classList.remove('tv-native-plane')

@@ -53,6 +53,7 @@ vi.mock('@/stores/auth', async () => {
 })
 
 import TvPlayerView from '@/views/tv/TvPlayerView.vue'
+import { MIN_INTRO_MS } from '@/lib/cinemaIntro'
 
 // The commercial cycle (pre-roll → intro → film) is covered by TvPlayerWithAds.spec.ts; here both stages
 // settle at once so the playback behaviour itself is tested.
@@ -106,12 +107,17 @@ function press(key: string) {
 let router: Router
 let wrapper: VueWrapper | undefined
 
-async function mountPlayer(query: Record<string, string>) {
+async function mountPlayer(query: Record<string, string>, { introElapsed = true } = {}) {
   await router.push({ path: '/tv/player', query })
   wrapper = mount(TvPlayerView, { global: { plugins: [router] }, attachTo: document.body })
   await flushPromises()
   await nextTick()
   await flushPromises()
+  // Intro (>= 5 s) → film: the stubbed clip ends at once, the intro still holds the film for MIN_INTRO_MS.
+  if (introElapsed) {
+    await vi.advanceTimersByTimeAsync(MIN_INTRO_MS)
+    await flushPromises()
+  }
   return wrapper
 }
 
@@ -156,6 +162,23 @@ describe('TvPlayerView.vue', () => {
     expect(wrapper!.get('[data-testid="tv-player-title"]').text()).toBe('Матрица')
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
     expect(has('tv-paused')).toBe(false)
+  })
+
+  it('the intro stays on screen at least MIN_INTRO_MS (5 s) even when its clip ends at once', async () => {
+    expect(MIN_INTRO_MS).toBe(5000)
+    await mountPlayer(movieQuery, { introElapsed: false })
+    expect(api.startPlayback).toHaveBeenCalledWith('m1')
+    expect(has('tv-intro-layer')).toBe(true)
+    expect(wrapper!.get('[data-testid="tv-video"]').attributes('src')).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(MIN_INTRO_MS - 100)
+    expect(has('tv-intro-layer')).toBe(true)
+    expect(wrapper!.get('[data-testid="tv-video"]').attributes('src')).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(100)
+    await flushPromises()
+    expect(has('tv-intro-layer')).toBe(false)
+    expect(wrapper!.get('[data-testid="tv-video"]').attributes('src')).toBe('https://node.example/m1.mp4')
   })
 
   it('torrent titles play through a playback ticket', async () => {
