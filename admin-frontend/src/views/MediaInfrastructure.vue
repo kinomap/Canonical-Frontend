@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import TorrentServices from '../components/TorrentServices.vue'
 import JackettSettings from '../components/JackettSettings.vue'
+import JackettCapacity from '../components/JackettCapacity.vue'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 
@@ -177,6 +178,7 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <JackettCapacity />
     <JackettSettings />
 
     <div v-if="loading && !data" class="obs-loading">
