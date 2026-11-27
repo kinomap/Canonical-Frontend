@@ -39,7 +39,8 @@ test('settings compiles without HTML injection, raw errors or direct Jackett UI'
  assert.deepEqual(compileTemplate({ source: descriptor.template.content, filename: 'JackettSettings.vue', id: 'j' }).errors, [])
  assert.doesNotMatch(source, /v-html|iframe|response\.data\.error|console\.(log|error)|localStorage\.setItem/)
  const obs = readFileSync(new URL('../src/views/MediaInfrastructure.vue', import.meta.url), 'utf8')
- assert.ok(obs.indexOf('<JackettSettings />') < obs.indexOf('<template v-if="data">'))
+ const at = obs.indexOf('<JackettSettings ref="jackettSettings" />')
+ assert.ok(at >= 0 && at < obs.indexOf('<template v-if="data">'))
 })
 test('mount lists instances and configured indexers', async () => {
  const { state, hooks } = setup(); await hooks.mount()

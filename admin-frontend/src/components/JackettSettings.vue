@@ -264,8 +264,23 @@ async function action(row: Indexer, kind: 'delete') {
   } catch (e) { if (alive) error.value = failure(e) }
   finally { if (alive) busy.value = false }
 }
+// After an Admin add/remove of an instance: refresh the list and keep the
+// selection (and an open form) while that instance still exists.
+async function reloadInstances() {
+  try {
+    const { data } = await axios.get(base, auth())
+    if (!alive || !Array.isArray(data?.instances)) return
+    instances.value = data.instances
+    if (!data.instances.some((x: { id: string }) => x.id === selected.value)) {
+      ++generation; close(); indexers.value = []; observed.value = ''
+      selected.value = data.instances[0]?.id || ''
+      if (selected.value) await loadIndexers()
+    }
+  } catch (e) { if (alive) error.value = failure(e) }
+}
 onMounted(load)
 onBeforeUnmount(() => { alive = false; ++generation; close() })
+defineExpose({ reloadInstances })
 </script>
 
 <template>
