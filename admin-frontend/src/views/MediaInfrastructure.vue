@@ -86,6 +86,9 @@ interface ScaleSignal {
 // ── State ─────────────────────────────────────────────────────────────────
 
 const data = ref<ObservabilityData | null>(null)
+// Instance lists of the Jackett settings follow Admin add/remove jobs.
+const jackettSettings = ref<{ reloadInstances: () => Promise<void> } | null>(null)
+function jackettInstancesChanged() { return jackettSettings.value?.reloadInstances() }
 const torrentNodes = ref<any[]>([])
 const torrentNodesError = ref(false)
 const scaleSignal = ref<ScaleSignal | null>(null)
@@ -178,8 +181,8 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <JackettCapacity />
-    <JackettSettings />
+    <JackettCapacity @instances-changed="jackettInstancesChanged" />
+    <JackettSettings ref="jackettSettings" />
 
     <div v-if="loading && !data" class="obs-loading">
       <div class="obs-spinner"></div>
