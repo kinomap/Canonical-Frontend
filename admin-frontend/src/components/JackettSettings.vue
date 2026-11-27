@@ -30,16 +30,29 @@ const cleared = ref<Record<string, boolean>>({})
 const confirming = ref<Indexer | null>(null)
 const checking = ref<Record<string, boolean>>({})
 const checkingAll = ref(false)
+// Jackett/FlareSolverr updates of the selected instance, as reported by their version cards.
+const updating = ref<Record<string, boolean>>({})
+const serviceBusy = computed(() => !!updating.value.jackett || !!updating.value.flaresolverr)
+const serviceBusyText = computed(() => `Идёт обновление ${[updating.value.jackett && 'Jackett', updating.value.flaresolverr && 'FlareSolverr'].filter(Boolean).join(' и ')}: операции с индексаторами временно недоступны и станут доступны сами после его завершения.`)
+// Indexer work of this page: an update of the instance waits for it (and the backend enforces it).
+const indexerBusy = computed(() => busy.value || checkingAll.value || Object.keys(checking.value).length > 0)
+const lockReason = (other: 'jackett' | 'flaresolverr') => updating.value[other]
+  ? `Обновление недоступно, пока идёт обновление ${other === 'jackett' ? 'Jackett' : 'FlareSolverr'} этого экземпляра.`
+  : 'Обновление недоступно, пока выполняется операция с индексаторами этого экземпляра (настройка или проверка).'
+// Explicit status of long Jackett requests (Cloudflare-protected trackers are solved via FlareSolverr).
+const waiting = ref('')
 // Older results are refreshed in the background when the list is opened.
 const STALE_MS = 30 * 60 * 1000
 let alive = true
 let generation = 0
-const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }, timeout: 80000 })
+const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }, timeout: 140000 })
 const path = (row: Indexer) => `${base}/${encodeURIComponent(selected.value)}/indexers/${encodeURIComponent(row.id)}`
 const messages: Record<string, string> = {
   jackett_registry_invalid: 'Служебное подключение Jackett настроено некорректно. Проверьте установку общего поискового сервиса.',
   jackett_auth_failed: 'Backend не смог авторизоваться в Jackett. Требуется проверить служебные настройки.',
   jackett_busy: 'Сейчас выполняется другая операция с Jackett. Дождитесь её завершения.',
+  jackett_config_timeout: 'Jackett не успел открыть настройки трекера (защита Cloudflare решается через FlareSolverr). Ничего не изменено — повторите через минуту.',
+  service_update_in_progress: 'Идёт обновление Jackett или FlareSolverr этого экземпляра. Операции с индексаторами станут доступны после его завершения.',
   jackett_timeout_outcome_unknown: 'Jackett не ответил вовремя. Результат операции неизвестен: обновите состояние перед повторной попыткой.',
   config_changed_reload: 'Настройки изменились. Форма обновлена; введите изменения заново.',
   interactive_challenge_required: 'Трекер требует интерактивной проверки, которая пока не поддерживается этой формой.',
@@ -137,7 +150,7 @@ const waiters: Record<string, (() => void)[]> = {}
 const settled = (id: string) => checking.value[id] ? new Promise<void>(resolve => { (waiters[id] ||= []).push(resolve) }) : Promise.resolve()
 // One real search per tracker; the result is stored and shown with its time.
 async function check(row: Indexer, source: 'manual' | 'auto' = 'manual', quiet = false) {
-  if (!row.configured || checking.value[row.id]) return
+  if (!row.configured || checking.value[row.id] || serviceBusy.value) return
   const key = selected.value, id = row.id
   checking.value = { ...checking.value, [id]: true }
   if (source === 'manual' && !quiet) { error.value = ''; notice.value = '' }
@@ -156,7 +169,7 @@ async function check(row: Indexer, source: 'manual' | 'auto' = 'manual', quiet =
   }
 }
 async function checkAll() {
-  if (checkingAll.value) return
+  if (checkingAll.value || serviceBusy.value) return
   checkingAll.value = true; error.value = ''; notice.value = ''
   try { for (const row of indexers.value.filter(x => x.configured)) { if (!alive) return; await check(row, 'manual', true) } }
   finally { if (alive) checkingAll.value = false }
@@ -181,17 +194,18 @@ async function load() {
   finally { if (alive) { loading.value = false; busy.value = false } }
 }
 async function open(row: Indexer) {
-  if (busy.value) return
+  if (busy.value || serviceBusy.value) return
   close(); busy.value = true; notice.value = ''; error.value = ''
+  waiting.value = `${row.name}: открытие настроек через Jackett… Если трекер защищён Cloudflare, проверку решает FlareSolverr — это может занять около минуты.`
   try {
     const { data } = await axios.get(`${path(row)}/config`, auth())
     if (!alive) return
     editing.value = row; form.value = data; resetDraft(); await nextTick(); document.querySelector<HTMLElement>('.jackett-form h3')?.focus()
   } catch (e) { if (alive) error.value = failure(e) }
-  finally { if (alive) busy.value = false }
+  finally { if (alive) { busy.value = false; waiting.value = '' } }
 }
 async function save() {
-  if (!editing.value || !form.value || busy.value) return
+  if (!editing.value || !form.value || busy.value || serviceBusy.value) return
   const row = editing.value
   const changes: Record<string, any> = {}
   for (const field of form.value.fields) {
@@ -207,6 +221,7 @@ async function save() {
     } else changes[field.id] = { mode: 'replace', value }
   }
   busy.value = true; error.value = ''; notice.value = ''
+  waiting.value = `${row.name}: сохранение и проверочный поиск через Jackett… При защите Cloudflare (FlareSolverr) это может занять 1–2 минуты.`
   try {
     const { data } = await axios.post(`${path(row)}/config`, { revision: form.value.revision, changes }, auth())
     if (!alive) return
@@ -250,11 +265,11 @@ async function save() {
     } catch (reload) { if (alive) { close(); notice.value = ''; if (!error.value) error.value = failure(reload) } }
   } finally {
     for (const key of Object.keys(changes)) delete changes[key]
-    if (alive) busy.value = false
+    if (alive) { busy.value = false; waiting.value = '' }
   }
 }
 async function action(row: Indexer, kind: 'delete') {
-  if (busy.value || kind !== 'delete') return
+  if (busy.value || serviceBusy.value || kind !== 'delete') return
   busy.value = true; error.value = ''; notice.value = ''; confirming.value = null
   try {
     await axios.delete(path(row), { ...auth(), data: { confirm: row.id } })
@@ -280,6 +295,9 @@ async function reloadInstances() {
 }
 onMounted(load)
 onBeforeUnmount(() => { alive = false; ++generation; close() })
+function setUpdating(service: 'jackett' | 'flaresolverr', value: boolean) { updating.value = { ...updating.value, [service]: value } }
+// After an update of Jackett/FlareSolverr the indexers are read again from the restarted service.
+async function afterUpdate() { if (alive && selected.value) await loadIndexers() }
 defineExpose({ reloadInstances })
 </script>
 
@@ -292,31 +310,34 @@ defineExpose({ reloadInstances })
     <p v-if="loading" role="status">Загрузка поискового сервиса…</p>
     <p v-if="error" class="jackett-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="jackett-notice" role="status">{{ notice }}</p>
+    <p v-if="waiting" class="jackett-wait" role="status">{{ waiting }}</p>
     <p v-if="!loading && !error && !instances.length">Jackett ещё не подключён к Backend. Сначала установите общий поисковый сервис; открывать его порт в Интернет не нужно.</p>
     <template v-if="instances.length">
-      <ServiceVersion v-if="selected" service="jackett" :target="selected" />
+      <ServiceVersion v-if="selected" service="jackett" :target="selected" :locked="indexerBusy || !!updating.flaresolverr" :locked-reason="lockReason('flaresolverr')" @busy-change="setUpdating('jackett', $event)" @updated="afterUpdate" />
+      <ServiceVersion v-if="selected" service="flaresolverr" :target="selected" :locked="indexerBusy || !!updating.jackett" :locked-reason="lockReason('jackett')" @busy-change="setUpdating('flaresolverr', $event)" @updated="afterUpdate" />
+      <p v-if="serviceBusy" class="jackett-wait" role="status">{{ serviceBusyText }}</p>
       <div class="jackett-toolbar">
         <label v-if="instances.length > 1">Поисковый сервис<select v-model="selected" :disabled="busy" @change="loadIndexers"><option v-for="item in instances" :key="item.id" :value="item.id">{{ item.name }}</option></select></label>
         <label>Трекеры<select v-model="filter" :disabled="busy" @change="changeFilter"><option value="configured">Подключённые ({{ connected }})</option><option value="all">Все доступные ({{ indexers.length }})</option></select></label>
         <label>Найти индексатор<input v-model="query" type="search" placeholder="Название или язык" :disabled="busy" @input="page = 1" /></label>
       </div>
-      <p v-if="observed" class="jackett-count" role="status">Подключено индексаторов: <strong>{{ connected }}</strong><span v-if="query.trim()"> · Найдено по фильтру: {{ matched.length }} <button type="button" :disabled="busy" @click="query = ''; page = 1">Сбросить поиск</button></span><button v-if="connected" type="button" class="jackett-check-all" :disabled="busy || checkingAll" @click="checkAll">{{ checkingAll ? 'Проверка…' : 'Проверить все' }}</button></p>
+      <p v-if="observed" class="jackett-count" role="status">Подключено индексаторов: <strong>{{ connected }}</strong><span v-if="query.trim()"> · Найдено по фильтру: {{ matched.length }} <button type="button" :disabled="busy" @click="query = ''; page = 1">Сбросить поиск</button></span><button v-if="connected" type="button" class="jackett-check-all" :disabled="busy || checkingAll || serviceBusy" @click="checkAll">{{ checkingAll ? 'Проверка…' : 'Проверить все' }}</button></p>
       <p v-if="observed" class="jackett-meta">Состояние Jackett: {{ observed }}. Статус — результат реального поиска через Jackett по каждому трекеру (сохранение настроек тоже подтверждается таким поиском); результаты старше 30 минут перепроверяются автоматически. Рабочие трекеры сами используются поиском раздач; трекер с ошибкой проверки исключается из него до успешной проверки (не дольше 24 ч). Это не проверка воспроизведения.</p>
       <ul class="jackett-list" aria-label="Индексаторы">
         <li v-for="row in visible" :key="row.id">
           <div class="jackett-name"><strong>{{ row.name }}</strong><span>{{ row.type }} · {{ row.language }} · <span :class="['jackett-status', statusKind(row)]">{{ status(row) }}</span></span></div>
-          <div class="jackett-actions"><button type="button" :disabled="busy" @click="open(row)">{{ row.configured ? 'Настроить' : 'Подключить' }}</button><button v-if="row.configured" type="button" :disabled="busy || !!checking[row.id]" @click="check(row, 'manual')">{{ checking[row.id] ? 'Проверка…' : 'Проверить' }}</button><button v-if="row.configured" type="button" class="danger" :disabled="busy" @click="confirming = row">Удалить</button></div>
+          <div class="jackett-actions"><button type="button" :disabled="busy || serviceBusy" @click="open(row)">{{ row.configured ? 'Настроить' : 'Подключить' }}</button><button v-if="row.configured" type="button" :disabled="busy || serviceBusy || !!checking[row.id]" @click="check(row, 'manual')">{{ checking[row.id] ? 'Проверка…' : 'Проверить' }}</button><button v-if="row.configured" type="button" class="danger" :disabled="busy || serviceBusy" @click="confirming = row">Удалить</button></div>
         </li>
       </ul>
       <p v-if="!busy && !visible.length">{{ filter === 'configured' && !connected ? 'Подключённых трекеров пока нет. Выберите «Все доступные», чтобы добавить индексатор.' : 'Индексаторы не найдены.' }}</p>
       <nav v-if="pages > 1" class="jackett-actions" aria-label="Страницы индексаторов"><button :disabled="busy || page <= 1" @click="page--">Назад</button><span>{{ Math.min(page, pages) }} / {{ pages }}</span><button :disabled="busy || page >= pages" @click="page++">Далее</button></nav>
-      <div v-if="confirming" class="jackett-confirm" role="group" aria-label="Подтверждение удаления"><p>Удалить настройки {{ confirming.name }} из Jackett? Сохранённая авторизация этого трекера будет удалена.</p><div class="jackett-actions"><button class="danger" :disabled="busy" @click="action(confirming!, 'delete')">Да, удалить</button><button :disabled="busy" @click="confirming = null">Отмена</button></div></div>
+      <div v-if="confirming" class="jackett-confirm" role="group" aria-label="Подтверждение удаления"><p>Удалить настройки {{ confirming.name }} из Jackett? Сохранённая авторизация этого трекера будет удалена.</p><div class="jackett-actions"><button class="danger" :disabled="busy || serviceBusy" @click="action(confirming!, 'delete')">Да, удалить</button><button :disabled="busy" @click="confirming = null">Отмена</button></div></div>
       <form v-if="editing && form" class="jackett-form" autocomplete="off" @submit.prevent="save">
         <header class="jackett-heading"><h3 tabindex="-1">{{ editing.name }} · настройки</h3><button type="button" :disabled="busy" @click="close">Закрыть</button></header>
         <p>Сохранённые пароли, cookie и ключи скрыты: пустое поле оставляет прежнее значение, удаление — отдельным переключателем. Обычные поля (логин, фильтры) показаны с сохранёнными значениями.</p>
         <p v-if="cookieOnly" class="jackett-cookie" role="note">Этот трекер использует авторизацию через Cookie (без логина и пароля). Войдите на сайт трекера в браузере, скопируйте Cookie из инструментов разработчика (F12) и вставьте в поле Cookie.</p>
         <p v-if="form.unsupported.length" class="jackett-error" role="alert">Для этого трекера требуется дополнительная проверка, пока не поддерживаемая здесь: {{ form.unsupported.join(', ') }}. Подключение не подтверждено.</p>
-        <fieldset :disabled="busy"><legend class="sr-only">Параметры индексатора</legend>
+        <fieldset :disabled="busy || serviceBusy"><legend class="sr-only">Параметры индексатора</legend>
           <template v-for="(field, i) in form.fields" :key="`${i}:${field.id}`">
           <div v-if="isNote(field)" class="jackett-info" role="note"><strong v-if="field.label">{{ field.label }}</strong><p>{{ field.value }}</p></div>
           <div v-else-if="!hiddenField(field)" class="jackett-field">
@@ -330,13 +351,13 @@ defineExpose({ reloadInstances })
           </div>
           </template>
         </fieldset>
-        <button class="primary" type="submit" :disabled="busy || !!form.unsupported.length">{{ busy ? 'Выполняется…' : 'Сохранить / продолжить настройку' }}</button>
+        <button class="primary" type="submit" :disabled="busy || serviceBusy || !!form.unsupported.length">{{ busy ? 'Выполняется…' : 'Сохранить / продолжить настройку' }}</button>
       </form>
     </template>
   </section>
 </template>
 
 <style scoped>
-.jackett-status.ok{color:#7ee2a8}.jackett-status.bad{color:#ff9b9b}.jackett-check-all{margin-left:12px}
+.jackett-status.ok{color:#7ee2a8}.jackett-wait{color:#8fc3ff;border-left:3px solid #8fc3ff;padding-left:12px}.jackett-status.bad{color:#ff9b9b}.jackett-check-all{margin-left:12px}
 .jackett-panel{margin:0 0 24px;padding:24px;border:1px solid var(--ui-border,#39404b);border-radius:12px;background:var(--ui-surface,#171d27);color:var(--ui-text,#f5f6f8);font-size:16px;line-height:1.5;min-width:0}.jackett-panel *{box-sizing:border-box}.jackett-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.jackett-heading h2{margin:0;font-size:20px}.jackett-heading h3{margin:0;font-size:18px}.jackett-panel p{margin:8px 0 16px;color:var(--ui-text-muted,#b9c1cf)}.jackett-panel button,.jackett-panel input:not([type=checkbox]),.jackett-panel select{font:inherit;border:1px solid var(--ui-border,#4e5869);border-radius:8px;background:var(--ui-surface,#171d27);color:var(--ui-text,#f5f6f8);min-height:44px;padding:8px 12px;max-width:100%}.jackett-panel button{cursor:pointer;white-space:normal}.jackett-panel button:disabled{opacity:.55;cursor:wait}.jackett-panel :focus-visible{outline:2px solid #f6cf4b;outline-offset:3px}.jackett-panel input[type=checkbox]{width:20px;height:20px;accent-color:#f6cf4b}.jackett-toolbar{display:flex;flex-wrap:wrap;gap:16px;margin:20px 0 8px}.jackett-toolbar label{display:grid;gap:8px;flex:1;min-width:180px}.jackett-meta{font-size:14px}.jackett-list{list-style:none;margin:16px 0;padding:0}.jackett-list li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--ui-border,#39404b)}.jackett-name{min-width:0;overflow-wrap:anywhere}.jackett-name span{display:block;font-size:14px;color:var(--ui-text-muted,#b9c1cf)}.jackett-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.jackett-panel .danger{color:#ffaaa5}.jackett-panel .jackett-error{color:#ffb6af;border-left:3px solid #ff8a80;padding-left:12px}.jackett-panel .jackett-notice{color:#a8e8bc;border-left:3px solid #71ce90;padding-left:12px}.jackett-form,.jackett-confirm{margin-top:24px;padding-top:24px;border-top:1px solid var(--ui-border,#39404b)}.jackett-form fieldset{border:0;padding:0;margin:16px 0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.jackett-field{min-width:0;display:flex;flex-direction:column;gap:8px}.jackett-field>label{overflow-wrap:anywhere}.jackett-captcha{max-width:100%;height:auto;align-self:flex-start;background:#fff;border-radius:6px;padding:4px}.jackett-clear{display:flex;align-items:center;gap:8px;font-size:14px;min-height:44px}.jackett-panel .primary{background:#f6cf4b;border-color:#f6cf4b;color:#171717}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.jackett-info{grid-column:1/-1;min-width:0;padding:10px 12px;border-left:3px solid #8fc3ff;border-radius:0 8px 8px 0;background:rgba(143,195,255,.08);overflow-wrap:anywhere}.jackett-info strong{display:block;font-size:14px}.jackett-panel .jackett-info p{margin:4px 0 0;white-space:pre-line;font-size:14px}.jackett-panel .jackett-cookie{color:var(--ui-text,#f5f6f8);padding:10px 12px;border-left:3px solid #f6cf4b;border-radius:0 8px 8px 0;background:rgba(246,207,75,.08)}@media(max-width:640px){.jackett-panel{padding:16px}.jackett-heading{flex-wrap:wrap}.jackett-list li{align-items:flex-start;flex-direction:column}.jackett-form fieldset{grid-template-columns:1fr}.jackett-toolbar label{min-width:100%;width:100%}.jackett-actions{width:100%}.jackett-actions button{flex:1}.jackett-form .primary{width:100%}}
 </style>
