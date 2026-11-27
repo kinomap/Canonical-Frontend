@@ -13,14 +13,15 @@ const compiled = ts.transpileModule(script.content, { compilerOptions: { module:
 const tick = () => new Promise(resolve => setTimeout(resolve, 0))
 const node = { target: 'node-1', name: 'Node 1', current_version: '1.0.0', current_error: null, update_available: true, latest_installed: false, update_allowed: true, job: null }
 function setup() {
- const axios = { get: async () => ({ data: { services: {} } }), post: async () => ({ data: {} }) }
+ const events = []
+ const axios = { get: async () => ({ data: { services: {} } }), post: async () => ({ data: {} }), put: async () => ({ data: {} }) }
  const sandbox = { exports: {}, require: n => n === 'vue' ? { ...vue, onMounted: () => {}, onBeforeUnmount: () => {} } : { default: axios, __esModule: true }, localStorage: { getItem: () => 'synthetic-admin' }, setTimeout, clearTimeout }
  vm.runInNewContext(compiled, sandbox)
- const state = sandbox.exports.default.setup({ service: 'torrserver', target: 'node-1' }, { expose: () => {} })
+ const state = sandbox.exports.default.setup({ service: 'torrserver', target: 'node-1' }, { expose: () => {}, emit: (name, ...args) => events.push([name, ...args]) })
  // The job as the backend reports it; the watcher that remembers running jobs settles on a tick.
  const show = async (job) => { state.item.value = { ...node, job: job && { job_id: 'job-1', from_version: '1.0.0', to_version: '1.1.0', error_code: null, phase: null, rolled_back_to: null, late_report: false, created_at: null, finished_at: null, ...job } }; await tick() }
  const bar = () => state.progress.value && { ...state.progress.value }
- return { state, show, bar }
+ return { state, show, bar, events }
 }
 
 test('update progress: each phase of the job is a step, 10 % accepted … 95 % health check', async () => {
@@ -41,10 +42,13 @@ test('a job watched while running ends on a full bar; finished jobs found at loa
  const fresh = setup()
  await fresh.show({ state: 'succeeded', finished_at: done })
  assert.equal(fresh.bar(), null)
- const { show, bar } = setup()
+ assert.deepEqual(fresh.events, [], 'a finished job found at load is not reported as a new update')
+ const { show, bar, events } = setup()
  await show({ state: 'running', phase: 'health' })
  await show({ state: 'succeeded', finished_at: done })
  assert.deepEqual(bar(), { percent: 100, label: 'Завершено', kind: 'ok' })
+ assert.deepEqual(events.filter(([name]) => name === 'busy-change').map(([, busy]) => busy), [true, false], 'the host card learns when the update starts and ends')
+ assert.deepEqual(events.filter(([name]) => name === 'updated').map(([, j]) => j.state), ['succeeded'], 'a finished watched job is reported once')
  for (const state of ['failed', 'rolled_back']) {
   await show({ state, error_code: 'health_failed', finished_at: done })
   assert.equal(bar(), null, state)
