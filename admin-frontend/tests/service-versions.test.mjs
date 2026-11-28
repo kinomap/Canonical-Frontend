@@ -218,6 +218,28 @@ test('torrserver node not enrolled into the host updater asks for a Redeploy', a
   assert.equal(other.state.updaterPending.value, false)
 })
 
+test('several torrserver nodes: only the node waiting for enrollment shows the Redeploy hint', async () => {
+  const target = (id, over) => ({ target: id, name: id, current_version: 'MatriX.148', current_error: null, update_available: true,
+    latest_installed: false, update_allowed: true, updater_pending: false, job: null, ...over })
+  const versions = { services: { torrserver: { latest: { latest_version: 'MatriX.149', checked_at: NOW, error_code: null, image_published: true },
+    targets: [target('torrent-01'), target('torrent-02', { update_allowed: false, updater_pending: true }), target('torrent-03')] } } }
+  const cards = {}
+  for (const id of ['torrent-01', 'torrent-02', 'torrent-03']) {
+    const card = setup({}, {}, { versions })
+    card.props.service = 'torrserver'; card.props.target = id
+    await card.hooks.mount()
+    cards[id] = card.state
+  }
+  assert.deepEqual(Object.fromEntries(Object.entries(cards).map(([id, s]) => [id, [s.updaterPending.value, s.canUpdate.value]])),
+    { 'torrent-01': [false, true], 'torrent-02': [true, false], 'torrent-03': [false, true] })
+  // After the Redeploy the same node is enrolled: hint gone, update allowed.
+  const redeployed = setup({}, {}, { versions: { services: { torrserver: { ...versions.services.torrserver,
+    targets: versions.services.torrserver.targets.map(t => t.target === 'torrent-02' ? { ...t, update_allowed: true, updater_pending: false } : t) } } } })
+  redeployed.props.service = 'torrserver'; redeployed.props.target = 'torrent-02'
+  await redeployed.hooks.mount()
+  assert.equal(redeployed.state.updaterPending.value, false); assert.equal(redeployed.state.canUpdate.value, true)
+})
+
 test('FlareSolverr card reads its own service and updates through its own endpoint', async () => {
   const { state, requests, hooks } = setup({}, {}, { props: { service: 'flaresolverr' }, versions: searchVersions() }); await hooks.mount()
   assert.equal(requests[0].url, '/api/v1/admin/services/versions?service=flaresolverr')
