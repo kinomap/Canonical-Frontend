@@ -4,7 +4,7 @@ import axios from 'axios'
 
 type Job = { job_id: string; state: string; from_version: string | null; to_version: string; error_code: string | null; phase: string | null; rolled_back_to: string | null; late_report: boolean; created_at: string | null; finished_at: string | null; source?: string; soak_state?: string | null; soak_until?: string | null; soak_reason?: string | null; fallback?: string | null }
 type Suppressed = { version: string; reason: string | null; suppressed_at: string | null }
-type Target = { target: string; name: string; current_version: string | null; current_error: string | null; update_available: boolean; latest_installed: boolean; update_allowed?: boolean; suppressed?: Suppressed[]; job: Job | null }
+type Target = { target: string; name: string; current_version: string | null; current_error: string | null; update_available: boolean; latest_installed: boolean; update_allowed?: boolean; updater_pending?: boolean; suppressed?: Suppressed[]; job: Job | null }
 type Latest = { latest_version: string | null; published_at?: string | null; release_url?: string | null; checked_at: string | null; error_code: string | null; image_published: boolean }
 // Per-service automatic updates (admin_services.py): OFF unless an admin turned them on.
 type Policy = { enabled: boolean; delay_hours: number; updated_at: string | null }
@@ -49,6 +49,7 @@ const messages: Record<string, string> = {
   invalid_policy: 'Некорректная настройка автообновления.',
   telemetry_stale: 'Нет свежих данных от ноды — обновление недоступно, пока нода не подтвердит состояние.',
   target_not_allowed: 'Для этой ноды обновление не разрешено: нет приватного адреса управления.',
+  updater_pending: 'Нода ещё не подключена к апдейтеру TorrServer — выполните Redeploy этой ноды, после этого обновление станет доступно.',
   unknown_target: 'Сервис не найден.',
   unknown_service: 'Неизвестный сервис.',
   jackett_not_connected: 'Jackett не подключён к Backend.',
@@ -102,6 +103,8 @@ const active = computed(() => !!job.value && ACTIVE.includes(job.value.state))
 const soaking = computed(() => { const j = job.value; return !!j && j.state === 'succeeded' && j.soak_state === 'soaking' && !!j.soak_until && Date.parse(j.soak_until) > Date.now() })
 const suppressedList = computed(() => (Array.isArray(item.value?.suppressed) ? item.value!.suppressed! : []))
 const releaseUrl = computed(() => { const url = latest.value?.release_url; return typeof url === 'string' && url.startsWith('https://github.com/') ? url : '' })
+// TorrServer node deployed before auto-enroll: the host updater cannot reach it until a Redeploy.
+const updaterPending = computed(() => props.service === 'torrserver' && item.value?.updater_pending === true)
 const canUpdate = computed(() => !!item.value?.update_available && item.value.update_allowed !== false && !active.value && !soaking.value && !props.locked && !loading.value && !submitting.value)
 // Why an offered update cannot be started right now (the button stays visible, disabled).
 const blockedText = computed(() => {
@@ -216,7 +219,7 @@ async function submit() {
     confirming.value = false; error.value = failure(e, 'Запрос обновления не подтверждён сервером. Проверьте состояние и повторите.')
     const code = e?.response?.data?.code
     // Fresh state (e.g. a job started elsewhere or lost reply); the reason stays visible.
-    if (!code || ['release_changed_reload', 'update_in_progress', 'already_latest', 'current_version_unknown', 'telemetry_stale', 'soak_in_progress', 'service_update_in_progress'].includes(code)) { const shown = error.value; await load(); if (alive) error.value = shown }
+    if (!code || ['release_changed_reload', 'update_in_progress', 'already_latest', 'current_version_unknown', 'telemetry_stale', 'updater_pending', 'soak_in_progress', 'service_update_in_progress'].includes(code)) { const shown = error.value; await load(); if (alive) error.value = shown }
   } finally { if (alive) submitting.value = false }
 }
 async function toggle(enabled: boolean, input?: HTMLInputElement) {
@@ -307,7 +310,8 @@ onBeforeUnmount(() => {
     </div>
     <p v-if="error" class="sv-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="sv-notice" role="status">{{ notice }}</p>
-    <p v-if="item?.update_available && item?.update_allowed === false" class="sv-meta">Обновление этой ноды сейчас недоступно: нет свежих данных от ноды или приватного адреса управления.</p>
+    <p v-if="updaterPending" class="sv-meta sv-blocked" role="status" data-testid="sv-updater-pending">Нода развёрнута до автоподключения апдейтера TorrServer: выполните <strong>Redeploy</strong> этой ноды — после этого обновления (ручные и автоматические) станут доступны из Admin.</p>
+    <p v-else-if="item?.update_available && item?.update_allowed === false" class="sv-meta">Обновление этой ноды сейчас недоступно: нет свежих данных от ноды или приватного адреса управления.</p>
     <p v-if="blockedText" class="sv-meta sv-blocked" role="status">{{ blockedText }}</p>
     <button v-if="item?.update_available && !confirming && !active" type="button" class="primary" :disabled="!canUpdate" @click="ask">Обновить сервис</button>
     <div v-if="confirming" class="sv-confirm" role="group" aria-label="Подтверждение обновления">

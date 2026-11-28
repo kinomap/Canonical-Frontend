@@ -193,6 +193,31 @@ test('unmount stops polling and ignores late answers', async () => {
   assert.equal(pending(timers).length, 0)
 })
 
+test('torrserver node not enrolled into the host updater asks for a Redeploy', async () => {
+  const { state, hooks, props, ctl, requests } = setup()
+  props.service = 'torrserver'; props.target = 'torrent-01'
+  const node = over => ({ services: { torrserver: { latest: { latest_version: 'MatriX.149', checked_at: NOW, error_code: null, image_published: true },
+    targets: [{ target: 'torrent-01', name: 'torrent-01', current_version: 'MatriX.148', current_error: null, update_available: true, latest_installed: false, update_allowed: false, updater_pending: true, job: null, ...over }] } } })
+  ctl.versions = node()
+  await hooks.mount()
+  assert.equal(state.updaterPending.value, true); assert.equal(state.canUpdate.value, false)
+  state.ask(); assert.equal(state.confirming.value, false)
+  assert.match(source, /<p v-if="updaterPending" class="sv-meta sv-blocked" role="status" data-testid="sv-updater-pending">[^<]*<strong>Redeploy<\/strong>/)
+  assert.match(source, /<p v-else-if="item\?\.update_available && item\?\.update_allowed === false" class="sv-meta">/)
+  // A request that races the enrollment check gets the same, friendly answer and reloads.
+  ctl.versions = node({ update_allowed: true, updater_pending: false }); await state.load()
+  assert.equal(state.updaterPending.value, false); assert.equal(state.canUpdate.value, true)
+  ctl.post = () => { throw rejected('updater_pending') }
+  ctl.versions = node()
+  state.ask(); await state.submit()
+  assert.match(state.error.value, /выполните Redeploy этой ноды/); assert.doesNotMatch(state.error.value, /raw-upstream-detail/)
+  assert.equal(state.updaterPending.value, true, 'the card reloaded after updater_pending')
+  assert.ok(requests.filter(r => r.method === 'GET').length >= 3)
+  // Other services never show the hint, whatever the payload says.
+  const other = setup({ updater_pending: true }); await other.hooks.mount()
+  assert.equal(other.state.updaterPending.value, false)
+})
+
 test('FlareSolverr card reads its own service and updates through its own endpoint', async () => {
   const { state, requests, hooks } = setup({}, {}, { props: { service: 'flaresolverr' }, versions: searchVersions() }); await hooks.mount()
   assert.equal(requests[0].url, '/api/v1/admin/services/versions?service=flaresolverr')
